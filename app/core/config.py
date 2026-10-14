@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     MONGODB_DB_NAME: str = "astra_astrology"
     MONGODB_MAX_POOL_SIZE: int = 100
     MONGODB_MIN_POOL_SIZE: int = 0
+    MONGODB_CONNECT_TIMEOUT_MS: int = 10_000
+
+    # ------------------------------------------------------------- health
+    # Keep the health check fast so uptime monitors never time out on it.
+    HEALTH_DB_TIMEOUT_SECONDS: float = 3.0
 
     # -------------------------------------------------------------- resend
     RESEND_API_KEY: str = ""

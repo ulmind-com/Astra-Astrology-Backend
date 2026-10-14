@@ -103,6 +103,56 @@ class Horoscope(TimestampedDocument):
 Then add it to `DOCUMENT_MODELS` in `app/models/__init__.py`; Beanie registers
 it and creates its indexes on the next startup.
 
+## Uptime monitoring (keep the Render instance awake)
+
+Deployed at `https://astra-astrology-backend.onrender.com`. Render's free tier
+spins an instance down after ~15 minutes of inactivity, so UptimeRobot and
+cron-job.org ping it to keep it warm.
+
+Point monitors at either endpoint — both accept **GET and HEAD**:
+
+| Endpoint | Touches the DB | Use for |
+| --- | --- | --- |
+| `/api/v1/ping` | no | keep-alive (cheapest, answers in ~2 ms) |
+| `/api/v1/health` | yes (bounded) | keep-alive + a real status readout |
+
+Suggested settings:
+
+- **UptimeRobot** — HTTP(s) monitor, interval **5 minutes**. It sends `HEAD` by
+  default, which these routes support.
+- **cron-job.org** — every **5 minutes**, request timeout **30s**. The generous
+  timeout covers a cold start, which can take 30–60s if the instance did manage
+  to sleep.
+
+Why the monitors stay green:
+
+- `GET` *and* `HEAD` are both registered. FastAPI's router does not add `HEAD`
+  automatically, and a `HEAD` request against a GET-only route returns `405` —
+  that was the original source of UptimeRobot errors.
+- Both endpoints always answer `200`. A database problem shows up as
+  `data.status == "degraded"` in the body rather than an HTTP error.
+- A failed database connection at startup is **not** fatal: the app boots,
+  serves `/health` as degraded, and finishes its setup on the next successful
+  ping. Previously an unreachable Atlas would crash startup and Render would
+  serve `502`.
+- The database ping is capped by `HEALTH_DB_TIMEOUT_SECONDS` (default 3s), so
+  health never hangs.
+- Both send `Cache-Control: no-store`, so a CDN can't serve a cached `200`
+  while the instance sleeps behind it.
+
+If you *do* want alerting on a real outage, add a second UptimeRobot **keyword**
+monitor on `/api/v1/health` that expects `"status":"ok"`.
+
+### Render settings worth checking
+
+- Set `APP_ENV=production` in the Render environment (it currently reports
+  `development`, which leaves `/docs` publicly open).
+- Set `RESEND_API_KEY` when you start sending email — `/health` currently
+  reports `resend: false`.
+- Point Render's own **Health Check Path** at `/api/v1/health`.
+- MongoDB Atlas → Network Access must allow Render's egress (`0.0.0.0/0` on the
+  free tier, since Render doesn't give a static outbound IP there).
+
 ## Commands
 
 ```bash
