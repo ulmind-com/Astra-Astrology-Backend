@@ -25,11 +25,9 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     SECRET_KEY: str = "change-me"
 
-    # CORS — comma separated list in .env (NoDecode: parsed by the validator
-    # below, not as JSON).
-    ALLOWED_ORIGINS: Annotated[list[str], NoDecode] = Field(
-        default_factory=lambda: ["http://localhost:3000", "http://localhost:3001"]
-    )
+    # CORS — comma separated list in .env, or `*` for every origin (NoDecode:
+    # parsed by the validator below, not as JSON).
+    ALLOWED_ORIGINS: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["*"])
 
     # ------------------------------------------------------------- mongodb
     MONGODB_URI: str = "mongodb://localhost:27017"
