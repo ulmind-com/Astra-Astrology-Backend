@@ -1,0 +1,42 @@
+# ----- env / secrets -----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ----- python -----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ----- uv / venv -----
+.venv/
+venv/
+env/
+
+# ----- tooling caches -----
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# ----- editors / os -----
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# ----- logs / uploads -----
+logs/
+*.log
+uploads/
+tmp/
