@@ -344,6 +344,52 @@ The public sign-up route only ever creates role `user`, so there is no way in
 from outside. `/astrologers/me` is behind the `astrologer` role and returns
 `403 insufficient_role` to anyone else.
 
+### The public directory
+
+```
+GET /api/v1/astrologers              list
+GET /api/v1/astrologers/{slug|id}    one
+```
+
+**No authentication** — this is what the website and app browse. The response is
+`AstrologerPublic`, which is deliberately narrower than the profile the
+astrologer and admin see: **no email, phone, bank details, commission, user id
+or account status**.
+
+Ordering is online first, then featured, then `display_order`, then rating.
+
+| Filter | |
+| --- | --- |
+| `search` | display name, tagline or speciality (case-insensitive) |
+| `skill`, `language`, `mode` | exact match within the list |
+| `min_experience`, `max_rate` | `max_rate` is the chat rate ceiling |
+| `online_only`, `featured_only` | |
+| `page`, `limit` | up to 50 per page |
+
+**Only `is_listed` gates the directory**, so every path that suspends an account
+clears it — both `DELETE /admin/astrologers/{id}` and a `PATCH` that sets a
+non-active status. An unlisted astrologer 404s on the detail route too.
+
+Route order matters here: `/astrologers/me` is declared before
+`/astrologers/{identifier}`, so the literal path wins over the slug lookup.
+
+### Images
+
+```
+POST   /api/v1/astrologers/me/image              photo
+DELETE /api/v1/astrologers/me/image
+POST   /api/v1/astrologers/me/gallery            add (max 12)
+DELETE /api/v1/astrologers/me/gallery/{public_id}
+```
+
+Compressed on the way in, exactly like user avatars — resized to
+`AVATAR_MAX_DIMENSION`, `AVATAR_QUALITY`, re-encoded to WebP. A 1400×1400 PNG of
+1.12 MB lands as a 512×512 WebP of 135 KB.
+
+Replacing the photo deletes the file it replaces. Gallery images store their
+Cloudinary `public_id` alongside the URL, which is what makes deleting one
+possible.
+
 ### Creating one
 
 The admin sends the astrologer's details but **no password** — one is generated

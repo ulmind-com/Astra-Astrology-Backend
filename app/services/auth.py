@@ -159,6 +159,9 @@ async def reset_password(email: str, code: str, new_password: str) -> User:
     user.hashed_password = hash_password(new_password)
     user.add_provider(AuthProvider.PASSWORD)
     user.is_email_verified = True  # the code proved they own the address
+    # They have now chosen a password of their own, so stop asking them to —
+    # this matters for astrologers, whose first password was generated for them.
+    user.must_change_password = False
     await user.save()
 
     # --- Firebase: the mirror ----------------------------------------------

@@ -398,3 +398,52 @@ async def test_unknown_astrologer_is_a_404(client: AsyncClient) -> None:
     response = await client.get(f"{P}/admin/astrologers/507f1f77bcf86cd799439011", headers=admin)
     assert response.status_code == 404
     assert response.json()["error_code"] == "astrologer_not_found"
+
+
+# ------------------------------------------------------- forgot password
+async def test_astrologer_can_reset_a_forgotten_password(
+    client: AsyncClient, sent_mail: list
+) -> None:
+    """The flow is the same as for a user — role is not checked anywhere in it."""
+    admin = await make_admin(client)
+    await create_astrologer(client, admin)
+    emailed = password_from_mail(sent_mail)
+
+    asked = await client.post(f"{P}/auth/password/forgot", json={"email": "ravi.astro@test.dev"})
+    assert asked.status_code == 200, asked.text
+    code = asked.json()["data"]["dev_code"]
+
+    done = await client.post(
+        f"{P}/auth/password/reset",
+        json={"email": "ravi.astro@test.dev", "code": code, "new_password": "chosen-by-me"},
+    )
+    assert done.status_code == 200, done.text
+
+    signed_in = await client.post(
+        f"{P}/auth/login", json={"email": "ravi.astro@test.dev", "password": "chosen-by-me"}
+    )
+    assert signed_in.status_code == 200
+    assert signed_in.json()["data"]["user"]["role"] == "astrologer"
+
+    # The emailed password is dead.
+    stale = await client.post(
+        f"{P}/auth/login", json={"email": "ravi.astro@test.dev", "password": emailed}
+    )
+    assert stale.status_code == 401
+
+    # And they are no longer told to change a password they just chose.
+    auth = {"Authorization": f"Bearer {signed_in.json()['data']['tokens']['access_token']}"}
+    profile = await client.get(f"{P}/astrologers/me", headers=auth)
+    assert profile.json()["data"]["must_change_password"] is False
+
+
+async def test_a_suspended_astrologer_cannot_reset(client: AsyncClient, sent_mail: list) -> None:
+    admin = await make_admin(client)
+    created = await create_astrologer(client, admin)
+    await client.delete(
+        f"{P}/admin/astrologers/{created.json()['data']['astrologer']['id']}", headers=admin
+    )
+
+    response = await client.post(f"{P}/auth/password/forgot", json={"email": "ravi.astro@test.dev"})
+    assert response.status_code == 403
+    assert response.json()["error_code"] == "account_suspended"

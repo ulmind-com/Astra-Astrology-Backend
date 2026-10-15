@@ -20,12 +20,16 @@ from app.models.user import User
 from app.schemas.astrologer import (
     AstrologerAdminUpdate,
     AstrologerCreate,
+    AstrologerFilters,
     AstrologerProfile,
+    AstrologerPublic,
     AstrologerUpdate,
     AvailabilityUpdate,
 )
-from app.services import firebase
+from app.schemas.common import Paginated, build_page
+from app.services import firebase, storage
 from app.services.email import send_astrologer_welcome_email
+from app.services.storage import ALLOWED_IMAGE_TYPES
 
 # No look-alike characters, so it survives being read off a screen or a phone call.
 _ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
@@ -240,6 +244,11 @@ async def update_profile(
                 "Only an admin can change the account status.", error_code="admin_only"
             )
         user.status = AccountStatus(status)
+        # The directory is gated on `is_listed` alone, so suspending has to pull
+        # them out of it — otherwise a suspended astrologer stays on the site.
+        if user.status is not AccountStatus.ACTIVE:
+            profile.is_listed = False
+            profile.availability.is_online = False
 
     if "phone" in account_updates and account_updates["phone"] != user.phone:
         user.is_phone_verified = False
@@ -286,4 +295,166 @@ async def update_availability(profile: Astrologer, payload: AvailabilityUpdate) 
     if updates.get("is_online"):
         profile.availability.last_online_at = utcnow()
     await profile.save()
+    return profile
+
+
+# ------------------------------------------------------ public directory
+# Only `is_listed` gates the directory, so every path that suspends an account
+# must clear it — see `update_profile` and the admin deactivate route.
+MAX_GALLERY_IMAGES = 12
+
+
+def to_public(profile: Astrologer) -> AstrologerPublic:
+    return AstrologerPublic.model_validate(profile)
+
+
+def _directory_query(filters: AstrologerFilters):
+    from beanie.operators import And, In, Or, RegEx
+
+    conditions: list = [Astrologer.is_listed == True]  # noqa: E712
+
+    if filters.search:
+        pattern = filters.search.strip()
+        conditions.append(
+            Or(
+                RegEx(Astrologer.display_name, pattern, options="i"),
+                RegEx(Astrologer.specialisations, pattern, options="i"),
+                RegEx(Astrologer.tagline, pattern, options="i"),
+            )
+        )
+    if filters.skill:
+        conditions.append(In(Astrologer.skills, [filters.skill]))
+    if filters.language:
+        conditions.append(In(Astrologer.languages, [filters.language]))
+    if filters.mode:
+        conditions.append(In(Astrologer.modes_enabled, [filters.mode]))
+    if filters.online_only:
+        conditions.append(Astrologer.availability.is_online == True)  # noqa: E712
+    if filters.featured_only:
+        conditions.append(Astrologer.is_featured == True)  # noqa: E712
+    if filters.min_experience is not None:
+        conditions.append(Astrologer.experience_years >= filters.min_experience)
+    if filters.max_rate is not None:
+        conditions.append(Astrologer.rates.chat_per_minute <= filters.max_rate)
+
+    return Astrologer.find(And(*conditions))
+
+
+async def list_public(
+    filters: AstrologerFilters, page: int, limit: int
+) -> Paginated[AstrologerPublic]:
+    """The directory: whoever is online comes first, then the featured ones."""
+    query = _directory_query(filters)
+    total = await query.count()
+
+    profiles = (
+        await query.sort(
+            -Astrologer.availability.is_online,
+            -Astrologer.is_featured,
+            Astrologer.display_order,
+            -Astrologer.rating.average,
+        )
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .to_list()
+    )
+    return build_page([to_public(p) for p in profiles], total, page, limit)
+
+
+async def get_public(identifier: str) -> AstrologerPublic:
+    """Fetch one astrologer by slug, or by id."""
+    from beanie import PydanticObjectId
+
+    from app.core.exceptions import NotFoundError
+
+    profile = await Astrologer.find_one(Astrologer.slug == identifier)
+    if profile is None and PydanticObjectId.is_valid(identifier):
+        profile = await Astrologer.get(PydanticObjectId(identifier))
+
+    # An unlisted astrologer is not found as far as the public is concerned.
+    if profile is None or not profile.is_listed:
+        raise NotFoundError("Astrologer not found.", error_code="astrologer_not_found")
+
+    return to_public(profile)
+
+
+# --------------------------------------------------------------- images
+async def _upload_image(file, folder: str, user_id) -> storage.UploadResult:  # noqa: ANN001
+    from app.core.config import settings
+
+    size = settings.AVATAR_MAX_DIMENSION
+    return await storage.upload_file(
+        file,
+        folder=folder,
+        allowed_types=ALLOWED_IMAGE_TYPES,
+        tags=[f"astrologer:{user_id}"],
+        # Compressed before storing, as for user avatars.
+        transformation=[
+            {"width": size, "height": size, "crop": "limit"},
+            {"quality": settings.AVATAR_QUALITY},
+        ],
+        image_format=settings.AVATAR_FORMAT,
+    )
+
+
+async def set_profile_image(user: User, profile: Astrologer, file) -> Astrologer:  # noqa: ANN001
+    result = await _upload_image(file, "astrologers", user.id)
+
+    previous = profile.profile_image_public_id
+    profile.profile_image_url = result.url
+    profile.profile_image_public_id = result.public_id
+    await profile.save()
+
+    # Only once the replacement is safely stored and recorded.
+    if previous and previous != result.public_id:
+        await storage.delete_file(previous)
+
+    logger.info("Astrologer photo stored for {} ({} bytes)", user.email, result.bytes)
+    return profile
+
+
+async def remove_profile_image(profile: Astrologer) -> Astrologer:
+    from app.core.exceptions import NotFoundError
+
+    if not profile.profile_image_url:
+        raise NotFoundError("There is no photo to remove.", error_code="no_profile_image")
+
+    public_id = profile.profile_image_public_id
+    profile.profile_image_url = None
+    profile.profile_image_public_id = None
+    await profile.save()
+
+    if public_id:
+        await storage.delete_file(public_id)
+    return profile
+
+
+async def add_gallery_image(user: User, profile: Astrologer, file):  # noqa: ANN001
+    from app.core.exceptions import BadRequestError
+    from app.models.astrologer import GalleryImage
+
+    if len(profile.gallery) >= MAX_GALLERY_IMAGES:
+        raise BadRequestError(
+            f"The gallery is full — {MAX_GALLERY_IMAGES} images at most. "
+            "Remove one before adding another.",
+            error_code="gallery_full",
+        )
+
+    result = await _upload_image(file, "astrologers/gallery", user.id)
+    image = GalleryImage(url=result.url, public_id=result.public_id)
+    profile.gallery.append(image)
+    await profile.save()
+    return image, profile
+
+
+async def remove_gallery_image(profile: Astrologer, public_id: str) -> Astrologer:
+    from app.core.exceptions import NotFoundError
+
+    image = next((g for g in profile.gallery if g.public_id == public_id), None)
+    if image is None:
+        raise NotFoundError("That image is not in the gallery.", error_code="image_not_found")
+
+    profile.gallery = [g for g in profile.gallery if g.public_id != public_id]
+    await profile.save()
+    await storage.delete_file(public_id)
     return profile

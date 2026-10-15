@@ -4,7 +4,13 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
-from app.models.astrologer import Availability, BankDetails, RateCard, RatingSummary
+from app.models.astrologer import (
+    Availability,
+    BankDetails,
+    GalleryImage,
+    RateCard,
+    RatingSummary,
+)
 from app.models.enums import AccountStatus, ConsultationMode, Skill
 
 
@@ -93,7 +99,6 @@ class AstrologerUpdate(BaseModel):
     specialisations: list[str] | None = Field(default=None, max_length=30)
     qualifications: list[str] | None = Field(default=None, max_length=30)
     experience_years: int | None = Field(default=None, ge=0, le=90)
-    gallery: list[str] | None = Field(default=None, max_length=20)
     intro_video_url: str | None = Field(default=None, max_length=500)
     bank: BankDetails | None = None
 
@@ -112,7 +117,7 @@ class AstrologerUpdate(BaseModel):
             raise ValueError("Phone number must contain digits.")
         return digits
 
-    @field_validator("languages", "specialisations", "qualifications", "gallery")
+    @field_validator("languages", "specialisations", "qualifications")
     @classmethod
     def _tidy_list(cls, v: list[str] | None) -> list[str] | None:
         if v is None:
@@ -163,7 +168,7 @@ class AstrologerProfile(BaseModel):
     tagline: str | None = None
     bio: str | None = None
     profile_image_url: str | None = None
-    gallery: list[str]
+    gallery: list[GalleryImage]
     intro_video_url: str | None = None
 
     skills: list[Skill]
@@ -205,3 +210,59 @@ class AstrologerCreated(BaseModel):
             "can pass the password on another way."
         ),
     )
+
+
+# ------------------------------------------------------- public directory
+class AstrologerPublic(BaseModel):
+    """What the website and app may show about an astrologer.
+
+    Deliberately narrower than `AstrologerProfile`: no email, phone, bank
+    details, commission or account status — this is served to anyone.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    display_name: str
+    slug: str | None = None
+    tagline: str | None = None
+    bio: str | None = None
+    profile_image_url: str | None = None
+    gallery: list[GalleryImage]
+    intro_video_url: str | None = None
+
+    skills: list[Skill]
+    languages: list[str]
+    specialisations: list[str]
+    qualifications: list[str]
+    experience_years: int
+
+    rates: RateCard
+    modes_enabled: list[ConsultationMode]
+
+    availability: Availability
+    rating: RatingSummary
+    total_consultations: int
+    followers_count: int
+    is_featured: bool
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def _stringify_id(cls, v: object) -> str:
+        return str(v)
+
+
+class AstrologerFilters(BaseModel):
+    search: str | None = None
+    skill: Skill | None = None
+    language: str | None = None
+    mode: ConsultationMode | None = None
+    online_only: bool = False
+    featured_only: bool = False
+    min_experience: int | None = None
+    max_rate: float | None = None
+
+
+class GalleryUploadResult(BaseModel):
+    image: GalleryImage
+    gallery: list[GalleryImage]

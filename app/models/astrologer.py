@@ -15,6 +15,13 @@ from app.models.base import TimestampedDocument
 from app.models.enums import ConsultationMode, Skill
 
 
+class GalleryImage(BaseModel):
+    """A gallery picture. The public_id is kept so it can be deleted again."""
+
+    url: str
+    public_id: str
+
+
 class Availability(BaseModel):
     is_online: bool = False
     is_available_for_chat: bool = True
@@ -58,7 +65,7 @@ class Astrologer(TimestampedDocument):
     bio: str | None = Field(default=None, max_length=5000)
     profile_image_url: str | None = None
     profile_image_public_id: str | None = None
-    gallery: list[str] = Field(default_factory=list)
+    gallery: list[GalleryImage] = Field(default_factory=list)
     intro_video_url: str | None = None
 
     # ---------------------------------------------------------- competence
