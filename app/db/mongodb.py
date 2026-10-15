@@ -51,24 +51,27 @@ async def connect_to_mongo() -> bool:
     global _client, _database
 
     logger.info("Connecting to MongoDB database '{}'...", settings.MONGODB_DB_NAME)
-    _client = AsyncMongoClient(
-        settings.MONGODB_URI,
-        maxPoolSize=settings.MONGODB_MAX_POOL_SIZE,
-        minPoolSize=settings.MONGODB_MIN_POOL_SIZE,
-        serverSelectionTimeoutMS=settings.MONGODB_CONNECT_TIMEOUT_MS,
-        connectTimeoutMS=settings.MONGODB_CONNECT_TIMEOUT_MS,
-        tz_aware=True,
-        uuidRepresentation="standard",
-    )
-    _database = _client[settings.MONGODB_DB_NAME]
 
+    # Building the client is inside the try as well: a malformed URI raises here,
+    # not on the first query, and that must not take the whole app down.
     try:
+        _client = AsyncMongoClient(
+            settings.MONGODB_URI,
+            maxPoolSize=settings.MONGODB_MAX_POOL_SIZE,
+            minPoolSize=settings.MONGODB_MIN_POOL_SIZE,
+            serverSelectionTimeoutMS=settings.MONGODB_CONNECT_TIMEOUT_MS,
+            connectTimeoutMS=settings.MONGODB_CONNECT_TIMEOUT_MS,
+            tz_aware=True,
+            uuidRepresentation="standard",
+        )
+        _database = _client[settings.MONGODB_DB_NAME]
+
         await _client.admin.command("ping")
         await _init_models()
         return True
     except Exception as exc:  # noqa: BLE001 - startup must not fail on a DB hiccup
         logger.opt(exception=settings.DEBUG).error(
-            "MongoDB is unreachable at startup ({}). The app will keep serving and "
+            "MongoDB is unavailable at startup ({}). The app will keep serving and "
             "retry on the next health check.",
             exc,
         )

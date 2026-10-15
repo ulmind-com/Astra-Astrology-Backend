@@ -35,6 +35,21 @@ def _check_config() -> None:
     problems: list[str] = []
     warnings: list[str] = []
 
+    # Wrong in every environment: the app cannot do anything without a database,
+    # and an empty or malformed URI is always a mistake rather than an outage.
+    # Failing here means the host keeps the last working deploy running.
+    uri = settings.MONGODB_URI.strip()
+    if not uri:
+        problems.append(
+            "MONGODB_URI is empty. Set it to your connection string "
+            "(mongodb+srv://... from Atlas > Connect > Drivers)."
+        )
+    elif not uri.startswith(("mongodb://", "mongodb+srv://")):
+        problems.append(
+            "MONGODB_URI must start with 'mongodb://' or 'mongodb+srv://' — "
+            f"got '{uri.split(':')[0]}...'."
+        )
+
     if settings.is_production:
         if settings.OTP_DEV_MODE:
             problems.append(
@@ -79,8 +94,8 @@ def _check_config() -> None:
         for problem in problems:
             logger.error("CONFIG: {}", problem)
         raise RuntimeError(
-            f"Refusing to start: {len(problems)} unsafe production setting(s). "
-            "See the errors above."
+            f"Refusing to start: {len(problems)} bad configuration value(s). "
+            "See the CONFIG errors above."
         )
 
 
