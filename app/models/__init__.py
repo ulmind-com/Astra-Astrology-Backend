@@ -1,11 +1,15 @@
-"""Beanie document registry.
-
-Add each new model class here and it gets registered (with its indexes) on
-startup. Empty for now — no collections are defined yet.
-"""
+"""Beanie document registry — every model listed here is registered on startup."""
 
 from beanie import Document
 
-DOCUMENT_MODELS: list[type[Document]] = []
+from app.models.otp import OtpCode
+from app.models.pending_registration import PendingRegistration
+from app.models.user import User
 
-__all__ = ["DOCUMENT_MODELS"]
+DOCUMENT_MODELS: list[type[Document]] = [
+    User,
+    OtpCode,
+    PendingRegistration,
+]
+
+__all__ = ["DOCUMENT_MODELS", "OtpCode", "PendingRegistration", "User"]

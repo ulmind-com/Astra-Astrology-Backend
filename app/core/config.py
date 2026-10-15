@@ -40,6 +40,32 @@ class Settings(BaseSettings):
     # Keep the health check fast so uptime monitors never time out on it.
     HEALTH_DB_TIMEOUT_SECONDS: float = 3.0
 
+    # ----------------------------------------------------------------- jwt
+    JWT_SECRET_KEY: str = "change-me"
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 1 day
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+
+    # ----------------------------------------------------------------- otp
+    OTP_LENGTH: int = 6
+    OTP_EXPIRE_MINUTES: int = 10
+    OTP_MAX_ATTEMPTS: int = 5
+    OTP_RESEND_COOLDOWN_SECONDS: int = 60
+    # When true the OTP comes back in the API response. Local development only.
+    OTP_DEV_MODE: bool = False
+    # How long a half-finished signup (awaiting its OTP) is kept.
+    PENDING_REGISTRATION_EXPIRE_MINUTES: int = 30
+
+    # ------------------------------------------------------------ firebase
+    # Service account credentials. Use the PATH locally and the inline JSON on
+    # hosts where you cannot upload a file (Render, Railway, ...).
+    FIREBASE_CREDENTIALS_PATH: str = ""
+    FIREBASE_CREDENTIALS_JSON: str = ""
+    FIREBASE_PROJECT_ID: str = ""
+    # Refuse to register anyone while Firebase is unreachable, rather than
+    # creating a MongoDB user that has no Firebase twin.
+    FIREBASE_REQUIRED: bool = True
+
     # -------------------------------------------------------------- resend
     RESEND_API_KEY: str = ""
     RESEND_FROM_EMAIL: str = "no-reply@example.com"
@@ -76,6 +102,10 @@ class Settings(BaseSettings):
     @property
     def resend_configured(self) -> bool:
         return bool(self.RESEND_API_KEY)
+
+    @property
+    def firebase_configured(self) -> bool:
+        return bool(self.FIREBASE_CREDENTIALS_PATH or self.FIREBASE_CREDENTIALS_JSON)
 
 
 @lru_cache

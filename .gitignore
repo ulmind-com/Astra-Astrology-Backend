@@ -5,6 +5,13 @@
 *.pem
 *.key
 
+# Firebase service account keys — never commit these.
+*serviceAccount*.json
+*service-account*.json
+*firebase-adminsdk*.json
+firebase-credentials.json
+secrets/
+
 # ----- python -----
 __pycache__/
 *.py[cod]

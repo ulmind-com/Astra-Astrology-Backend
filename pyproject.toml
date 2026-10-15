@@ -11,6 +11,11 @@ dependencies = [
     "pydantic-settings>=2.6.0",
     "beanie>=2.2.0",
     "pymongo>=4.18.0",
+    "email-validator>=2.2.0",
+    "pyjwt[crypto]>=2.10.0",
+    "bcrypt>=4.2.0",
+    "cryptography>=43.0.0",
+    "firebase-admin>=6.5.0",
     "python-multipart>=0.0.12",
     "cloudinary>=1.41.0",
     "resend>=2.4.0",
@@ -46,6 +51,10 @@ ignore = ["B008", "B904"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+log_cli_level = "WARNING"
+filterwarnings = ["ignore::DeprecationWarning"]
+# The pymongo/firebase loggers are far too chatty at DEBUG.
+log_level = "WARNING"
 
 [tool.mypy]
 python_version = "3.12"

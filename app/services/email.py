@@ -8,6 +8,7 @@ from loguru import logger
 
 from app.core.config import settings
 from app.core.exceptions import ServiceUnavailableError
+from app.services.email_templates import otp_email_html, welcome_email_html
 
 if settings.RESEND_API_KEY:
     resend.api_key = settings.RESEND_API_KEY
@@ -56,3 +57,33 @@ async def send_email(
             "Could not send the email right now. Please try again.",
             error_code="email_send_failed",
         )
+
+
+async def send_otp_email(to: str, code: str, purpose: str, name: str | None = None) -> None:
+    subjects = {
+        "signup": f"{code} is your Astra Astrology sign-up code",
+        "login": f"{code} is your Astra Astrology login code",
+        "email_verification": "Verify your email — Astra Astrology",
+        "password_reset": "Reset your Astra Astrology password",
+    }
+    await send_email(
+        to=to,
+        subject=subjects.get(purpose, f"{code} is your Astra Astrology code"),
+        html=otp_email_html(code=code, purpose=purpose, name=name),
+        text=(
+            f"Your Astra Astrology verification code is {code}. "
+            f"It expires in {settings.OTP_EXPIRE_MINUTES} minutes."
+        ),
+    )
+
+
+async def send_welcome_email(to: str, name: str | None = None) -> None:
+    await send_email(
+        to=to,
+        subject=f"Welcome to {settings.APP_NAME}",
+        html=welcome_email_html(name=name),
+        text=(
+            f"Welcome to {settings.APP_NAME}! Your account is ready. "
+            "You can now get your kundli, numerology and daily panchang."
+        ),
+    )

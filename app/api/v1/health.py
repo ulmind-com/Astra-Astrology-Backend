@@ -18,6 +18,7 @@ from fastapi import APIRouter, Response
 from app.core.config import settings
 from app.db import mongodb
 from app.schemas.common import ApiResponse, HealthStatus
+from app.services import firebase
 
 router = APIRouter(tags=["health"])
 
@@ -48,6 +49,7 @@ async def health(response: Response) -> ApiResponse[HealthStatus]:
             database="connected" if db_ok else "disconnected",
             services={
                 "mongodb": db_ok,
+                "firebase": firebase.is_enabled(),
                 "cloudinary": settings.cloudinary_configured,
                 "resend": settings.resend_configured,
             },
