@@ -11,10 +11,12 @@ from app.schemas.auth import (
     EmailRegisterVerify,
     GoogleAuthRequest,
     OtpSentResult,
+    PasswordLogin,
     ResendOtpRequest,
     UserPublic,
 )
 from app.schemas.common import ApiResponse
+from app.services import auth as auth_service
 from app.services import registration
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -95,6 +97,16 @@ async def resend_registration_otp(
 async def verify_email_registration(payload: EmailRegisterVerify) -> ApiResponse[AuthResult]:
     result = await registration.complete_email_registration(payload.email, payload.code)
     return ApiResponse(message="Your account is ready. Welcome!", data=result)
+
+
+@router.post(
+    "/login",
+    response_model=ApiResponse[AuthResult],
+    summary="Sign in with email and password",
+)
+async def login(payload: PasswordLogin) -> ApiResponse[AuthResult]:
+    result = await auth_service.login_with_password(payload.email, payload.password)
+    return ApiResponse(message="Signed in.", data=result)
 
 
 @router.post(

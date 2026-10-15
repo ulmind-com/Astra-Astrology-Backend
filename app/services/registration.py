@@ -18,15 +18,16 @@ from datetime import UTC, datetime
 from loguru import logger
 from pymongo.errors import DuplicateKeyError
 
-from app.core.exceptions import BadRequestError, ConflictError, ForbiddenError
-from app.core.security import create_access_token, create_refresh_token, hash_password
-from app.models.enums import AccountStatus, AuthProvider, OtpPurpose
+from app.core.exceptions import BadRequestError, ConflictError
+from app.core.security import hash_password
+from app.models.enums import AuthProvider, OtpPurpose
 from app.models.otp import OtpCode
 from app.models.pending_registration import PendingRegistration
 from app.models.user import User
-from app.schemas.auth import AuthResult, TokenPair, UserPublic
+from app.schemas.auth import AuthResult
 from app.services import firebase
 from app.services import otp as otp_service
+from app.services.auth import build_auth_result, guard_account_status
 from app.services.email import send_welcome_email
 
 
@@ -41,35 +42,6 @@ def split_display_name(display_name: str | None) -> tuple[str, str | None, str |
     if len(parts) == 2:
         return parts[0], None, parts[1]
     return parts[0], " ".join(parts[1:-1]), parts[-1]
-
-
-def _issue_tokens(user: User) -> TokenPair:
-    claims = {"role": user.role.value, "email": user.email}
-    access_token, access_expires = create_access_token(str(user.id), claims)
-    refresh_token, refresh_expires = create_refresh_token(str(user.id), claims)
-    return TokenPair(
-        access_token=access_token,
-        refresh_token=refresh_token,
-        expires_at=access_expires,
-        refresh_expires_at=refresh_expires,
-    )
-
-
-def _result(user: User, *, is_new_user: bool) -> AuthResult:
-    return AuthResult(
-        user=UserPublic.model_validate(user), tokens=_issue_tokens(user), is_new_user=is_new_user
-    )
-
-
-def _guard_status(user: User) -> None:
-    if user.status is AccountStatus.SUSPENDED:
-        raise ForbiddenError("This account has been suspended.", error_code="account_suspended")
-    if user.status is AccountStatus.DELETED:
-        raise ForbiddenError("This account has been deleted.", error_code="account_deleted")
-    if not user.is_active:
-        raise ForbiddenError(
-            f"This account is {user.status.value}.", error_code="account_not_active"
-        )
 
 
 async def _send_welcome(email: str, name: str) -> None:
@@ -263,7 +235,7 @@ async def complete_email_registration(email: str, code: str) -> AuthResult:
     logger.success("User registered (email+password): {} -> {}", email, user.id)
 
     await _send_welcome(email, user.first_name)
-    return _result(user, is_new_user=True)
+    return build_auth_result(user, is_new_user=True)
 
 
 # ------------------------------------------------------------- google sign-in
@@ -290,7 +262,7 @@ async def authenticate_with_google(id_token: str) -> AuthResult:
 
     # ------------------------------------------------------- existing account
     if user is not None:
-        _guard_status(user)
+        guard_account_status(user)
 
         changed = False
         if user.firebase_uid != uid:
@@ -313,7 +285,7 @@ async def authenticate_with_google(id_token: str) -> AuthResult:
         if changed:
             logger.info("Google sign-in updated existing user {}", user.email)
 
-        return _result(user, is_new_user=False)
+        return build_auth_result(user, is_new_user=False)
 
     # ------------------------------------------------------------ new account
     # The Firebase user already exists (the client created it during sign-in),
@@ -338,12 +310,12 @@ async def authenticate_with_google(id_token: str) -> AuthResult:
         existing = await User.find_one(User.email == email)
         if existing is None:
             raise
-        _guard_status(existing)
-        return _result(existing, is_new_user=False)
+        guard_account_status(existing)
+        return build_auth_result(existing, is_new_user=False)
 
     # Drop any half-finished manual sign-up for the same email.
     await PendingRegistration.find(PendingRegistration.email == email).delete()
 
     logger.success("User registered (google): {} -> {}", email, user.id)
     await _send_welcome(email, user.first_name)
-    return _result(user, is_new_user=True)
+    return build_auth_result(user, is_new_user=True)

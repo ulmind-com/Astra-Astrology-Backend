@@ -149,6 +149,23 @@ sign-up lives in `pending_registrations`, which has a TTL. There are **no
 password strength rules** — the user picks whatever they want (only the 72-byte
 bcrypt ceiling is enforced).
 
+### Login — email + password
+
+```
+POST /api/v1/auth/login   { email, password }
+```
+
+- **no account** -> `404 user_not_found`, telling them to register first
+- **sign-up never finished** (OTP still unverified) -> `404 registration_incomplete`
+- **Google-only account** (no password set) -> `401 password_not_set`, naming the
+  providers it does have
+- **wrong password** -> `401 invalid_password`
+- **suspended / deleted** -> `403`
+
+The password is checked against the bcrypt hash in MongoDB. Firebase Auth has no
+server-side password verification, so it is not consulted on login — which also
+means **a password changed directly in the Firebase console will not work here**.
+
 ### Google
 
 ```

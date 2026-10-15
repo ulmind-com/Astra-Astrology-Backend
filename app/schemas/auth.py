@@ -107,3 +107,10 @@ class EmailAvailability(BaseModel):
     exists_in: list[str] = Field(
         default_factory=list, description="Where the email was found: mongodb and/or firebase"
     )
+
+
+class PasswordLogin(BaseModel):
+    """Sign in to an existing account with its email and password."""
+
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=72)
