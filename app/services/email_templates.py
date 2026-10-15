@@ -126,3 +126,47 @@ def welcome_email_html(name: str | None = None) -> str:
         body,
         preheader="Your account is ready — here's what you can do next.",
     )
+
+
+def astrologer_welcome_email_html(name: str, email: str, password: str) -> str:
+    """Sent when an admin opens an astrologer's account, carrying their first password."""
+    body = f"""
+      <p style="margin:0 0 10px;font-size:22px;font-weight:700;color:#2b1b6b;">Welcome, {name}!</p>
+      <p style="margin:0 0 22px;">
+        An account has been created for you on {settings.APP_NAME}. Here are the
+        details you need to sign in.
+      </p>
+
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 22px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:12px;">
+        <tr>
+          <td style="padding:18px 20px;">
+            <p style="margin:0 0 4px;color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:1px;">Email</p>
+            <p style="margin:0 0 16px;color:#1f2937;font-size:16px;font-weight:600;">{email}</p>
+            <p style="margin:0 0 4px;color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:1px;">Temporary password</p>
+            <p style="margin:0;color:#4c1d95;font-size:22px;font-weight:700;letter-spacing:2px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">{password}</p>
+          </td>
+        </tr>
+      </table>
+
+      <p style="margin:0 0 18px;padding:12px 16px;background:#fff7ed;border-left:3px solid #f59e0b;color:#92400e;font-size:14px;">
+        <strong>Please change this password after your first sign-in.</strong> It was
+        generated for you, so only you should know the one you keep.
+      </p>
+
+      <p style="margin:0 0 10px;color:#374151;">Once you are in, you can:</p>
+      <ul style="margin:0 0 18px;padding-left:20px;color:#4b5563;font-size:14px;line-height:1.8;">
+        <li>Complete your profile &mdash; photo, bio, qualifications and experience</li>
+        <li>Set the languages you speak and the services you offer</li>
+        <li>Go online when you are ready to take consultations</li>
+      </ul>
+
+      <p style="margin:0;color:#9ca3af;font-size:13px;">
+        If you were not expecting this email, please let us know &mdash; and do not
+        share the password with anyone.
+      </p>
+    """
+    return render_email(
+        f"Your {settings.APP_NAME} astrologer account",
+        body,
+        preheader="Your account is ready — here is how to sign in.",
+    )

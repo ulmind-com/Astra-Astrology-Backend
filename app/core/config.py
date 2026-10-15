@@ -66,6 +66,12 @@ class Settings(BaseSettings):
     # creating a MongoDB user that has no Firebase twin.
     FIREBASE_REQUIRED: bool = True
 
+    # -------------------------------------------------------- first admin
+    # Used by: uv run python -m scripts.create_admin
+    FIRST_ADMIN_NAME: str = "Super Admin"
+    FIRST_ADMIN_EMAIL: str = ""
+    FIRST_ADMIN_PASSWORD: str = ""
+
     # -------------------------------------------------------------- resend
     RESEND_API_KEY: str = ""
     RESEND_FROM_EMAIL: str = "no-reply@example.com"

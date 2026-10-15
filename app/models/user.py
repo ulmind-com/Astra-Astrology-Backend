@@ -35,6 +35,9 @@ class User(TimestampedDocument):
     role: UserRole = UserRole.USER
     status: AccountStatus = AccountStatus.ACTIVE
     is_email_verified: bool = False
+    # Set when an admin opens an account on someone's behalf and emails them a
+    # generated password. Cleared the first time they choose their own.
+    must_change_password: bool = False
 
     # -------------------------------------------------------------- phone
     phone: str | None = None

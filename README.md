@@ -321,6 +321,52 @@ index still covers documents whose field is explicitly `null`, and Pydantic
 always writes the key — so every user without a phone number would have collided
 with every other one.
 
+## Astrologers
+
+**Astrologers never sign themselves up.** An admin opens the account, a password
+is generated, and the astrologer is emailed it.
+
+```
+POST   /api/v1/admin/astrologers          create + email the password
+GET    /api/v1/admin/astrologers          list
+GET    /api/v1/admin/astrologers/{id}
+PATCH  /api/v1/admin/astrologers/{id}     rates, commission, curation, status
+DELETE /api/v1/admin/astrologers/{id}     deactivate (suspend + unlist)
+
+GET    /api/v1/astrologers/me             their own profile
+PATCH  /api/v1/astrologers/me             their own details
+PATCH  /api/v1/astrologers/me/availability
+
+POST   /api/v1/auth/password/change       change password while signed in
+```
+
+The public sign-up route only ever creates role `user`, so there is no way in
+from outside. `/astrologers/me` is behind the `astrologer` role and returns
+`403 insufficient_role` to anyone else.
+
+### Creating one
+
+The admin sends the astrologer's details but **no password** — one is generated
+(10 characters, no look-alikes) and emailed. The account is created in Firebase
+and MongoDB with the same "both or neither" rollback as registration, and
+`must_change_password` is set until they choose their own.
+
+If the welcome email fails, the account is still created and the generated
+password comes back in the response — once — so the admin can pass it on. When
+the email succeeds the password is never returned.
+
+### Who may change what
+
+| | Astrologer | Admin |
+| --- | --- | --- |
+| Name, phone, bio, tagline, skills, languages, qualifications, gallery, bank | ✅ | ✅ |
+| Availability (online, chat, call) | ✅ | — |
+| Rates, commission, featured, listing order | ❌ `422` | ✅ |
+| Account status | ❌ `422` | ✅ |
+| Email | ❌ nobody — it is the sign-in identity | ❌ |
+
+Renaming re-slugs, so the public URL follows the display name.
+
 ## Uptime monitoring (keep the Render instance awake)
 
 Deployed at `https://astra-astrology-backend.onrender.com`. Render's free tier

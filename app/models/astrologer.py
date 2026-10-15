@@ -1,0 +1,109 @@
+"""An astrologer's professional profile.
+
+Accounts are created by an admin, never by the astrologer — so this document is
+always created alongside a `User` whose role is `astrologer`, and the two are
+linked by `user_id`.
+"""
+
+from datetime import datetime
+
+import pymongo
+from beanie import PydanticObjectId
+from pydantic import BaseModel, Field
+
+from app.models.base import TimestampedDocument
+from app.models.enums import ConsultationMode, Skill
+
+
+class Availability(BaseModel):
+    is_online: bool = False
+    is_available_for_chat: bool = True
+    is_available_for_call: bool = True
+    is_busy: bool = False
+    last_online_at: datetime | None = None
+
+
+class RateCard(BaseModel):
+    """Per-minute pricing. `offer_*`, when set, is what the user actually pays."""
+
+    chat_per_minute: float = Field(default=0.0, ge=0)
+    call_per_minute: float = Field(default=0.0, ge=0)
+    video_per_minute: float = Field(default=0.0, ge=0)
+    offer_chat_per_minute: float | None = Field(default=None, ge=0)
+    offer_call_per_minute: float | None = Field(default=None, ge=0)
+    offer_video_per_minute: float | None = Field(default=None, ge=0)
+    currency: str = "INR"
+
+
+class RatingSummary(BaseModel):
+    average: float = Field(default=0.0, ge=0, le=5)
+    count: int = Field(default=0, ge=0)
+
+
+class BankDetails(BaseModel):
+    account_holder_name: str | None = None
+    account_number_last4: str | None = Field(default=None, max_length=4)
+    ifsc: str | None = Field(default=None, max_length=20)
+    bank_name: str | None = Field(default=None, max_length=120)
+    upi_id: str | None = Field(default=None, max_length=120)
+
+
+class Astrologer(TimestampedDocument):
+    user_id: PydanticObjectId
+
+    # ------------------------------------------------------------- listing
+    display_name: str = Field(max_length=120)
+    slug: str | None = Field(default=None, max_length=140)
+    tagline: str | None = Field(default=None, max_length=200)
+    bio: str | None = Field(default=None, max_length=5000)
+    profile_image_url: str | None = None
+    profile_image_public_id: str | None = None
+    gallery: list[str] = Field(default_factory=list)
+    intro_video_url: str | None = None
+
+    # ---------------------------------------------------------- competence
+    skills: list[Skill] = Field(default_factory=list)
+    languages: list[str] = Field(default_factory=list)
+    specialisations: list[str] = Field(default_factory=list)
+    qualifications: list[str] = Field(default_factory=list)
+    experience_years: int = Field(default=0, ge=0, le=90)
+
+    # ------------------------------------------------------------ commerce
+    rates: RateCard = Field(default_factory=RateCard)
+    modes_enabled: list[ConsultationMode] = Field(
+        default_factory=lambda: [ConsultationMode.CHAT, ConsultationMode.CALL]
+    )
+    commission_percent: float = Field(default=50.0, ge=0, le=100)
+    bank: BankDetails = Field(default_factory=BankDetails)
+
+    # ------------------------------------------------------------ platform
+    availability: Availability = Field(default_factory=Availability)
+    rating: RatingSummary = Field(default_factory=RatingSummary)
+    total_consultations: int = Field(default=0, ge=0)
+    followers_count: int = Field(default=0, ge=0)
+
+    # ------------------------------------------------------------ curation
+    is_listed: bool = Field(default=True, description="Shown in the public directory")
+    is_featured: bool = False
+    display_order: int = 0
+
+    class Settings(TimestampedDocument.Settings):
+        name = "astrologers"
+        indexes = [
+            pymongo.IndexModel(
+                [("user_id", pymongo.ASCENDING)], name="astrologer_user_unique", unique=True
+            ),
+            pymongo.IndexModel(
+                [("slug", pymongo.ASCENDING)],
+                name="astrologer_slug_unique",
+                unique=True,
+                partialFilterExpression={"slug": {"$type": "string"}},
+            ),
+            [("is_listed", pymongo.DESCENDING), ("display_order", pymongo.ASCENDING)],
+            [("skills", pymongo.ASCENDING)],
+            [("languages", pymongo.ASCENDING)],
+        ]
+
+    def effective_rate(self, mode: ConsultationMode) -> float:
+        offer = getattr(self.rates, f"offer_{mode.value}_per_minute", None)
+        return offer if offer is not None else getattr(self.rates, f"{mode.value}_per_minute")

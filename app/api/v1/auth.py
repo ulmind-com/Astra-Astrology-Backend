@@ -6,6 +6,7 @@ from app.api.dependencies import Client, CurrentUser
 from app.core.config import settings
 from app.schemas.auth import (
     AuthResult,
+    ChangePasswordRequest,
     EmailAvailability,
     EmailRegisterRequest,
     EmailRegisterVerify,
@@ -154,6 +155,16 @@ async def forgot_password(
 async def reset_password(payload: ResetPasswordRequest) -> MessageResponse:
     await auth_service.reset_password(payload.email, payload.code, payload.new_password)
     return MessageResponse(message="Your password has been reset. You can sign in now.")
+
+
+@router.post(
+    "/password/change",
+    response_model=MessageResponse,
+    summary="Change my password while signed in",
+)
+async def change_password(payload: ChangePasswordRequest, user: CurrentUser) -> MessageResponse:
+    await auth_service.change_password(user, payload.current_password, payload.new_password)
+    return MessageResponse(message="Your password has been changed.")
 
 
 @router.get("/me", response_model=ApiResponse[UserPublic], summary="The signed-in user")

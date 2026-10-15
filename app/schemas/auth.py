@@ -133,3 +133,18 @@ class ResetPasswordRequest(BaseModel):
         max_length=72,
         description="At least 6 characters (required by Firebase Auth).",
     )
+
+
+class ChangePasswordRequest(BaseModel):
+    """Changing the password while signed in."""
+
+    current_password: str | None = Field(
+        default=None,
+        max_length=72,
+        description="Required unless the account has no password yet",
+    )
+    new_password: str = Field(
+        min_length=6,
+        max_length=72,
+        description="At least 6 characters (required by Firebase Auth).",
+    )

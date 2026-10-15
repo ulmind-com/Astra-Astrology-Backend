@@ -47,6 +47,30 @@ class OtpPurpose(StrEnum):
     PASSWORD_RESET = "password_reset"
 
 
+class Skill(StrEnum):
+    """Services an astrologer can offer, from the client's spec."""
+
+    VEDIC_ASTROLOGY = "vedic_astrology"
+    NUMEROLOGY = "numerology"
+    TAROT = "tarot"
+    VASTU = "vastu"
+    PALMISTRY = "palmistry"
+    FACE_READING = "face_reading"
+    KP_ASTROLOGY = "kp_astrology"
+    LAL_KITAB = "lal_kitab"
+    NADI = "nadi"
+    PRASHNA = "prashna"
+    LOVE_RELATIONSHIP = "love_relationship"
+    CAREER_BUSINESS = "career_business"
+    FINANCE_WEALTH = "finance_wealth"
+
+
+class ConsultationMode(StrEnum):
+    CHAT = "chat"
+    CALL = "call"
+    VIDEO = "video"
+
+
 class OtpChannel(StrEnum):
     EMAIL = "email"
     SMS = "sms"

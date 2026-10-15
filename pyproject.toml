@@ -17,6 +17,7 @@ dependencies = [
     "cryptography>=43.0.0",
     "firebase-admin>=6.5.0",
     "python-multipart>=0.0.12",
+    "python-slugify>=8.0.4",
     "cloudinary>=1.41.0",
     "resend>=2.4.0",
     "loguru>=0.7.2",

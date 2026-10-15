@@ -8,7 +8,12 @@ from datetime import UTC, datetime
 
 from loguru import logger
 
-from app.core.exceptions import ForbiddenError, NotFoundError, UnauthorizedError
+from app.core.exceptions import (
+    BadRequestError,
+    ForbiddenError,
+    NotFoundError,
+    UnauthorizedError,
+)
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -180,4 +185,45 @@ async def reset_password(email: str, code: str, new_password: str) -> User:
         )
 
     logger.success("Password reset completed for {}", email)
+    return user
+
+
+async def change_password(user: User, current_password: str | None, new_password: str) -> User:
+    """Changes the password of the signed-in user, in MongoDB and in Firebase.
+
+    An account that has no password yet (Google-only, or one that was reset) can
+    set one without proving an old password it never had.
+    """
+    if user.has_password:
+        if not current_password:
+            raise BadRequestError(
+                "Your current password is required.",
+                error_code="current_password_required",
+            )
+        if not verify_password(current_password, user.hashed_password or ""):
+            raise UnauthorizedError("Current password is incorrect.", error_code="invalid_password")
+        if verify_password(new_password, user.hashed_password or ""):
+            raise BadRequestError(
+                "The new password must be different from the current one.",
+                error_code="password_unchanged",
+            )
+
+    # MongoDB first: sign-in reads the hash from here, so if the Firebase mirror
+    # fails the user can still get in.
+    user.hashed_password = hash_password(new_password)
+    user.add_provider(AuthProvider.PASSWORD)
+    user.must_change_password = False
+    await user.save()
+
+    try:
+        if user.firebase_uid and firebase.is_enabled():
+            await firebase.update_user(user.firebase_uid, password=new_password)
+    except Exception as exc:  # noqa: BLE001 - MongoDB is already updated
+        logger.opt(exception=exc).error(
+            "Password change for {} did not reach Firebase. Sign-in still works, but "
+            "the Firebase mirror now holds the old password.",
+            user.email,
+        )
+
+    logger.success("Password changed for {}", user.email)
     return user

@@ -8,7 +8,11 @@ from loguru import logger
 
 from app.core.config import settings
 from app.core.exceptions import ServiceUnavailableError
-from app.services.email_templates import otp_email_html, welcome_email_html
+from app.services.email_templates import (
+    astrologer_welcome_email_html,
+    otp_email_html,
+    welcome_email_html,
+)
 
 if settings.RESEND_API_KEY:
     resend.api_key = settings.RESEND_API_KEY
@@ -85,5 +89,19 @@ async def send_welcome_email(to: str, name: str | None = None) -> None:
         text=(
             f"Welcome to {settings.APP_NAME}! Your account is ready. "
             "You can now get your kundli, numerology and daily panchang."
+        ),
+    )
+
+
+async def send_astrologer_welcome_email(to: str, name: str, password: str) -> None:
+    """Carries the generated password, so it must never be logged or echoed."""
+    await send_email(
+        to=to,
+        subject=f"Your {settings.APP_NAME} astrologer account is ready",
+        html=astrologer_welcome_email_html(name=name, email=to, password=password),
+        text=(
+            f"Welcome to {settings.APP_NAME}, {name}.\n\n"
+            f"Sign in with:\n  Email: {to}\n  Temporary password: {password}\n\n"
+            "Please change this password after your first sign-in."
         ),
     )
