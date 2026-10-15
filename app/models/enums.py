@@ -24,6 +24,22 @@ class AuthProvider(StrEnum):
     GOOGLE = "google"
 
 
+class Gender(StrEnum):
+    MALE = "male"
+    FEMALE = "female"
+    OTHER = "other"
+    UNDISCLOSED = "undisclosed"
+
+
+class MaritalStatus(StrEnum):
+    SINGLE = "single"
+    ENGAGED = "engaged"
+    MARRIED = "married"
+    DIVORCED = "divorced"
+    WIDOWED = "widowed"
+    UNDISCLOSED = "undisclosed"
+
+
 class OtpPurpose(StrEnum):
     SIGNUP = "signup"
     LOGIN = "login"

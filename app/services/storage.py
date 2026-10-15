@@ -65,8 +65,16 @@ async def upload_file(
     allowed_types: set[str] | None = None,
     public_id: str | None = None,
     tags: list[str] | None = None,
+    transformation: list[dict[str, Any]] | None = None,
+    image_format: str | None = None,
 ) -> UploadResult:
-    """Validates type and size, then uploads the file to Cloudinary."""
+    """Validates type and size, then uploads the file to Cloudinary.
+
+    `transformation` is an *incoming* transformation: Cloudinary applies it
+    before storing, so the stored asset is the transformed one and the saving
+    is real rather than delivery-time only. `image_format` converts the stored
+    file (e.g. to webp).
+    """
     _require_config()
 
     allowed = allowed_types or (ALLOWED_IMAGE_TYPES | ALLOWED_DOC_TYPES | ALLOWED_VIDEO_TYPES)
@@ -96,6 +104,10 @@ async def upload_file(
         options["public_id"] = public_id
     if tags:
         options["tags"] = tags
+    if transformation:
+        options["transformation"] = transformation
+    if image_format:
+        options["format"] = image_format
 
     try:
         response: dict[str, Any] = await asyncio.to_thread(

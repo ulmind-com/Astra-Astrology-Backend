@@ -114,3 +114,22 @@ class PasswordLogin(BaseModel):
 
     email: EmailStr
     password: str = Field(min_length=1, max_length=72)
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Step 1 of a password reset — the registered email address."""
+
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    """Step 2 of a password reset — the emailed code and the new password."""
+
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=10)
+    # Same bounds as sign-up: 6 is Firebase Auth's minimum, 72 is bcrypt's.
+    new_password: str = Field(
+        min_length=6,
+        max_length=72,
+        description="At least 6 characters (required by Firebase Auth).",
+    )

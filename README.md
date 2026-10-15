@@ -166,6 +166,29 @@ The password is checked against the bcrypt hash in MongoDB. Firebase Auth has no
 server-side password verification, so it is not consulted on login — which also
 means **a password changed directly in the Firebase console will not work here**.
 
+### Forgot password
+
+```
+POST /api/v1/auth/password/forgot   { email }
+  -> 404 user_not_found if no account has that email
+  -> otherwise emails a 6-digit code
+
+POST /api/v1/auth/password/reset    { email, code, new_password }
+  -> verifies the code, then sets the password in MongoDB *and* Firebase
+```
+
+The code is scoped to `password_reset`, so a sign-up code cannot be used here. It
+is consumed on success, capped at 5 attempts, and rate limited the same way as
+the sign-up code.
+
+A Google-only account can use this flow to **set** its first password — the code
+proves the person owns the address — after which it can sign in either way.
+
+**Write order:** MongoDB first, Firebase second. Sign-in checks the bcrypt hash in
+MongoDB, so if the Firebase mirror fails the person can still get in; the other
+order would lock them out of both passwords. A failed mirror is logged loudly and
+corrects itself on the next successful reset.
+
 ### Google
 
 ```
@@ -211,6 +234,92 @@ Syncing happens **at creation only** — later profile edits are not mirrored.
 | `users` | the account; unique index on `email` and on `firebase_uid` |
 | `otp_codes` | OTPs, stored as an HMAC, TTL'd, attempt-capped |
 | `pending_registrations` | sign-ups awaiting their OTP, TTL'd |
+
+## Profile
+
+What the signed-in user can edit about themselves. The field list is driven by
+what the astrology and numerology features need as input:
+
+| Needed by | Fields |
+| --- | --- |
+| Kundli | `birth.date_of_birth`, `birth.time_of_birth`, `birth.latitude`, `birth.longitude`, `birth.timezone` |
+| Panchang | `current_location.*` — where they are **now**, not where they were born |
+| Numerology | `birth.date_of_birth` only |
+| Name sound | `numerology_name` (the spelling to use), `call_names` (how many they have) |
+| Mobile numerology | `phone` without its `country_code` |
+| Store | `addresses[]` |
+
+```
+GET    /api/v1/users/me                        full profile + completeness
+PATCH  /api/v1/users/me                        partial update
+POST   /api/v1/users/me/avatar                 upload (Cloudinary)
+DELETE /api/v1/users/me/avatar
+
+GET    /api/v1/users/me/addresses
+POST   /api/v1/users/me/addresses
+PATCH  /api/v1/users/me/addresses/{id}
+DELETE /api/v1/users/me/addresses/{id}
+```
+
+### PATCH semantics
+
+One endpoint covers add, change and remove:
+
+| Body | Effect |
+| --- | --- |
+| field omitted | left alone |
+| `"occupation": "Engineer"` | set |
+| `"occupation": null` | cleared |
+| `"birth": { "city": "Delhi" }` | merged into the existing birth block |
+| `"birth": null` | the whole block reset |
+
+`first_name` and `language` cannot be cleared.
+
+**`email` is not editable here.** It is the sign-in identity, so sending it is a
+`422` rather than a silent no-op — the body rejects any field it does not know,
+which also turns a misspelt field name into an error instead of a change that
+never happened.
+
+### Validation worth knowing about
+
+A wrong timezone or an impossible birth time does not fail loudly later — it
+produces a **silently wrong chart**. So they are rejected at the edge:
+
+- `birth.timezone` must be a real IANA name (checked against `zoneinfo`)
+- `birth.time_of_birth` must be 24-hour `HH:MM`
+- `date_of_birth` cannot be in the future or before 1900
+- latitude `-90..90`, longitude `-180..180`
+- `phone` is reduced to digits and must be unique across accounts; changing it
+  sets `is_phone_verified` back to false
+
+`completeness` in the response says which features can already run
+(`chart_ready`, `panchang_ready`, `numerology_ready`) and lists what is missing.
+
+### Avatars
+
+`POST /users/me/avatar` compresses before storing, using an **incoming**
+Cloudinary transformation — the stored asset is the small one, not just the
+delivered version:
+
+- shrunk to fit `AVATAR_MAX_DIMENSION` (512 by default, `crop: limit` so it
+  never upscales and keeps the aspect ratio)
+- `AVATAR_QUALITY` (`auto:good`)
+- re-encoded to `AVATAR_FORMAT` (`webp`)
+
+A 1600x1600 PNG of 1.29 MB lands as a 512x512 WebP of 420 KB.
+
+Uploading again **deletes the file it replaces** from Cloudinary, and so does
+`DELETE /users/me/avatar`. The old file is removed only after the new one is
+stored and saved against the user, so a failure there can never leave the
+account without a picture.
+
+### Index note
+
+`phone` and `firebase_uid` use **partial** unique indexes
+(`partialFilterExpression: {$type: "string"}`), not sparse ones. A sparse unique
+index still covers documents whose field is explicitly `null`, and Pydantic
+always writes the key — so every user without a phone number would have collided
+with every other one.
 
 ## Uptime monitoring (keep the Render instance awake)
 

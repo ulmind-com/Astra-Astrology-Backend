@@ -80,6 +80,12 @@ class Settings(BaseSettings):
     CLOUDINARY_SECURE: bool = True
     MAX_UPLOAD_SIZE_MB: int = 10
 
+    # Avatars are compressed by Cloudinary before being stored, not on delivery,
+    # so the stored asset itself is the small one.
+    AVATAR_MAX_DIMENSION: int = 512
+    AVATAR_QUALITY: str = "auto:good"
+    AVATAR_FORMAT: str = "webp"
+
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod
     def _split_origins(cls, v: object) -> object:

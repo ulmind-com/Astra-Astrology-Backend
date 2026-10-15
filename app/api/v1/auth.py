@@ -9,13 +9,15 @@ from app.schemas.auth import (
     EmailAvailability,
     EmailRegisterRequest,
     EmailRegisterVerify,
+    ForgotPasswordRequest,
     GoogleAuthRequest,
     OtpSentResult,
     PasswordLogin,
     ResendOtpRequest,
+    ResetPasswordRequest,
     UserPublic,
 )
-from app.schemas.common import ApiResponse
+from app.schemas.common import ApiResponse, MessageResponse
 from app.services import auth as auth_service
 from app.services import registration
 
@@ -120,6 +122,38 @@ async def google_auth(payload: GoogleAuthRequest) -> ApiResponse[AuthResult]:
         message="Your account is ready. Welcome!" if result.is_new_user else "Signed in.",
         data=result,
     )
+
+
+@router.post(
+    "/password/forgot",
+    response_model=ApiResponse[OtpSentResult],
+    summary="Start a password reset — emails a code to a registered address",
+)
+async def forgot_password(
+    payload: ForgotPasswordRequest, client: Client
+) -> ApiResponse[OtpSentResult]:
+    otp, code = await auth_service.request_password_reset(
+        payload.email, ip_address=client.ip, user_agent=client.user_agent
+    )
+    return ApiResponse(
+        message=f"We sent a password reset code to {otp.identifier}.",
+        data=OtpSentResult(
+            email=otp.identifier,
+            expires_at=otp.expires_at,
+            resend_available_at=otp.resend_available_at,
+            dev_code=code if settings.OTP_DEV_MODE else None,
+        ),
+    )
+
+
+@router.post(
+    "/password/reset",
+    response_model=MessageResponse,
+    summary="Finish a password reset — code plus the new password",
+)
+async def reset_password(payload: ResetPasswordRequest) -> MessageResponse:
+    await auth_service.reset_password(payload.email, payload.code, payload.new_password)
+    return MessageResponse(message="Your password has been reset. You can sign in now.")
 
 
 @router.get("/me", response_model=ApiResponse[UserPublic], summary="The signed-in user")
