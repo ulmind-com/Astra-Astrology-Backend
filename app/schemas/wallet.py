@@ -1,7 +1,9 @@
 """Wallet request and response shapes.
 
-Amounts cross the wire as integer paise, with a rupee mirror on responses so
-the UI never does the division (and never does it differently in two places).
+Balances are in **coins**. Rupees appear only where money actually changed
+hands — on a recharge row and on a payment order — because once an admin can
+change the coin rate there is no single rupee value for a coin balance, and
+printing one would be a lie.
 """
 
 from datetime import datetime
@@ -16,16 +18,10 @@ from app.models.enums import (
 
 
 class WalletBalance(BaseModel):
-    balance_paise: int
-    currency: str
+    balance_coins: int
     is_frozen: bool
     frozen_reason: str | None = None
     last_transaction_at: datetime | None = None
-
-    @computed_field
-    @property
-    def balance_rupees(self) -> float:
-        return self.balance_paise / 100
 
 
 class TransactionRefOut(BaseModel):
@@ -39,17 +35,15 @@ class TransactionOut(BaseModel):
     id: str
     direction: TransactionDirection
     reason: TransactionReason
-    amount_paise: int
-    balance_after_paise: int
-    currency: str
+    amount_coins: int
+    balance_after_coins: int
     note: str | None = None
+    # Set only on rows where money moved, so a statement can still show what
+    # was paid and the rate that was honoured at the time.
+    amount_paise: int | None = None
+    coins_per_rupee: int | None = None
     ref: TransactionRefOut = Field(default_factory=TransactionRefOut)
     created_at: datetime
-
-    @computed_field
-    @property
-    def amount_rupees(self) -> float:
-        return self.amount_paise / 100
 
 
 class WalletSummary(BaseModel):
@@ -62,6 +56,7 @@ class WalletSummary(BaseModel):
 class RechargePack(BaseModel):
     amount_paise: int
     amount_rupees: int
+    coins: int
 
 
 class RechargeOptions(BaseModel):
@@ -69,6 +64,7 @@ class RechargeOptions(BaseModel):
     min_paise: int
     max_paise: int
     currency: str
+    coins_per_rupee: int
     # Public by design — it identifies the merchant in Razorpay Checkout.
     key_id: str
     enabled: bool
@@ -81,6 +77,10 @@ class CreateOrderRequest(BaseModel):
 class CreateOrderResponse(BaseModel):
     razorpay_order_id: str
     amount_paise: int
+    # What the user is promised before paying, and what will be credited even
+    # if the rate changes while the checkout window is open.
+    coins: int
+    coins_per_rupee: int
     currency: str
     key_id: str
     receipt: str
@@ -102,7 +102,8 @@ class VerifyPaymentResponse(BaseModel):
     status: PaymentOrderStatus
     credited: bool
     amount_paise: int
-    balance_paise: int
+    coins: int
+    balance_coins: int
 
 
 class PaymentOrderOut(BaseModel):
@@ -112,6 +113,8 @@ class PaymentOrderOut(BaseModel):
     razorpay_payment_id: str | None = None
     receipt: str
     amount_paise: int
+    coins: int
+    coins_per_rupee: int
     currency: str
     status: PaymentOrderStatus
     method: str | None = None
@@ -128,8 +131,7 @@ class AdminWalletOut(BaseModel):
     user_id: str
     name: str
     email: str
-    balance_paise: int
-    currency: str
+    balance_coins: int
     is_frozen: bool
     frozen_reason: str | None = None
     last_transaction_at: datetime | None = None
@@ -144,7 +146,7 @@ class AdminTransactionOut(TransactionOut):
 
 class AdjustWalletRequest(BaseModel):
     direction: TransactionDirection
-    amount_paise: int = Field(gt=0)
+    amount_coins: int = Field(gt=0)
     # Required: a manual money movement with no stated reason is unauditable.
     reason: str = Field(min_length=3, max_length=300)
 
@@ -155,7 +157,32 @@ class FreezeWalletRequest(BaseModel):
 
 
 class ReconcileResult(BaseModel):
-    credited_paise: int
-    debited_paise: int
-    ledger_balance_paise: int
-    drift_paise: int
+    credited_coins: int
+    debited_coins: int
+    ledger_balance_coins: int
+    drift_coins: int
+
+
+# ---------------------------------------------------------------- settings
+class PlatformSettingsOut(BaseModel):
+    coins_per_rupee: int
+    updated_at: datetime
+
+
+class CoinRateUpdate(BaseModel):
+    coins_per_rupee: int = Field(
+        ge=1,
+        le=10_000,
+        description="How many coins one rupee buys. A whole number, so a "
+        "whole-rupee recharge can never produce a fractional coin.",
+    )
+    note: str | None = Field(default=None, max_length=300)
+
+
+class CoinRateChangeOut(BaseModel):
+    from_rate: int
+    to_rate: int
+    changed_by: str | None = None
+    changed_by_email: str | None = None
+    note: str | None = None
+    created_at: datetime

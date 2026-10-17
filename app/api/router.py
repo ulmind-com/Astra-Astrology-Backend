@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from app.api.v1 import (
     admin_astrologers,
+    admin_settings,
     admin_wallets,
     astrologers,
     auth,
@@ -21,4 +22,5 @@ api_router.include_router(astrologers.router)
 api_router.include_router(admin_astrologers.router)
 api_router.include_router(wallet.router)
 api_router.include_router(admin_wallets.router)
+api_router.include_router(admin_settings.router)
 api_router.include_router(wallet.webhook_router)

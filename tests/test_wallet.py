@@ -137,8 +137,8 @@ async def test_wallet_starts_at_zero(client: AsyncClient) -> None:
     response = await client.get(f"{P}/wallet", headers=auth)
     assert response.status_code == 200, response.text
     data = response.json()["data"]
-    assert data["wallet"]["balance_paise"] == 0
-    assert data["wallet"]["balance_rupees"] == 0
+    assert data["wallet"]["balance_coins"] == 0
+    assert data["wallet"]["balance_coins"] == 0
     assert data["recent"] == []
 
 
@@ -200,12 +200,12 @@ async def test_a_verified_payment_credits_the_wallet(
     assert response.status_code == 200, response.text
     data = response.json()["data"]
     assert data["credited"] is True
-    assert data["balance_paise"] == 50_000
+    assert data["balance_coins"] == 500
 
     wallet = (await client.get(f"{P}/wallet", headers=auth)).json()["data"]
-    assert wallet["wallet"]["balance_paise"] == 50_000
+    assert wallet["wallet"]["balance_coins"] == 500
     assert wallet["recent"][0]["reason"] == "recharge"
-    assert wallet["recent"][0]["balance_after_paise"] == 50_000
+    assert wallet["recent"][0]["balance_after_coins"] == 500
 
 
 # ------------------------------------------------------------------ attacks
@@ -229,7 +229,7 @@ async def test_a_forged_signature_credits_nothing(
     assert response.json()["error_code"] == "invalid_signature"
 
     wallet = (await client.get(f"{P}/wallet", headers=auth)).json()["data"]
-    assert wallet["wallet"]["balance_paise"] == 0
+    assert wallet["wallet"]["balance_coins"] == 0
 
 
 async def test_a_payment_worth_less_than_the_order_is_refused(
@@ -255,7 +255,7 @@ async def test_a_payment_worth_less_than_the_order_is_refused(
     assert response.json()["error_code"] == "amount_mismatch"
 
     wallet = (await client.get(f"{P}/wallet", headers=auth)).json()["data"]
-    assert wallet["wallet"]["balance_paise"] == 0
+    assert wallet["wallet"]["balance_coins"] == 0
 
 
 async def test_another_users_order_cannot_be_claimed(
@@ -279,7 +279,7 @@ async def test_another_users_order_cannot_be_claimed(
     assert response.status_code == 404
 
     stolen = (await client.get(f"{P}/wallet", headers=attacker)).json()["data"]
-    assert stolen["wallet"]["balance_paise"] == 0
+    assert stolen["wallet"]["balance_coins"] == 0
 
 
 # ------------------------------------------------------------- idempotency
@@ -303,7 +303,7 @@ async def test_the_same_payment_credits_only_once(
     assert second.json()["data"]["credited"] is False
 
     wallet = (await client.get(f"{P}/wallet", headers=auth)).json()["data"]
-    assert wallet["wallet"]["balance_paise"] == 50_000
+    assert wallet["wallet"]["balance_coins"] == 500
 
     history = (await client.get(f"{P}/wallet/transactions", headers=auth)).json()["data"]
     assert history["meta"]["total"] == 1
@@ -340,7 +340,7 @@ async def test_callback_and_webhook_together_credit_once(
     assert hook.json()["result"] == "already_credited"
 
     wallet = (await client.get(f"{P}/wallet", headers=auth)).json()["data"]
-    assert wallet["wallet"]["balance_paise"] == 50_000
+    assert wallet["wallet"]["balance_coins"] == 500
 
 
 # ------------------------------------------------------------------ webhook
@@ -366,7 +366,7 @@ async def test_webhook_alone_credits_when_the_browser_never_came_back(
     assert hook.json()["result"] == "credited"
 
     wallet = (await client.get(f"{P}/wallet", headers=auth)).json()["data"]
-    assert wallet["wallet"]["balance_paise"] == 50_000
+    assert wallet["wallet"]["balance_coins"] == 500
 
 
 async def test_a_webhook_with_a_bad_signature_is_refused(
@@ -389,7 +389,7 @@ async def test_a_webhook_with_a_bad_signature_is_refused(
     assert hook.status_code == 401
 
     wallet = (await client.get(f"{P}/wallet", headers=auth)).json()["data"]
-    assert wallet["wallet"]["balance_paise"] == 0
+    assert wallet["wallet"]["balance_coins"] == 0
 
 
 async def test_a_replayed_webhook_does_nothing(
@@ -413,7 +413,7 @@ async def test_a_replayed_webhook_does_nothing(
     assert second.json()["result"] == "duplicate"
 
     wallet = (await client.get(f"{P}/wallet", headers=auth)).json()["data"]
-    assert wallet["wallet"]["balance_paise"] == 50_000
+    assert wallet["wallet"]["balance_coins"] == 500
 
 
 async def test_a_failed_payment_leaves_the_balance_alone(
@@ -442,7 +442,7 @@ async def test_a_failed_payment_leaves_the_balance_alone(
     assert hook.json()["result"] == "marked_failed"
 
     wallet = (await client.get(f"{P}/wallet", headers=auth)).json()["data"]
-    assert wallet["wallet"]["balance_paise"] == 0
+    assert wallet["wallet"]["balance_coins"] == 0
 
 
 # -------------------------------------------------------------------- admin
@@ -456,10 +456,10 @@ async def test_admin_can_adjust_a_wallet_and_it_is_attributed(
     response = await client.post(
         f"{P}/admin/wallets/{uid}/adjust",
         headers=admin,
-        json={"direction": "credit", "amount_paise": 25_000, "reason": "Goodwill for a bad call"},
+        json={"direction": "credit", "amount_coins": 250, "reason": "Goodwill for a bad call"},
     )
     assert response.status_code == 200, response.text
-    assert response.json()["data"]["balance_paise"] == 25_000
+    assert response.json()["data"]["balance_coins"] == 250
 
     rows = (
         await client.get(f"{P}/admin/wallets/transactions?user_id={uid}", headers=admin)
@@ -469,7 +469,7 @@ async def test_admin_can_adjust_a_wallet_and_it_is_attributed(
     assert rows[0]["note"] == "Goodwill for a bad call"
 
     mine = (await client.get(f"{P}/wallet", headers=auth)).json()["data"]
-    assert mine["wallet"]["balance_paise"] == 25_000
+    assert mine["wallet"]["balance_coins"] == 250
 
 
 async def test_an_adjustment_must_say_why(client: AsyncClient) -> None:
@@ -480,7 +480,7 @@ async def test_an_adjustment_must_say_why(client: AsyncClient) -> None:
     response = await client.post(
         f"{P}/admin/wallets/{uid}/adjust",
         headers=admin,
-        json={"direction": "credit", "amount_paise": 500, "reason": ""},
+        json={"direction": "credit", "amount_coins": 500, "reason": ""},
     )
     assert response.status_code == 422
 
@@ -494,7 +494,7 @@ async def test_a_user_cannot_reach_the_admin_wallet_routes(client: AsyncClient) 
         await client.post(
             f"{P}/admin/wallets/{uid}/adjust",
             headers=auth,
-            json={"direction": "credit", "amount_paise": 100_000, "reason": "mine now"},
+            json={"direction": "credit", "amount_coins": 1000, "reason": "mine now"},
         )
     ).status_code == 403
 
@@ -543,16 +543,16 @@ async def test_the_balance_always_equals_the_ledger(
     await client.post(
         f"{P}/admin/wallets/{uid}/adjust",
         headers=admin,
-        json={"direction": "debit", "amount_paise": 30_000, "reason": "Correction"},
+        json={"direction": "debit", "amount_coins": 300, "reason": "Correction"},
     )
 
     result = (
         await client.post(f"{P}/admin/wallets/{uid}/reconcile", headers=admin)
     ).json()["data"]
-    assert result["credited_paise"] == 100_000
-    assert result["debited_paise"] == 30_000
-    assert result["ledger_balance_paise"] == 70_000
-    assert result["drift_paise"] == 0
+    assert result["credited_coins"] == 1000
+    assert result["debited_coins"] == 300
+    assert result["ledger_balance_coins"] == 700
+    assert result["drift_coins"] == 0
 
 
 async def test_a_debit_cannot_go_below_zero(client: AsyncClient) -> None:
@@ -563,7 +563,7 @@ async def test_a_debit_cannot_go_below_zero(client: AsyncClient) -> None:
     response = await client.post(
         f"{P}/admin/wallets/{uid}/adjust",
         headers=admin,
-        json={"direction": "debit", "amount_paise": 10_000, "reason": "Take what is not there"},
+        json={"direction": "debit", "amount_coins": 100, "reason": "Take what is not there"},
     )
     assert response.status_code == 400
     assert response.json()["error_code"] == "insufficient_balance"
@@ -599,7 +599,7 @@ async def test_an_authorised_payment_does_not_credit_yet(
     assert hook.json()["result"] == "awaiting_capture"
 
     wallet = (await client.get(f"{P}/wallet", headers=auth)).json()["data"]
-    assert wallet["wallet"]["balance_paise"] == 0
+    assert wallet["wallet"]["balance_coins"] == 0
 
     # Capture arrives moments later, and *that* credits.
     captured = {**held, "status": "captured"}
@@ -616,7 +616,7 @@ async def test_an_authorised_payment_does_not_credit_yet(
     assert hook.json()["result"] == "credited"
 
     wallet = (await client.get(f"{P}/wallet", headers=auth)).json()["data"]
-    assert wallet["wallet"]["balance_paise"] == 50_000
+    assert wallet["wallet"]["balance_coins"] == 500
 
 
 async def test_an_event_we_do_not_handle_is_dropped_without_a_record(
@@ -656,3 +656,245 @@ async def test_an_unhandled_event_with_a_bad_signature_is_still_refused(
         },
     )
     assert hook.status_code == 401
+
+
+# ===========================================================================
+# Coins — the rate an admin sets, and the three ways it can go wrong
+# ===========================================================================
+
+
+async def set_rate(client: AsyncClient, admin: dict, rate: int):
+    return await client.patch(
+        f"{P}/admin/settings", headers=admin, json={"coins_per_rupee": rate}
+    )
+
+
+async def recharge(client: AsyncClient, auth: dict, rupees: int, state: dict, payment_id: str):
+    """Opens an order, captures it, and confirms it through the callback."""
+    order = (await open_order(client, auth, rupees * 100)).json()["data"]
+    capture(state, order["razorpay_order_id"], rupees * 100, payment_id)
+    await client.post(
+        f"{P}/wallet/recharge/verify",
+        headers=auth,
+        json={
+            "razorpay_order_id": order["razorpay_order_id"],
+            "razorpay_payment_id": payment_id,
+            "razorpay_signature": sign_callback(order["razorpay_order_id"], payment_id),
+        },
+    )
+    return order
+
+
+# ------------------------------------------------------ the client's example
+async def test_rate_of_ten_turns_a_hundred_rupees_into_a_thousand_coins(
+    client: AsyncClient, fake_razorpay: dict
+) -> None:
+    auth = await signed_in(client)
+    admin = await make_admin(client)
+    await set_rate(client, admin, 10)
+
+    order = (await open_order(client, auth, 10_000)).json()["data"]
+    assert order["coins"] == 1000
+    assert order["coins_per_rupee"] == 10
+
+    capture(fake_razorpay, order["razorpay_order_id"], 10_000, "pay_c1")
+    result = await client.post(
+        f"{P}/wallet/recharge/verify",
+        headers=auth,
+        json={
+            "razorpay_order_id": order["razorpay_order_id"],
+            "razorpay_payment_id": "pay_c1",
+            "razorpay_signature": sign_callback(order["razorpay_order_id"], "pay_c1"),
+        },
+    )
+    assert result.status_code == 200, result.text
+    assert result.json()["data"]["coins"] == 1000
+    assert result.json()["data"]["balance_coins"] == 1000
+
+    wallet = (await client.get(f"{P}/wallet", headers=auth)).json()["data"]
+    assert wallet["wallet"]["balance_coins"] == 1000
+    row = wallet["recent"][0]
+    assert row["amount_coins"] == 1000
+    assert row["amount_paise"] == 10_000  # what was actually paid
+    assert row["coins_per_rupee"] == 10
+
+
+async def test_coins_add_to_what_is_already_there(
+    client: AsyncClient, fake_razorpay: dict
+) -> None:
+    """The client's second example: 100 already held + 1000 bought = 1100."""
+    auth = await signed_in(client)
+    admin = await make_admin(client)
+    uid = await user_id_for("wallet@test.dev")
+
+    await client.post(
+        f"{P}/admin/wallets/{uid}/adjust",
+        headers=admin,
+        json={"direction": "credit", "amount_coins": 100, "reason": "Opening balance"},
+    )
+    await set_rate(client, admin, 10)
+    await recharge(client, auth, 100, fake_razorpay, "pay_c2")
+
+    wallet = (await client.get(f"{P}/wallet", headers=auth)).json()["data"]
+    assert wallet["wallet"]["balance_coins"] == 1100
+
+
+# --------------------------------------------- the rate changing mid-payment
+async def test_the_quoted_rate_is_honoured_even_if_it_changes_mid_checkout(
+    client: AsyncClient, fake_razorpay: dict
+) -> None:
+    """The user was shown 1000 coins before paying. An admin halving the rate
+    while the checkout window is open must not halve what they get."""
+    auth = await signed_in(client)
+    admin = await make_admin(client)
+    await set_rate(client, admin, 10)
+
+    order = (await open_order(client, auth, 10_000)).json()["data"]
+    assert order["coins"] == 1000
+
+    # The admin changes the rate while the user is still on the payment screen.
+    await set_rate(client, admin, 5)
+
+    capture(fake_razorpay, order["razorpay_order_id"], 10_000, "pay_c3")
+    await client.post(
+        f"{P}/wallet/recharge/verify",
+        headers=auth,
+        json={
+            "razorpay_order_id": order["razorpay_order_id"],
+            "razorpay_payment_id": "pay_c3",
+            "razorpay_signature": sign_callback(order["razorpay_order_id"], "pay_c3"),
+        },
+    )
+
+    wallet = (await client.get(f"{P}/wallet", headers=auth)).json()["data"]
+    assert wallet["wallet"]["balance_coins"] == 1000, "the promised coins, not the new rate"
+
+    # And the next recharge does use the new rate.
+    nxt = (await open_order(client, auth, 10_000)).json()["data"]
+    assert nxt["coins"] == 500
+
+
+# ------------------------------------------------- refunds after a rate change
+async def test_a_refund_takes_back_the_coins_that_recharge_gave(
+    client: AsyncClient, fake_razorpay: dict
+) -> None:
+    """Recomputing at today's rate would take back 500 and leave the user 500
+    coins they no longer paid for."""
+    auth = await signed_in(client)
+    admin = await make_admin(client)
+    await set_rate(client, admin, 10)
+    await recharge(client, auth, 100, fake_razorpay, "pay_c4")
+
+    wallet = (await client.get(f"{P}/wallet", headers=auth)).json()["data"]
+    assert wallet["wallet"]["balance_coins"] == 1000
+
+    await set_rate(client, admin, 5)
+
+    refund = {"id": "rfnd_1", "payment_id": "pay_c4", "amount": 10_000}
+    body, signature = webhook_body("refund.processed", {"refund": {"entity": refund}})
+    hook = await client.post(
+        f"{P}/webhooks/razorpay",
+        content=body,
+        headers={
+            "X-Razorpay-Signature": signature,
+            "X-Razorpay-Event-Id": "evt_refund",
+            "Content-Type": "application/json",
+        },
+    )
+    assert hook.json()["result"] == "refunded"
+
+    wallet = (await client.get(f"{P}/wallet", headers=auth)).json()["data"]
+    assert wallet["wallet"]["balance_coins"] == 0, "all 1000 back, not 500"
+
+
+async def test_a_partial_refund_takes_back_the_same_share_of_coins(
+    client: AsyncClient, fake_razorpay: dict
+) -> None:
+    auth = await signed_in(client)
+    admin = await make_admin(client)
+    await set_rate(client, admin, 10)
+    await recharge(client, auth, 100, fake_razorpay, "pay_c5")
+
+    # Half the money back, so half the coins.
+    refund = {"id": "rfnd_half", "payment_id": "pay_c5", "amount": 5_000}
+    body, signature = webhook_body("refund.processed", {"refund": {"entity": refund}})
+    await client.post(
+        f"{P}/webhooks/razorpay",
+        content=body,
+        headers={
+            "X-Razorpay-Signature": signature,
+            "X-Razorpay-Event-Id": "evt_refund_half",
+            "Content-Type": "application/json",
+        },
+    )
+
+    wallet = (await client.get(f"{P}/wallet", headers=auth)).json()["data"]
+    assert wallet["wallet"]["balance_coins"] == 500
+
+
+# ----------------------------------------------------------- no half coins
+async def test_an_amount_that_is_not_whole_rupees_is_rejected(
+    client: AsyncClient, fake_razorpay: dict
+) -> None:
+    """Rs 99.55 at 10 coins/rupee would be 995.5 coins."""
+    auth = await signed_in(client)
+    admin = await make_admin(client)
+    await set_rate(client, admin, 10)
+
+    response = await open_order(client, auth, 9_955)
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "not_whole_rupees"
+
+
+async def test_a_rate_below_one_is_rejected(client: AsyncClient) -> None:
+    admin = await make_admin(client)
+    for bad in (0, -5):
+        response = await set_rate(client, admin, bad)
+        assert response.status_code == 422, bad
+
+
+# -------------------------------------------------------------------- audit
+async def test_a_rate_change_records_who_made_it(client: AsyncClient) -> None:
+    admin = await make_admin(client)
+
+    await set_rate(client, admin, 10)
+    await set_rate(client, admin, 25)
+
+    history = (
+        await client.get(f"{P}/admin/settings/coin-rate-history", headers=admin)
+    ).json()["data"]
+    assert [(h["from_rate"], h["to_rate"]) for h in history] == [(10, 25), (1, 10)]
+    assert history[0]["changed_by_email"] == "walletadmin@test.dev"
+
+
+async def test_setting_the_same_rate_again_is_not_recorded(client: AsyncClient) -> None:
+    admin = await make_admin(client)
+
+    await set_rate(client, admin, 10)
+    await set_rate(client, admin, 10)
+
+    history = (
+        await client.get(f"{P}/admin/settings/coin-rate-history", headers=admin)
+    ).json()["data"]
+    assert len(history) == 1
+
+
+async def test_a_user_cannot_change_the_coin_rate(client: AsyncClient) -> None:
+    auth = await signed_in(client)
+
+    assert (await client.get(f"{P}/admin/settings", headers=auth)).status_code == 403
+    assert (await set_rate(client, auth, 1000)).status_code == 403
+
+
+async def test_the_recharge_screen_quotes_coins_for_every_pack(
+    client: AsyncClient, fake_razorpay: dict
+) -> None:
+    auth = await signed_in(client)
+    admin = await make_admin(client)
+    await set_rate(client, admin, 10)
+
+    options = (await client.get(f"{P}/wallet/recharge/options", headers=auth)).json()["data"]
+    assert options["coins_per_rupee"] == 10
+    assert [p["coins"] for p in options["packs"]] == [
+        p["amount_rupees"] * 10 for p in options["packs"]
+    ]

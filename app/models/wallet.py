@@ -7,9 +7,16 @@ Two rules shape every document here:
    wallet's `balance_paise` is a cache of that ledger and can be rebuilt from
    it, so a lost write can always be proven and repaired.
 
-2. **Amounts are integer paise.** Floats cannot hold 0.1 exactly, and a wallet
-   that is debited per minute would drift away from its own ledger within a day.
-   Rupees exist only at the UI edge.
+2. **The wallet holds coins, not money.** An admin sets how many coins a rupee
+   buys, and that rate can change. Storing rupees and multiplying at display
+   time would make every existing balance jump the moment the rate moved, so
+   coins people already bought are stored as coins and keep their value.
+   Rupees survive only where money actually changed hands: on a recharge row
+   and on the payment order.
+
+3. **Everything is an integer.** Coins are whole, and the rupee side is whole
+   paise. Floats cannot hold 0.1 exactly, and a balance debited per minute
+   would drift away from its own ledger within a day.
 """
 
 from datetime import datetime
@@ -27,11 +34,10 @@ from app.models.enums import (
 
 
 class Wallet(TimestampedDocument):
-    """One per user. `balance_paise` is derived from the ledger, never authored."""
+    """One per user. `balance_coins` is derived from the ledger, never authored."""
 
     user_id: PydanticObjectId
-    balance_paise: int = Field(default=0, ge=0)
-    currency: str = "INR"
+    balance_coins: int = Field(default=0, ge=0)
 
     # Set by an admin when something looks wrong. A frozen wallet refuses both
     # credits and debits, so the balance cannot move while it is investigated.
@@ -69,12 +75,17 @@ class WalletTransaction(TimestampedDocument):
     reason: TransactionReason
     # Always positive — `direction` carries the sign. Storing signed amounts
     # invites a missing abs() somewhere to silently flip a debit into a credit.
-    amount_paise: int = Field(gt=0)
-    currency: str = "INR"
+    amount_coins: int = Field(gt=0)
 
     # Snapshot taken when the row was written, so a statement renders without
     # re-summing the whole ledger.
-    balance_after_paise: int = Field(ge=0)
+    balance_after_coins: int = Field(ge=0)
+
+    # Only on rows where money changed hands (a recharge, or a refund of one):
+    # what was actually paid, and the rate that was honoured. Kept so a
+    # statement can show "₹100 → 1000 coins" years after the rate has moved on.
+    amount_paise: int | None = Field(default=None, ge=0)
+    coins_per_rupee: int | None = Field(default=None, ge=1)
 
     # The guard against double credit. For a recharge this is the Razorpay
     # payment id, so the browser callback and the webhook — which both describe
@@ -120,6 +131,13 @@ class PaymentOrder(TimestampedDocument):
 
     amount_paise: int = Field(gt=0)
     currency: str = "INR"
+
+    # Frozen when the order is opened. The user was shown this many coins before
+    # they paid, so this is what gets credited even if an admin changes the rate
+    # while the checkout window is still open.
+    coins_per_rupee: int = Field(ge=1)
+    coins: int = Field(gt=0)
+
     status: PaymentOrderStatus = PaymentOrderStatus.CREATED
 
     razorpay_payment_id: str | None = None

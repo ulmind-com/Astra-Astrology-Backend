@@ -34,7 +34,14 @@ from app.core.exceptions import (
 )
 from app.models.enums import PaymentOrderStatus, TransactionReason
 from app.models.user import User
-from app.models.wallet import PaymentOrder, TransactionRef, WebhookEvent
+from app.models.enums import TransactionDirection
+from app.models.wallet import (
+    PaymentOrder,
+    TransactionRef,
+    WalletTransaction,
+    WebhookEvent,
+)
+from app.services import settings as settings_service
 from app.services import wallet as wallet_service
 
 _client: razorpay.Client | None = None
@@ -77,6 +84,13 @@ async def create_order(user: User, amount_paise: int) -> PaymentOrder:
             f"The largest recharge is ₹{settings.WALLET_MAX_RECHARGE_PAISE // 100}.",
             error_code="amount_too_large",
         )
+    # Whole rupees only. With an integer coin rate this is what guarantees the
+    # coin count is exact — ₹99.55 at 10 coins/₹ would be 995.5 coins.
+    if amount_paise % 100 != 0:
+        raise BadRequestError(
+            "Please recharge a whole number of rupees.",
+            error_code="not_whole_rupees",
+        )
 
     wallet = await wallet_service.get_or_create_wallet(user.id)
     if wallet.is_frozen:
@@ -95,6 +109,12 @@ async def create_order(user: User, amount_paise: int) -> PaymentOrder:
             "Too many recharge attempts. Please wait a while and try again.",
             error_code="too_many_orders",
         )
+
+    # Frozen here, not read again at credit time: the user is about to be shown
+    # this many coins, and an admin changing the rate mid-checkout must not
+    # change what they get for the money they are paying now.
+    coins_per_rupee = await settings_service.get_coins_per_rupee()
+    coins = settings_service.coins_for(amount_paise, coins_per_rupee)
 
     receipt = f"rcg_{secrets.token_hex(8)}"
     try:
@@ -120,9 +140,18 @@ async def create_order(user: User, amount_paise: int) -> PaymentOrder:
         receipt=receipt,
         amount_paise=amount_paise,
         currency=settings.WALLET_CURRENCY,
+        coins_per_rupee=coins_per_rupee,
+        coins=coins,
     )
     await order.insert()
-    logger.info("Recharge order {} opened for {} ({} paise)", order.razorpay_order_id, user.email, amount_paise)
+    logger.info(
+        "Recharge order {} opened for {}: {} paise -> {} coins at {}/rupee",
+        order.razorpay_order_id,
+        user.email,
+        amount_paise,
+        coins,
+        coins_per_rupee,
+    )
     return order
 
 
@@ -171,16 +200,20 @@ async def _credit_for_payment(
             "The payment does not match the order.", error_code="amount_mismatch"
         )
 
+    # The coins quoted when the order was opened — never a fresh lookup, so a
+    # rate change while the checkout was open cannot alter what was promised.
     _, was_new = await wallet_service.credit(
         user_id=order.user_id,
-        amount_paise=amount_paise,
+        amount_coins=order.coins,
         reason=TransactionReason.RECHARGE,
         # The payment id, so the callback and the webhook collapse into one row.
         idempotency_key=f"rzp_payment:{payment_id}",
         ref=TransactionRef(
             razorpay_order_id=order.razorpay_order_id, razorpay_payment_id=payment_id
         ),
-        note=f"Wallet recharge of ₹{amount_paise // 100}",
+        note=f"₹{amount_paise // 100} recharge → {order.coins} coins",
+        amount_paise=amount_paise,
+        coins_per_rupee=order.coins_per_rupee,
     )
 
     if order.status is not PaymentOrderStatus.PAID:
@@ -327,12 +360,34 @@ async def _dispatch(event: str, body: dict[str, Any]) -> str:
         )
         if order is None or amount_paise <= 0:
             return "unknown_refund"
-        # Take the money back out. A refund can leave the balance short if it
-        # was already spent, so this is allowed to be refused.
+
+        # Reverse the coins that recharge actually created, found through the
+        # original ledger row — never recomputed at today's rate. If the rate
+        # has changed since, recomputing would take back the wrong number and
+        # leave the user with coins they no longer paid for.
+        original = await WalletTransaction.find_one(
+            WalletTransaction.ref.razorpay_payment_id == payment_id,
+            WalletTransaction.direction == TransactionDirection.CREDIT,
+            WalletTransaction.reason == TransactionReason.RECHARGE,
+        )
+        if original is None:
+            logger.warning("Refund {} has no recharge to reverse.", refund.get("id"))
+            return "nothing_to_reverse"
+
+        # A partial refund takes back the same share of the coins.
+        coins_to_take = (
+            original.amount_coins
+            if amount_paise >= (original.amount_paise or order.amount_paise)
+            else (original.amount_coins * amount_paise)
+            // (original.amount_paise or order.amount_paise)
+        )
+
+        # A refund can leave the balance short if the coins were already spent,
+        # so this is allowed to be refused.
         try:
             await wallet_service.debit(
                 user_id=order.user_id,
-                amount_paise=amount_paise,
+                amount_coins=coins_to_take,
                 reason=TransactionReason.REFUND,
                 idempotency_key=f"rzp_refund:{refund.get('id')}",
                 ref=TransactionRef(
@@ -340,8 +395,10 @@ async def _dispatch(event: str, body: dict[str, Any]) -> str:
                     razorpay_payment_id=payment_id,
                     razorpay_refund_id=refund.get("id"),
                 ),
-                note=f"Refund of ₹{amount_paise // 100}",
+                note=f"Refund of ₹{amount_paise // 100} → {coins_to_take} coins taken back",
                 allow_when_frozen=True,
+                amount_paise=amount_paise,
+                coins_per_rupee=original.coins_per_rupee,
             )
         except BadRequestError:
             logger.error(

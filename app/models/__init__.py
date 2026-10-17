@@ -5,6 +5,7 @@ from beanie import Document
 from app.models.astrologer import Astrologer
 from app.models.otp import OtpCode
 from app.models.pending_registration import PendingRegistration
+from app.models.settings import CoinRateChange, PlatformSettings
 from app.models.user import User
 from app.models.wallet import (
     PaymentOrder,
@@ -18,6 +19,8 @@ DOCUMENT_MODELS: list[type[Document]] = [
     Astrologer,
     OtpCode,
     PendingRegistration,
+    PlatformSettings,
+    CoinRateChange,
     Wallet,
     WalletTransaction,
     PaymentOrder,
@@ -27,9 +30,11 @@ DOCUMENT_MODELS: list[type[Document]] = [
 __all__ = [
     "DOCUMENT_MODELS",
     "Astrologer",
+    "CoinRateChange",
     "OtpCode",
     "PaymentOrder",
     "PendingRegistration",
+    "PlatformSettings",
     "User",
     "Wallet",
     "WalletTransaction",

@@ -1,5 +1,9 @@
 """Wallet movements.
 
+The wallet's unit is **coins**, not money — see `docs/COINS-PLAN.md`. A recharge
+row also carries the rupees that were paid and the rate honoured, so history can
+still be read in money years after the rate has changed.
+
 Every credit and debit goes through `_move`, which does two things in one
 MongoDB transaction: it writes the ledger row and it updates the cached
 balance. Doing only one of the two is what makes a wallet untrustworthy, so
@@ -59,20 +63,22 @@ async def _move(
     user_id: PydanticObjectId,
     direction: TransactionDirection,
     reason: TransactionReason,
-    amount_paise: int,
+    amount_coins: int,
     idempotency_key: str,
     ref: TransactionRef | None = None,
     note: str | None = None,
     created_by: PydanticObjectId | None = None,
     allow_when_frozen: bool = False,
+    amount_paise: int | None = None,
+    coins_per_rupee: int | None = None,
 ) -> tuple[WalletTransaction, bool]:
-    """Moves money. Returns (transaction, was_newly_created).
+    """Moves coins. Returns (transaction, was_newly_created).
 
     Calling this twice with the same `idempotency_key` is safe and returns the
     first transaction — that is what lets the browser callback and the webhook
     both report the same payment without crediting it twice.
     """
-    if amount_paise <= 0:
+    if amount_coins <= 0:
         raise BadRequestError("Amount must be greater than zero.", error_code="invalid_amount")
 
     # Cheap pre-check. It does not replace the unique index — it just avoids
@@ -104,18 +110,18 @@ async def _move(
                         )
 
                     if direction is TransactionDirection.CREDIT:
-                        new_balance = wallet.balance_paise + amount_paise
+                        new_balance = wallet.balance_coins + amount_coins
                     else:
-                        if wallet.balance_paise < amount_paise:
+                        if wallet.balance_coins < amount_coins:
                             raise BadRequestError(
-                                "Not enough balance. Please recharge and try again.",
+                                "Not enough coins. Please recharge and try again.",
                                 error_code="insufficient_balance",
                                 details={
-                                    "balance_paise": wallet.balance_paise,
-                                    "required_paise": amount_paise,
+                                    "balance_coins": wallet.balance_coins,
+                                    "required_coins": amount_coins,
                                 },
                             )
-                        new_balance = wallet.balance_paise - amount_paise
+                        new_balance = wallet.balance_coins - amount_coins
 
                     now = datetime.now(UTC)
                     txn = WalletTransaction(
@@ -123,9 +129,10 @@ async def _move(
                         user_id=user_id,
                         direction=direction,
                         reason=reason,
+                        amount_coins=amount_coins,
+                        balance_after_coins=new_balance,
                         amount_paise=amount_paise,
-                        currency=wallet.currency,
-                        balance_after_paise=new_balance,
+                        coins_per_rupee=coins_per_rupee,
                         idempotency_key=idempotency_key,
                         ref=ref or TransactionRef(),
                         note=note,
@@ -139,7 +146,7 @@ async def _move(
                         {"_id": wallet.id},
                         {
                             "$set": {
-                                "balance_paise": new_balance,
+                                "balance_coins": new_balance,
                                 "last_transaction_at": now,
                                 "updated_at": now,
                             }
@@ -148,12 +155,12 @@ async def _move(
                     )
 
             logger.info(
-                "Wallet {} {} {} paise ({}) -> balance {}",
+                "Wallet {} {} {} coins ({}) -> balance {}",
                 user_id,
                 direction.value,
-                amount_paise,
+                amount_coins,
                 reason.value,
-                txn.balance_after_paise,
+                txn.balance_after_coins,
             )
             return txn, True
 
@@ -184,48 +191,56 @@ async def _move(
 async def credit(
     *,
     user_id: PydanticObjectId,
-    amount_paise: int,
+    amount_coins: int,
     reason: TransactionReason,
     idempotency_key: str,
     ref: TransactionRef | None = None,
     note: str | None = None,
     created_by: PydanticObjectId | None = None,
     allow_when_frozen: bool = False,
+    amount_paise: int | None = None,
+    coins_per_rupee: int | None = None,
 ) -> tuple[WalletTransaction, bool]:
     return await _move(
         user_id=user_id,
         direction=TransactionDirection.CREDIT,
         reason=reason,
-        amount_paise=amount_paise,
+        amount_coins=amount_coins,
         idempotency_key=idempotency_key,
         ref=ref,
         note=note,
         created_by=created_by,
         allow_when_frozen=allow_when_frozen,
+        amount_paise=amount_paise,
+        coins_per_rupee=coins_per_rupee,
     )
 
 
 async def debit(
     *,
     user_id: PydanticObjectId,
-    amount_paise: int,
+    amount_coins: int,
     reason: TransactionReason,
     idempotency_key: str,
     ref: TransactionRef | None = None,
     note: str | None = None,
     created_by: PydanticObjectId | None = None,
     allow_when_frozen: bool = False,
+    amount_paise: int | None = None,
+    coins_per_rupee: int | None = None,
 ) -> tuple[WalletTransaction, bool]:
     return await _move(
         user_id=user_id,
         direction=TransactionDirection.DEBIT,
         reason=reason,
-        amount_paise=amount_paise,
+        amount_coins=amount_coins,
         idempotency_key=idempotency_key,
         ref=ref,
         note=note,
         created_by=created_by,
         allow_when_frozen=allow_when_frozen,
+        amount_paise=amount_paise,
+        coins_per_rupee=coins_per_rupee,
     )
 
 
@@ -263,7 +278,7 @@ async def recalculate_balance(user_id: PydanticObjectId) -> dict[str, int]:
         {
             "$group": {
                 "_id": "$direction",
-                "total": {"$sum": "$amount_paise"},
+                "total": {"$sum": "$amount_coins"},
             }
         },
     ]
@@ -273,22 +288,22 @@ async def recalculate_balance(user_id: PydanticObjectId) -> dict[str, int]:
     debited = sums.get(TransactionDirection.DEBIT.value, 0)
     ledger_balance = credited - debited
 
-    drift = ledger_balance - wallet.balance_paise
+    drift = ledger_balance - wallet.balance_coins
     if drift != 0:
         logger.error(
-            "Wallet {} drifted from its ledger by {} paise — repairing to {}.",
+            "Wallet {} drifted from its ledger by {} coins — repairing to {}.",
             user_id,
             drift,
             ledger_balance,
         )
-        wallet.balance_paise = ledger_balance
+        wallet.balance_coins = ledger_balance
         await wallet.save()
 
     return {
-        "credited_paise": credited,
-        "debited_paise": debited,
-        "ledger_balance_paise": ledger_balance,
-        "drift_paise": drift,
+        "credited_coins": credited,
+        "debited_coins": debited,
+        "ledger_balance_coins": ledger_balance,
+        "drift_coins": drift,
     }
 
 

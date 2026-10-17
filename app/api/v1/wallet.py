@@ -23,6 +23,7 @@ from app.schemas.wallet import (
     WalletSummary,
 )
 from app.services import payments as payment_service
+from app.services import settings as settings_service
 from app.services import wallet as wallet_service
 
 router = APIRouter(prefix="/wallet", tags=["wallet"])
@@ -33,10 +34,11 @@ def to_transaction(txn: WalletTransaction) -> TransactionOut:
         id=str(txn.id),
         direction=txn.direction,
         reason=txn.reason,
-        amount_paise=txn.amount_paise,
-        balance_after_paise=txn.balance_after_paise,
-        currency=txn.currency,
+        amount_coins=txn.amount_coins,
+        balance_after_coins=txn.balance_after_coins,
         note=txn.note,
+        amount_paise=txn.amount_paise,
+        coins_per_rupee=txn.coins_per_rupee,
         ref=TransactionRefOut(
             razorpay_order_id=txn.ref.razorpay_order_id,
             razorpay_payment_id=txn.ref.razorpay_payment_id,
@@ -49,8 +51,7 @@ def to_transaction(txn: WalletTransaction) -> TransactionOut:
 
 def to_balance(wallet: Any) -> WalletBalance:
     return WalletBalance(
-        balance_paise=wallet.balance_paise,
-        currency=wallet.currency,
+        balance_coins=wallet.balance_coins,
         is_frozen=wallet.is_frozen,
         frozen_reason=wallet.frozen_reason,
         last_transaction_at=wallet.last_transaction_at,
@@ -97,13 +98,19 @@ async def my_transactions(
     summary="Preset amounts, limits and the public checkout key",
 )
 async def recharge_options() -> ApiResponse[RechargeOptions]:
+    coins_per_rupee = await settings_service.get_coins_per_rupee()
     return ApiResponse(
         message="Recharge options.",
         data=RechargeOptions(
             packs=[
-                RechargePack(amount_paise=p, amount_rupees=p // 100)
+                RechargePack(
+                    amount_paise=p,
+                    amount_rupees=p // 100,
+                    coins=settings_service.coins_for(p, coins_per_rupee),
+                )
                 for p in settings.RECHARGE_PACKS_PAISE
             ],
+            coins_per_rupee=coins_per_rupee,
             min_paise=settings.WALLET_MIN_RECHARGE_PAISE,
             max_paise=settings.WALLET_MAX_RECHARGE_PAISE,
             currency=settings.WALLET_CURRENCY,
@@ -128,6 +135,8 @@ async def create_recharge_order(
         data=CreateOrderResponse(
             razorpay_order_id=order.razorpay_order_id,
             amount_paise=order.amount_paise,
+            coins=order.coins,
+            coins_per_rupee=order.coins_per_rupee,
             currency=order.currency,
             key_id=settings.RAZORPAY_KEY_ID,
             receipt=order.receipt,
@@ -154,12 +163,17 @@ async def verify_recharge(
     )
     wallet = await wallet_service.get_or_create_wallet(user.id)
     return ApiResponse(
-        message="Wallet recharged." if credited else "This payment was already credited.",
+        message=(
+            f"{order.coins} coins added."
+            if credited
+            else "This payment was already credited."
+        ),
         data=VerifyPaymentResponse(
             status=order.status,
             credited=credited,
             amount_paise=order.amount_paise,
-            balance_paise=wallet.balance_paise,
+            coins=order.coins,
+            balance_coins=wallet.balance_coins,
         ),
     )
 

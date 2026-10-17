@@ -69,7 +69,7 @@ async def list_wallets(
 
     total = await query.count()
     wallets = (
-        await query.sort(-Wallet.balance_paise).skip((page - 1) * limit).limit(limit).to_list()
+        await query.sort(-Wallet.balance_coins).skip((page - 1) * limit).limit(limit).to_list()
     )
 
     owners = {
@@ -80,8 +80,7 @@ async def list_wallets(
             user_id=str(w.user_id),
             name=owners[w.user_id].full_name if w.user_id in owners else "(deleted user)",
             email=owners[w.user_id].email if w.user_id in owners else "—",
-            balance_paise=w.balance_paise,
-            currency=w.currency,
+            balance_coins=w.balance_coins,
             is_frozen=w.is_frozen,
             frozen_reason=w.frozen_reason,
             last_transaction_at=w.last_transaction_at,
@@ -126,7 +125,7 @@ async def list_all_transactions(
 
     items = [
         AdminTransactionOut(
-            **to_transaction(r).model_dump(exclude={"amount_rupees"}),
+            **to_transaction(r).model_dump(),
             user_id=str(r.user_id),
             user_email=owners[r.user_id].email if r.user_id in owners else None,
             created_by=str(r.created_by) if r.created_by else None,
@@ -168,6 +167,8 @@ async def list_payments(
             razorpay_payment_id=o.razorpay_payment_id,
             receipt=o.receipt,
             amount_paise=o.amount_paise,
+            coins=o.coins,
+            coins_per_rupee=o.coins_per_rupee,
             currency=o.currency,
             status=o.status,
             method=o.method,
@@ -241,7 +242,7 @@ async def adjust_wallet(
     # twice, so the key cannot be derived from the amount alone.
     txn, _created = await mover(
         user_id=user_id,
-        amount_paise=payload.amount_paise,
+        amount_coins=payload.amount_coins,
         reason=TransactionReason.ADJUSTMENT,
         idempotency_key=f"admin_adjust:{PydanticObjectId()}",
         note=payload.reason,
@@ -251,7 +252,7 @@ async def adjust_wallet(
 
     wallet = await wallet_service.get_or_create_wallet(user_id)
     return ApiResponse(
-        message=f"Wallet adjusted by ₹{txn.amount_paise // 100}.", data=to_balance(wallet)
+        message=f"Wallet adjusted by {txn.amount_coins} coins.", data=to_balance(wallet)
     )
 
 
@@ -283,8 +284,8 @@ async def reconcile_wallet(
 ) -> ApiResponse[ReconcileResult]:
     await _require_user(user_id)
     result = await wallet_service.recalculate_balance(user_id)
-    drift = result["drift_paise"]
+    drift = result["drift_coins"]
     return ApiResponse(
-        message="Balance matches the ledger." if drift == 0 else f"Repaired a drift of {drift} paise.",
+        message="Balance matches the ledger." if drift == 0 else f"Repaired a drift of {drift} coins.",
         data=ReconcileResult(**result),
     )
