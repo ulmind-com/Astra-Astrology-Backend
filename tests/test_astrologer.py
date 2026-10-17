@@ -60,8 +60,9 @@ def sent_mail(monkeypatch: pytest.MonkeyPatch) -> list:
 
     import app.services.astrologer as astrologer_service
 
-    async def fake_send(to: str, name: str, password: str) -> None:
+    async def fake_send(to: str, name: str, password: str) -> bool:
         captured.append({"to": to, "name": name, "password": password})
+        return True
 
     monkeypatch.setattr(astrologer_service, "send_astrologer_welcome_email", fake_send)
     return captured
@@ -179,6 +180,31 @@ async def test_a_failed_welcome_email_still_returns_the_password(
     assert body["initial_password"]  # the fallback
 
     # And it really works.
+    signed_in = await client.post(
+        f"{P}/auth/login",
+        json={"email": "ravi.astro@test.dev", "password": body["initial_password"]},
+    )
+    assert signed_in.status_code == 200
+
+
+async def test_unconfigured_mail_returns_the_password_instead_of_claiming_it_sent(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With no mail provider the send is skipped silently, not failed — the admin
+    must be told so, or the account is unreachable."""
+    admin = await make_admin(client)
+
+    import app.services.email as email_service
+
+    monkeypatch.setattr(email_service.settings, "RESEND_API_KEY", "", raising=False)
+
+    response = await create_astrologer(client, admin)
+    assert response.status_code == 201, response.text
+    body = response.json()["data"]
+
+    assert body["welcome_email_sent"] is False
+    assert body["initial_password"]
+
     signed_in = await client.post(
         f"{P}/auth/login",
         json={"email": "ravi.astro@test.dev", "password": body["initial_password"]},

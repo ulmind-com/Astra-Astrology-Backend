@@ -198,11 +198,12 @@ async def create_astrologer(payload: AstrologerCreate) -> tuple[User, Astrologer
     await PendingRegistration.find(PendingRegistration.email == email).delete()
 
     # --- tell them, without letting a mail failure undo the account ---------
-    email_sent = True
+    email_sent = False
     try:
-        await send_astrologer_welcome_email(to=email, name=payload.first_name, password=password)
+        email_sent = await send_astrologer_welcome_email(
+            to=email, name=payload.first_name, password=password
+        )
     except Exception as exc:  # noqa: BLE001 - the account is already created
-        email_sent = False
         logger.error(
             "Astrologer {} was created but the welcome email failed: {}. The admin "
             "must pass the password on by hand.",

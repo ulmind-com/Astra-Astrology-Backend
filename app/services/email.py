@@ -93,9 +93,13 @@ async def send_welcome_email(to: str, name: str | None = None) -> None:
     )
 
 
-async def send_astrologer_welcome_email(to: str, name: str, password: str) -> None:
-    """Carries the generated password, so it must never be logged or echoed."""
-    await send_email(
+async def send_astrologer_welcome_email(to: str, name: str, password: str) -> bool:
+    """Carries the generated password, so it must never be logged or echoed.
+
+    Returns False when mail is not configured and the message was dropped, so the
+    caller can hand the password over another way instead of claiming it was sent.
+    """
+    sent = await send_email(
         to=to,
         subject=f"Your {settings.APP_NAME} astrologer account is ready",
         html=astrologer_welcome_email_html(name=name, email=to, password=password),
@@ -105,3 +109,4 @@ async def send_astrologer_welcome_email(to: str, name: str, password: str) -> No
             "Please change this password after your first sign-in."
         ),
     )
+    return sent is not None

@@ -15,8 +15,9 @@ def sent_mail(monkeypatch: pytest.MonkeyPatch) -> list:
 
     import app.services.astrologer as astrologer_service
 
-    async def fake_send(to: str, name: str, password: str) -> None:
+    async def fake_send(to: str, name: str, password: str) -> bool:
         captured.append({"to": to, "password": password})
+        return True
 
     monkeypatch.setattr(astrologer_service, "send_astrologer_welcome_email", fake_send)
     return captured
