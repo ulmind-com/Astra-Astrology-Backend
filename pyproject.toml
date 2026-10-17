@@ -21,6 +21,7 @@ dependencies = [
     "cloudinary>=1.41.0",
     "resend>=2.4.0",
     "loguru>=0.7.2",
+    "razorpay>=2.0.1",
 ]
 
 [project.optional-dependencies]

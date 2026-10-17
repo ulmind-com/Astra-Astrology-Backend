@@ -92,6 +92,32 @@ class Settings(BaseSettings):
     AVATAR_QUALITY: str = "auto:good"
     AVATAR_FORMAT: str = "webp"
 
+    # ------------------------------------------------------------ razorpay
+    # Money is held in integer paise everywhere; rupees appear only in the UI.
+    RAZORPAY_KEY_ID: str = ""
+    RAZORPAY_KEY_SECRET: str = ""
+    # Set in the Razorpay dashboard under Settings -> Webhooks. Without it the
+    # webhook cannot be trusted, so it is refused rather than processed.
+    RAZORPAY_WEBHOOK_SECRET: str = ""
+
+    WALLET_CURRENCY: str = "INR"
+    WALLET_MIN_RECHARGE_PAISE: int = 1_000  # Rs 10
+    WALLET_MAX_RECHARGE_PAISE: int = 5_000_000  # Rs 50,000
+    # Preset amounts offered on the recharge screen, in paise.
+    RECHARGE_PACKS_PAISE: Annotated[list[int], NoDecode] = Field(
+        default_factory=lambda: [10_000, 25_000, 50_000, 100_000, 200_000, 500_000]
+    )
+    # How many orders one user may open per hour, so the endpoint cannot be
+    # used to hammer Razorpay.
+    RECHARGE_ORDERS_PER_HOUR: int = 20
+
+    @field_validator("RECHARGE_PACKS_PAISE", mode="before")
+    @classmethod
+    def _split_packs(cls, v: object) -> object:
+        if isinstance(v, str):
+            return [int(p.strip()) for p in v.split(",") if p.strip()]
+        return v
+
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod
     def _split_origins(cls, v: object) -> object:
@@ -114,6 +140,18 @@ class Settings(BaseSettings):
     @property
     def resend_configured(self) -> bool:
         return bool(self.RESEND_API_KEY)
+
+    @property
+    def razorpay_configured(self) -> bool:
+        return bool(self.RAZORPAY_KEY_ID and self.RAZORPAY_KEY_SECRET)
+
+    @property
+    def razorpay_webhook_configured(self) -> bool:
+        return bool(self.RAZORPAY_WEBHOOK_SECRET)
+
+    @property
+    def razorpay_is_test_key(self) -> bool:
+        return self.RAZORPAY_KEY_ID.startswith("rzp_test_")
 
     @property
     def firebase_configured(self) -> bool:

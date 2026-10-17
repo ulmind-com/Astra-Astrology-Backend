@@ -75,3 +75,28 @@ class OtpChannel(StrEnum):
     EMAIL = "email"
     SMS = "sms"
     WHATSAPP = "whatsapp"
+
+
+class TransactionDirection(StrEnum):
+    CREDIT = "credit"
+    DEBIT = "debit"
+
+
+class TransactionReason(StrEnum):
+    """Why money moved. Every future money feature already has its slot here,
+    so adding payouts or coupons later needs no schema change."""
+
+    RECHARGE = "recharge"
+    CONSULTATION = "consultation"
+    REFUND = "refund"
+    ADJUSTMENT = "adjustment"  # an admin moved it by hand
+    BONUS = "bonus"
+    PAYOUT = "payout"
+    REVERSAL = "reversal"
+
+
+class PaymentOrderStatus(StrEnum):
+    CREATED = "created"
+    PAID = "paid"
+    FAILED = "failed"
+    EXPIRED = "expired"

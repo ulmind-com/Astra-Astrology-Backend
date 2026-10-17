@@ -2,7 +2,15 @@
 
 from fastapi import APIRouter
 
-from app.api.v1 import admin_astrologers, astrologers, auth, health, users
+from app.api.v1 import (
+    admin_astrologers,
+    admin_wallets,
+    astrologers,
+    auth,
+    health,
+    users,
+    wallet,
+)
 
 api_router = APIRouter()
 
@@ -11,3 +19,6 @@ api_router.include_router(auth.router)
 api_router.include_router(users.router)
 api_router.include_router(astrologers.router)
 api_router.include_router(admin_astrologers.router)
+api_router.include_router(wallet.router)
+api_router.include_router(admin_wallets.router)
+api_router.include_router(wallet.webhook_router)

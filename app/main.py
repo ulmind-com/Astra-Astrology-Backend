@@ -77,6 +77,16 @@ def _check_config() -> None:
             )
         if not settings.resend_configured:
             problems.append("RESEND_API_KEY is not set, so sign-up codes could not be delivered.")
+        if settings.razorpay_is_test_key:
+            problems.append(
+                "RAZORPAY_KEY_ID is a test key (rzp_test_). Real recharges would never "
+                "reach the account. Use the live key."
+            )
+        if settings.razorpay_configured and not settings.razorpay_webhook_configured:
+            warnings.append(
+                "RAZORPAY_WEBHOOK_SECRET is not set — webhooks will be rejected, so a "
+                "recharge whose browser callback is lost (common on UPI) never credits."
+            )
 
     if not settings.resend_configured:
         warnings.append("RESEND_API_KEY is not set — emails will not be delivered.")

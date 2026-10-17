@@ -108,6 +108,7 @@ dependencies = [
     { name = "pymongo" },
     { name = "python-multipart" },
     { name = "python-slugify" },
+    { name = "razorpay" },
     { name = "resend" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -143,6 +144,7 @@ requires-dist = [
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },
     { name = "python-multipart", specifier = ">=0.0.12" },
     { name = "python-slugify", specifier = ">=8.0.4" },
+    { name = "razorpay", specifier = ">=2.0.1" },
     { name = "resend", specifier = ">=2.4.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.7.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
@@ -1214,6 +1216,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/de/94/980b50a6531b3019e45ddeada0626d45fa85cbe22300844a7983285bed3b/pyyaml-6.0.3-cp313-cp313-win32.whl", hash = "sha256:d0eae10f8159e8fdad514efdc92d74fd8d682c933a6dd088030f3834bc8e6b26", size = 137427, upload-time = "2025-09-25T21:32:32.58Z" },
     { url = "https://files.pythonhosted.org/packages/97/c9/39d5b874e8b28845e4ec2202b5da735d0199dbe5b8fb85f91398814a9a46/pyyaml-6.0.3-cp313-cp313-win_amd64.whl", hash = "sha256:79005a0d97d5ddabfeeea4cf676af11e647e41d81c9a7722a193022accdb6b7c", size = 154090, upload-time = "2025-09-25T21:32:33.659Z" },
     { url = "https://files.pythonhosted.org/packages/73/e8/2bdf3ca2090f68bb3d75b44da7bbc71843b19c9f2b9cb9b0f4ab7a5a4329/pyyaml-6.0.3-cp313-cp313-win_arm64.whl", hash = "sha256:5498cd1645aa724a7c71c8f378eb29ebe23da2fc0d7a08071d89469bf1d2defb", size = 140246, upload-time = "2025-09-25T21:32:34.663Z" },
+]
+
+[[package]]
+name = "razorpay"
+version = "2.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d1/e4/877eb8ba68bb5212021b25a4f97b6c3f693e08bb6b319fc97c966c4391a3/razorpay-2.0.1.tar.gz", hash = "sha256:a766b9019e496c995906f75c31900bff8b2709bea251f1771925d742cba53e5b", size = 197169, upload-time = "2026-03-09T12:59:03.445Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7f/35/e8fbf239cb16595007839408f7645bc952d8490f5dd50f9049434f296ce8/razorpay-2.0.1-py3-none-any.whl", hash = "sha256:e6a60c78203a3e1d3fc428e6fadf15bc67f75bd67217eaf9dc9925c87e98bc7a", size = 176920, upload-time = "2026-03-09T12:59:01.99Z" },
 ]
 
 [[package]]
