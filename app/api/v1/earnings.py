@@ -59,14 +59,14 @@ async def my_recent_earnings(
 ) -> ApiResponse[list[EarningRow]]:
     rows = await earnings_service.recent_for_astrologer(user.id, limit)
     return ApiResponse(
-        message=f"{len(rows)} entr{'y' if len(rows) == 1 else 'ies'}.",
+        message=f"{len(rows)} consultation{'' if len(rows) == 1 else 's'}.",
         data=[
             EarningRow(
-                id=str(r.id),
-                mode=r.mode,
-                minutes=1,
-                earning_paise=r.earning_paise,
-                created_at=r.created_at,
+                id=str(r["_id"]),
+                mode=r["mode"],
+                minutes=r["minutes"],
+                earning_paise=r["earning_paise"],
+                created_at=r["created_at"],
             )
             for r in rows
         ],
@@ -106,24 +106,24 @@ async def recent_platform_earnings(
     names = {
         a.id: a.display_name
         for a in await Astrologer.find(
-            {"_id": {"$in": [r.astrologer_id for r in rows]}}
+            {"_id": {"$in": [r["astrologer_id"] for r in rows]}}
         ).to_list()
     }
     return ApiResponse(
-        message=f"{len(rows)} entr{'y' if len(rows) == 1 else 'ies'}.",
+        message=f"{len(rows)} consultation{'' if len(rows) == 1 else 's'}.",
         data=[
             AdminEarningRow(
-                id=str(r.id),
-                mode=r.mode,
-                minutes=1,
-                earning_paise=r.earning_paise,
-                created_at=r.created_at,
-                astrologer_id=str(r.astrologer_id),
-                astrologer_name=names.get(r.astrologer_id),
-                coins_charged=r.coins_charged,
-                gross_paise=r.gross_paise,
-                commission_percent=r.commission_percent,
-                commission_paise=r.commission_paise,
+                id=str(r["_id"]),
+                mode=r["mode"],
+                minutes=r["minutes"],
+                earning_paise=r["earning_paise"],
+                created_at=r["created_at"],
+                astrologer_id=str(r["astrologer_id"]),
+                astrologer_name=names.get(r["astrologer_id"]),
+                coins_charged=r["coins_charged"],
+                gross_paise=r["gross_paise"],
+                commission_percent=r["commission_percent"],
+                commission_paise=r["commission_paise"],
             )
             for r in rows
         ],

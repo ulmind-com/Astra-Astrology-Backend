@@ -141,7 +141,9 @@ async def list_astrologers(
     online_only: Annotated[bool, Query()] = False,
     featured_only: Annotated[bool, Query()] = False,
     min_experience: Annotated[int | None, Query(ge=0, le=90)] = None,
-    max_rate: Annotated[float | None, Query(ge=0, description="Chat rate ceiling")] = None,
+    max_coins_per_minute: Annotated[
+        int | None, Query(ge=1, description="Chat rate ceiling, in coins a minute")
+    ] = None,
     page: Annotated[int, Query(ge=1)] = 1,
     limit: Annotated[int, Query(ge=1, le=50)] = 20,
 ) -> ApiResponse[Paginated[AstrologerPublic]]:
@@ -153,7 +155,7 @@ async def list_astrologers(
         online_only=online_only,
         featured_only=featured_only,
         min_experience=min_experience,
-        max_rate=max_rate,
+        max_coins_per_minute=max_coins_per_minute,
     )
     page_of = await astrologer_service.list_public(filters, page, limit)
     return ApiResponse(message=f"{page_of.meta.total} astrologer(s) found.", data=page_of)

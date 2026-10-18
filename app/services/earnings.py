@@ -62,15 +62,40 @@ async def for_astrologer(astrologer_user_id: PydanticObjectId) -> dict[str, dict
     return out
 
 
+# The ledger holds one row per minute, because that is what makes a charge
+# impossible to apply twice. Nobody wants to read it that way: a five-minute
+# call should be one line saying five minutes, not five lines saying one.
+_SESSION_GROUP = {
+    "_id": "$session_id",
+    "mode": {"$first": "$mode"},
+    "astrologer_id": {"$first": "$astrologer_id"},
+    "minutes": {"$sum": 1},
+    "coins_charged": {"$sum": "$coins_charged"},
+    "gross_paise": {"$sum": "$gross_paise"},
+    "commission_paise": {"$sum": "$commission_paise"},
+    "earning_paise": {"$sum": "$earning_paise"},
+    "commission_percent": {"$first": "$commission_percent"},
+    # When the session started, so the list reads in the order things happened.
+    "created_at": {"$min": "$created_at"},
+}
+
+
+async def _grouped(match: dict[str, Any], limit: int) -> list[dict[str, Any]]:
+    pipeline = [
+        {"$match": match},
+        {"$group": _SESSION_GROUP},
+        {"$sort": {"created_at": -1}},
+        {"$limit": limit},
+    ]
+    cursor = await EarningEntry.get_pymongo_collection().aggregate(pipeline)
+    return [row async for row in cursor]
+
+
 async def recent_for_astrologer(
     astrologer_user_id: PydanticObjectId, limit: int = 50
-) -> list[EarningEntry]:
-    return (
-        await EarningEntry.find(EarningEntry.astrologer_user_id == astrologer_user_id)
-        .sort(-EarningEntry.created_at)
-        .limit(limit)
-        .to_list()
-    )
+) -> list[dict[str, Any]]:
+    """One row per consultation, not per minute."""
+    return await _grouped({"astrologer_user_id": astrologer_user_id}, limit)
 
 
 async def platform_totals(since: datetime | None = None) -> dict[str, int]:
@@ -80,5 +105,5 @@ async def platform_totals(since: datetime | None = None) -> dict[str, int]:
     return await _totals(match)
 
 
-async def recent_all(limit: int = 100) -> list[EarningEntry]:
-    return await EarningEntry.find().sort(-EarningEntry.created_at).limit(limit).to_list()
+async def recent_all(limit: int = 100) -> list[dict[str, Any]]:
+    return await _grouped({}, limit)

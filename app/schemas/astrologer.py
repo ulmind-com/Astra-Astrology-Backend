@@ -53,7 +53,9 @@ class AstrologerCreate(BaseModel):
     # commerce
     rates: RateCard = Field(default_factory=RateCard)
     modes_enabled: list[ConsultationMode] | None = None
-    commission_percent: float = Field(default=50.0, ge=0, le=100)
+    # None means the platform default. Defaulting to a number here would
+    # give every new astrologer a private deal nobody chose.
+    commission_percent: float | None = Field(default=None, ge=0, le=100)
 
     # curation
     is_listed: bool = True
@@ -180,7 +182,7 @@ class AstrologerProfile(BaseModel):
 
     rates: RateCard
     modes_enabled: list[ConsultationMode]
-    commission_percent: float
+    commission_percent: float | None = None
     bank: BankDetails
 
     availability: Availability
@@ -272,7 +274,7 @@ class AstrologerFilters(BaseModel):
     online_only: bool = False
     featured_only: bool = False
     min_experience: int | None = None
-    max_rate: float | None = None
+    max_coins_per_minute: int | None = None
 
 
 class GalleryUploadResult(BaseModel):

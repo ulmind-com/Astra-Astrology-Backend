@@ -248,6 +248,8 @@ class EarningsSummary(BaseModel):
 
 
 class EarningRow(BaseModel):
+    """One consultation, not one minute."""
+
     id: str
     mode: ConsultationMode
     minutes: int

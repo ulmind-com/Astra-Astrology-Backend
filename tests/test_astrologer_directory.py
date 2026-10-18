@@ -136,7 +136,7 @@ async def test_search_matches_name_and_speciality(client: AsyncClient, sent_mail
         ({"language": "Bengali"}, 1),
         ({"language": "Hindi"}, 2),
         ({"min_experience": 15}, 1),
-        ({"max_rate": 25}, 1),
+        ({"max_coins_per_minute": 25}, 1),
         ({"featured_only": True}, 1),
         ({"online_only": True}, 0),
     ],

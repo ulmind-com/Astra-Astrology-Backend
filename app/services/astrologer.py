@@ -331,7 +331,7 @@ async def to_public(profile: Astrologer) -> AstrologerPublic:
     return public
 
 
-def _directory_query(filters: AstrologerFilters):
+def _directory_query(filters: AstrologerFilters, default_chat_rate: int | None = None):
     from beanie.operators import And, In, Or, RegEx
 
     conditions: list = [Astrologer.is_listed == True]  # noqa: E712
@@ -357,8 +357,23 @@ def _directory_query(filters: AstrologerFilters):
         conditions.append(Astrologer.is_featured == True)  # noqa: E712
     if filters.min_experience is not None:
         conditions.append(Astrologer.experience_years >= filters.min_experience)
-    if filters.max_rate is not None:
-        conditions.append(Astrologer.rates.chat_per_minute <= filters.max_rate)
+    if filters.max_coins_per_minute is not None:
+        # An astrologer with no chat rate of their own charges the platform
+        # default, so whether they match depends on what that default is.
+        # Leaving them out would quietly hide everyone who was never priced
+        # individually — which is most of them.
+        ceiling = filters.max_coins_per_minute
+        rate_field = "rates.chat_coins_per_minute"
+        if default_chat_rate is not None and default_chat_rate <= ceiling:
+            conditions.append(
+                Or(
+                    {rate_field: {"$lte": ceiling}},
+                    {rate_field: None},
+                    {rate_field: {"$exists": False}},
+                )
+            )
+        else:
+            conditions.append({rate_field: {"$lte": ceiling}})
 
     return Astrologer.find(And(*conditions))
 
@@ -367,7 +382,10 @@ async def list_public(
     filters: AstrologerFilters, page: int, limit: int
 ) -> Paginated[AstrologerPublic]:
     """The directory: whoever is online comes first, then the featured ones."""
-    query = _directory_query(filters)
+    from app.services import settings as settings_service
+
+    platform = await settings_service.get_settings()
+    query = _directory_query(filters, platform.default_chat_coins_per_minute)
     total = await query.count()
 
     profiles = (
