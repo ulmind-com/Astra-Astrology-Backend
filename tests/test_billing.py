@@ -424,15 +424,6 @@ async def test_a_user_cannot_read_the_platform_earnings(client: AsyncClient) -> 
 async def test_chat_is_billed_the_same_way(
     client: AsyncClient, sent_mail: list, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from tests.test_chat import FakeFirestore
-
-    fake = FakeFirestore()
-    import app.api.v1.chats as chats_api
-    import app.services.chat as chat_service
-
-    for module in (chat_service, chats_api):
-        monkeypatch.setattr(module, "firestore", fake)
-
     auth = await signed_in(client)
     admin = await make_admin(client)
     profile, astro = await make_astrologer(client, admin, sent_mail)
@@ -450,19 +441,10 @@ async def test_chat_is_billed_the_same_way(
     assert await balance(client, auth) == 17, "three coins for minute one"
 
 
-async def test_a_chat_that_runs_out_is_closed_in_firestore_too(
-    client: AsyncClient, sent_mail: list, monkeypatch: pytest.MonkeyPatch
+async def test_a_chat_that_runs_out_stops_accepting_messages(
+    client: AsyncClient, sent_mail: list
 ) -> None:
-    """Closing it only in MongoDB would leave two browsers still able to talk."""
-    from tests.test_chat import FakeFirestore
-
-    fake = FakeFirestore()
-    import app.api.v1.chats as chats_api
-    import app.services.chat as chat_service
-
-    for module in (chat_service, chats_api):
-        monkeypatch.setattr(module, "firestore", fake)
-
+    """Ending it without closing it to messages would let two people talk on."""
     auth = await signed_in(client)
     admin = await make_admin(client)
     profile, astro = await make_astrologer(client, admin, sent_mail)
@@ -474,9 +456,10 @@ async def test_a_chat_that_runs_out_is_closed_in_firestore_too(
         f"{P}/chats", headers=auth, json={"astrologer_id": profile["id"], "requested_minutes": 1}
     )
     chat_id = started.json()["data"]["chat"]["id"]
-    convo = started.json()["data"]["chat"]["conversation_id"]
     await client.post(f"{P}/chats/{chat_id}/accept", headers=astro)
-    assert fake.conversations[convo]["status"] == "active"
+    assert (
+        await client.post(f"{P}/chats/{chat_id}/messages", headers=auth, json={"text": "hi"})
+    ).status_code == 201, "open while there are coins to pay for it"
 
     from beanie import PydanticObjectId
 
@@ -489,7 +472,11 @@ async def test_a_chat_that_runs_out_is_closed_in_firestore_too(
 
     await client.post(f"{P}/chats/{chat_id}/heartbeat", headers=auth)
 
-    assert fake.conversations[convo]["status"] == "ended"
+    refused = await client.post(
+        f"{P}/chats/{chat_id}/messages", headers=auth, json={"text": "still here?"}
+    )
+    assert refused.status_code == 400
+    assert refused.json()["error_code"] == "chat_not_active"
 
 
 # ------------------------------------------------------------ the invariant
@@ -647,15 +634,6 @@ async def test_nothing_is_offered_when_the_wallet_is_empty(
 async def test_a_chat_can_be_extended_too(
     client: AsyncClient, sent_mail: list, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from tests.test_chat import FakeFirestore
-
-    fake = FakeFirestore()
-    import app.api.v1.chats as chats_api
-    import app.services.chat as chat_service
-
-    for module in (chat_service, chats_api):
-        monkeypatch.setattr(module, "firestore", fake)
-
     auth = await signed_in(client)
     admin = await make_admin(client)
     profile, astro = await make_astrologer(client, admin, sent_mail)

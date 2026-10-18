@@ -72,9 +72,44 @@ async def make_astrologer(
     return profile, auth
 
 
-async def ring(client: AsyncClient, caller: dict, astrologer_id: str):
+async def top_up(caller: dict, coins: int = 10_000) -> None:
+    """Puts coins in the caller's wallet.
+
+    A call is booked for a number of minutes and refused if the wallet cannot
+    cover them, so every test that expects a call to connect has to be able to
+    pay for it. Credited through the service rather than the admin API to keep
+    this out of the way of what each test is actually about.
+    """
+    import uuid
+
+    from beanie import PydanticObjectId
+
+    from app.core.security import decode_token
+    from app.models.enums import TransactionReason
+    from app.services import wallet as wallet_service
+
+    token = caller["Authorization"].removeprefix("Bearer ")
+    await wallet_service.credit(
+        user_id=PydanticObjectId(decode_token(token)["sub"]),
+        amount_coins=coins,
+        reason=TransactionReason.ADJUSTMENT,
+        idempotency_key=f"test-float:{uuid.uuid4()}",
+    )
+
+
+async def ring(
+    client: AsyncClient,
+    caller: dict,
+    astrologer_id: str,
+    mode: str = "video",
+    minutes: int = 5,
+):
+    """Places a call, having first made sure the caller can afford it."""
+    await top_up(caller)
     return await client.post(
-        f"{P}/calls", headers=caller, json={"astrologer_id": astrologer_id, "mode": "video"}
+        f"{P}/calls",
+        headers=caller,
+        json={"astrologer_id": astrologer_id, "mode": mode, "requested_minutes": minutes},
     )
 
 
@@ -192,9 +227,7 @@ async def test_a_voice_call_uses_the_same_flow_as_video(
     profile, astro = await make_astrologer(client, admin, sent_mail)
     caller = await signed_in(client)
 
-    started = await client.post(
-        f"{P}/calls", headers=caller, json={"astrologer_id": profile["id"], "mode": "call"}
-    )
+    started = await ring(client, caller, profile["id"], mode="call")
     assert started.status_code == 201, started.text
     data = started.json()["data"]
     assert data["call"]["mode"] == "call"
@@ -219,9 +252,7 @@ async def test_a_voice_call_is_refused_when_calls_are_paused(
         f"{P}/astrologers/me/availability", headers=astro, json={"is_available_for_call": False}
     )
 
-    response = await client.post(
-        f"{P}/calls", headers=caller, json={"astrologer_id": profile["id"], "mode": "call"}
-    )
+    response = await ring(client, caller, profile["id"], mode="call")
     assert response.status_code == 400
     assert response.json()["error_code"] == "mode_paused"
 
@@ -235,9 +266,7 @@ async def test_chat_cannot_be_dialled(client: AsyncClient, sent_mail: list) -> N
     profile, _ = await make_astrologer(client, admin, sent_mail)
     caller = await signed_in(client)
 
-    response = await client.post(
-        f"{P}/calls", headers=caller, json={"astrologer_id": profile["id"], "mode": "chat"}
-    )
+    response = await ring(client, caller, profile["id"], mode="chat")
     assert response.status_code == 400
     assert response.json()["error_code"] == "mode_unavailable"
 
