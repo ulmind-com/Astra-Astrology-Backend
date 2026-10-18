@@ -18,6 +18,7 @@ from app.models.enums import AccountStatus, AuthProvider, UserRole
 from app.models.pending_registration import PendingRegistration
 from app.models.user import User
 from app.schemas.astrologer import (
+    ResolvedRates,
     AstrologerAdminUpdate,
     AstrologerCreate,
     AstrologerFilters,
@@ -305,8 +306,29 @@ async def update_availability(profile: Astrologer, payload: AvailabilityUpdate) 
 MAX_GALLERY_IMAGES = 12
 
 
-def to_public(profile: Astrologer) -> AstrologerPublic:
-    return AstrologerPublic.model_validate(profile)
+async def to_public(profile: Astrologer) -> AstrologerPublic:
+    """Fills in the platform defaults, so a card never shows a blank price."""
+    from app.services import billing
+
+    public = AstrologerPublic.model_validate(
+        {**profile.model_dump(), "rates": {
+            "chat_coins_per_minute": 0,
+            "call_coins_per_minute": 0,
+            "video_coins_per_minute": 0,
+        }}
+    )
+    public.rates = ResolvedRates(
+        chat_coins_per_minute=(
+            await billing.price_for(profile, ConsultationMode.CHAT)
+        ).coins_per_minute,
+        call_coins_per_minute=(
+            await billing.price_for(profile, ConsultationMode.CALL)
+        ).coins_per_minute,
+        video_coins_per_minute=(
+            await billing.price_for(profile, ConsultationMode.VIDEO)
+        ).coins_per_minute,
+    )
+    return public
 
 
 def _directory_query(filters: AstrologerFilters):
@@ -359,7 +381,7 @@ async def list_public(
         .limit(limit)
         .to_list()
     )
-    return build_page([to_public(p) for p in profiles], total, page, limit)
+    return build_page([await to_public(p) for p in profiles], total, page, limit)
 
 
 async def get_public(identifier: str) -> AstrologerPublic:
@@ -376,7 +398,7 @@ async def get_public(identifier: str) -> AstrologerPublic:
     if profile is None or not profile.is_listed:
         raise NotFoundError("Astrologer not found.", error_code="astrologer_not_found")
 
-    return to_public(profile)
+    return await to_public(profile)
 
 
 # --------------------------------------------------------------- images

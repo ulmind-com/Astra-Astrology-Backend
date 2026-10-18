@@ -214,6 +214,14 @@ class AstrologerCreated(BaseModel):
 
 
 # ------------------------------------------------------- public directory
+class ResolvedRates(BaseModel):
+    """Coins per started minute, with no blanks left to interpret."""
+
+    chat_coins_per_minute: int
+    call_coins_per_minute: int
+    video_coins_per_minute: int
+
+
 class AstrologerPublic(BaseModel):
     """What the website and app may show about an astrologer.
 
@@ -238,7 +246,10 @@ class AstrologerPublic(BaseModel):
     qualifications: list[str]
     experience_years: int
 
-    rates: RateCard
+    # What a minute actually costs, in coins, with the platform default already
+    # filled in where this astrologer has no rate of their own. The raw card
+    # with its blanks is an admin's business, not a visitor's.
+    rates: ResolvedRates
     modes_enabled: list[ConsultationMode]
 
     availability: Availability
