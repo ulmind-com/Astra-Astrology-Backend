@@ -98,10 +98,13 @@ async def my_transactions(
     summary="Preset amounts, limits and the public checkout key",
 )
 async def recharge_options() -> ApiResponse[RechargeOptions]:
-    coins_per_rupee = await settings_service.get_coins_per_rupee()
+    platform = await settings_service.get_settings()
+    coins_per_rupee = platform.coins_per_rupee
     return ApiResponse(
         message="Recharge options.",
         data=RechargeOptions(
+            # A preset below the minimum is a button that cannot be pressed,
+            # so it is left out rather than shown and refused.
             packs=[
                 RechargePack(
                     amount_paise=p,
@@ -109,10 +112,11 @@ async def recharge_options() -> ApiResponse[RechargeOptions]:
                     coins=settings_service.coins_for(p, coins_per_rupee),
                 )
                 for p in settings.RECHARGE_PACKS_PAISE
+                if platform.min_recharge_paise <= p <= platform.max_recharge_paise
             ],
             coins_per_rupee=coins_per_rupee,
-            min_paise=settings.WALLET_MIN_RECHARGE_PAISE,
-            max_paise=settings.WALLET_MAX_RECHARGE_PAISE,
+            min_paise=platform.min_recharge_paise,
+            max_paise=platform.max_recharge_paise,
             currency=settings.WALLET_CURRENCY,
             key_id=settings.RAZORPAY_KEY_ID,
             enabled=payment_service.is_enabled(),

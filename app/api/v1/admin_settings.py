@@ -11,10 +11,24 @@ from fastapi import APIRouter, Query
 from app.api.dependencies import AdminUser
 from app.models.user import User
 from app.schemas.common import ApiResponse
-from app.schemas.wallet import CoinRateChangeOut, CoinRateUpdate, PlatformSettingsOut
+from app.schemas.wallet import (
+    CoinRateChangeOut,
+    CoinRateUpdate,
+    PlatformSettingsOut,
+    RechargeLimitsUpdate,
+)
 from app.services import settings as settings_service
 
 router = APIRouter(prefix="/admin/settings", tags=["admin: settings"])
+
+
+def _out(doc) -> PlatformSettingsOut:
+    return PlatformSettingsOut(
+        coins_per_rupee=doc.coins_per_rupee,
+        min_recharge_paise=doc.min_recharge_paise,
+        max_recharge_paise=doc.max_recharge_paise,
+        updated_at=doc.updated_at,
+    )
 
 
 @router.get("", response_model=ApiResponse[PlatformSettingsOut], summary="Platform settings")
@@ -22,9 +36,7 @@ async def read_settings(_: AdminUser) -> ApiResponse[PlatformSettingsOut]:
     doc = await settings_service.get_settings()
     return ApiResponse(
         message="Settings fetched.",
-        data=PlatformSettingsOut(
-            coins_per_rupee=doc.coins_per_rupee, updated_at=doc.updated_at
-        ),
+        data=_out(doc),
     )
 
 
@@ -45,9 +57,29 @@ async def update_settings(
             f"{'s' if doc.coins_per_rupee != 1 else ''}. "
             "Coins already bought keep the rate they were bought at."
         ),
-        data=PlatformSettingsOut(
-            coins_per_rupee=doc.coins_per_rupee, updated_at=doc.updated_at
+        data=_out(doc),
+    )
+
+
+@router.patch(
+    "/recharge-limits",
+    response_model=ApiResponse[PlatformSettingsOut],
+    summary="Set the smallest and largest recharge",
+)
+async def update_recharge_limits(
+    payload: RechargeLimitsUpdate, admin: AdminUser
+) -> ApiResponse[PlatformSettingsOut]:
+    doc = await settings_service.set_recharge_limits(
+        min_paise=payload.min_recharge_paise,
+        max_paise=payload.max_recharge_paise,
+        admin_id=admin.id,
+    )
+    return ApiResponse(
+        message=(
+            f"Recharges are now ₹{doc.min_recharge_paise // 100} to "
+            f"₹{doc.max_recharge_paise // 100}."
         ),
+        data=_out(doc),
     )
 
 

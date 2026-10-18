@@ -23,6 +23,12 @@ class PlatformSettings(TimestampedDocument):
     # can never produce a fractional coin.
     coins_per_rupee: int = Field(default=1, ge=1, le=10_000)
 
+    # What a user may top up. Here rather than in the environment because the
+    # client changes these as offers come and go, and a redeploy for that would
+    # be absurd.
+    min_recharge_paise: int = Field(default=1_000, ge=100)  # Rs 10
+    max_recharge_paise: int = Field(default=5_000_000, ge=100)  # Rs 50,000
+
     updated_by: PydanticObjectId | None = None
 
     class Settings:

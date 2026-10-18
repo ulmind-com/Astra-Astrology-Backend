@@ -74,14 +74,16 @@ def _sign(payload: str, secret: str) -> str:
 
 async def create_order(user: User, amount_paise: int) -> PaymentOrder:
     """Opens a Razorpay order for a recharge."""
-    if amount_paise < settings.WALLET_MIN_RECHARGE_PAISE:
+    # The limits an admin set, not whatever was in the environment at deploy.
+    platform = await settings_service.get_settings()
+    if amount_paise < platform.min_recharge_paise:
         raise BadRequestError(
-            f"The smallest recharge is ₹{settings.WALLET_MIN_RECHARGE_PAISE // 100}.",
+            f"The smallest recharge is ₹{platform.min_recharge_paise // 100}.",
             error_code="amount_too_small",
         )
-    if amount_paise > settings.WALLET_MAX_RECHARGE_PAISE:
+    if amount_paise > platform.max_recharge_paise:
         raise BadRequestError(
-            f"The largest recharge is ₹{settings.WALLET_MAX_RECHARGE_PAISE // 100}.",
+            f"The largest recharge is ₹{platform.max_recharge_paise // 100}.",
             error_code="amount_too_large",
         )
     # Whole rupees only. With an integer coin rate this is what guarantees the
@@ -113,7 +115,7 @@ async def create_order(user: User, amount_paise: int) -> PaymentOrder:
     # Frozen here, not read again at credit time: the user is about to be shown
     # this many coins, and an admin changing the rate mid-checkout must not
     # change what they get for the money they are paying now.
-    coins_per_rupee = await settings_service.get_coins_per_rupee()
+    coins_per_rupee = platform.coins_per_rupee
     coins = settings_service.coins_for(amount_paise, coins_per_rupee)
 
     receipt = f"rcg_{secrets.token_hex(8)}"

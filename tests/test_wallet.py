@@ -898,3 +898,117 @@ async def test_the_recharge_screen_quotes_coins_for_every_pack(
     assert [p["coins"] for p in options["packs"]] == [
         p["amount_rupees"] * 10 for p in options["packs"]
     ]
+
+
+# ================= the minimum an admin sets, and the client's example ======
+
+
+async def set_limits(client: AsyncClient, admin: dict, *, minimum=None, maximum=None):
+    body = {}
+    if minimum is not None:
+        body["min_recharge_paise"] = minimum
+    if maximum is not None:
+        body["max_recharge_paise"] = maximum
+    return await client.patch(f"{P}/admin/settings/recharge-limits", headers=admin, json=body)
+
+
+async def test_the_client_example_end_to_end(
+    client: AsyncClient, fake_razorpay: dict
+) -> None:
+    """₹1 = 5 coins, 50 coins already held, ₹100 recharged → 550."""
+    auth = await signed_in(client)
+    admin = await make_admin(client)
+    uid = await user_id_for("wallet@test.dev")
+
+    await set_rate(client, admin, 5)
+    await client.post(
+        f"{P}/admin/wallets/{uid}/adjust",
+        headers=admin,
+        json={"direction": "credit", "amount_coins": 50, "reason": "Opening balance"},
+    )
+
+    options = (await client.get(f"{P}/wallet/recharge/options", headers=auth)).json()["data"]
+    assert options["coins_per_rupee"] == 5
+
+    await recharge(client, auth, 100, fake_razorpay, "pay_example")
+
+    wallet = (await client.get(f"{P}/wallet", headers=auth)).json()["data"]
+    assert wallet["wallet"]["balance_coins"] == 550, "50 held + 100 x 5 bought"
+
+
+async def test_an_admin_sets_the_minimum_recharge(
+    client: AsyncClient, fake_razorpay: dict
+) -> None:
+    auth = await signed_in(client)
+    admin = await make_admin(client)
+
+    await set_limits(client, admin, minimum=20_000)  # Rs 200
+
+    # The user is told before they try.
+    options = (await client.get(f"{P}/wallet/recharge/options", headers=auth)).json()["data"]
+    assert options["min_paise"] == 20_000
+
+    too_small = await open_order(client, auth, 10_000)  # Rs 100
+    assert too_small.status_code == 400
+    assert too_small.json()["error_code"] == "amount_too_small"
+    assert "₹200" in too_small.json()["message"]
+
+    assert (await open_order(client, auth, 20_000)).status_code == 201
+
+
+async def test_presets_below_the_minimum_are_not_offered(
+    client: AsyncClient, fake_razorpay: dict
+) -> None:
+    """A button that can only be refused is worse than no button."""
+    auth = await signed_in(client)
+    admin = await make_admin(client)
+
+    await set_limits(client, admin, minimum=50_000)  # Rs 500
+
+    options = (await client.get(f"{P}/wallet/recharge/options", headers=auth)).json()["data"]
+    assert options["packs"], "some presets should survive"
+    assert all(p["amount_paise"] >= 50_000 for p in options["packs"])
+
+
+async def test_the_maximum_can_be_set_too(client: AsyncClient, fake_razorpay: dict) -> None:
+    auth = await signed_in(client)
+    admin = await make_admin(client)
+
+    await set_limits(client, admin, maximum=100_000)  # Rs 1,000
+
+    too_big = await open_order(client, auth, 200_000)
+    assert too_big.status_code == 400
+    assert too_big.json()["error_code"] == "amount_too_large"
+
+
+async def test_a_minimum_above_the_maximum_is_refused(client: AsyncClient) -> None:
+    """Otherwise there would be no amount anyone could pay."""
+    admin = await make_admin(client)
+
+    response = await set_limits(client, admin, minimum=500_000, maximum=10_000)
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "invalid_recharge_limits"
+
+
+async def test_recharge_limits_must_be_whole_rupees(client: AsyncClient) -> None:
+    admin = await make_admin(client)
+
+    response = await set_limits(client, admin, minimum=10_050)
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "not_whole_rupees"
+
+
+async def test_only_an_admin_can_change_the_limits(client: AsyncClient) -> None:
+    auth = await signed_in(client)
+    assert (await set_limits(client, auth, minimum=100_000)).status_code == 403
+
+
+async def test_changing_one_limit_leaves_the_other_alone(client: AsyncClient) -> None:
+    admin = await make_admin(client)
+
+    await set_limits(client, admin, minimum=20_000, maximum=300_000)
+    await set_limits(client, admin, minimum=30_000)
+
+    settings_now = (await client.get(f"{P}/admin/settings", headers=admin)).json()["data"]
+    assert settings_now["min_recharge_paise"] == 30_000
+    assert settings_now["max_recharge_paise"] == 300_000

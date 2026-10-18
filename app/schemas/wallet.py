@@ -166,6 +166,8 @@ class ReconcileResult(BaseModel):
 # ---------------------------------------------------------------- settings
 class PlatformSettingsOut(BaseModel):
     coins_per_rupee: int
+    min_recharge_paise: int
+    max_recharge_paise: int
     updated_at: datetime
 
 
@@ -177,6 +179,13 @@ class CoinRateUpdate(BaseModel):
         "whole-rupee recharge can never produce a fractional coin.",
     )
     note: str | None = Field(default=None, max_length=300)
+
+
+class RechargeLimitsUpdate(BaseModel):
+    """Either may be sent on its own; the other keeps its current value."""
+
+    min_recharge_paise: int | None = Field(default=None, ge=100)
+    max_recharge_paise: int | None = Field(default=None, ge=100)
 
 
 class CoinRateChangeOut(BaseModel):

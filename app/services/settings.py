@@ -4,6 +4,7 @@ from beanie import PydanticObjectId
 from loguru import logger
 from pymongo.errors import DuplicateKeyError
 
+from app.core.exceptions import BadRequestError
 from app.models.settings import SETTINGS_KEY, CoinRateChange, PlatformSettings
 
 
@@ -53,6 +54,40 @@ async def set_coins_per_rupee(
 
     logger.warning("Coin rate changed from {} to {} per rupee by {}", previous, rate, admin_id)
     return settings_doc
+
+
+async def set_recharge_limits(
+    *,
+    min_paise: int | None,
+    max_paise: int | None,
+    admin_id: PydanticObjectId | None,
+) -> PlatformSettings:
+    """Changes what a user may top up."""
+    doc = await get_settings()
+
+    new_min = doc.min_recharge_paise if min_paise is None else min_paise
+    new_max = doc.max_recharge_paise if max_paise is None else max_paise
+
+    # A minimum above the maximum would leave nothing a user could pay.
+    if new_min > new_max:
+        raise BadRequestError(
+            "The smallest recharge cannot be more than the largest.",
+            error_code="invalid_recharge_limits",
+        )
+    # Whole rupees, for the same reason recharges are: an integer coin rate on
+    # a part-rupee minimum would quote a fractional coin.
+    if new_min % 100 or new_max % 100:
+        raise BadRequestError(
+            "Use whole rupees.", error_code="not_whole_rupees"
+        )
+
+    doc.min_recharge_paise = new_min
+    doc.max_recharge_paise = new_max
+    doc.updated_by = admin_id
+    await doc.save()
+
+    logger.info("Recharge limits set to {}-{} paise by {}", new_min, new_max, admin_id)
+    return doc
 
 
 async def rate_history(limit: int = 50) -> list[CoinRateChange]:
