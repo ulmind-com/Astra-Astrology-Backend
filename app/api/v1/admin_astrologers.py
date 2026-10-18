@@ -143,6 +143,14 @@ async def deactivate_astrologer(
     await user.save()
     profile.is_listed = False
     profile.availability.is_online = False
+    # Clearing the stamp as well, so a panel still open in another tab cannot
+    # keep them looking present until its heartbeat lapses.
+    profile.availability.last_seen_at = None
     await profile.save()
+
+    # Taken off the live directory at once, not at the next poll.
+    from app.services import realtime
+
+    await realtime.publish_astrologer(profile)
 
     return MessageResponse(message="Astrologer deactivated and removed from the directory.")

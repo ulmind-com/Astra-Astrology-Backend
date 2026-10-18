@@ -81,7 +81,11 @@ async def start_chat(
         raise BadRequestError(
             "This astrologer does not take chats.", error_code="mode_not_offered"
         )
-    if not profile.availability.is_online:
+    # Presence, not the stored flag: an astrologer whose panel has closed is
+    # not there to answer, whatever the flag still says.
+    from app.services import presence
+
+    if not presence.is_effectively_online(profile.availability):
         raise BadRequestError(
             "This astrologer is offline right now.", error_code="astrologer_offline"
         )

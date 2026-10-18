@@ -14,10 +14,12 @@ from app.api.v1 import (
     health,
     users,
     wallet,
+    ws,
 )
 
 api_router = APIRouter()
 
+api_router.include_router(ws.router)
 api_router.include_router(health.router)
 api_router.include_router(auth.router)
 api_router.include_router(users.router)
@@ -31,6 +33,7 @@ api_router.include_router(calls.maintenance_router)
 api_router.include_router(calls.webhook_router)
 api_router.include_router(chats.router)
 api_router.include_router(chats.maintenance_router)
+api_router.include_router(astrologers.maintenance_router)
 api_router.include_router(earnings.router)
 api_router.include_router(earnings.admin_router)
 api_router.include_router(wallet.webhook_router)

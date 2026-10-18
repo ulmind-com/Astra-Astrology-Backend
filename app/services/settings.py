@@ -26,6 +26,22 @@ async def get_settings() -> PlatformSettings:
     return created
 
 
+async def _publish(doc: PlatformSettings, *, reprice: bool) -> None:
+    """Mirrors a settings change to everyone watching.
+
+    `reprice` republishes every astrologer card as well, because the defaults
+    feed into the resolved price of everyone who has no rate of their own —
+    changing the platform's chat rate silently re-prices most of the directory,
+    and those cards have to be rewritten or they would keep showing the old
+    number until something else touched them.
+    """
+    from app.services import realtime
+
+    await realtime.publish_settings(doc)
+    if reprice:
+        await realtime.publish_all_astrologers()
+
+
 async def get_coins_per_rupee() -> int:
     return (await get_settings()).coins_per_rupee
 
@@ -53,6 +69,9 @@ async def set_coins_per_rupee(
     ).insert()
 
     logger.warning("Coin rate changed from {} to {} per rupee by {}", previous, rate, admin_id)
+    # The rate decides what a rupee buys, not what a minute costs, so the cards
+    # do not move.
+    await _publish(settings_doc, reprice=False)
     return settings_doc
 
 
@@ -87,6 +106,7 @@ async def set_recharge_limits(
     await doc.save()
 
     logger.info("Recharge limits set to {}-{} paise by {}", new_min, new_max, admin_id)
+    await _publish(doc, reprice=False)
     return doc
 
 
@@ -109,6 +129,8 @@ async def set_consultation_defaults(
     doc.updated_by = admin_id
     await doc.save()
     logger.info("Consultation defaults updated by {}: {}", admin_id, changes)
+    # These are the numbers every unpriced astrologer charges.
+    await _publish(doc, reprice=True)
     return doc
 
 

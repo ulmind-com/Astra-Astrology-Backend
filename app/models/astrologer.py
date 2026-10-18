@@ -23,12 +23,28 @@ class GalleryImage(BaseModel):
 
 
 class Availability(BaseModel):
+    """Whether this astrologer can be consulted right now.
+
+    `is_online` is not trusted on its own. It says the astrologer meant to be
+    available; `last_seen_at` says their panel was actually open recently. A
+    browser that is closed, crashes, or loses its connection stops sending the
+    heartbeat and no longer reports anything — so without the second field an
+    astrologer would stay "online" forever after closing the tab, and users
+    would queue for someone who is not there.
+
+    Both fields are always read together through `app.services.presence`.
+    """
+
     is_online: bool = False
     is_available_for_chat: bool = True
     is_available_for_call: bool = True
     is_available_for_video: bool = True
     is_busy: bool = False
     last_online_at: datetime | None = None
+
+    # Stamped by every heartbeat from an open panel. None means they have not
+    # been seen since this field was introduced, which counts as offline.
+    last_seen_at: datetime | None = None
 
 
 class RateCard(BaseModel):
@@ -118,7 +134,3 @@ class Astrologer(TimestampedDocument):
             [("skills", pymongo.ASCENDING)],
             [("languages", pymongo.ASCENDING)],
         ]
-
-    def effective_rate(self, mode: ConsultationMode) -> float:
-        offer = getattr(self.rates, f"offer_{mode.value}_per_minute", None)
-        return offer if offer is not None else getattr(self.rates, f"{mode.value}_per_minute")

@@ -162,6 +162,14 @@ async def _move(
                 reason.value,
                 txn.balance_after_coins,
             )
+
+            # Published after the transaction has committed, never inside it:
+            # a mirror written from an aborted transaction would show coins
+            # that no longer exist. It cannot raise — see services.realtime.
+            from app.services import realtime
+
+            await realtime.publish_wallet_for_user(user_id, txn.balance_after_coins)
+
             return txn, True
 
         except DuplicateKeyError:

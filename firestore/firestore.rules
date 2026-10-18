@@ -2,11 +2,15 @@ rules_version = '2';
 
 // Astra Astrology — chat.
 //
+// Firestore is used for one thing: the chat transcript. Live prices, presence
+// and balances come over our own WebSocket instead, so nothing else belongs in
+// this database and nothing else is allowed by these rules.
+//
 // The browser talks to Firestore directly, which is what makes chat live. That
 // means these rules are the only thing standing between a conversation and the
 // rest of the internet — there is no server in the middle to check anything.
 //
-// Three things they enforce:
+// What they enforce:
 //
 //   1. Only the two people in a conversation can see it.
 //   2. A message, once sent, cannot be edited or deleted by anyone. A chat

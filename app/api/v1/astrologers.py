@@ -7,7 +7,7 @@ path wins over the slug lookup.
 from typing import Annotated
 
 from beanie import PydanticObjectId
-from fastapi import APIRouter, File, Query, UploadFile, status
+from fastapi import APIRouter, File, Header, Query, UploadFile, status
 
 from app.api.dependencies import AstrologerUser, CurrentAstrologer, CurrentUser
 from app.core.exceptions import NotFoundError
@@ -21,12 +21,12 @@ from app.schemas.astrologer import (
     AvailabilityUpdate,
     GalleryUploadResult,
 )
+from app.schemas.common import ApiResponse, MessageResponse, Paginated
 from app.schemas.wallet import ConsultationQuote
+from app.services import astrologer as astrologer_service
 from app.services import billing
 from app.services import settings as settings_service
 from app.services import wallet as wallet_service
-from app.schemas.common import ApiResponse, MessageResponse, Paginated
-from app.services import astrologer as astrologer_service
 
 router = APIRouter(prefix="/astrologers", tags=["astrologers"])
 
@@ -208,3 +208,35 @@ async def consultation_quote(
             max_minutes=platform.max_session_minutes,
         ),
     )
+
+
+# -------------------------------------------------------------- maintenance
+maintenance_router = APIRouter(prefix="/internal", tags=["internal"])
+
+
+@maintenance_router.post(
+    "/presence/sweep",
+    response_model=ApiResponse[dict],
+    summary="Settle the stored online flag for anyone who stopped reporting in",
+    include_in_schema=False,
+)
+async def sweep_presence(
+    x_internal_key: Annotated[str | None, Header()] = None,
+) -> ApiResponse[dict]:
+    """Optional housekeeping.
+
+    Nothing depends on this: every read applies the same TTL, so the site is
+    correct whether or not this ever runs. It exists so MongoDB stops claiming
+    someone is online once they are plainly gone, and so one last update
+    reaches anyone subscribed to the live mirror.
+    """
+    import hmac
+
+    from app.core.config import settings
+    from app.core.exceptions import ForbiddenError
+    from app.services import presence
+
+    if not x_internal_key or not hmac.compare_digest(x_internal_key, settings.SECRET_KEY):
+        raise ForbiddenError("Not allowed.", error_code="forbidden")
+
+    return ApiResponse(message="Swept.", data=await presence.sweep())

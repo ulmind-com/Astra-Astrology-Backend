@@ -138,6 +138,20 @@ class AvailabilityUpdate(BaseModel):
     is_busy: bool | None = None
 
 
+class PresenceState(BaseModel):
+    """What the panel needs to keep itself on the directory.
+
+    The cadence is sent back rather than hard-coded in the browser, so the
+    heartbeat interval and the TTL can be retuned on the server without
+    shipping a new frontend.
+    """
+
+    is_online: bool
+    beat_seconds: int
+    ttl_seconds: int
+    last_seen_at: datetime | None = None
+
+
 # --------------------------------------------------- admin: edit / manage
 class AstrologerAdminUpdate(AstrologerUpdate):
     """Everything the astrologer can change, plus what only the platform can."""

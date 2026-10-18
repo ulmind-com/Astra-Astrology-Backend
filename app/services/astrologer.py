@@ -18,7 +18,6 @@ from app.models.enums import AccountStatus, AuthProvider, ConsultationMode, User
 from app.models.pending_registration import PendingRegistration
 from app.models.user import User
 from app.schemas.astrologer import (
-    ResolvedRates,
     AstrologerAdminUpdate,
     AstrologerCreate,
     AstrologerFilters,
@@ -26,6 +25,7 @@ from app.schemas.astrologer import (
     AstrologerPublic,
     AstrologerUpdate,
     AvailabilityUpdate,
+    ResolvedRates,
 )
 from app.schemas.common import Paginated, build_page
 from app.services import firebase, storage
@@ -212,6 +212,11 @@ async def create_astrologer(payload: AstrologerCreate) -> tuple[User, Astrologer
             exc,
         )
 
+    # On the directory from this moment, without waiting for a poll.
+    from app.services import realtime
+
+    await realtime.publish_astrologer(profile)
+
     logger.success("Astrologer account created by admin: {} -> {}", email, user.id)
     return user, profile, password, email_sent
 
@@ -285,18 +290,44 @@ async def update_profile(
     _apply(profile, updates)
     await profile.save()
 
+    # Price, name, skills and listing all live on the public card, so anyone
+    # looking at the directory right now should see the change without
+    # reloading.
+    from app.services import realtime
+
+    await realtime.publish_astrologer(profile)
+
     logger.info("Astrologer profile updated: {}", user.email)
     return user, profile
 
 
 async def update_availability(profile: Astrologer, payload: AvailabilityUpdate) -> Astrologer:
+    """The astrologer's own switches.
+
+    `is_online` is the one switch that is not simply stored. Switching *off*
+    has to clear the heartbeat stamp too, or the astrologer would keep counting
+    as present; switching *on* has to stamp it, or they would be flagged online
+    while every reader still judged them stale and showed them grey.
+    """
     from app.models.base import utcnow
+    from app.services import presence, realtime
 
     updates = payload.model_dump(exclude_unset=True, exclude_none=True)
+    online = updates.pop("is_online", None)
+
     _apply(profile.availability, updates)
-    if updates.get("is_online"):
+
+    if online is False:
+        # Clears the stamp as well as the flag, and mirrors it.
+        return await presence.go_offline(profile, reason="switched off")
+
+    if online is True:
+        profile.availability.is_online = True
         profile.availability.last_online_at = utcnow()
+        profile.availability.last_seen_at = utcnow()
+
     await profile.save()
+    await realtime.publish_astrologer(profile)
     return profile
 
 
@@ -307,8 +338,13 @@ MAX_GALLERY_IMAGES = 12
 
 
 async def to_public(profile: Astrologer) -> AstrologerPublic:
-    """Fills in the platform defaults, so a card never shows a blank price."""
-    from app.services import billing
+    """Fills in the platform defaults, so a card never shows a blank price.
+
+    Also reports presence as it is *now*: an astrologer whose panel stopped
+    heartbeating is shown offline here even though MongoDB still holds the
+    flag they set, so a closed browser never leaves a ghost on the directory.
+    """
+    from app.services import billing, presence
 
     public = AstrologerPublic.model_validate(
         {**profile.model_dump(), "rates": {
@@ -328,6 +364,7 @@ async def to_public(profile: Astrologer) -> AstrologerPublic:
             await billing.price_for(profile, ConsultationMode.VIDEO)
         ).coins_per_minute,
     )
+    public.availability.is_online = presence.is_effectively_online(profile.availability)
     return public
 
 
@@ -352,7 +389,15 @@ def _directory_query(filters: AstrologerFilters, default_chat_rate: int | None =
     if filters.mode:
         conditions.append(In(Astrologer.modes_enabled, [filters.mode]))
     if filters.online_only:
+        # Both halves, or "online now" would list everyone who ever forgot to
+        # switch off. The TTL is applied in the query so the count and the
+        # pages agree with what the cards end up showing.
+        from app.services import presence
+
         conditions.append(Astrologer.availability.is_online == True)  # noqa: E712
+        conditions.append(
+            {"availability.last_seen_at": {"$gte": presence.stale_before()}}
+        )
     if filters.featured_only:
         conditions.append(Astrologer.is_featured == True)  # noqa: E712
     if filters.min_experience is not None:
@@ -391,6 +436,7 @@ async def list_public(
     profiles = (
         await query.sort(
             -Astrologer.availability.is_online,
+            -Astrologer.availability.last_seen_at,
             -Astrologer.is_featured,
             Astrologer.display_order,
             -Astrologer.rating.average,
