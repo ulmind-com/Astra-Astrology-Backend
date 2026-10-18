@@ -86,6 +86,13 @@ async def start_call(
         raise BadRequestError(
             "This astrologer is offline right now.", error_code="astrologer_offline"
         )
+    # Online, offers video, but has turned video off for now — a separate thing
+    # from not offering it at all, and the message should say so.
+    if not profile.availability.is_available_for_video:
+        raise BadRequestError(
+            "This astrologer is not taking video calls at the moment.",
+            error_code="video_paused",
+        )
 
     # Neither side may be on another call. Checked for both, because the
     # astrologer could be busy with someone else.

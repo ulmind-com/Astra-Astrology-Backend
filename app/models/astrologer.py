@@ -26,6 +26,7 @@ class Availability(BaseModel):
     is_online: bool = False
     is_available_for_chat: bool = True
     is_available_for_call: bool = True
+    is_available_for_video: bool = True
     is_busy: bool = False
     last_online_at: datetime | None = None
 

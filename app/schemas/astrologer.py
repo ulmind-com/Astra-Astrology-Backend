@@ -132,6 +132,7 @@ class AvailabilityUpdate(BaseModel):
     is_online: bool | None = None
     is_available_for_chat: bool | None = None
     is_available_for_call: bool | None = None
+    is_available_for_video: bool | None = None
     is_busy: bool | None = None
 
 
