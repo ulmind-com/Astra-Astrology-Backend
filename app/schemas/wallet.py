@@ -180,6 +180,11 @@ class PlatformSettingsOut(BaseModel):
 
     chat_retention_days: int
 
+    appointment_commission_percent: float
+    min_appointment_minutes: int
+    max_appointment_minutes: int
+    appointment_booking_days_ahead: int
+
     updated_at: datetime
 
 
@@ -197,6 +202,14 @@ class ConsultationDefaultsUpdate(BaseModel):
     # moment the chat ends, which also leaves nothing to look at if the
     # session is later disputed.
     chat_retention_days: int | None = Field(default=None, ge=0, le=3650)
+
+    # Scheduled appointments. The commission is taken from the user's wallet
+    # when they book and is not returned, so it is the one number that decides
+    # what a cancelled booking costs them.
+    appointment_commission_percent: float | None = Field(default=None, ge=0, le=100)
+    min_appointment_minutes: int | None = Field(default=None, ge=5, le=600)
+    max_appointment_minutes: int | None = Field(default=None, ge=5, le=600)
+    appointment_booking_days_ahead: int | None = Field(default=None, ge=1, le=365)
 
 
 class CoinRateUpdate(BaseModel):

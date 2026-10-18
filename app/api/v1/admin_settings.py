@@ -35,6 +35,10 @@ def _out(doc) -> PlatformSettingsOut:
         min_session_minutes=doc.min_session_minutes,
         max_session_minutes=doc.max_session_minutes,
         chat_retention_days=doc.chat_retention_days,
+        appointment_commission_percent=doc.appointment_commission_percent,
+        min_appointment_minutes=doc.min_appointment_minutes,
+        max_appointment_minutes=doc.max_appointment_minutes,
+        appointment_booking_days_ahead=doc.appointment_booking_days_ahead,
         updated_at=doc.updated_at,
     )
 

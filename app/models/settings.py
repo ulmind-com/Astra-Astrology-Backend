@@ -52,6 +52,22 @@ class PlatformSettings(TimestampedDocument):
     # they were charged — so the default keeps a week.
     chat_retention_days: int = Field(default=7, ge=0, le=3650)
 
+    # ---------------------------------------------------------- appointments
+    # The platform's share of a booked appointment. Taken from the user's
+    # wallet when they book, and not returned if they cancel — which is what
+    # stops a calendar filling up with bookings nobody intends to keep.
+    appointment_commission_percent: float = Field(default=20.0, ge=0, le=100)
+
+    # What a user may book in one go. The shortest is also the step: a booking
+    # is always a whole number of these.
+    min_appointment_minutes: int = Field(default=15, ge=5, le=600)
+    max_appointment_minutes: int = Field(default=180, ge=5, le=600)
+
+    # How far ahead the calendar opens. Beyond this an astrologer's windows
+    # are not offered, so a booking cannot be made for a date nobody has
+    # thought about yet.
+    appointment_booking_days_ahead: int = Field(default=30, ge=1, le=365)
+
     updated_by: PydanticObjectId | None = None
 
     class Settings:

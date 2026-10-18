@@ -93,6 +93,9 @@ class TransactionReason(StrEnum):
     BONUS = "bonus"
     PAYOUT = "payout"
     REVERSAL = "reversal"
+    # The platform's share of a scheduled appointment, taken when it is booked
+    # and not returned if it is called off.
+    APPOINTMENT_DEPOSIT = "appointment_deposit"
 
 
 class PaymentOrderStatus(StrEnum):
@@ -138,3 +141,17 @@ class ChatStatus(StrEnum):
     DECLINED = "declined"
     MISSED = "missed"  # the astrologer never picked it up
     CANCELLED = "cancelled"  # the person who asked backed out first
+
+
+class AppointmentStatus(StrEnum):
+    """Where a booking is in its life.
+
+    There is no "paid" state: the deposit is taken as the booking is made, so
+    a booking that exists has been paid for. What remains is whether it still
+    stands, has been called off, or is behind us.
+    """
+
+    BOOKED = "booked"
+    CANCELLED = "cancelled"
+    COMPLETED = "completed"
+    MISSED = "missed"

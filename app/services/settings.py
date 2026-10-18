@@ -125,6 +125,20 @@ async def set_consultation_defaults(
             "The shortest session cannot be longer than the longest.",
             error_code="invalid_session_minutes",
         )
+    if doc.min_appointment_minutes > doc.max_appointment_minutes:
+        raise BadRequestError(
+            "The shortest appointment cannot be longer than the longest.",
+            error_code="invalid_appointment_minutes",
+        )
+    # Appointments are booked on a five-minute grid, so the limits have to sit
+    # on it too — otherwise the shortest bookable length would be unreachable.
+    from app.models.appointment import SLOT_MINUTES
+
+    if doc.min_appointment_minutes % SLOT_MINUTES or doc.max_appointment_minutes % SLOT_MINUTES:
+        raise BadRequestError(
+            f"Appointment lengths must be multiples of {SLOT_MINUTES} minutes.",
+            error_code="unaligned_appointment_minutes",
+        )
 
     doc.updated_by = admin_id
     await doc.save()

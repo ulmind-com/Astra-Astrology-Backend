@@ -5,6 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.models.astrologer import (
+    AppointmentCard,
     Availability,
     BankDetails,
     GalleryImage,
@@ -267,6 +268,10 @@ class AstrologerPublic(BaseModel):
     # with its blanks is an admin's business, not a visitor's.
     rates: ResolvedRates
     modes_enabled: list[ConsultationMode]
+
+    # Scheduled appointments, so the directory can say who takes them and at
+    # what price without a second request per astrologer.
+    appointment: AppointmentCard
 
     availability: Availability
     rating: RatingSummary

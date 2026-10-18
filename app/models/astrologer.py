@@ -64,6 +64,22 @@ class RateCard(BaseModel):
     video_coins_per_minute: int | None = Field(default=None, ge=1, le=100_000)
 
 
+class AppointmentCard(BaseModel):
+    """What this astrologer charges for a scheduled appointment.
+
+    Priced per block — "thirty minutes for two hundred and fifty rupees" is
+    how people quote this — and any other length is worked out pro rata from
+    it, so a forty-minute booking does not need its own price.
+
+    In paise, like every other amount on the platform, because a price held as
+    rupees-and-a-fraction eventually rounds somewhere it should not.
+    """
+
+    enabled: bool = False
+    price_paise: int = Field(default=0, ge=0, le=100_000_00)
+    block_minutes: int = Field(default=30, ge=5, le=600)
+
+
 class RatingSummary(BaseModel):
     average: float = Field(default=0.0, ge=0, le=5)
     count: int = Field(default=0, ge=0)
@@ -106,6 +122,10 @@ class Astrologer(TimestampedDocument):
     # astrologer's own deal.
     commission_percent: float | None = Field(default=None, ge=0, le=100)
     bank: BankDetails = Field(default_factory=BankDetails)
+
+    # Scheduled appointments, which are separate from live consultations: a
+    # different price, a calendar, and money taken up front.
+    appointment: AppointmentCard = Field(default_factory=AppointmentCard)
 
     # ------------------------------------------------------------ platform
     availability: Availability = Field(default_factory=Availability)
