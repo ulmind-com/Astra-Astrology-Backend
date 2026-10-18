@@ -151,7 +151,7 @@ async def test_filters(client: AsyncClient, sent_mail: list, params: dict, expec
         skills=["vedic_astrology"],
         languages=["Hindi"],
         experience_years=20,
-        rates={"chat_per_minute": 50},
+        rates={"chat_coins_per_minute": 50},
         is_featured=True,
     )
     await add_astrologer(
@@ -162,7 +162,7 @@ async def test_filters(client: AsyncClient, sent_mail: list, params: dict, expec
         skills=["tarot"],
         languages=["Hindi", "Bengali"],
         experience_years=5,
-        rates={"chat_per_minute": 20},
+        rates={"chat_coins_per_minute": 20},
     )
 
     assert (await listing(client, **params))["meta"]["total"] == expected

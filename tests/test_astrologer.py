@@ -285,7 +285,7 @@ async def test_astrologer_cannot_remove_their_display_name(
 @pytest.mark.parametrize(
     "body",
     [
-        {"rates": {"chat_per_minute": 1}},
+        {"rates": {"chat_coins_per_minute": 1}},
         {"commission_percent": 10},
         {"is_featured": True},
         {"status": "active"},
@@ -381,15 +381,15 @@ async def test_admin_sets_rates_and_lists(client: AsyncClient, sent_mail: list) 
         f"{P}/admin/astrologers/{astrologer_id}",
         headers=admin,
         json={
-            "rates": {"chat_per_minute": 30, "call_per_minute": 45, "offer_chat_per_minute": 20},
+            "rates": {"chat_coins_per_minute": 30, "call_coins_per_minute": 45},
             "commission_percent": 40,
             "is_featured": True,
         },
     )
     assert updated.status_code == 200, updated.text
     profile = updated.json()["data"]
-    assert profile["rates"]["chat_per_minute"] == 30
-    assert profile["rates"]["offer_chat_per_minute"] == 20
+    assert profile["rates"]["chat_coins_per_minute"] == 30
+    assert profile["rates"]["call_coins_per_minute"] == 45
     assert profile["commission_percent"] == 40
     assert profile["is_featured"] is True
 
