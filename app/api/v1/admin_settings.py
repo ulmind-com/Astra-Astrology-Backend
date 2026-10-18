@@ -13,8 +13,8 @@ from app.models.user import User
 from app.schemas.common import ApiResponse
 from app.schemas.wallet import (
     CoinRateChangeOut,
-    ConsultationDefaultsUpdate,
     CoinRateUpdate,
+    ConsultationDefaultsUpdate,
     PlatformSettingsOut,
     RechargeLimitsUpdate,
 )
@@ -34,6 +34,7 @@ def _out(doc) -> PlatformSettingsOut:
         default_commission_percent=doc.default_commission_percent,
         min_session_minutes=doc.min_session_minutes,
         max_session_minutes=doc.max_session_minutes,
+        chat_retention_days=doc.chat_retention_days,
         updated_at=doc.updated_at,
     )
 

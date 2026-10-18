@@ -18,15 +18,18 @@ from app.schemas.chat import (
     ChatSessionOut,
     ChatSweepResult,
     EndChatRequest,
-    FirebaseCredentials,
+    MarkProgressRequest,
+    MessageOut,
+    ReadMarkerOut,
+    SendMessageRequest,
     StartChatRequest,
+    TranscriptOut,
 )
 from app.schemas.common import ApiResponse, Paginated, build_page
 from app.services import billing
 from app.services import chat as chat_service
 from app.services import settings as settings_service
 from app.services import wallet as wallet_service
-from app.services import firestore
 
 router = APIRouter(prefix="/chats", tags=["chat"])
 
@@ -88,20 +91,8 @@ async def to_chat(session: ChatSession, viewer: User | None = None) -> ChatOut:
     )
 
 
-async def _firebase_for(user: User) -> FirebaseCredentials | None:
-    """A fresh custom token, minted per request rather than stored."""
-    if not user.firebase_uid:
-        return None
-    return FirebaseCredentials(
-        custom_token=await firestore.mint_token(user.firebase_uid),
-        uid=user.firebase_uid,
-        project_id=settings.FIREBASE_PROJECT_ID,
-    )
-
-
 async def _session_out(session: ChatSession, user: User) -> ChatSessionOut:
-    firebase = await _firebase_for(user) if session.status in LIVE else None
-    return ChatSessionOut(chat=await to_chat(session, user), firebase=firebase)
+    return ChatSessionOut(chat=await to_chat(session, user))
 
 
 # -------------------------------------------------------------------- start
@@ -117,7 +108,9 @@ async def start_chat(payload: StartChatRequest, user: CurrentUser) -> ApiRespons
         astrologer_id=PydanticObjectId(payload.astrologer_id),
         requested_minutes=payload.requested_minutes,
     )
-    return ApiResponse(message="Waiting for the astrologer…", data=await _session_out(session, user))
+    return ApiResponse(
+        message="Waiting for the astrologer…", data=await _session_out(session, user)
+    )
 
 
 # -------------------------------------------------------------------- state
@@ -211,6 +204,76 @@ async def extend_chat(
 async def heartbeat(session_id: PydanticObjectId, user: CurrentUser) -> ApiResponse[ChatOut]:
     session = await chat_service.heartbeat(session_id=session_id, user=user)
     return ApiResponse(message="Noted.", data=await to_chat(session, user))
+
+
+
+# ----------------------------------------------------------------- messages
+@router.get(
+    "/{session_id}/messages",
+    response_model=ApiResponse[TranscriptOut],
+    summary="The conversation so far",
+)
+async def get_messages(
+    session_id: PydanticObjectId, user: CurrentUser
+) -> ApiResponse[TranscriptOut]:
+    """Loads a chat window from cold.
+
+    Messages are removed some time after a chat ends — how long is the admin's
+    to set — so an old conversation may legitimately come back empty. The
+    session itself, and what it cost, is kept either way.
+    """
+    from app.services import messages as message_service
+
+    session = await chat_service.get_session(session_id)
+    history = await message_service.history(session=session, viewer=user)
+    markers = await message_service.markers(session)
+
+    return ApiResponse(
+        message="Messages fetched.",
+        data=TranscriptOut(
+            messages=[MessageOut(**message_service.to_public(m)) for m in history],
+            reads=[ReadMarkerOut(**message_service.marker_to_public(m)) for m in markers],
+        ),
+    )
+
+
+@router.post(
+    "/{session_id}/messages",
+    response_model=ApiResponse[MessageOut],
+    status_code=status.HTTP_201_CREATED,
+    summary="Send a message",
+)
+async def send_message(
+    session_id: PydanticObjectId, payload: SendMessageRequest, user: CurrentUser
+) -> ApiResponse[MessageOut]:
+    """Refused once the chat has ended — the check is here, not in the browser."""
+    from app.services import messages as message_service
+
+    session = await chat_service.get_session(session_id)
+    message = await message_service.send(session=session, sender=user, text=payload.text)
+    return ApiResponse(
+        message="Sent.", data=MessageOut(**message_service.to_public(message))
+    )
+
+
+@router.post(
+    "/{session_id}/read",
+    response_model=ApiResponse[ReadMarkerOut],
+    summary="Mark how far I have got",
+)
+async def mark_read(
+    session_id: PydanticObjectId, payload: MarkProgressRequest, user: CurrentUser
+) -> ApiResponse[ReadMarkerOut]:
+    """What draws the second tick, and then the blue one."""
+    from app.services import messages as message_service
+
+    session = await chat_service.get_session(session_id)
+    marker = await message_service.mark_progress(
+        session=session, viewer=user, level=payload.level
+    )
+    return ApiResponse(
+        message="Noted.", data=ReadMarkerOut(**message_service.marker_to_public(marker))
+    )
 
 
 # -------------------------------------------------------------- maintenance

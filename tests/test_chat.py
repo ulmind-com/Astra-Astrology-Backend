@@ -1,12 +1,14 @@
 """Chats.
 
-Messages live in Firestore, so these tests cover everything *around* them: who
-may open a chat, who may accept it, and — the one that matters most — that
-ending a chat closes the Firestore conversation, because that is the only thing
-standing between a finished session and two browsers that can still talk.
+Messages live in MongoDB with the session, so these cover the whole thing: who
+may open a chat, who may accept it, that a closed chat refuses new messages —
+the one that matters most, since it is all that stands between a finished
+session and two people still talking — and that the transcript is cleared up
+afterwards on the schedule an admin chose.
 """
 
 import pytest
+from beanie import PydanticObjectId
 from httpx import AsyncClient
 
 from app.core.config import settings
@@ -14,48 +16,6 @@ from tests.test_astrologer import BASE, make_admin
 
 P = "/api/v1"
 pytestmark = pytest.mark.usefixtures("fake_firebase")
-
-
-class FakeFirestore:
-    """Stands in for Firestore. Records what the server told it to do."""
-
-    def __init__(self) -> None:
-        self.conversations: dict[str, dict] = {}
-        self.tokens: list[str] = []
-
-    async def create_conversation(self, *, conversation_id, participants, session_id):
-        self.conversations[conversation_id] = {
-            "participants": participants,
-            "sessionId": session_id,
-            "status": "pending",
-        }
-
-    async def set_status(self, conversation_id, status):
-        self.conversations[conversation_id]["status"] = status
-
-    async def count_messages(self, conversation_id):
-        return 0
-
-    async def delete_conversation(self, conversation_id):
-        self.conversations.pop(conversation_id, None)
-
-    async def mint_token(self, uid):
-        self.tokens.append(uid)
-        return f"custom-token-for-{uid}"
-
-    def is_enabled(self):
-        return True
-
-
-@pytest.fixture
-def fake_firestore(monkeypatch: pytest.MonkeyPatch) -> FakeFirestore:
-    fake = FakeFirestore()
-    import app.api.v1.chats as chats_api
-    import app.services.chat as chat_service
-
-    for module in (chat_service, chats_api):
-        monkeypatch.setattr(module, "firestore", fake)
-    return fake
 
 
 @pytest.fixture
@@ -90,7 +50,9 @@ async def make_astrologer(
 ) -> tuple[dict, dict]:
     modes = (["chat"] if chat else []) + ["call", "video"]
     created = await client.post(
-        f"{P}/admin/astrologers", headers=admin, json={**BASE, "email": email, "modes_enabled": modes}
+        f"{P}/admin/astrologers",
+        headers=admin,
+        json={**BASE, "email": email, "modes_enabled": modes},
     )
     assert created.status_code == 201, created.text
     profile = created.json()["data"]["astrologer"]
@@ -100,7 +62,9 @@ async def make_astrologer(
     )
     auth = {"Authorization": f"Bearer {logged.json()['data']['tokens']['access_token']}"}
     if online:
-        await client.patch(f"{P}/astrologers/me/availability", headers=auth, json={"is_online": True})
+        await client.patch(
+            f"{P}/astrologers/me/availability", headers=auth, json={"is_online": True}
+        )
     return profile, auth
 
 
@@ -110,7 +74,7 @@ async def ask(client: AsyncClient, user: dict, astrologer_id: str):
 
 # ------------------------------------------------------------- the happy path
 async def test_a_chat_is_asked_for_accepted_and_ended(
-    client: AsyncClient, sent_mail: list, fake_firestore: FakeFirestore
+    client: AsyncClient, sent_mail: list
 ) -> None:
     admin = await make_admin(client)
     profile, astro = await make_astrologer(client, admin, sent_mail)
@@ -122,46 +86,91 @@ async def test_a_chat_is_asked_for_accepted_and_ended(
     assert data["chat"]["status"] == "requested"
     assert data["chat"]["started_at"] is None
 
-    convo = data["chat"]["conversation_id"]
-    # Opened, but shut to messages until the astrologer says yes.
-    assert fake_firestore.conversations[convo]["status"] == "pending"
-    assert len(fake_firestore.conversations[convo]["participants"]) == 2
-
-    # The browser gets what it needs to reach Firestore as itself.
-    assert data["firebase"]["custom_token"].startswith("custom-token-for-")
-    assert data["firebase"]["uid"]
-
     chat_id = data["chat"]["id"]
+
+    # Shut to messages until the astrologer says yes.
+    too_early = await client.post(
+        f"{P}/chats/{chat_id}/messages", headers=user, json={"text": "hello?"}
+    )
+    assert too_early.status_code == 400
+    assert too_early.json()["error_code"] == "chat_not_active"
     incoming = (await client.get(f"{P}/chats/active", headers=astro)).json()["data"]
     assert incoming["chat"]["id"] == chat_id
     assert incoming["chat"]["peer"]["name"] == "Asker"
 
     accepted = await client.post(f"{P}/chats/{chat_id}/accept", headers=astro)
     assert accepted.json()["data"]["chat"]["status"] == "active"
-    assert fake_firestore.conversations[convo]["status"] == "active", "now messages may flow"
+
+    # Now messages may flow, both ways.
+    sent = await client.post(
+        f"{P}/chats/{chat_id}/messages", headers=user, json={"text": "What does my chart say?"}
+    )
+    assert sent.status_code == 201, sent.text
+    await client.post(
+        f"{P}/chats/{chat_id}/messages", headers=astro, json={"text": "Let me look."}
+    )
+
+    transcript = (await client.get(f"{P}/chats/{chat_id}/messages", headers=user)).json()["data"]
+    assert [m["text"] for m in transcript["messages"]] == [
+        "What does my chart say?",
+        "Let me look.",
+    ]
 
     ended = await client.post(f"{P}/chats/{chat_id}/end", headers=user)
     assert ended.json()["data"]["status"] == "ended"
-    assert fake_firestore.conversations[convo]["status"] == "ended", "and now they may not"
+
+    # And now they may not — the refusal is the server's, not the browser's.
+    after = await client.post(
+        f"{P}/chats/{chat_id}/messages", headers=user, json={"text": "one more"}
+    )
+    assert after.status_code == 400
+    assert after.json()["error_code"] == "chat_not_active"
 
 
-async def test_each_side_is_given_its_own_firebase_identity(
-    client: AsyncClient, sent_mail: list, fake_firestore: FakeFirestore
+async def test_a_stranger_cannot_read_or_write_the_transcript(
+    client: AsyncClient, sent_mail: list
 ) -> None:
+    """The only gate is this server, so it has to hold on every route."""
+    admin = await make_admin(client)
+    profile, astro = await make_astrologer(client, admin, sent_mail)
+    user = await signed_in(client)
+    stranger = await signed_in(client, "nosy@test.dev")
+
+    chat_id = (await ask(client, user, profile["id"])).json()["data"]["chat"]["id"]
+    await client.post(f"{P}/chats/{chat_id}/accept", headers=astro)
+
+    peeked = await client.get(f"{P}/chats/{chat_id}/messages", headers=stranger)
+    assert peeked.status_code == 403
+    posted = await client.post(
+        f"{P}/chats/{chat_id}/messages", headers=stranger, json={"text": "hi"}
+    )
+    assert posted.status_code == 403
+
+
+async def test_ticks_follow_the_other_side(client: AsyncClient, sent_mail: list) -> None:
+    """One marker per reader is what the double and blue ticks are drawn from."""
     admin = await make_admin(client)
     profile, astro = await make_astrologer(client, admin, sent_mail)
     user = await signed_in(client)
 
-    mine = (await ask(client, user, profile["id"])).json()["data"]
-    theirs = (await client.get(f"{P}/chats/active", headers=astro)).json()["data"]
+    chat_id = (await ask(client, user, profile["id"])).json()["data"]["chat"]["id"]
+    await client.post(f"{P}/chats/{chat_id}/accept", headers=astro)
+    await client.post(f"{P}/chats/{chat_id}/messages", headers=user, json={"text": "hello"})
 
-    assert mine["firebase"]["uid"] != theirs["firebase"]["uid"]
-    assert mine["firebase"]["custom_token"] != theirs["firebase"]["custom_token"]
+    await client.post(f"{P}/chats/{chat_id}/read", headers=astro, json={"level": "delivered"})
+    transcript = (await client.get(f"{P}/chats/{chat_id}/messages", headers=user)).json()
+    reads = transcript["data"]["reads"]
+    assert len(reads) == 1 and reads[0]["delivered_at"] and reads[0]["read_at"] is None
+
+    await client.post(f"{P}/chats/{chat_id}/read", headers=astro, json={"level": "read"})
+    transcript = (await client.get(f"{P}/chats/{chat_id}/messages", headers=user)).json()
+    reads = transcript["data"]["reads"]
+    assert reads[0]["read_at"], "reading implies delivery, and moves the tick to blue"
 
 
 # ------------------------------------------------------------ who may do what
 async def test_only_the_astrologer_can_accept_or_decline(
-    client: AsyncClient, sent_mail: list, fake_firestore: FakeFirestore
+    client: AsyncClient, sent_mail: list
 ) -> None:
     admin = await make_admin(client)
     profile, _ = await make_astrologer(client, admin, sent_mail)
@@ -173,7 +182,7 @@ async def test_only_the_astrologer_can_accept_or_decline(
 
 
 async def test_a_stranger_cannot_see_the_chat(
-    client: AsyncClient, sent_mail: list, fake_firestore: FakeFirestore
+    client: AsyncClient, sent_mail: list
 ) -> None:
     admin = await make_admin(client)
     profile, _ = await make_astrologer(client, admin, sent_mail)
@@ -191,7 +200,7 @@ async def test_a_chat_needs_a_signed_in_user(client: AsyncClient) -> None:
 
 # --------------------------------------------------------- when it is refused
 async def test_an_offline_astrologer_cannot_be_asked(
-    client: AsyncClient, sent_mail: list, fake_firestore: FakeFirestore
+    client: AsyncClient, sent_mail: list
 ) -> None:
     admin = await make_admin(client)
     profile, _ = await make_astrologer(client, admin, sent_mail, online=False)
@@ -203,7 +212,7 @@ async def test_an_offline_astrologer_cannot_be_asked(
 
 
 async def test_an_astrologer_who_does_not_chat_cannot_be_asked(
-    client: AsyncClient, sent_mail: list, fake_firestore: FakeFirestore
+    client: AsyncClient, sent_mail: list
 ) -> None:
     admin = await make_admin(client)
     profile, _ = await make_astrologer(client, admin, sent_mail, chat=False)
@@ -215,7 +224,7 @@ async def test_an_astrologer_who_does_not_chat_cannot_be_asked(
 
 
 async def test_a_paused_astrologer_cannot_be_asked(
-    client: AsyncClient, sent_mail: list, fake_firestore: FakeFirestore
+    client: AsyncClient, sent_mail: list
 ) -> None:
     admin = await make_admin(client)
     profile, astro = await make_astrologer(client, admin, sent_mail)
@@ -230,7 +239,7 @@ async def test_a_paused_astrologer_cannot_be_asked(
 
 
 async def test_only_one_chat_at_a_time(
-    client: AsyncClient, sent_mail: list, fake_firestore: FakeFirestore
+    client: AsyncClient, sent_mail: list
 ) -> None:
     admin = await make_admin(client)
     profile, _ = await make_astrologer(client, admin, sent_mail)
@@ -242,30 +251,9 @@ async def test_only_one_chat_at_a_time(
     assert (await ask(client, other, profile["id"])).json()["error_code"] == "astrologer_busy"
 
 
-async def test_a_failed_conversation_leaves_no_session_behind(
-    client: AsyncClient, sent_mail: list, fake_firestore: FakeFirestore, monkeypatch
-) -> None:
-    """Otherwise both people would look busy over a chat that never existed."""
-    admin = await make_admin(client)
-    profile, _ = await make_astrologer(client, admin, sent_mail)
-    user = await signed_in(client)
-
-    async def boom(**kwargs):
-        raise RuntimeError("firestore down")
-
-    monkeypatch.setattr(fake_firestore, "create_conversation", boom)
-    refused = await ask(client, user, profile["id"])
-    assert refused.status_code == 503
-    assert refused.json()["error_code"] == "chat_unavailable"
-
-    monkeypatch.undo()
-    # Nothing is stuck: a fresh attempt works.
-    assert (await ask(client, user, profile["id"])).status_code == 201
-
-
 # ------------------------------------------------------------- the other ends
 async def test_declining_frees_both_sides(
-    client: AsyncClient, sent_mail: list, fake_firestore: FakeFirestore
+    client: AsyncClient, sent_mail: list
 ) -> None:
     admin = await make_admin(client)
     profile, astro = await make_astrologer(client, admin, sent_mail)
@@ -279,7 +267,7 @@ async def test_declining_frees_both_sides(
 
 
 async def test_backing_out_before_it_starts_is_a_cancel(
-    client: AsyncClient, sent_mail: list, fake_firestore: FakeFirestore
+    client: AsyncClient, sent_mail: list
 ) -> None:
     admin = await make_admin(client)
     profile, _ = await make_astrologer(client, admin, sent_mail)
@@ -290,26 +278,66 @@ async def test_backing_out_before_it_starts_is_a_cancel(
     assert ended.json()["data"]["status"] == "cancelled"
 
 
-async def test_a_finished_chat_hands_out_no_firebase_token(
-    client: AsyncClient, sent_mail: list, fake_firestore: FakeFirestore
+async def test_ending_a_chat_schedules_its_messages_for_removal(
+    client: AsyncClient, sent_mail: list
 ) -> None:
-    """No token means the browser cannot even sign in to read the room again."""
+    """Kept for the retention the admin set, then removed by MongoDB itself."""
+    from app.models.chat import ChatMessage
+    from app.services import settings as settings_service
+
     admin = await make_admin(client)
     profile, astro = await make_astrologer(client, admin, sent_mail)
     user = await signed_in(client)
 
     chat_id = (await ask(client, user, profile["id"])).json()["data"]["chat"]["id"]
     await client.post(f"{P}/chats/{chat_id}/accept", headers=astro)
+    await client.post(f"{P}/chats/{chat_id}/messages", headers=user, json={"text": "hello"})
+
+    # While it is open, nothing is dated to disappear.
+    live = await ChatMessage.find_one(ChatMessage.session_id == PydanticObjectId(chat_id))
+    assert live is not None and live.expires_at is None
+
     await client.post(f"{P}/chats/{chat_id}/end", headers=user)
 
-    after = (await client.get(f"{P}/chats/{chat_id}", headers=user)).json()["data"]
-    assert after["chat"]["status"] == "ended"
-    assert after["firebase"] is None
+    stored = await ChatMessage.find_one(ChatMessage.session_id == PydanticObjectId(chat_id))
+    assert stored is not None, "still there — the retention has not passed"
+    retention = (await settings_service.get_settings()).chat_retention_days
+    assert stored.expires_at is not None
+    assert (stored.expires_at - stored.sent_at).days >= retention - 1
+
+    # The session keeps the count even once the messages are gone.
+    after = (await client.get(f"{P}/chats/{chat_id}", headers=user)).json()["data"]["chat"]
+    assert after["status"] == "ended"
+    assert after["message_count"] == 1
+
+
+async def test_zero_retention_deletes_the_transcript_at_once(
+    client: AsyncClient, sent_mail: list
+) -> None:
+    """What an admin gets when they set the retention to nothing."""
+    from app.models.chat import ChatMessage
+    from app.services import settings as settings_service
+
+    admin = await make_admin(client)
+    profile, astro = await make_astrologer(client, admin, sent_mail)
+    user = await signed_in(client)
+
+    await settings_service.set_consultation_defaults(
+        changes={"chat_retention_days": 0}, admin_id=None
+    )
+
+    chat_id = (await ask(client, user, profile["id"])).json()["data"]["chat"]["id"]
+    await client.post(f"{P}/chats/{chat_id}/accept", headers=astro)
+    await client.post(f"{P}/chats/{chat_id}/messages", headers=user, json={"text": "hello"})
+    await client.post(f"{P}/chats/{chat_id}/end", headers=user)
+
+    left = await ChatMessage.find(ChatMessage.session_id == PydanticObjectId(chat_id)).count()
+    assert left == 0
 
 
 # -------------------------------------------------- chats nobody closes
 async def test_an_unanswered_chat_becomes_missed(
-    client: AsyncClient, sent_mail: list, fake_firestore: FakeFirestore,
+    client: AsyncClient, sent_mail: list,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     admin = await make_admin(client)
@@ -326,29 +354,33 @@ async def test_an_unanswered_chat_becomes_missed(
     assert after["status"] == "missed"
 
 
-async def test_an_abandoned_chat_is_closed_in_firestore_too(
-    client: AsyncClient, sent_mail: list, fake_firestore: FakeFirestore,
+async def test_an_abandoned_chat_stops_accepting_messages(
+    client: AsyncClient, sent_mail: list,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Closing it only in MongoDB would leave two browsers still able to talk."""
+    """A chat nobody closed must not stay writable, or it would keep charging."""
     admin = await make_admin(client)
     profile, astro = await make_astrologer(client, admin, sent_mail)
     user = await signed_in(client)
 
-    data = (await ask(client, user, profile["id"])).json()["data"]
-    chat_id, convo = data["chat"]["id"], data["chat"]["conversation_id"]
+    chat_id = (await ask(client, user, profile["id"])).json()["data"]["chat"]["id"]
     await client.post(f"{P}/chats/{chat_id}/accept", headers=astro)
-    assert fake_firestore.conversations[convo]["status"] == "active"
+    assert (
+        await client.post(f"{P}/chats/{chat_id}/messages", headers=user, json={"text": "hi"})
+    ).status_code == 201
 
     monkeypatch.setattr(settings, "CHAT_IDLE_GRACE_SECONDS", 0)
     from app.services import chat as chat_service
 
     assert (await chat_service.sweep())["dropped"] == 1
-    assert fake_firestore.conversations[convo]["status"] == "ended"
+    refused = await client.post(
+        f"{P}/chats/{chat_id}/messages", headers=user, json={"text": "still here?"}
+    )
+    assert refused.status_code == 400
 
 
 async def test_a_heartbeat_keeps_a_chat_open(
-    client: AsyncClient, sent_mail: list, fake_firestore: FakeFirestore,
+    client: AsyncClient, sent_mail: list,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     admin = await make_admin(client)
@@ -374,7 +406,7 @@ async def test_the_chat_sweeper_is_not_public(client: AsyncClient) -> None:
 
 
 async def test_history_shows_both_sides_their_chats(
-    client: AsyncClient, sent_mail: list, fake_firestore: FakeFirestore
+    client: AsyncClient, sent_mail: list
 ) -> None:
     admin = await make_admin(client)
     profile, astro = await make_astrologer(client, admin, sent_mail)

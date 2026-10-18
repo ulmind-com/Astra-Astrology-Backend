@@ -4,7 +4,7 @@ from beanie import Document
 
 from app.models.astrologer import Astrologer
 from app.models.call import CallSession, ZegoCallbackEvent
-from app.models.chat import ChatSession
+from app.models.chat import ChatMessage, ChatRead, ChatSession
 from app.models.earning import EarningEntry
 from app.models.otp import OtpCode
 from app.models.pending_registration import PendingRegistration
@@ -30,6 +30,8 @@ DOCUMENT_MODELS: list[type[Document]] = [
     WebhookEvent,
     CallSession,
     ZegoCallbackEvent,
+    ChatMessage,
+    ChatRead,
     ChatSession,
     EarningEntry,
 ]
@@ -38,6 +40,8 @@ __all__ = [
     "DOCUMENT_MODELS",
     "Astrologer",
     "CallSession",
+    "ChatMessage",
+    "ChatRead",
     "ChatSession",
     "EarningEntry",
     "CoinRateChange",

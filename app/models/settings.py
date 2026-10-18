@@ -43,6 +43,15 @@ class PlatformSettings(TimestampedDocument):
     min_session_minutes: int = Field(default=1, ge=1, le=600)
     max_session_minutes: int = Field(default=60, ge=1, le=600)
 
+    # How long a finished chat's messages are kept before MongoDB removes
+    # them. Counted from the moment the session ends, and applied by a TTL
+    # index rather than a job, so nothing has to run for it to happen.
+    #
+    # Zero means delete as soon as the chat ends. That is allowed, but it
+    # leaves nothing to look at when someone disputes what was said or what
+    # they were charged — so the default keeps a week.
+    chat_retention_days: int = Field(default=7, ge=0, le=3650)
+
     updated_by: PydanticObjectId | None = None
 
     class Settings:

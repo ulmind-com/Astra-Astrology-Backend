@@ -1,6 +1,7 @@
 """Chat request and response shapes."""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -33,21 +34,42 @@ class ChatOut(BaseModel):
     billing: SessionBilling | None = None
 
 
-class FirebaseCredentials(BaseModel):
-    """What the browser needs to reach Firestore as itself.
-
-    The custom token is short-lived and single-purpose: it only proves which
-    Firebase user this is, so the rules can check participation.
-    """
-
-    custom_token: str
-    uid: str
-    project_id: str
-
-
 class ChatSessionOut(BaseModel):
     chat: ChatOut
-    firebase: FirebaseCredentials | None = None
+
+
+class SendMessageRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
+
+
+class MessageOut(BaseModel):
+    id: str
+    session_id: str
+    sender_id: str
+    text: str
+    sent_at: datetime
+
+
+class ReadMarkerOut(BaseModel):
+    user_id: str
+    delivered_at: datetime | None = None
+    read_at: datetime | None = None
+
+
+class TranscriptOut(BaseModel):
+    """Everything a chat window needs to draw itself from cold.
+
+    Messages and markers together, because the ticks are worked out by
+    comparing the two and a window that had one without the other would show
+    the wrong state for a moment.
+    """
+
+    messages: list[MessageOut]
+    reads: list[ReadMarkerOut]
+
+
+class MarkProgressRequest(BaseModel):
+    level: Literal["delivered", "read"] = "read"
 
 
 class EndChatRequest(BaseModel):

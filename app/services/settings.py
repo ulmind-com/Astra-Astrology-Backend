@@ -128,6 +128,15 @@ async def set_consultation_defaults(
 
     doc.updated_by = admin_id
     await doc.save()
+
+    # Retention is not just a number for next time: shortening it should also
+    # clear out what is already stored, and lengthening it should keep what
+    # would otherwise have gone. Both mean re-dating the finished chats.
+    if "chat_retention_days" in changes and changes["chat_retention_days"] is not None:
+        from app.services import messages as message_service
+
+        await message_service.reschedule_expiry(int(changes["chat_retention_days"]))
+
     logger.info("Consultation defaults updated by {}: {}", admin_id, changes)
     # These are the numbers every unpriced astrologer charges.
     await _publish(doc, reprice=True)

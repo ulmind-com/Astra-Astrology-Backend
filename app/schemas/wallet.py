@@ -8,7 +8,7 @@ printing one would be a lie.
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field
 
 from app.models.enums import (
     ConsultationMode,
@@ -178,6 +178,8 @@ class PlatformSettingsOut(BaseModel):
     min_session_minutes: int
     max_session_minutes: int
 
+    chat_retention_days: int
+
     updated_at: datetime
 
 
@@ -190,6 +192,11 @@ class ConsultationDefaultsUpdate(BaseModel):
     default_commission_percent: float | None = Field(default=None, ge=0, le=100)
     min_session_minutes: int | None = Field(default=None, ge=1, le=600)
     max_session_minutes: int | None = Field(default=None, ge=1, le=600)
+
+    # How long a finished chat's messages are kept. Zero deletes them the
+    # moment the chat ends, which also leaves nothing to look at if the
+    # session is later disputed.
+    chat_retention_days: int | None = Field(default=None, ge=0, le=3650)
 
 
 class CoinRateUpdate(BaseModel):

@@ -11,7 +11,6 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from httpx import AsyncClient
 
-from app.core.config import settings
 from tests.test_astrologer import BASE, make_admin
 
 P = "/api/v1"
@@ -252,8 +251,9 @@ async def test_later_minutes_are_charged_as_they_start(
     await client.post(f"{P}/calls/{call_id}/accept", headers=astro)
 
     # Wind the start back so three minutes have begun.
-    from app.models.call import CallSession
     from beanie import PydanticObjectId
+
+    from app.models.call import CallSession
 
     session = await CallSession.get(PydanticObjectId(call_id))
     session.started_at = datetime.now(UTC) - timedelta(seconds=125)
@@ -284,8 +284,9 @@ async def test_fifteen_coins_at_ten_a_minute_buys_one_more_then_stops(
     assert state["billing"]["minutes_left"] == 0, "the UI can warn on this"
 
     # The next minute begins and cannot be paid for.
-    from app.models.call import CallSession
     from beanie import PydanticObjectId
+
+    from app.models.call import CallSession
 
     session = await CallSession.get(PydanticObjectId(call_id))
     session.started_at = datetime.now(UTC) - timedelta(seconds=70)
@@ -314,8 +315,9 @@ async def test_the_booked_time_is_a_hard_stop(
     call_id = (await ring(client, auth, profile["id"], 2)).json()["data"]["call"]["id"]
     await client.post(f"{P}/calls/{call_id}/accept", headers=astro)
 
-    from app.models.call import CallSession
     from beanie import PydanticObjectId
+
+    from app.models.call import CallSession
 
     session = await CallSession.get(PydanticObjectId(call_id))
     session.started_at = datetime.now(UTC) - timedelta(seconds=130)
@@ -346,8 +348,9 @@ async def test_a_price_change_does_not_touch_a_session_already_running(
     # The admin triples the price mid-call.
     await set_defaults(client, admin, default_video_coins_per_minute=15)
 
-    from app.models.call import CallSession
     from beanie import PydanticObjectId
+
+    from app.models.call import CallSession
 
     session = await CallSession.get(PydanticObjectId(call_id))
     session.started_at = datetime.now(UTC) - timedelta(seconds=65)
@@ -475,8 +478,9 @@ async def test_a_chat_that_runs_out_is_closed_in_firestore_too(
     await client.post(f"{P}/chats/{chat_id}/accept", headers=astro)
     assert fake.conversations[convo]["status"] == "active"
 
-    from app.models.chat import ChatSession
     from beanie import PydanticObjectId
+
+    from app.models.chat import ChatSession
 
     session = await ChatSession.get(PydanticObjectId(chat_id))
     session.started_at = datetime.now(UTC) - timedelta(seconds=70)

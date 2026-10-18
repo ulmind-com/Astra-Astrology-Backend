@@ -21,13 +21,12 @@ from app.core.exceptions import (
     ConflictError,
     ForbiddenError,
     NotFoundError,
-    ServiceUnavailableError,
 )
 from app.models.astrologer import Astrologer
 from app.models.chat import ChatSession
 from app.models.enums import AccountStatus, CallParty, ChatStatus, ConsultationMode
 from app.models.user import User
-from app.services import billing, firestore
+from app.services import billing
 
 LIVE_STATUSES = [ChatStatus.REQUESTED, ChatStatus.ACTIVE]
 
@@ -122,25 +121,9 @@ async def start_chat(
     )
     await session.insert()
 
-    # The Firestore id is the Mongo id, so the two halves are never guesswork.
+    # Kept equal to the Mongo id so older links and logs still resolve.
     session.conversation_id = str(session.id)
     await session.save()
-
-    try:
-        await firestore.create_conversation(
-            conversation_id=session.conversation_id,
-            participants=[user.firebase_uid, account.firebase_uid],
-            session_id=str(session.id),
-        )
-    except Exception as exc:  # noqa: BLE001 - surfaced as 503 below
-        # No conversation means no chat, so do not leave a session claiming one
-        # exists — it would block both people from starting another.
-        await session.delete()
-        logger.opt(exception=exc).error("Could not open a conversation for {}", user.email)
-        raise ServiceUnavailableError(
-            "Chat could not be started just now. Please try again.",
-            error_code="chat_unavailable",
-        ) from exc
 
     logger.info("Chat {} requested: {} -> {}", session.id, user.email, account.email)
     return session
@@ -184,8 +167,8 @@ async def accept_chat(*, session_id: PydanticObjectId, user: User) -> ChatSessio
     session.astrologer_seen_at = now
     await session.save()
 
-    # Only now can either side write a message.
-    await firestore.set_status(session.conversation_id, "active")
+    # From here `status` is ACTIVE, and that is what `messages.send` checks
+    # before accepting anything.
 
     # Minute one is paid for before it is used.
     await _charge(session)
@@ -231,21 +214,42 @@ async def _close(
     now = _now()
     started = _aware(session.started_at)
 
-    # Close the pipe first. If this server fell over right afterwards, a closed
-    # conversation that MongoDB still calls open is recoverable; an open
-    # conversation nobody is paying for is not.
-    try:
-        await firestore.set_status(session.conversation_id, "ended")
-    except Exception as exc:  # noqa: BLE001
-        logger.error("Could not close Firestore conversation {}: {}", session.conversation_id, exc)
+    # The count is kept on the session because the messages themselves are
+    # eventually removed, and history should still be able to say how much was
+    # said.
+    from app.services import messages as message_service
 
-    session.message_count = await firestore.count_messages(session.conversation_id)
+    assert session.id is not None
+    session.message_count = await message_service.count_for(session.id)
     session.status = status
     session.ended_at = now
     session.ended_by = by
     session.end_reason = reason
     session.duration_seconds = int((now - started).total_seconds()) if started else 0
     await session.save()
+
+    # Saved first, so the expiry is counted from an `ended_at` that is on
+    # disk. Never allowed to fail the close: a chat that stayed open because
+    # its cleanup threw would keep charging.
+    try:
+        await message_service.expire_session(session)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Could not schedule expiry for chat {}: {}", session.id, exc)
+
+    # Both sides' screens should close themselves rather than wait to be told.
+    try:
+        from app.services import realtime
+
+        for participant in (session.user_id, session.astrologer_user_id):
+            await realtime.publish_chat(
+                participant,
+                {
+                    "type": "chat_ended",
+                    "data": {"session_id": str(session.id), "reason": reason},
+                },
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Chat end push skipped: {}", exc)
 
     logger.info(
         "Chat {} {} by {} after {}s, {} messages",

@@ -205,3 +205,14 @@ async def publish_wallet_for_user(user_id: Any, balance_coins: int) -> None:
         {"type": "wallet", "data": {"balance_coins": balance_coins}},
         to_user=str(user_id),
     )
+
+
+# -------------------------------------------------------------------- chat
+async def publish_chat(user_id: Any, message: dict[str, Any]) -> None:
+    """A chat message or read receipt, to one participant's sockets.
+
+    Addressed per person rather than per conversation, because a socket
+    belongs to a person and may be looking at any screen — the chat window
+    does not have to be open for the message to arrive.
+    """
+    _broadcast(message, to_user=str(user_id))
