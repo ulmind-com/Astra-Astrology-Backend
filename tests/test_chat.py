@@ -68,8 +68,38 @@ async def make_astrologer(
     return profile, auth
 
 
-async def ask(client: AsyncClient, user: dict, astrologer_id: str):
-    return await client.post(f"{P}/chats", headers=user, json={"astrologer_id": astrologer_id})
+async def _top_up(user: dict, coins: int = 10_000) -> None:
+    """Puts coins in the asker's wallet.
+
+    A chat is booked for a number of minutes and refused if the wallet cannot
+    cover them, so every test that expects a chat to open has to be able to
+    pay for it. Credited through the service rather than the admin API to keep
+    this out of the way of what each test is actually about.
+    """
+    import uuid
+
+    from app.core.security import decode_token
+    from app.models.enums import TransactionReason
+    from app.services import wallet as wallet_service
+
+    token = user["Authorization"].removeprefix("Bearer ")
+    user_id = decode_token(token)["sub"]
+    await wallet_service.credit(
+        user_id=PydanticObjectId(user_id),
+        amount_coins=coins,
+        reason=TransactionReason.ADJUSTMENT,
+        idempotency_key=f"test-float:{uuid.uuid4()}",
+    )
+
+
+async def ask(client: AsyncClient, user: dict, astrologer_id: str, minutes: int = 5):
+    """Books a chat, having first made sure the asker can afford it."""
+    await _top_up(user)
+    return await client.post(
+        f"{P}/chats",
+        headers=user,
+        json={"astrologer_id": astrologer_id, "requested_minutes": minutes},
+    )
 
 
 # ------------------------------------------------------------- the happy path
