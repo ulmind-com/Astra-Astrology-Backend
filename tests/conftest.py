@@ -18,7 +18,11 @@ from app.core.config import settings
 from app.services import firebase as firebase_module
 from app.services.firebase import FirebaseUser
 
-TEST_DB_NAME = "astra_astrology_pytest"
+# A name of this run's own. Two pytest sessions against one shared database
+# drop each other's data between tests, and the failures that causes look like
+# real bugs in whatever happened to be running — which costs far more time than
+# the stray databases this leaves behind.
+TEST_DB_NAME = f"astra_astrology_pytest_{os.getpid()}"
 
 
 def _mongo_uri() -> str | None:
