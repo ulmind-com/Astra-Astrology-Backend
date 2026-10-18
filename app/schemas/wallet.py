@@ -11,6 +11,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field, computed_field
 
 from app.models.enums import (
+    ConsultationMode,
     PaymentOrderStatus,
     TransactionDirection,
     TransactionReason,
@@ -168,7 +169,27 @@ class PlatformSettingsOut(BaseModel):
     coins_per_rupee: int
     min_recharge_paise: int
     max_recharge_paise: int
+
+    default_chat_coins_per_minute: int
+    default_call_coins_per_minute: int
+    default_video_coins_per_minute: int
+    default_commission_percent: float
+
+    min_session_minutes: int
+    max_session_minutes: int
+
     updated_at: datetime
+
+
+class ConsultationDefaultsUpdate(BaseModel):
+    """Any field may be sent on its own; the rest keep their value."""
+
+    default_chat_coins_per_minute: int | None = Field(default=None, ge=1, le=100_000)
+    default_call_coins_per_minute: int | None = Field(default=None, ge=1, le=100_000)
+    default_video_coins_per_minute: int | None = Field(default=None, ge=1, le=100_000)
+    default_commission_percent: float | None = Field(default=None, ge=0, le=100)
+    min_session_minutes: int | None = Field(default=None, ge=1, le=600)
+    max_session_minutes: int | None = Field(default=None, ge=1, le=600)
 
 
 class CoinRateUpdate(BaseModel):
@@ -195,3 +216,59 @@ class CoinRateChangeOut(BaseModel):
     changed_by_email: str | None = None
     note: str | None = None
     created_at: datetime
+
+
+# ------------------------------------------------------------- consultation
+class ConsultationQuote(BaseModel):
+    """What a session with this astrologer costs me, right now."""
+
+    mode: ConsultationMode
+    coins_per_minute: int
+    balance_coins: int
+    affordable_minutes: int
+    min_minutes: int
+    max_minutes: int
+    # What the longest affordable booking would cost, for the picker.
+    currency: str = "INR"
+
+
+class EarningsBucket(BaseModel):
+    earning_paise: int
+    minutes: int
+    sessions: int
+
+
+class EarningsSummary(BaseModel):
+    """An astrologer sees money, never the commission that was taken."""
+
+    today: EarningsBucket
+    this_week: EarningsBucket
+    this_month: EarningsBucket
+    all_time: EarningsBucket
+
+
+class EarningRow(BaseModel):
+    id: str
+    mode: ConsultationMode
+    minutes: int
+    earning_paise: int
+    created_at: datetime
+
+
+class AdminEarningRow(EarningRow):
+    """The admin sees the whole split."""
+
+    astrologer_id: str
+    astrologer_name: str | None = None
+    coins_charged: int
+    gross_paise: int
+    commission_percent: float
+    commission_paise: int
+
+
+class AdminEarningsSummary(BaseModel):
+    gross_paise: int
+    commission_paise: int
+    payout_paise: int
+    coins_charged: int
+    sessions: int

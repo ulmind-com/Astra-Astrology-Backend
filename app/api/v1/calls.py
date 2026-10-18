@@ -14,6 +14,7 @@ from app.models.call import CallSession
 from app.models.enums import UserRole
 from app.models.user import User
 from app.schemas.call import (
+    SessionBilling,
     CallCredentials,
     CallOut,
     CallPeer,
@@ -23,7 +24,9 @@ from app.schemas.call import (
     SweepResult,
 )
 from app.schemas.common import ApiResponse, Paginated, build_page
+from app.services import billing
 from app.services import call as call_service
+from app.services import wallet as wallet_service
 from app.services import zego
 
 router = APIRouter(prefix="/calls", tags=["calls"])
@@ -43,6 +46,20 @@ async def _peer_for(session: CallSession, viewer: User) -> CallPeer | None:
     return CallPeer(name=caller.full_name, avatar_url=caller.avatar_url)
 
 
+async def _billing_of(session: CallSession) -> SessionBilling:
+    wallet = await wallet_service.get_or_create_wallet(session.user_id)
+    return SessionBilling(
+        coins_per_minute=session.coins_per_minute,
+        requested_minutes=session.requested_minutes,
+        minutes_charged=session.minutes_charged,
+        coins_charged=session.coins_charged,
+        balance_coins=wallet.balance_coins,
+        minutes_left=billing.affordable_minutes(
+            wallet.balance_coins, session.coins_per_minute
+        ),
+    )
+
+
 async def to_call(session: CallSession, viewer: User | None = None) -> CallOut:
     return CallOut(
         id=str(session.id),
@@ -59,6 +76,7 @@ async def to_call(session: CallSession, viewer: User | None = None) -> CallOut:
         ended_by=session.ended_by,
         end_reason=session.end_reason,
         created_at=session.created_at,
+        billing=await _billing_of(session),
     )
 
 
@@ -83,7 +101,10 @@ def _credentials(session: CallSession, user: User, token: str) -> CallCredential
 )
 async def start_call(payload: StartCallRequest, user: CurrentUser) -> ApiResponse[CallSessionOut]:
     session, token = await call_service.start_call(
-        user=user, astrologer_id=PydanticObjectId(payload.astrologer_id), mode=payload.mode
+        user=user,
+        astrologer_id=PydanticObjectId(payload.astrologer_id),
+        mode=payload.mode,
+        requested_minutes=payload.requested_minutes,
     )
     return ApiResponse(
         message="Calling…",

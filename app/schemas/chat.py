@@ -5,11 +5,12 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from app.models.enums import CallParty, ChatStatus
-from app.schemas.call import CallPeer
+from app.schemas.call import CallPeer, SessionBilling
 
 
 class StartChatRequest(BaseModel):
     astrologer_id: str
+    requested_minutes: int = Field(ge=1, le=600)
 
 
 class ChatOut(BaseModel):
@@ -29,6 +30,7 @@ class ChatOut(BaseModel):
     ended_by: CallParty | None = None
     end_reason: str | None = None
     created_at: datetime
+    billing: SessionBilling | None = None
 
 
 class FirebaseCredentials(BaseModel):

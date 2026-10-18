@@ -5,6 +5,7 @@ from beanie import Document
 from app.models.astrologer import Astrologer
 from app.models.call import CallSession, ZegoCallbackEvent
 from app.models.chat import ChatSession
+from app.models.earning import EarningEntry
 from app.models.otp import OtpCode
 from app.models.pending_registration import PendingRegistration
 from app.models.settings import CoinRateChange, PlatformSettings
@@ -30,6 +31,7 @@ DOCUMENT_MODELS: list[type[Document]] = [
     CallSession,
     ZegoCallbackEvent,
     ChatSession,
+    EarningEntry,
 ]
 
 __all__ = [
@@ -37,6 +39,7 @@ __all__ = [
     "Astrologer",
     "CallSession",
     "ChatSession",
+    "EarningEntry",
     "CoinRateChange",
     "OtpCode",
     "PaymentOrder",

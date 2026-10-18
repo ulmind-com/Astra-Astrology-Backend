@@ -32,15 +32,20 @@ class Availability(BaseModel):
 
 
 class RateCard(BaseModel):
-    """Per-minute pricing. `offer_*`, when set, is what the user actually pays."""
+    """What this astrologer charges, in **coins per started minute**.
 
-    chat_per_minute: float = Field(default=0.0, ge=0)
-    call_per_minute: float = Field(default=0.0, ge=0)
-    video_per_minute: float = Field(default=0.0, ge=0)
-    offer_chat_per_minute: float | None = Field(default=None, ge=0)
-    offer_call_per_minute: float | None = Field(default=None, ge=0)
-    offer_video_per_minute: float | None = Field(default=None, ge=0)
-    currency: str = "INR"
+    Coins rather than rupees because that is what a wallet holds. Storing
+    rupees and converting at the coin rate would mean an admin changing
+    `coins_per_rupee` silently re-priced every astrologer on the platform.
+
+    `None` means "whatever the platform charges" — so a new astrologer needs no
+    pricing decision to go live, and changing the default moves everyone who
+    has not been priced individually.
+    """
+
+    chat_coins_per_minute: int | None = Field(default=None, ge=1, le=100_000)
+    call_coins_per_minute: int | None = Field(default=None, ge=1, le=100_000)
+    video_coins_per_minute: int | None = Field(default=None, ge=1, le=100_000)
 
 
 class RatingSummary(BaseModel):
@@ -81,7 +86,9 @@ class Astrologer(TimestampedDocument):
     modes_enabled: list[ConsultationMode] = Field(
         default_factory=lambda: [ConsultationMode.CHAT, ConsultationMode.CALL]
     )
-    commission_percent: float = Field(default=50.0, ge=0, le=100)
+    # None means the platform's default. An explicit value is this
+    # astrologer's own deal.
+    commission_percent: float | None = Field(default=None, ge=0, le=100)
     bank: BankDetails = Field(default_factory=BankDetails)
 
     # ------------------------------------------------------------ platform

@@ -29,6 +29,20 @@ class PlatformSettings(TimestampedDocument):
     min_recharge_paise: int = Field(default=1_000, ge=100)  # Rs 10
     max_recharge_paise: int = Field(default=5_000_000, ge=100)  # Rs 50,000
 
+    # What a consultation costs, in coins per started minute. An astrologer may
+    # override any of these; leaving theirs unset means "use the platform's".
+    # One place to set a price means onboarding needs no pricing decision.
+    default_chat_coins_per_minute: int = Field(default=3, ge=1, le=100_000)
+    default_call_coins_per_minute: int = Field(default=5, ge=1, le=100_000)
+    default_video_coins_per_minute: int = Field(default=8, ge=1, le=100_000)
+
+    # The platform's share. Also overridable per astrologer.
+    default_commission_percent: float = Field(default=20.0, ge=0, le=100)
+
+    # The longest a user may book in one go, and the least.
+    min_session_minutes: int = Field(default=1, ge=1, le=600)
+    max_session_minutes: int = Field(default=60, ge=1, le=600)
+
     updated_by: PydanticObjectId | None = None
 
     class Settings:

@@ -12,7 +12,7 @@ from app.models.astrologer import Astrologer
 from app.models.chat import ChatSession
 from app.models.enums import ChatStatus, UserRole
 from app.models.user import User
-from app.schemas.call import CallPeer
+from app.schemas.call import CallPeer, SessionBilling
 from app.schemas.chat import (
     ChatOut,
     ChatSessionOut,
@@ -22,7 +22,9 @@ from app.schemas.chat import (
     StartChatRequest,
 )
 from app.schemas.common import ApiResponse, Paginated, build_page
+from app.services import billing
 from app.services import chat as chat_service
+from app.services import wallet as wallet_service
 from app.services import firestore
 
 router = APIRouter(prefix="/chats", tags=["chat"])
@@ -43,6 +45,20 @@ async def _peer_for(session: ChatSession, viewer: User) -> CallPeer | None:
     return CallPeer(name=asker.full_name, avatar_url=asker.avatar_url)
 
 
+async def _billing_of(session: ChatSession) -> SessionBilling:
+    wallet = await wallet_service.get_or_create_wallet(session.user_id)
+    return SessionBilling(
+        coins_per_minute=session.coins_per_minute,
+        requested_minutes=session.requested_minutes,
+        minutes_charged=session.minutes_charged,
+        coins_charged=session.coins_charged,
+        balance_coins=wallet.balance_coins,
+        minutes_left=billing.affordable_minutes(
+            wallet.balance_coins, session.coins_per_minute
+        ),
+    )
+
+
 async def to_chat(session: ChatSession, viewer: User | None = None) -> ChatOut:
     return ChatOut(
         id=str(session.id),
@@ -59,6 +75,7 @@ async def to_chat(session: ChatSession, viewer: User | None = None) -> ChatOut:
         ended_by=session.ended_by,
         end_reason=session.end_reason,
         created_at=session.created_at,
+        billing=await _billing_of(session),
     )
 
 
@@ -87,7 +104,9 @@ async def _session_out(session: ChatSession, user: User) -> ChatSessionOut:
 )
 async def start_chat(payload: StartChatRequest, user: CurrentUser) -> ApiResponse[ChatSessionOut]:
     session = await chat_service.start_chat(
-        user=user, astrologer_id=PydanticObjectId(payload.astrologer_id)
+        user=user,
+        astrologer_id=PydanticObjectId(payload.astrologer_id),
+        requested_minutes=payload.requested_minutes,
     )
     return ApiResponse(message="Waiting for the astrologer…", data=await _session_out(session, user))
 

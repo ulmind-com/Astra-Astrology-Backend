@@ -90,6 +90,28 @@ async def set_recharge_limits(
     return doc
 
 
+async def set_consultation_defaults(
+    *, changes: dict[str, int | float | None], admin_id: PydanticObjectId | None
+) -> PlatformSettings:
+    """Sets what a consultation costs and what the platform keeps."""
+    doc = await get_settings()
+
+    for field, value in changes.items():
+        if value is not None:
+            setattr(doc, field, value)
+
+    if doc.min_session_minutes > doc.max_session_minutes:
+        raise BadRequestError(
+            "The shortest session cannot be longer than the longest.",
+            error_code="invalid_session_minutes",
+        )
+
+    doc.updated_by = admin_id
+    await doc.save()
+    logger.info("Consultation defaults updated by {}: {}", admin_id, changes)
+    return doc
+
+
 async def rate_history(limit: int = 50) -> list[CoinRateChange]:
     return await CoinRateChange.find().sort(-CoinRateChange.created_at).limit(limit).to_list()
 

@@ -32,7 +32,7 @@ from app.models.enums import (
     ConsultationMode,
 )
 from app.models.user import User
-from app.services import zego
+from app.services import billing, zego
 
 # A call in one of these is still going on, so neither side may start another.
 LIVE_STATUSES = [CallStatus.RINGING, CallStatus.ACTIVE]
@@ -75,7 +75,11 @@ async def _live_call_for(user_id: PydanticObjectId) -> CallSession | None:
 
 
 async def start_call(
-    *, user: User, astrologer_id: PydanticObjectId, mode: ConsultationMode
+    *,
+    user: User,
+    astrologer_id: PydanticObjectId,
+    mode: ConsultationMode,
+    requested_minutes: int,
 ) -> tuple[CallSession, str]:
     """Rings an astrologer. Returns the session and the caller's room token."""
     # A voice call and a video call are the same session down the same room —
@@ -123,6 +127,13 @@ async def start_call(
             "This astrologer is on another call.", error_code="astrologer_busy"
         )
 
+    # Price it and check the wallet before anyone's phone rings — being cut off
+    # two seconds in is worse than being told up front.
+    price = await billing.price_for(profile, mode)
+    await billing.check_can_start(
+        user_id=user.id, price=price, requested_minutes=requested_minutes
+    )
+
     # A fresh room every time: reusing one would let an old token back in.
     room_id = f"call_{secrets.token_hex(10)}"
     session = CallSession(
@@ -133,6 +144,10 @@ async def start_call(
         room_id=room_id,
         status=CallStatus.RINGING,
         user_seen_at=_now(),
+        coins_per_minute=price.coins_per_minute,
+        commission_percent=price.commission_percent,
+        coin_value_paise=price.coin_value_paise,
+        requested_minutes=requested_minutes,
     )
     await session.insert()
 
@@ -186,6 +201,9 @@ async def accept_call(*, session_id: PydanticObjectId, user: User) -> tuple[Call
     session.started_at = now
     session.astrologer_seen_at = now
     await session.save()
+
+    # Minute one is paid for before it is spoken.
+    await _charge(session)
 
     logger.info("Call {} answered.", session.id)
     return session, zego.generate_token(user_id=str(user.id), room_id=session.room_id)
@@ -242,6 +260,51 @@ async def _close(
     return session
 
 
+def _price_of(session: CallSession) -> billing.Price:
+    return billing.Price(
+        coins_per_minute=session.coins_per_minute,
+        commission_percent=session.commission_percent,
+        coin_value_paise=session.coin_value_paise,
+    )
+
+
+async def _charge(session: CallSession) -> billing.ChargeResult:
+    """Charges whatever minutes are due, and closes the call if it cannot.
+
+    Called from the heartbeat and from the sweeper, so a client that stops
+    talking to us cannot use minutes it never paid for.
+    """
+    result = await billing.charge_due(
+        session_id=session.id,
+        mode=session.mode,
+        user_id=session.user_id,
+        astrologer_id=session.astrologer_id,
+        astrologer_user_id=session.astrologer_user_id,
+        started_at=session.started_at or _now(),
+        price=_price_of(session),
+        already_charged=session.minutes_charged,
+        cap_minutes=session.requested_minutes or None,
+    )
+
+    if result.coins_charged:
+        session.minutes_charged = result.minutes_charged
+        session.coins_charged += result.coins_charged
+        session.earning_paise += result.earning_paise
+        await session.save()
+
+    if result.out_of_coins:
+        await _close(session, status=CallStatus.ENDED, by=CallParty.SYSTEM,
+                     reason="Ran out of coins")
+    elif session.requested_minutes and result.minutes_charged >= session.requested_minutes:
+        # The booked time is up. They chose it, so it is not a failure.
+        elapsed = billing.minutes_elapsed(session.started_at or _now())
+        if elapsed > session.requested_minutes:
+            await _close(session, status=CallStatus.ENDED, by=CallParty.SYSTEM,
+                         reason="The booked time is over")
+
+    return result
+
+
 async def heartbeat(*, session_id: PydanticObjectId, user: User) -> CallSession:
     """Says "I am still here". The sweeper reads these."""
     session, party = await load_for(session_id, user)
@@ -254,6 +317,10 @@ async def heartbeat(*, session_id: PydanticObjectId, user: User) -> CallSession:
     else:
         session.astrologer_seen_at = now
     await session.save()
+
+    if session.status is CallStatus.ACTIVE:
+        await _charge(session)
+
     return session
 
 
@@ -319,6 +386,13 @@ async def sweep() -> dict[str, int]:
     max_len = timedelta(seconds=settings.CALL_MAX_DURATION_SECONDS)
 
     async for session in CallSession.find({"status": CallStatus.ACTIVE.value}):
+        # Charge first: a session about to be closed still used the minutes it
+        # used, and this is the backstop for a client that stopped heartbeating.
+        await _charge(session)
+        if session.status is not CallStatus.ACTIVE:
+            ended += 1
+            continue
+
         started = _aware(session.started_at) or _aware(session.created_at) or now
         if now - started > max_len:
             await _close(session, status=CallStatus.ENDED, by=CallParty.SYSTEM,

@@ -10,6 +10,8 @@ from app.models.enums import CallParty, CallStatus, ConsultationMode
 class StartCallRequest(BaseModel):
     astrologer_id: str
     mode: ConsultationMode = ConsultationMode.VIDEO
+    # How long they booked. A hard cap, and what the wallet is checked against.
+    requested_minutes: int = Field(ge=1, le=600)
 
 
 class CallPeer(BaseModel):
@@ -17,6 +19,19 @@ class CallPeer(BaseModel):
 
     name: str
     avatar_url: str | None = None
+
+
+class SessionBilling(BaseModel):
+    """What this session costs and how far it has got."""
+
+    coins_per_minute: int
+    requested_minutes: int
+    minutes_charged: int
+    coins_charged: int
+    # Coins left in the wallet, and what that buys at this rate — so the UI can
+    # warn before the wallet empties rather than after.
+    balance_coins: int
+    minutes_left: int
 
 
 class CallOut(BaseModel):
@@ -36,6 +51,7 @@ class CallOut(BaseModel):
     ended_by: CallParty | None = None
     end_reason: str | None = None
     created_at: datetime
+    billing: SessionBilling | None = None
 
 
 class CallCredentials(BaseModel):

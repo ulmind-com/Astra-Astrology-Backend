@@ -13,6 +13,7 @@ from app.models.user import User
 from app.schemas.common import ApiResponse
 from app.schemas.wallet import (
     CoinRateChangeOut,
+    ConsultationDefaultsUpdate,
     CoinRateUpdate,
     PlatformSettingsOut,
     RechargeLimitsUpdate,
@@ -27,6 +28,12 @@ def _out(doc) -> PlatformSettingsOut:
         coins_per_rupee=doc.coins_per_rupee,
         min_recharge_paise=doc.min_recharge_paise,
         max_recharge_paise=doc.max_recharge_paise,
+        default_chat_coins_per_minute=doc.default_chat_coins_per_minute,
+        default_call_coins_per_minute=doc.default_call_coins_per_minute,
+        default_video_coins_per_minute=doc.default_video_coins_per_minute,
+        default_commission_percent=doc.default_commission_percent,
+        min_session_minutes=doc.min_session_minutes,
+        max_session_minutes=doc.max_session_minutes,
         updated_at=doc.updated_at,
     )
 
@@ -78,6 +85,28 @@ async def update_recharge_limits(
         message=(
             f"Recharges are now ₹{doc.min_recharge_paise // 100} to "
             f"₹{doc.max_recharge_paise // 100}."
+        ),
+        data=_out(doc),
+    )
+
+
+@router.patch(
+    "/consultation",
+    response_model=ApiResponse[PlatformSettingsOut],
+    summary="Set the default per-minute prices and commission",
+)
+async def update_consultation_defaults(
+    payload: ConsultationDefaultsUpdate, admin: AdminUser
+) -> ApiResponse[PlatformSettingsOut]:
+    doc = await settings_service.set_consultation_defaults(
+        changes=payload.model_dump(exclude_unset=True), admin_id=admin.id
+    )
+    return ApiResponse(
+        message=(
+            f"Chat {doc.default_chat_coins_per_minute}, call "
+            f"{doc.default_call_coins_per_minute}, video "
+            f"{doc.default_video_coins_per_minute} coins a minute · "
+            f"{doc.default_commission_percent:g}% commission."
         ),
         data=_out(doc),
     )

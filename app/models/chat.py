@@ -51,6 +51,22 @@ class ChatSession(TimestampedDocument):
     user_seen_at: datetime | None = None
     astrologer_seen_at: datetime | None = None
 
+    # --- price, frozen when the session starts ---------------------------
+    # An admin re-pricing mid-session must not change a session in progress,
+    # and a later change to the coin rate must not restate what was earned.
+    coins_per_minute: int = Field(default=0, ge=0)
+    commission_percent: float = Field(default=0.0, ge=0, le=100)
+    coin_value_paise: int = Field(default=0, ge=0)
+
+    # What the user booked. A hard cap: the session ends here even if the
+    # wallet could carry on.
+    requested_minutes: int = Field(default=0, ge=0)
+
+    # --- what has actually been taken ------------------------------------
+    minutes_charged: int = Field(default=0, ge=0)
+    coins_charged: int = Field(default=0, ge=0)
+    earning_paise: int = Field(default=0, ge=0)
+
     message_count: int = 0
 
     class Settings:

@@ -10,6 +10,7 @@ from app.api.v1 import (
     auth,
     calls,
     chats,
+    earnings,
     health,
     users,
     wallet,
@@ -30,4 +31,6 @@ api_router.include_router(calls.maintenance_router)
 api_router.include_router(calls.webhook_router)
 api_router.include_router(chats.router)
 api_router.include_router(chats.maintenance_router)
+api_router.include_router(earnings.router)
+api_router.include_router(earnings.admin_router)
 api_router.include_router(wallet.webhook_router)

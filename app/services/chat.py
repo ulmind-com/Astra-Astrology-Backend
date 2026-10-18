@@ -27,7 +27,7 @@ from app.models.astrologer import Astrologer
 from app.models.chat import ChatSession
 from app.models.enums import AccountStatus, CallParty, ChatStatus, ConsultationMode
 from app.models.user import User
-from app.services import firestore
+from app.services import billing, firestore
 
 LIVE_STATUSES = [ChatStatus.REQUESTED, ChatStatus.ACTIVE]
 
@@ -51,7 +51,9 @@ async def _live_chat_for(user_id: PydanticObjectId) -> ChatSession | None:
     )
 
 
-async def start_chat(*, user: User, astrologer_id: PydanticObjectId) -> ChatSession:
+async def start_chat(
+    *, user: User, astrologer_id: PydanticObjectId, requested_minutes: int
+) -> ChatSession:
     """Asks an astrologer for a chat."""
     if not user.firebase_uid:
         # Without a Firebase identity the browser cannot sign in to Firestore,
@@ -95,6 +97,11 @@ async def start_chat(*, user: User, astrologer_id: PydanticObjectId) -> ChatSess
             "This astrologer is in another chat.", error_code="astrologer_busy"
         )
 
+    price = await billing.price_for(profile, ConsultationMode.CHAT)
+    await billing.check_can_start(
+        user_id=user.id, price=price, requested_minutes=requested_minutes
+    )
+
     session = ChatSession(
         user_id=user.id,
         astrologer_id=profile.id,
@@ -104,6 +111,10 @@ async def start_chat(*, user: User, astrologer_id: PydanticObjectId) -> ChatSess
         conversation_id="pending",
         status=ChatStatus.REQUESTED,
         user_seen_at=_now(),
+        coins_per_minute=price.coins_per_minute,
+        commission_percent=price.commission_percent,
+        coin_value_paise=price.coin_value_paise,
+        requested_minutes=requested_minutes,
     )
     await session.insert()
 
@@ -171,6 +182,9 @@ async def accept_chat(*, session_id: PydanticObjectId, user: User) -> ChatSessio
 
     # Only now can either side write a message.
     await firestore.set_status(session.conversation_id, "active")
+
+    # Minute one is paid for before it is used.
+    await _charge(session)
 
     logger.info("Chat {} accepted.", session.id)
     return session
@@ -240,6 +254,50 @@ async def _close(
     return session
 
 
+def _price_of(session: ChatSession) -> billing.Price:
+    return billing.Price(
+        coins_per_minute=session.coins_per_minute,
+        commission_percent=session.commission_percent,
+        coin_value_paise=session.coin_value_paise,
+    )
+
+
+async def _charge(session: ChatSession) -> billing.ChargeResult:
+    """Charges the minutes due, and closes the chat if the wallet cannot.
+
+    Closing also shuts the Firestore conversation, so a browser that ignores
+    the UI still cannot send another message.
+    """
+    result = await billing.charge_due(
+        session_id=session.id,
+        mode=ConsultationMode.CHAT,
+        user_id=session.user_id,
+        astrologer_id=session.astrologer_id,
+        astrologer_user_id=session.astrologer_user_id,
+        started_at=session.started_at or _now(),
+        price=_price_of(session),
+        already_charged=session.minutes_charged,
+        cap_minutes=session.requested_minutes or None,
+    )
+
+    if result.coins_charged:
+        session.minutes_charged = result.minutes_charged
+        session.coins_charged += result.coins_charged
+        session.earning_paise += result.earning_paise
+        await session.save()
+
+    if result.out_of_coins:
+        await _close(session, status=ChatStatus.ENDED, by=CallParty.SYSTEM,
+                     reason="Ran out of coins")
+    elif session.requested_minutes and result.minutes_charged >= session.requested_minutes:
+        elapsed = billing.minutes_elapsed(session.started_at or _now())
+        if elapsed > session.requested_minutes:
+            await _close(session, status=ChatStatus.ENDED, by=CallParty.SYSTEM,
+                         reason="The booked time is over")
+
+    return result
+
+
 async def heartbeat(*, session_id: PydanticObjectId, user: User) -> ChatSession:
     session, party = await load_for(session_id, user)
     if session.status not in LIVE_STATUSES:
@@ -251,6 +309,10 @@ async def heartbeat(*, session_id: PydanticObjectId, user: User) -> ChatSession:
     else:
         session.astrologer_seen_at = now
     await session.save()
+
+    if session.status is ChatStatus.ACTIVE:
+        await _charge(session)
+
     return session
 
 
@@ -298,6 +360,11 @@ async def sweep() -> dict[str, int]:
     max_len = timedelta(seconds=settings.CHAT_MAX_DURATION_SECONDS)
 
     async for session in ChatSession.find({"status": ChatStatus.ACTIVE.value}):
+        await _charge(session)
+        if session.status is not ChatStatus.ACTIVE:
+            ended += 1
+            continue
+
         started = _aware(session.started_at) or _aware(session.created_at) or now
         if now - started > max_len:
             await _close(session, status=ChatStatus.ENDED, by=CallParty.SYSTEM,

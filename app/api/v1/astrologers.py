@@ -6,9 +6,12 @@ path wins over the slug lookup.
 
 from typing import Annotated
 
+from beanie import PydanticObjectId
 from fastapi import APIRouter, File, Query, UploadFile, status
 
-from app.api.dependencies import AstrologerUser, CurrentAstrologer
+from app.api.dependencies import AstrologerUser, CurrentAstrologer, CurrentUser
+from app.core.exceptions import NotFoundError
+from app.models.astrologer import Astrologer
 from app.models.enums import ConsultationMode, Skill
 from app.schemas.astrologer import (
     AstrologerFilters,
@@ -18,6 +21,10 @@ from app.schemas.astrologer import (
     AvailabilityUpdate,
     GalleryUploadResult,
 )
+from app.schemas.wallet import ConsultationQuote
+from app.services import billing
+from app.services import settings as settings_service
+from app.services import wallet as wallet_service
 from app.schemas.common import ApiResponse, MessageResponse, Paginated
 from app.services import astrologer as astrologer_service
 
@@ -160,4 +167,42 @@ async def list_astrologers(
 async def get_astrologer(identifier: str) -> ApiResponse[AstrologerPublic]:
     return ApiResponse(
         message="Astrologer fetched.", data=await astrologer_service.get_public(identifier)
+    )
+
+
+@router.get(
+    "/{astrologer_id}/quote",
+    response_model=ApiResponse[ConsultationQuote],
+    summary="What a session with this astrologer costs me",
+)
+async def consultation_quote(
+    astrologer_id: PydanticObjectId,
+    mode: ConsultationMode,
+    user: CurrentUser,
+) -> ApiResponse[ConsultationQuote]:
+    """Drives the "how long do you want to talk?" picker.
+
+    Returned before anything is booked, so the choice is made against real
+    numbers rather than a guess the server then refuses.
+    """
+    profile = await Astrologer.get(astrologer_id)
+    if profile is None:
+        raise NotFoundError("Astrologer not found.", error_code="astrologer_not_found")
+
+    price = await billing.price_for(profile, mode)
+    platform = await settings_service.get_settings()
+    wallet = await wallet_service.get_or_create_wallet(user.id)
+
+    return ApiResponse(
+        message="Quote.",
+        data=ConsultationQuote(
+            mode=mode,
+            coins_per_minute=price.coins_per_minute,
+            balance_coins=wallet.balance_coins,
+            affordable_minutes=billing.affordable_minutes(
+                wallet.balance_coins, price.coins_per_minute
+            ),
+            min_minutes=platform.min_session_minutes,
+            max_minutes=platform.max_session_minutes,
+        ),
     )
