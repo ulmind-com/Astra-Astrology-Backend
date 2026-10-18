@@ -75,6 +75,57 @@ service cloud.firestore {
         // Immutable once written.
         allow update, delete: if false;
       }
+
+      // Read receipts.
+      //
+      // One document per person, named after their uid, holding how far they
+      // have got. Keeping it here rather than on each message is what makes
+      // ticks cheap: marking a hundred messages read is one small write, not a
+      // hundred — and every tick is then worked out by comparing timestamps.
+      //
+      // The document id being the uid is also what makes the rule simple:
+      // you can only ever write your own.
+      match /reads/{uid} {
+
+        function inThisChat() {
+          return request.auth != null
+            && request.auth.uid in conversation().participants;
+        }
+
+        allow read: if inThisChat();
+
+        // Server time only. A client-set clock could claim a message was read
+        // before it was sent.
+        function fresh(field) {
+          return !(field in request.resource.data)
+            || request.resource.data[field] == request.time;
+        }
+
+        // A merge carries the field it did not touch forward unchanged. That
+        // has to be allowed, or marking "delivered" after having once marked
+        // "read" would be refused — the merged document still holds the old
+        // readAt, which is not request.time. The tick would then stop at one
+        // for every message that arrives while the tab is in the background.
+        function freshOrUnchanged(field) {
+          return !(field in request.resource.data)
+            || request.resource.data[field] == request.time
+            || request.resource.data[field] == resource.data.get(field, null);
+        }
+
+        allow create: if inThisChat()
+          && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['deliveredAt', 'readAt'])
+          && fresh('deliveredAt')
+          && fresh('readAt');
+
+        allow update: if inThisChat()
+          && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['deliveredAt', 'readAt'])
+          && freshOrUnchanged('deliveredAt')
+          && freshOrUnchanged('readAt');
+
+        allow delete: if false;
+      }
     }
   }
 }
