@@ -183,6 +183,65 @@ async def test_an_offline_astrologer_cannot_be_called(
     assert response.json()["error_code"] == "astrologer_offline"
 
 
+async def test_a_voice_call_uses_the_same_flow_as_video(
+    client: AsyncClient, sent_mail: list
+) -> None:
+    """Voice and video are one session down one room; only the camera differs,
+    and that is the client's choice, not the server's."""
+    admin = await make_admin(client)
+    profile, astro = await make_astrologer(client, admin, sent_mail)
+    caller = await signed_in(client)
+
+    started = await client.post(
+        f"{P}/calls", headers=caller, json={"astrologer_id": profile["id"], "mode": "call"}
+    )
+    assert started.status_code == 201, started.text
+    data = started.json()["data"]
+    assert data["call"]["mode"] == "call"
+    assert data["credentials"]["token"].startswith("04")
+
+    call_id = data["call"]["id"]
+    accepted = await client.post(f"{P}/calls/{call_id}/accept", headers=astro)
+    assert accepted.json()["data"]["call"]["status"] == "active"
+
+    ended = await client.post(f"{P}/calls/{call_id}/end", headers=caller)
+    assert ended.json()["data"]["status"] == "ended"
+
+
+async def test_a_voice_call_is_refused_when_calls_are_paused(
+    client: AsyncClient, sent_mail: list
+) -> None:
+    admin = await make_admin(client)
+    profile, astro = await make_astrologer(client, admin, sent_mail)
+    caller = await signed_in(client)
+
+    await client.patch(
+        f"{P}/astrologers/me/availability", headers=astro, json={"is_available_for_call": False}
+    )
+
+    response = await client.post(
+        f"{P}/calls", headers=caller, json={"astrologer_id": profile["id"], "mode": "call"}
+    )
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "mode_paused"
+
+    # Video is a separate switch and still works.
+    assert (await ring(client, caller, profile["id"])).status_code == 201
+
+
+async def test_chat_cannot_be_dialled(client: AsyncClient, sent_mail: list) -> None:
+    """Chat is a conversation, not a call, so it does not open a room."""
+    admin = await make_admin(client)
+    profile, _ = await make_astrologer(client, admin, sent_mail)
+    caller = await signed_in(client)
+
+    response = await client.post(
+        f"{P}/calls", headers=caller, json={"astrologer_id": profile["id"], "mode": "chat"}
+    )
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "mode_unavailable"
+
+
 async def test_an_astrologer_who_does_not_do_video_cannot_be_called(
     client: AsyncClient, sent_mail: list
 ) -> None:

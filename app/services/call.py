@@ -37,6 +37,22 @@ from app.services import zego
 # A call in one of these is still going on, so neither side may start another.
 LIVE_STATUSES = [CallStatus.RINGING, CallStatus.ACTIVE]
 
+# What can be dialled. Chat is a conversation, not a call, so it is not here.
+CALLABLE_MODES = (ConsultationMode.CALL, ConsultationMode.VIDEO)
+
+MODE_NOUN = {
+    ConsultationMode.CALL: "voice call",
+    ConsultationMode.VIDEO: "video call",
+    ConsultationMode.CHAT: "chat",
+}
+
+
+def _accepts_now(profile: Astrologer, mode: ConsultationMode) -> bool:
+    """Whether this astrologer has this kind of call switched on right now."""
+    if mode is ConsultationMode.VIDEO:
+        return profile.availability.is_available_for_video
+    return profile.availability.is_available_for_call
+
 
 def _now() -> datetime:
     return datetime.now(UTC)
@@ -62,10 +78,12 @@ async def start_call(
     *, user: User, astrologer_id: PydanticObjectId, mode: ConsultationMode
 ) -> tuple[CallSession, str]:
     """Rings an astrologer. Returns the session and the caller's room token."""
-    if mode is not ConsultationMode.VIDEO:
-        # Only video is built so far; chat and voice reuse this same session.
+    # A voice call and a video call are the same session down the same room —
+    # the only difference is whether the camera is on, which the client decides.
+    # Chat is not a call at all and does not belong here.
+    if mode not in CALLABLE_MODES:
         raise BadRequestError(
-            "Only video calls are available right now.", error_code="mode_unavailable"
+            "That is not something you can call about.", error_code="mode_unavailable"
         )
 
     profile = await Astrologer.get(astrologer_id)
@@ -78,20 +96,22 @@ async def start_call(
             "This astrologer is not available.", error_code="astrologer_unavailable"
         )
 
-    if ConsultationMode.VIDEO not in profile.modes_enabled:
+    noun = MODE_NOUN[mode]
+
+    if mode not in profile.modes_enabled:
         raise BadRequestError(
-            "This astrologer does not take video calls.", error_code="mode_not_offered"
+            f"This astrologer does not take {noun}s.", error_code="mode_not_offered"
         )
     if not profile.availability.is_online:
         raise BadRequestError(
             "This astrologer is offline right now.", error_code="astrologer_offline"
         )
-    # Online, offers video, but has turned video off for now — a separate thing
+    # Online, offers this kind of call, but has paused it — a different thing
     # from not offering it at all, and the message should say so.
-    if not profile.availability.is_available_for_video:
+    if not _accepts_now(profile, mode):
         raise BadRequestError(
-            "This astrologer is not taking video calls at the moment.",
-            error_code="video_paused",
+            f"This astrologer is not taking {noun}s at the moment.",
+            error_code="mode_paused",
         )
 
     # Neither side may be on another call. Checked for both, because the
@@ -117,7 +137,13 @@ async def start_call(
     await session.insert()
 
     token = zego.generate_token(user_id=str(user.id), room_id=room_id)
-    logger.info("Call {} ringing: user {} -> astrologer {}", session.id, user.email, account.email)
+    logger.info(
+        "{} {} ringing: user {} -> astrologer {}",
+        MODE_NOUN[mode].capitalize(),
+        session.id,
+        user.email,
+        account.email,
+    )
     return session, token
 
 
