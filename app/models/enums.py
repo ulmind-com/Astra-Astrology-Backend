@@ -155,3 +155,17 @@ class AppointmentStatus(StrEnum):
     CANCELLED = "cancelled"
     COMPLETED = "completed"
     MISSED = "missed"
+
+
+class ReviewKind(StrEnum):
+    """What a review is about.
+
+    Kept alongside the session id rather than relying on the id alone: ids are
+    unique within a collection, not across them, so without this a chat and a
+    call could collide on the same review.
+    """
+
+    CHAT = "chat"
+    CALL = "call"
+    VIDEO = "video"
+    APPOINTMENT = "appointment"

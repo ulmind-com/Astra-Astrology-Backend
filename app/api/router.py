@@ -4,15 +4,16 @@ from fastapi import APIRouter
 
 from app.api.v1 import (
     admin_astrologers,
-    appointments,
     admin_settings,
     admin_wallets,
+    appointments,
     astrologers,
     auth,
     calls,
     chats,
     earnings,
     health,
+    reviews,
     users,
     wallet,
     ws,
@@ -36,6 +37,8 @@ api_router.include_router(calls.webhook_router)
 api_router.include_router(chats.router)
 api_router.include_router(chats.maintenance_router)
 api_router.include_router(astrologers.maintenance_router)
+api_router.include_router(reviews.router)
+api_router.include_router(reviews.admin_router)
 api_router.include_router(earnings.router)
 api_router.include_router(earnings.admin_router)
 api_router.include_router(wallet.webhook_router)
