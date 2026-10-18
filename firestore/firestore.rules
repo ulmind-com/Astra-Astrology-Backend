@@ -1,0 +1,80 @@
+rules_version = '2';
+
+// Astra Astrology — chat.
+//
+// The browser talks to Firestore directly, which is what makes chat live. That
+// means these rules are the only thing standing between a conversation and the
+// rest of the internet — there is no server in the middle to check anything.
+//
+// Three things they enforce:
+//
+//   1. Only the two people in a conversation can see it.
+//   2. A message, once sent, cannot be edited or deleted by anyone. A chat
+//      transcript that either side can rewrite is worthless in a dispute.
+//   3. Messages can only be added while the backend says the session is open.
+//      `status` is writable *only* by the server (the Admin SDK bypasses these
+//      rules), so when the coins run out the server closes the conversation and
+//      the browser simply cannot write any more — whatever it tries.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Anything not matched below stays closed.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    match /conversations/{conversationId} {
+
+      function conversation() {
+        return get(/databases/$(database)/documents/conversations/$(conversationId)).data;
+      }
+
+      function isParticipant() {
+        return request.auth != null
+          && request.auth.uid in resource.data.participants;
+      }
+
+      // Read your own conversations. Never list the whole collection: the
+      // client asks for conversations where it is a participant, and this
+      // rejects anything broader.
+      allow read: if isParticipant();
+
+      // Conversations are opened and closed by the server only. A client that
+      // could create one could invent a session nobody is paying for; a client
+      // that could update one could flip `status` back to active after the
+      // balance ran out.
+      allow create, update, delete: if false;
+
+      match /messages/{messageId} {
+
+        function parent() {
+          return conversation();
+        }
+
+        function inThisChat() {
+          return request.auth != null
+            && request.auth.uid in parent().participants;
+        }
+
+        allow read: if inThisChat();
+
+        allow create: if inThisChat()
+          // You can only send as yourself.
+          && request.resource.data.senderUid == request.auth.uid
+          // Only while the server says the session is open.
+          && parent().status == 'active'
+          // Shape: exactly these fields, nothing smuggled in.
+          && request.resource.data.keys().hasOnly(['senderUid', 'text', 'sentAt'])
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 4000
+          // The clock is the server's. A client-set time could reorder history.
+          && request.resource.data.sentAt == request.time;
+
+        // Immutable once written.
+        allow update, delete: if false;
+      }
+    }
+  }
+}

@@ -123,3 +123,18 @@ class CallParty(StrEnum):
     USER = "user"
     ASTROLOGER = "astrologer"
     SYSTEM = "system"
+
+
+class ChatStatus(StrEnum):
+    """Where a chat is in its life.
+
+    Mirrors a call's states but with names that read right for a conversation:
+    nothing "rings", it waits to be picked up.
+    """
+
+    REQUESTED = "requested"
+    ACTIVE = "active"
+    ENDED = "ended"
+    DECLINED = "declined"
+    MISSED = "missed"  # the astrologer never picked it up
+    CANCELLED = "cancelled"  # the person who asked backed out first

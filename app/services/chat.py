@@ -1,0 +1,317 @@
+"""Chat sessions.
+
+The shape mirrors calls on purpose — ask, accept, talk, end, and a sweeper for
+the ones nobody closes — because the problems are the same and solving them
+twice differently would be a liability.
+
+What is different is the pipe. A call's audio flows through ZEGOCLOUD; a chat's
+messages flow through Firestore, straight from one browser to the other. That
+means there is no server in the middle to stop a message, so stopping one is
+done by closing the conversation in Firestore, which its rules then enforce.
+"""
+
+from datetime import UTC, datetime, timedelta
+
+from beanie import PydanticObjectId
+from loguru import logger
+
+from app.core.config import settings
+from app.core.exceptions import (
+    BadRequestError,
+    ConflictError,
+    ForbiddenError,
+    NotFoundError,
+    ServiceUnavailableError,
+)
+from app.models.astrologer import Astrologer
+from app.models.chat import ChatSession
+from app.models.enums import AccountStatus, CallParty, ChatStatus, ConsultationMode
+from app.models.user import User
+from app.services import firestore
+
+LIVE_STATUSES = [ChatStatus.REQUESTED, ChatStatus.ACTIVE]
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _aware(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
+async def _live_chat_for(user_id: PydanticObjectId) -> ChatSession | None:
+    return await ChatSession.find_one(
+        {
+            "$or": [{"user_id": user_id}, {"astrologer_user_id": user_id}],
+            "status": {"$in": [s.value for s in LIVE_STATUSES]},
+        }
+    )
+
+
+async def start_chat(*, user: User, astrologer_id: PydanticObjectId) -> ChatSession:
+    """Asks an astrologer for a chat."""
+    if not user.firebase_uid:
+        # Without a Firebase identity the browser cannot sign in to Firestore,
+        # so it could never read the conversation it is about to be put in.
+        raise BadRequestError(
+            "This account cannot use chat yet. Please contact support.",
+            error_code="no_chat_identity",
+        )
+
+    profile = await Astrologer.get(astrologer_id)
+    if profile is None:
+        raise NotFoundError("Astrologer not found.", error_code="astrologer_not_found")
+
+    account = await User.get(profile.user_id)
+    if account is None or account.status is not AccountStatus.ACTIVE:
+        raise BadRequestError(
+            "This astrologer is not available.", error_code="astrologer_unavailable"
+        )
+    if not account.firebase_uid:
+        raise BadRequestError(
+            "This astrologer cannot take chats yet.", error_code="no_chat_identity"
+        )
+
+    if ConsultationMode.CHAT not in profile.modes_enabled:
+        raise BadRequestError(
+            "This astrologer does not take chats.", error_code="mode_not_offered"
+        )
+    if not profile.availability.is_online:
+        raise BadRequestError(
+            "This astrologer is offline right now.", error_code="astrologer_offline"
+        )
+    if not profile.availability.is_available_for_chat:
+        raise BadRequestError(
+            "This astrologer is not taking chats at the moment.", error_code="mode_paused"
+        )
+
+    if await _live_chat_for(user.id) is not None:
+        raise ConflictError("You are already in a chat.", error_code="already_in_chat")
+    if await _live_chat_for(profile.user_id) is not None:
+        raise ConflictError(
+            "This astrologer is in another chat.", error_code="astrologer_busy"
+        )
+
+    session = ChatSession(
+        user_id=user.id,
+        astrologer_id=profile.id,
+        astrologer_user_id=profile.user_id,
+        user_uid=user.firebase_uid,
+        astrologer_uid=account.firebase_uid,
+        conversation_id="pending",
+        status=ChatStatus.REQUESTED,
+        user_seen_at=_now(),
+    )
+    await session.insert()
+
+    # The Firestore id is the Mongo id, so the two halves are never guesswork.
+    session.conversation_id = str(session.id)
+    await session.save()
+
+    try:
+        await firestore.create_conversation(
+            conversation_id=session.conversation_id,
+            participants=[user.firebase_uid, account.firebase_uid],
+            session_id=str(session.id),
+        )
+    except Exception as exc:  # noqa: BLE001 - surfaced as 503 below
+        # No conversation means no chat, so do not leave a session claiming one
+        # exists — it would block both people from starting another.
+        await session.delete()
+        logger.opt(exception=exc).error("Could not open a conversation for {}", user.email)
+        raise ServiceUnavailableError(
+            "Chat could not be started just now. Please try again.",
+            error_code="chat_unavailable",
+        ) from exc
+
+    logger.info("Chat {} requested: {} -> {}", session.id, user.email, account.email)
+    return session
+
+
+async def get_session(session_id: PydanticObjectId) -> ChatSession:
+    session = await ChatSession.get(session_id)
+    if session is None:
+        raise NotFoundError("Chat not found.", error_code="chat_not_found")
+    return session
+
+
+def _party(session: ChatSession, user: User) -> CallParty:
+    if session.user_id == user.id:
+        return CallParty.USER
+    if session.astrologer_user_id == user.id:
+        return CallParty.ASTROLOGER
+    raise ForbiddenError("This is not your chat.", error_code="not_your_chat")
+
+
+async def load_for(session_id: PydanticObjectId, user: User) -> tuple[ChatSession, CallParty]:
+    session = await get_session(session_id)
+    return session, _party(session, user)
+
+
+async def accept_chat(*, session_id: PydanticObjectId, user: User) -> ChatSession:
+    session, party = await load_for(session_id, user)
+    if party is not CallParty.ASTROLOGER:
+        raise ForbiddenError("Only the astrologer can accept.", error_code="not_the_callee")
+
+    if session.status is ChatStatus.ACTIVE:
+        return session
+    if session.status is not ChatStatus.REQUESTED:
+        raise ConflictError(
+            f"This chat is already {session.status.value}.", error_code="chat_not_open"
+        )
+
+    now = _now()
+    session.status = ChatStatus.ACTIVE
+    session.started_at = now
+    session.astrologer_seen_at = now
+    await session.save()
+
+    # Only now can either side write a message.
+    await firestore.set_status(session.conversation_id, "active")
+
+    logger.info("Chat {} accepted.", session.id)
+    return session
+
+
+async def decline_chat(*, session_id: PydanticObjectId, user: User) -> ChatSession:
+    session, party = await load_for(session_id, user)
+    if party is not CallParty.ASTROLOGER:
+        raise ForbiddenError("Only the astrologer can decline.", error_code="not_the_callee")
+    if session.status is not ChatStatus.REQUESTED:
+        raise ConflictError(
+            f"This chat is already {session.status.value}.", error_code="chat_not_open"
+        )
+    return await _close(
+        session,
+        status=ChatStatus.DECLINED,
+        by=CallParty.ASTROLOGER,
+        reason="Declined by the astrologer",
+    )
+
+
+async def end_chat(
+    *, session_id: PydanticObjectId, user: User, reason: str | None = None
+) -> ChatSession:
+    session, party = await load_for(session_id, user)
+    if session.status not in LIVE_STATUSES:
+        return session
+
+    if session.status is ChatStatus.REQUESTED:
+        status = ChatStatus.CANCELLED if party is CallParty.USER else ChatStatus.DECLINED
+    else:
+        status = ChatStatus.ENDED
+
+    return await _close(session, status=status, by=party, reason=reason)
+
+
+async def _close(
+    session: ChatSession, *, status: ChatStatus, by: CallParty, reason: str | None
+) -> ChatSession:
+    now = _now()
+    started = _aware(session.started_at)
+
+    # Close the pipe first. If this server fell over right afterwards, a closed
+    # conversation that MongoDB still calls open is recoverable; an open
+    # conversation nobody is paying for is not.
+    try:
+        await firestore.set_status(session.conversation_id, "ended")
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Could not close Firestore conversation {}: {}", session.conversation_id, exc)
+
+    session.message_count = await firestore.count_messages(session.conversation_id)
+    session.status = status
+    session.ended_at = now
+    session.ended_by = by
+    session.end_reason = reason
+    session.duration_seconds = int((now - started).total_seconds()) if started else 0
+    await session.save()
+
+    logger.info(
+        "Chat {} {} by {} after {}s, {} messages",
+        session.id,
+        status.value,
+        by.value,
+        session.duration_seconds,
+        session.message_count,
+    )
+    return session
+
+
+async def heartbeat(*, session_id: PydanticObjectId, user: User) -> ChatSession:
+    session, party = await load_for(session_id, user)
+    if session.status not in LIVE_STATUSES:
+        return session
+
+    now = _now()
+    if party is CallParty.USER:
+        session.user_seen_at = now
+    else:
+        session.astrologer_seen_at = now
+    await session.save()
+    return session
+
+
+async def incoming_for_astrologer(user: User) -> ChatSession | None:
+    return await ChatSession.find_one(
+        {
+            "astrologer_user_id": user.id,
+            "status": {"$in": [s.value for s in LIVE_STATUSES]},
+        }
+    )
+
+
+async def active_for_user(user: User) -> ChatSession | None:
+    return await ChatSession.find_one(
+        {"user_id": user.id, "status": {"$in": [s.value for s in LIVE_STATUSES]}}
+    )
+
+
+async def history(
+    *, user: User, as_astrologer: bool, page: int = 1, limit: int = 20
+) -> tuple[list[ChatSession], int]:
+    field = "astrologer_user_id" if as_astrologer else "user_id"
+    query = ChatSession.find({field: user.id})
+    total = await query.count()
+    items = (
+        await query.sort(-ChatSession.created_at).skip((page - 1) * limit).limit(limit).to_list()
+    )
+    return items, total
+
+
+async def sweep() -> dict[str, int]:
+    """Closes chats nobody closed — the same safety net calls have."""
+    now = _now()
+    missed = ended = capped = 0
+
+    wait_deadline = now - timedelta(seconds=settings.CHAT_REQUEST_TIMEOUT_SECONDS)
+    async for session in ChatSession.find(
+        {"status": ChatStatus.REQUESTED.value, "created_at": {"$lt": wait_deadline}}
+    ):
+        await _close(session, status=ChatStatus.MISSED, by=CallParty.SYSTEM,
+                     reason="Nobody picked it up")
+        missed += 1
+
+    grace = timedelta(seconds=settings.CHAT_IDLE_GRACE_SECONDS)
+    max_len = timedelta(seconds=settings.CHAT_MAX_DURATION_SECONDS)
+
+    async for session in ChatSession.find({"status": ChatStatus.ACTIVE.value}):
+        started = _aware(session.started_at) or _aware(session.created_at) or now
+        if now - started > max_len:
+            await _close(session, status=ChatStatus.ENDED, by=CallParty.SYSTEM,
+                         reason="Reached the maximum chat length")
+            capped += 1
+            continue
+
+        seen = [s for s in (_aware(session.user_seen_at), _aware(session.astrologer_seen_at)) if s]
+        last_seen = max(seen) if seen else started
+        if now - last_seen > grace:
+            await _close(session, status=ChatStatus.ENDED, by=CallParty.SYSTEM,
+                         reason="Both sides went quiet")
+            ended += 1
+
+    if missed or ended or capped:
+        logger.info("Chat sweep: {} missed, {} dropped, {} capped", missed, ended, capped)
+    return {"missed": missed, "dropped": ended, "capped": capped}

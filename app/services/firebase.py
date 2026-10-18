@@ -90,6 +90,13 @@ def is_enabled() -> bool:
     return _app is not None
 
 
+def get_app() -> firebase_admin.App:
+    """The initialised app, for the other Firebase products we use."""
+    if _app is None:
+        raise RuntimeError("Firebase is not initialised.")
+    return _app
+
+
 def require_enabled() -> None:
     """Guards the registration paths that must write to Firebase."""
     if is_enabled():

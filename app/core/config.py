@@ -125,6 +125,12 @@ class Settings(BaseSettings):
     ZEGO_SERVER_URL_BACKUP: str = ""
     ZEGO_TOKEN_TTL_SECONDS: int = 3600
 
+    # Chat has the same three safety nets as a call, with longer patience:
+    # people type slowly, and a quiet minute in a chat is normal.
+    CHAT_REQUEST_TIMEOUT_SECONDS: int = 120
+    CHAT_IDLE_GRACE_SECONDS: int = 300
+    CHAT_MAX_DURATION_SECONDS: int = 2 * 60 * 60
+
     # A call nobody ended is closed by the sweeper once it goes quiet for this
     # long, so a dropped connection cannot leave a session open forever.
     CALL_HEARTBEAT_GRACE_SECONDS: int = 90
