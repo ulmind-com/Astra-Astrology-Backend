@@ -298,6 +298,33 @@ async def _charge(session: ChatSession) -> billing.ChargeResult:
     return result
 
 
+async def extend_chat(
+    *, session_id: PydanticObjectId, user: User, extra_minutes: int
+) -> ChatSession:
+    """Buys more time on a chat already running."""
+    session, party = await load_for(session_id, user)
+    if party is not CallParty.USER:
+        raise ForbiddenError(
+            "Only the person who started the chat can extend it.",
+            error_code="not_the_payer",
+        )
+    if session.status is not ChatStatus.ACTIVE:
+        raise ConflictError("This chat is not running.", error_code="chat_not_active")
+
+    await billing.check_can_extend(
+        user_id=session.user_id,
+        price=_price_of(session),
+        current_minutes=session.requested_minutes,
+        extra_minutes=extra_minutes,
+        minutes_used=session.minutes_charged,
+    )
+
+    session.requested_minutes += extra_minutes
+    await session.save()
+    logger.info("Chat {} extended by {} minutes", session.id, extra_minutes)
+    return session
+
+
 async def heartbeat(*, session_id: PydanticObjectId, user: User) -> ChatSession:
     session, party = await load_for(session_id, user)
     if session.status not in LIVE_STATUSES:

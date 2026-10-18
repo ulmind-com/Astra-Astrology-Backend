@@ -22,16 +22,26 @@ class CallPeer(BaseModel):
 
 
 class SessionBilling(BaseModel):
-    """What this session costs and how far it has got."""
+    """Everything the session screen shows, worked out on the server.
+
+    The client could compute most of this from a start time and a rate, but it
+    would drift — and would be wrong at exactly the moment it matters, which is
+    the minute before someone is cut off.
+    """
 
     coins_per_minute: int
     requested_minutes: int
     minutes_charged: int
     coins_charged: int
-    # Coins left in the wallet, and what that buys at this rate — so the UI can
-    # warn before the wallet empties rather than after.
+
+    # Of the time booked, how much is left.
+    minutes_remaining: int
+    # Coins left in the wallet, and how many more minutes they would buy.
     balance_coins: int
     minutes_left: int
+    # Whether there is room and money to buy more time.
+    can_extend: bool
+    max_extend_minutes: int
 
 
 class CallOut(BaseModel):
@@ -73,6 +83,10 @@ class CallCredentials(BaseModel):
 class CallSessionOut(BaseModel):
     call: CallOut
     credentials: CallCredentials | None = None
+
+
+class ExtendRequest(BaseModel):
+    extra_minutes: int = Field(ge=1, le=600)
 
 
 class EndCallRequest(BaseModel):

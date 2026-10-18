@@ -152,6 +152,48 @@ def minutes_elapsed(started_at: datetime, now: datetime | None = None) -> int:
     return max(1, math.floor(seconds / 60) + 1)
 
 
+async def check_can_extend(
+    *,
+    user_id: PydanticObjectId,
+    price: Price,
+    current_minutes: int,
+    extra_minutes: int,
+    minutes_used: int,
+) -> int:
+    """Refuses an extension the wallet cannot cover.
+
+    Only the minutes not yet paid for need covering — the ones already charged
+    came out of the wallet long ago.
+    """
+    platform = await settings_service.get_settings()
+    total = current_minutes + extra_minutes
+    if total > platform.max_session_minutes:
+        raise BadRequestError(
+            f"A session cannot run longer than {platform.max_session_minutes} minutes.",
+            error_code="too_long",
+        )
+    if extra_minutes < 1:
+        raise BadRequestError("Add at least a minute.", error_code="invalid_duration")
+
+    unpaid = max(0, total - minutes_used)
+    needed = price.coins_per_minute * unpaid
+    wallet = await wallet_service.get_or_create_wallet(user_id)
+
+    if wallet.balance_coins < needed:
+        can_add = affordable_minutes(wallet.balance_coins, price.coins_per_minute)
+        raise BadRequestError(
+            f"Not enough coins for {extra_minutes} more minute"
+            f"{'s' if extra_minutes != 1 else ''}. You can add "
+            f"{can_add} minute{'s' if can_add != 1 else ''}.",
+            error_code="insufficient_coins",
+            details={
+                "balance_coins": wallet.balance_coins,
+                "affordable_minutes": can_add,
+            },
+        )
+    return needed
+
+
 @dataclass
 class ChargeResult:
     minutes_charged: int

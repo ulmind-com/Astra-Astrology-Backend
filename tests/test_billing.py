@@ -509,3 +509,164 @@ async def test_the_ledger_still_adds_up_after_a_billed_session(
     ).json()["data"]
     assert result["drift_coins"] == 0
     assert result["debited_coins"] == 7
+
+
+# ---------------------------------------------------------------- extending
+async def test_a_call_can_be_extended_and_the_cap_moves(
+    client: AsyncClient, sent_mail: list
+) -> None:
+    auth = await signed_in(client)
+    admin = await make_admin(client)
+    profile, astro = await make_astrologer(client, admin, sent_mail)
+
+    await set_defaults(client, admin, default_video_coins_per_minute=5)
+    await give_coins(client, admin, "payer@test.dev", 100)
+
+    call_id = (await ring(client, auth, profile["id"], 2)).json()["data"]["call"]["id"]
+    await client.post(f"{P}/calls/{call_id}/accept", headers=astro)
+
+    extended = await client.post(
+        f"{P}/calls/{call_id}/extend", headers=auth, json={"extra_minutes": 3}
+    )
+    assert extended.status_code == 200, extended.text
+    assert extended.json()["data"]["billing"]["requested_minutes"] == 5
+
+    # The hard stop moved with it: three minutes in, it is still going.
+    from beanie import PydanticObjectId
+
+    from app.models.call import CallSession
+
+    session = await CallSession.get(PydanticObjectId(call_id))
+    session.started_at = datetime.now(UTC) - timedelta(seconds=185)
+    await session.save()
+    await client.post(f"{P}/calls/{call_id}/heartbeat", headers=auth)
+
+    after = (await client.get(f"{P}/calls/{call_id}", headers=auth)).json()["data"]["call"]
+    assert after["status"] == "active"
+    assert await balance(client, auth) == 80, "four minutes at five coins"
+
+
+async def test_an_extension_the_wallet_cannot_cover_is_refused(
+    client: AsyncClient, sent_mail: list
+) -> None:
+    auth = await signed_in(client)
+    admin = await make_admin(client)
+    profile, astro = await make_astrologer(client, admin, sent_mail)
+
+    await set_defaults(client, admin, default_video_coins_per_minute=10)
+    await give_coins(client, admin, "payer@test.dev", 30)
+
+    call_id = (await ring(client, auth, profile["id"], 2)).json()["data"]["call"]["id"]
+    await client.post(f"{P}/calls/{call_id}/accept", headers=astro)
+
+    # 20 coins left, one minute still owed on the booking, so only one more.
+    refused = await client.post(
+        f"{P}/calls/{call_id}/extend", headers=auth, json={"extra_minutes": 10}
+    )
+    assert refused.status_code == 400
+    assert refused.json()["error_code"] == "insufficient_coins"
+
+    assert (
+        await client.post(
+            f"{P}/calls/{call_id}/extend", headers=auth, json={"extra_minutes": 1}
+        )
+    ).status_code == 200
+
+
+async def test_only_the_payer_can_extend(client: AsyncClient, sent_mail: list) -> None:
+    """An astrologer lengthening a call would be spending someone else's coins."""
+    auth = await signed_in(client)
+    admin = await make_admin(client)
+    profile, astro = await make_astrologer(client, admin, sent_mail)
+
+    await set_defaults(client, admin, default_video_coins_per_minute=5)
+    await give_coins(client, admin, "payer@test.dev", 500)
+
+    call_id = (await ring(client, auth, profile["id"], 2)).json()["data"]["call"]["id"]
+    await client.post(f"{P}/calls/{call_id}/accept", headers=astro)
+
+    refused = await client.post(
+        f"{P}/calls/{call_id}/extend", headers=astro, json={"extra_minutes": 5}
+    )
+    assert refused.status_code == 403
+    assert refused.json()["error_code"] == "not_the_payer"
+
+
+async def test_the_session_screen_knows_what_it_can_offer(
+    client: AsyncClient, sent_mail: list
+) -> None:
+    """The extend prompt is driven by these, so they have to be right."""
+    auth = await signed_in(client)
+    admin = await make_admin(client)
+    profile, astro = await make_astrologer(client, admin, sent_mail)
+
+    await set_defaults(client, admin, default_video_coins_per_minute=10, max_session_minutes=30)
+    await give_coins(client, admin, "payer@test.dev", 100)
+
+    call_id = (await ring(client, auth, profile["id"], 2)).json()["data"]["call"]["id"]
+    await client.post(f"{P}/calls/{call_id}/accept", headers=astro)
+
+    billing = (await client.get(f"{P}/calls/{call_id}", headers=auth)).json()["data"]["call"][
+        "billing"
+    ]
+    assert billing["requested_minutes"] == 2
+    assert billing["minutes_charged"] == 1
+    assert billing["minutes_remaining"] == 1, "one of the two booked minutes is left"
+    assert billing["coins_charged"] == 10
+    assert billing["balance_coins"] == 90
+    assert billing["can_extend"] is True
+    assert billing["max_extend_minutes"] == 9, "90 coins at 10 a minute"
+
+
+async def test_nothing_is_offered_when_the_wallet_is_empty(
+    client: AsyncClient, sent_mail: list
+) -> None:
+    """Offering an extension nobody can pay for is just bad news with buttons."""
+    auth = await signed_in(client)
+    admin = await make_admin(client)
+    profile, astro = await make_astrologer(client, admin, sent_mail)
+
+    await set_defaults(client, admin, default_video_coins_per_minute=10)
+    await give_coins(client, admin, "payer@test.dev", 10)
+
+    call_id = (await ring(client, auth, profile["id"], 1)).json()["data"]["call"]["id"]
+    await client.post(f"{P}/calls/{call_id}/accept", headers=astro)
+
+    billing = (await client.get(f"{P}/calls/{call_id}", headers=auth)).json()["data"]["call"][
+        "billing"
+    ]
+    assert billing["balance_coins"] == 0
+    assert billing["can_extend"] is False
+    assert billing["max_extend_minutes"] == 0
+
+
+async def test_a_chat_can_be_extended_too(
+    client: AsyncClient, sent_mail: list, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.test_chat import FakeFirestore
+
+    fake = FakeFirestore()
+    import app.api.v1.chats as chats_api
+    import app.services.chat as chat_service
+
+    for module in (chat_service, chats_api):
+        monkeypatch.setattr(module, "firestore", fake)
+
+    auth = await signed_in(client)
+    admin = await make_admin(client)
+    profile, astro = await make_astrologer(client, admin, sent_mail)
+
+    await set_defaults(client, admin, default_chat_coins_per_minute=3)
+    await give_coins(client, admin, "payer@test.dev", 100)
+
+    started = await client.post(
+        f"{P}/chats", headers=auth, json={"astrologer_id": profile["id"], "requested_minutes": 2}
+    )
+    chat_id = started.json()["data"]["chat"]["id"]
+    await client.post(f"{P}/chats/{chat_id}/accept", headers=astro)
+
+    extended = await client.post(
+        f"{P}/chats/{chat_id}/extend", headers=auth, json={"extra_minutes": 5}
+    )
+    assert extended.status_code == 200
+    assert extended.json()["data"]["billing"]["requested_minutes"] == 7

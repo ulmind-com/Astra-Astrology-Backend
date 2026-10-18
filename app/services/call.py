@@ -305,6 +305,38 @@ async def _charge(session: CallSession) -> billing.ChargeResult:
     return result
 
 
+async def extend_call(
+    *, session_id: PydanticObjectId, user: User, extra_minutes: int
+) -> CallSession:
+    """Buys more time on a call already running.
+
+    Only the person paying may extend — an astrologer able to lengthen a call
+    would be spending somebody else's coins.
+    """
+    session, party = await load_for(session_id, user)
+    if party is not CallParty.USER:
+        raise ForbiddenError(
+            "Only the caller can extend a call.", error_code="not_the_payer"
+        )
+    if session.status is not CallStatus.ACTIVE:
+        raise ConflictError(
+            "This call is not running.", error_code="call_not_active"
+        )
+
+    await billing.check_can_extend(
+        user_id=session.user_id,
+        price=_price_of(session),
+        current_minutes=session.requested_minutes,
+        extra_minutes=extra_minutes,
+        minutes_used=session.minutes_charged,
+    )
+
+    session.requested_minutes += extra_minutes
+    await session.save()
+    logger.info("Call {} extended by {} minutes", session.id, extra_minutes)
+    return session
+
+
 async def heartbeat(*, session_id: PydanticObjectId, user: User) -> CallSession:
     """Says "I am still here". The sweeper reads these."""
     session, party = await load_for(session_id, user)

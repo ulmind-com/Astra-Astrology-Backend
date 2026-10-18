@@ -14,6 +14,7 @@ from app.models.call import CallSession
 from app.models.enums import UserRole
 from app.models.user import User
 from app.schemas.call import (
+    ExtendRequest,
     SessionBilling,
     CallCredentials,
     CallOut,
@@ -26,6 +27,7 @@ from app.schemas.call import (
 from app.schemas.common import ApiResponse, Paginated, build_page
 from app.services import billing
 from app.services import call as call_service
+from app.services import settings as settings_service
 from app.services import wallet as wallet_service
 from app.services import zego
 
@@ -48,15 +50,23 @@ async def _peer_for(session: CallSession, viewer: User) -> CallPeer | None:
 
 async def _billing_of(session: CallSession) -> SessionBilling:
     wallet = await wallet_service.get_or_create_wallet(session.user_id)
+    affordable = billing.affordable_minutes(wallet.balance_coins, session.coins_per_minute)
+
+    # Minutes already paid for that have not been used yet.
+    remaining = max(0, session.requested_minutes - session.minutes_charged)
+    settings_doc = await settings_service.get_settings()
+    room = max(0, settings_doc.max_session_minutes - session.requested_minutes)
+
     return SessionBilling(
         coins_per_minute=session.coins_per_minute,
         requested_minutes=session.requested_minutes,
         minutes_charged=session.minutes_charged,
         coins_charged=session.coins_charged,
+        minutes_remaining=remaining,
         balance_coins=wallet.balance_coins,
-        minutes_left=billing.affordable_minutes(
-            wallet.balance_coins, session.coins_per_minute
-        ),
+        minutes_left=affordable,
+        can_extend=affordable >= 1 and room >= 1,
+        max_extend_minutes=min(affordable, room),
     )
 
 
@@ -202,6 +212,24 @@ async def end_call(
         session_id=session_id, user=user, reason=payload.reason if payload else None
     )
     return ApiResponse(message="Call ended.", data=await to_call(session, user))
+
+
+@router.post(
+    "/{session_id}/extend",
+    response_model=ApiResponse[CallOut],
+    summary="Buy more time on a call that is running",
+)
+async def extend_call(
+    session_id: PydanticObjectId, payload: ExtendRequest, user: CurrentUser
+) -> ApiResponse[CallOut]:
+    session = await call_service.extend_call(
+        session_id=session_id, user=user, extra_minutes=payload.extra_minutes
+    )
+    return ApiResponse(
+        message=f"{payload.extra_minutes} more minute"
+        f"{'s' if payload.extra_minutes != 1 else ''} added.",
+        data=await to_call(session, user),
+    )
 
 
 @router.post(
