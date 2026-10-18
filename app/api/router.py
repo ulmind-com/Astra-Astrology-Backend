@@ -8,6 +8,7 @@ from app.api.v1 import (
     admin_wallets,
     astrologers,
     auth,
+    calls,
     health,
     users,
     wallet,
@@ -23,4 +24,7 @@ api_router.include_router(admin_astrologers.router)
 api_router.include_router(wallet.router)
 api_router.include_router(admin_wallets.router)
 api_router.include_router(admin_settings.router)
+api_router.include_router(calls.router)
+api_router.include_router(calls.maintenance_router)
+api_router.include_router(calls.webhook_router)
 api_router.include_router(wallet.webhook_router)

@@ -100,3 +100,26 @@ class PaymentOrderStatus(StrEnum):
     PAID = "paid"
     FAILED = "failed"
     EXPIRED = "expired"
+
+
+class CallStatus(StrEnum):
+    """Where a call is in its life.
+
+    Every path out of `RINGING` is recorded separately, because "the astrologer
+    said no" and "the astrologer never picked up" mean different things to the
+    person waiting, and later to whoever is paid.
+    """
+
+    RINGING = "ringing"
+    ACTIVE = "active"
+    ENDED = "ended"
+    DECLINED = "declined"  # the astrologer said no
+    MISSED = "missed"  # nobody answered before the ring timed out
+    CANCELLED = "cancelled"  # the caller hung up first
+    FAILED = "failed"
+
+
+class CallParty(StrEnum):
+    USER = "user"
+    ASTROLOGER = "astrologer"
+    SYSTEM = "system"

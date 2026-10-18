@@ -3,6 +3,7 @@
 from beanie import Document
 
 from app.models.astrologer import Astrologer
+from app.models.call import CallSession, ZegoCallbackEvent
 from app.models.otp import OtpCode
 from app.models.pending_registration import PendingRegistration
 from app.models.settings import CoinRateChange, PlatformSettings
@@ -25,11 +26,14 @@ DOCUMENT_MODELS: list[type[Document]] = [
     WalletTransaction,
     PaymentOrder,
     WebhookEvent,
+    CallSession,
+    ZegoCallbackEvent,
 ]
 
 __all__ = [
     "DOCUMENT_MODELS",
     "Astrologer",
+    "CallSession",
     "CoinRateChange",
     "OtpCode",
     "PaymentOrder",
@@ -39,4 +43,5 @@ __all__ = [
     "Wallet",
     "WalletTransaction",
     "WebhookEvent",
+    "ZegoCallbackEvent",
 ]

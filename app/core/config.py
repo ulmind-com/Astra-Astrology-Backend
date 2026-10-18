@@ -111,6 +111,28 @@ class Settings(BaseSettings):
     # used to hammer Razorpay.
     RECHARGE_ORDERS_PER_HOUR: int = 20
 
+    # ----------------------------------------------------------- zegocloud
+    # Voice & video calling. The ServerSecret signs room tokens here on the
+    # server; it must never be sent to a browser, so only the AppID and the
+    # minted token cross the wire.
+    ZEGO_APP_ID: int = 0
+    ZEGO_SERVER_SECRET: str = ""
+    # The mobile SDKs' own credential. Not used by the web flow.
+    ZEGO_APP_SIGN: str = ""
+    # Signs the room callbacks ZEGOCLOUD posts to us.
+    ZEGO_CALLBACK_SECRET: str = ""
+    ZEGO_SERVER_URL: str = ""
+    ZEGO_SERVER_URL_BACKUP: str = ""
+    ZEGO_TOKEN_TTL_SECONDS: int = 3600
+
+    # A call nobody ended is closed by the sweeper once it goes quiet for this
+    # long, so a dropped connection cannot leave a session open forever.
+    CALL_HEARTBEAT_GRACE_SECONDS: int = 90
+    # Nothing may run longer than this, whatever happens.
+    CALL_MAX_DURATION_SECONDS: int = 2 * 60 * 60
+    # How long an unanswered call keeps ringing.
+    CALL_RING_TIMEOUT_SECONDS: int = 45
+
     @field_validator("RECHARGE_PACKS_PAISE", mode="before")
     @classmethod
     def _split_packs(cls, v: object) -> object:
@@ -152,6 +174,10 @@ class Settings(BaseSettings):
     @property
     def razorpay_is_test_key(self) -> bool:
         return self.RAZORPAY_KEY_ID.startswith("rzp_test_")
+
+    @property
+    def zego_configured(self) -> bool:
+        return bool(self.ZEGO_APP_ID and len(self.ZEGO_SERVER_SECRET) == 32)
 
     @property
     def firebase_configured(self) -> bool:
