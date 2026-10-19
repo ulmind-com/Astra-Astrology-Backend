@@ -172,7 +172,7 @@ RULES: list[dict] = [
     {
         "feature": "forehead", "option": "broad_high", "label": "Broad and high forehead",
         "priority": 30, "area": "intellect",
-        "conditions": [{"metric": "forehead_h", "min": 0.23}, {"metric": "brow_cheek", "min": 0.76}],
+        "conditions": [{"metric": "forehead_h", "min": 0.198}, {"metric": "brow_cheek", "min": 0.755}],
         "meaning": (
             "Height and width together make the forehead the most prominent "
             "region of the face, and the tradition treats it as the seat of "
@@ -187,7 +187,7 @@ RULES: list[dict] = [
     {
         "feature": "forehead", "option": "high", "label": "High forehead",
         "priority": 20, "area": "intellect",
-        "conditions": [{"metric": "forehead_h", "min": 0.23}],
+        "conditions": [{"metric": "forehead_h", "min": 0.198}],
         "meaning": (
             "A tall forehead is associated with reflection and with learning "
             "that continues past the age most people stop. The reading is of "
@@ -202,7 +202,7 @@ RULES: list[dict] = [
     {
         "feature": "forehead", "option": "low", "label": "Low forehead",
         "priority": 20, "area": "intellect",
-        "conditions": [{"metric": "forehead_h", "max": 0.19}],
+        "conditions": [{"metric": "forehead_h", "max": 0.174}],
         "meaning": (
             "A short forehead is read not as less capacity but as a different "
             "route to it: conclusions arrive quickly and by instinct rather "
@@ -217,7 +217,7 @@ RULES: list[dict] = [
     {
         "feature": "forehead", "option": "wide", "label": "Wide forehead",
         "priority": 15, "area": "intellect",
-        "conditions": [{"metric": "brow_cheek", "min": 0.76}],
+        "conditions": [{"metric": "brow_cheek", "min": 0.755}],
         "meaning": (
             "Width across the brow is read as range rather than depth — an "
             "interest in many things at once and an ease in moving between "
@@ -232,7 +232,7 @@ RULES: list[dict] = [
     {
         "feature": "forehead", "option": "narrow", "label": "Narrow forehead",
         "priority": 15, "area": "intellect",
-        "conditions": [{"metric": "brow_cheek", "max": 0.69}],
+        "conditions": [{"metric": "brow_cheek", "max": 0.730}],
         "meaning": (
             "A narrow brow concentrates rather than spreads. It is read as "
             "focus — the ability to stay with one matter until it yields, and "
@@ -292,13 +292,13 @@ RULES: list[dict] = [
     {
         "feature": "eyebrows", "option": "arched", "label": "Arched eyebrows",
         "priority": 25, "area": "expression",
-        "conditions": [{"metric": "brow_arch", "min": 0.21}],
+        "conditions": [{"metric": "brow_arch", "min": 0.49}],
         "meaning": (
             "A pronounced arch is read as expressiveness — a face that shows "
             "interest and doubt before its owner decides to show them. The "
             "association is with curiosity, a feel for drama and ease in front "
             "of people; such faces are placed in performance, teaching and "
-            "selling. The tradition\'s caution concerns reaction: an arch "
+            "selling. The tradition's caution concerns reaction: an arch "
             "responds faster than judgement does, and what it reveals cannot "
             "be taken back."
         ),
@@ -306,7 +306,7 @@ RULES: list[dict] = [
     {
         "feature": "eyebrows", "option": "straight", "label": "Straight eyebrows",
         "priority": 25, "area": "expression",
-        "conditions": [{"metric": "brow_arch", "max": 0.17}],
+        "conditions": [{"metric": "brow_arch", "max": 0.28}],
         "meaning": (
             "Brows with little curve are read as a direct, unornamented "
             "manner. The tradition associates them with logic, plain speech "
@@ -321,7 +321,7 @@ RULES: list[dict] = [
     {
         "feature": "eyebrows", "option": "joined", "label": "Close-set eyebrows",
         "priority": 30, "area": "drive",
-        "conditions": [{"metric": "brow_gap", "max": 0.84}],
+        "conditions": [{"metric": "brow_gap", "max": 0.95}],
         "meaning": (
             "Brows set close together, with little space above the nose, are "
             "read as concentration — attention that settles on one thing and "
@@ -335,7 +335,7 @@ RULES: list[dict] = [
     {
         "feature": "eyebrows", "option": "long", "label": "Long eyebrows",
         "priority": 15, "area": "relationships",
-        "conditions": [{"metric": "brow_len", "min": 1.63}],
+        "conditions": [{"metric": "brow_len", "min": 1.56}],
         "meaning": (
             "Brows extending well past the eye are traditionally a friendly "
             "sign, associated with wide and lasting connection. The reading is "
@@ -564,13 +564,13 @@ RULES: list[dict] = [
     {
         "feature": "nose", "option": "large_nostrils", "label": "Open nostrils",
         "priority": 15, "area": "wealth",
-        "conditions": [{"metric": "nostril", "min": 0.62}],
+        "conditions": [{"metric": "nostril", "min": 0.875}],
         "meaning": (
             "Visibly open nostrils are read as money that moves freely — "
             "earned readily and spent readily, with comfort in both "
             "directions. The association is with enjoyment of what is earned, "
             "a confident manner about money and a reluctance to let caution "
-            "become the point of living. The tradition\'s counsel is "
+            "become the point of living. The tradition's counsel is "
             "structural rather than moral: set aside a share automatically, "
             "because deciding to save is not a decision this face makes in "
             "the moment."
@@ -579,7 +579,7 @@ RULES: list[dict] = [
     {
         "feature": "nose", "option": "small_nostrils", "label": "Tight nostrils",
         "priority": 15, "area": "wealth",
-        "conditions": [{"metric": "nostril", "max": 0.5}],
+        "conditions": [{"metric": "nostril", "max": 0.862}],
         "meaning": (
             "Narrow nostrils are read as retention — money that is kept once "
             "it arrives. The association is with prudence, planning for "
@@ -709,9 +709,9 @@ RULES: list[dict] = [
     {
         "feature": "chin", "option": "square", "label": "Square jaw",
         "priority": 25, "area": "resolve",
-        "conditions": [{"metric": "jaw_cheek", "min": 0.86}],
+        "conditions": [{"metric": "jaw_cheek", "min": 0.835}],
         "meaning": (
-            "A broad, defined jaw is the tradition\'s clearest mark of "
+            "A broad, defined jaw is the tradition's clearest mark of "
             "resolve. It is read as the capacity to hold a position under "
             "pressure and to finish what was begun after the interest has "
             "gone. Such a face is given responsibility early and keeps it. "
@@ -724,13 +724,13 @@ RULES: list[dict] = [
     {
         "feature": "chin", "option": "pointed", "label": "Pointed chin",
         "priority": 25, "area": "resolve",
-        "conditions": [{"metric": "jaw_cheek", "max": 0.76}],
+        "conditions": [{"metric": "jaw_cheek", "max": 0.812}],
         "meaning": (
             "A fine, tapering chin is read as refinement rather than force — "
             "achieving by precision, charm and timing what a heavier jaw "
             "achieves by pressure. The association is with artistic and "
             "intellectual work, quick perception and an unwillingness to win "
-            "crudely. The tradition\'s caution concerns endurance: this chin "
+            "crudely. The tradition's caution concerns endurance: this chin "
             "is said to withdraw from a long contest it could have won, and "
             "is advised to stay in them longer."
         ),
@@ -738,7 +738,7 @@ RULES: list[dict] = [
     {
         "feature": "chin", "option": "round", "label": "Rounded chin",
         "priority": 15, "area": "resolve",
-        "conditions": [{"metric": "chin_h", "min": 0.23}],
+        "conditions": [{"metric": "chin_h", "min": 0.222}],
         "meaning": (
             "A full, rounded chin is read as good nature with staying power "
             "underneath — accommodating by preference but not weak, and "
@@ -752,7 +752,7 @@ RULES: list[dict] = [
     {
         "feature": "chin", "option": "receding", "label": "Receding chin",
         "priority": 20, "area": "resolve",
-        "conditions": [{"metric": "chin_h", "max": 0.19}],
+        "conditions": [{"metric": "chin_h", "max": 0.188}],
         "meaning": (
             "A chin that sits back from the face\'s line is read as a nature "
             "that prefers accommodation to confrontation. The tradition gives "
@@ -798,7 +798,7 @@ RULES: list[dict] = [
     {
         "feature": "cheeks", "option": "full", "label": "Full cheeks",
         "priority": 20, "area": "standing",
-        "conditions": [{"metric": "cheek_full", "min": 0.925}],
+        "conditions": [{"metric": "cheek_full", "min": 0.932}],
         "meaning": (
             "Full cheeks are read as vitality and welcome. The tradition "
             "associates them with physical robustness, good relations across "
@@ -812,13 +812,13 @@ RULES: list[dict] = [
     {
         "feature": "cheeks", "option": "hollow", "label": "Lean cheeks",
         "priority": 20, "area": "standing",
-        "conditions": [{"metric": "cheek_full", "max": 0.9}],
+        "conditions": [{"metric": "cheek_full", "max": 0.918}],
         "meaning": (
             "Lean cheeks are read as intensity and self-containment — energy "
             "directed inward at a purpose rather than outward at company. The "
             "association is with discipline, with work pursued past the point "
             "others stop, and with indifference to approval that makes such a "
-            "face effective and occasionally isolated. The tradition\'s "
+            "face effective and occasionally isolated. The tradition's "
             "counsel is maintenance: this face neglects rest and company while "
             "something is unfinished, and pays for it later."
         ),

@@ -44,9 +44,9 @@ MAX_PER_FEATURE = 2
 def _pick(rules: list[FaceRule], measurements: dict[str, float]) -> list[FaceRule]:
     """Every rule that should speak for one feature, best first.
 
-    Matched rules are grouped by the measurement they are about, and only the
-    best of each group survives — two bands of the same ratio are alternatives,
-    never both. Rules about *different* ratios can both stand.
+    Matched rules are evaluated in descending priority. A higher-priority rule
+    claims all metrics present in its conditions, preventing redundant or overlapping
+    lower-priority rules from double-reporting on the same facial aspect.
     """
     matched = [
         rule
@@ -58,20 +58,22 @@ def _pick(rules: list[FaceRule], measurements: dict[str, float]) -> list[FaceRul
         default = next((rule for rule in rules if rule.is_default), None)
         return [default] if default else []
 
-    best_per_metric: dict[str, FaceRule] = {}
-    for rule in matched:
-        # The first condition is the one the rule is really about; any others
-        # narrow it.
-        metric = rule.conditions[0].metric
-        current = best_per_metric.get(metric)
-        if current is None or rule.priority > current.priority:
-            best_per_metric[metric] = rule
-
-    chosen = sorted(best_per_metric.values(), key=lambda r: r.priority, reverse=True)
-
     feature = matched[0].feature
     limit = 1 if feature in SINGLE_CHOICE else MAX_PER_FEATURE
-    return chosen[:limit]
+
+    chosen: list[FaceRule] = []
+    used_metrics: set[str] = set()
+
+    for rule in sorted(matched, key=lambda r: r.priority, reverse=True):
+        rule_metrics = {c.metric for c in rule.conditions}
+        # If this rule does not overlap with metrics already claimed by higher-priority rules
+        if not (rule_metrics & used_metrics):
+            chosen.append(rule)
+            used_metrics.update(rule_metrics)
+            if len(chosen) >= limit:
+                break
+
+    return chosen
 
 
 async def compose(measurements: dict[str, float]) -> list[ReadingSection]:
