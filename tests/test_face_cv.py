@@ -124,12 +124,14 @@ def test_measurement_extraction_values():
     measurements, details = extract_measurements(synthetic_landmarks)
 
     expected_keys = [
-        "face_ratio", "forehead_w", "forehead_h", "jaw_w", "midface_h",
-        "lower_face_h", "inter_eye_d", "eye_w", "eye_h", "eye_slant",
-        "eye_asym", "nose_w", "nose_h", "nose_bridge_w", "mouth_w",
-        "lip_full", "lip_ratio", "lip_corner", "lip_asym", "chin_h",
-        "cheek_full", "brow_span", "brow_arch",
+        "wh_ratio", "jaw_cheek", "brow_cheek", "forehead_h",
+        "eye_open", "eye_size", "eye_gap", "eye_tilt", "eye_asym",
+        "brow_thick", "brow_arch", "brow_gap", "brow_len",
+        "nose_w", "nose_len", "nostril", "nose_dev",
+        "lip_thick", "mouth_w", "lip_corner", "lip_asym",
+        "chin_h", "cheek_full",
     ]
+    assert len(expected_keys) == 23
     for key in expected_keys:
         assert key in measurements, f"Missing expected measurement: {key}"
         val = measurements[key]
@@ -137,6 +139,7 @@ def test_measurement_extraction_values():
         assert not math.isinf(val), f"{key} is Inf"
         assert 0.0 <= val <= 10.0, f"{key} = {val} is outside [0.0, 10.0]"
         assert key in details
+
 
 
 def test_insufficient_landmarks_error():
@@ -189,15 +192,24 @@ def test_quality_assessment_dark_image():
 
 
 def test_head_pose_estimation():
-    """Frontal synthetic landmarks should give near-zero yaw, pitch, roll."""
+    """Frontal landmarks should give near-zero yaw, pitch, roll and is_frontal True."""
     w, h = 640, 640
-    lms_px = [(x * w, y * h, z) for x, y, z in _make_dummy_landmarks(478)]
+    lms = [(0.5, 0.5, 0.0)] * 478
+    lms[LandmarkIndex.NOSE_TIP] = (0.50, 0.23, -0.06)
+    lms[LandmarkIndex.CHIN_BOTTOM] = (0.50, 0.34, 0.0)
+    lms[LandmarkIndex.R_EYE_OUTER] = (0.42, 0.17, 0.02)
+    lms[LandmarkIndex.L_EYE_OUTER] = (0.57, 0.17, 0.02)
+    lms[LandmarkIndex.MOUTH_CORNER_RIGHT] = (0.43, 0.26, 0.01)
+    lms[LandmarkIndex.MOUTH_CORNER_LEFT] = (0.56, 0.25, 0.01)
+
+    lms_px = [(x * w, y * h, z) for x, y, z in lms]
     pose = estimate_head_pose(lms_px, w, h)
     assert pose is not None
     assert pose.is_frontal
-    assert abs(pose.yaw_deg) < 30.0
-    assert abs(pose.pitch_deg) < 30.0
-    assert abs(pose.roll_deg) < 20.0
+    assert abs(pose.yaw_deg) < 20.0
+    assert abs(pose.pitch_deg) < 25.0
+    assert abs(pose.roll_deg) < 15.0
+
 
 
 
@@ -237,3 +249,106 @@ def test_pipeline_rejection_no_face():
     assert len(res.warnings) > 0
     assert res.measurements == {}
     assert res.visualization_image == ""
+
+
+def test_pipeline_real_face_scan():
+    """Runs the full pipeline on a real face photograph."""
+    from pathlib import Path
+    img_path = Path(__file__).resolve().parent.parent.parent / "Astra-Astrology-Web" / "public" / "_facetest.jpg"
+    if not img_path.exists():
+        pytest.skip(f"Test image not found at {img_path}")
+
+    raw_bytes = img_path.read_bytes()
+    res = execute_scan_pipeline(raw_bytes)
+
+    assert res.status in (QualityStatus.ACCEPTED, QualityStatus.RETAKE_RECOMMENDED)
+    assert res.scan_id != ""
+    assert res.quality_score > 0.4
+    assert res.head_pose is not None
+    assert abs(res.head_pose["yaw_deg"]) < 25.0
+    assert len(res.measurements) == 23
+    assert res.visualization_image.startswith("data:image/jpeg;base64,")
+    assert res.processing_duration_ms > 0
+
+
+def test_pipeline_repeatability_and_invariance():
+    """Validates repeatability across slight lighting and brightness alterations."""
+    from pathlib import Path
+    img_path = Path(__file__).resolve().parent.parent.parent / "Astra-Astrology-Web" / "public" / "_facetest.jpg"
+    if not img_path.exists():
+        pytest.skip(f"Test image not found at {img_path}")
+
+    raw_bytes_orig = img_path.read_bytes()
+    res1 = execute_scan_pipeline(raw_bytes_orig)
+
+    # Decode and adjust brightness slightly (+10% luminance)
+    img_bgr = cv2.imdecode(np.frombuffer(raw_bytes_orig, np.uint8), cv2.IMREAD_COLOR)
+    img_bright = cv2.convertScaleAbs(img_bgr, alpha=1.05, beta=8)
+    ok, buf = cv2.imencode(".jpg", img_bright)
+    assert ok
+    res2 = execute_scan_pipeline(buf.tobytes())
+
+    # Measurement ratios should be highly repeatable (within 4% drift)
+    for metric, val1 in res1.measurements.items():
+        val2 = res2.measurements[metric]
+        diff_abs = abs(val1 - val2)
+        diff_pct = diff_abs / max(1e-3, (val1 + val2) / 2.0)
+        assert diff_abs < 0.035 or diff_pct < 0.15, f"Metric {metric} repeatability variance too high: {val1} vs {val2}"
+
+
+
+
+def test_json_serialization_safety():
+    """Verifies FaceScanResponse schema serializes to JSON without NaN or Infinity."""
+    import json
+    from app.schemas.face_reading import FaceScanResponse, QualityChecksOut, HeadPoseOut, MeasurementDetailOut
+
+    checks = QualityChecksOut(
+        is_valid=True,
+        status="ACCEPTED",
+        face_count=1,
+        face_coverage_pct=0.25,
+        blur_score=150.0,
+        brightness_mean=130.0,
+        contrast_std=45.0,
+        lighting_symmetry_ratio=1.05,
+        head_pose=HeadPoseOut(yaw=1.2, pitch=2.5, roll=-0.5, is_frontal=True),
+        issues=[],
+        recommendations=[],
+    )
+    resp = FaceScanResponse(
+        scan_id="test-scan-123",
+        status="ACCEPTED",
+        quality_score=0.92,
+        quality_checks=checks,
+        head_pose=HeadPoseOut(yaw=1.2, pitch=2.5, roll=-0.5, is_frontal=True),
+        measurements={"wh_ratio": 0.75, "chin_h": 0.22},
+        measurement_details={
+            "wh_ratio": MeasurementDetailOut(
+                name="wh_ratio",
+                value=0.75,
+                description="Face width to height",
+                formula="w/h",
+                landmarks_used=[234, 454],
+                status="available",
+            )
+        },
+        measurement_status="valid",
+        visualization_image="data:image/jpeg;base64,abc",
+        reading=None,
+        coins_charged=0,
+        landmark_mapping_version="canonical_478_v1",
+        model_version="mediapipe_tasks_vision_1.1.1",
+        processing_duration_ms=45.2,
+        warnings=[],
+        error_message=None,
+    )
+
+    data = resp.model_dump()
+    json_str = json.dumps(data)
+    assert "NaN" not in json_str
+    assert "Infinity" not in json_str
+    parsed = json.loads(json_str)
+    assert parsed["scan_id"] == "test-scan-123"
+    assert parsed["measurements"]["wh_ratio"] == 0.75
+

@@ -120,7 +120,10 @@ def estimate_head_pose(
     # Face looking towards camera has pitch near ±180 in raw camera frame
     pitch_deg = pitch_raw + 180.0 if pitch_raw < 0 else pitch_raw - 180.0
     yaw_deg = yaw_raw
-    roll_deg = roll_raw
+    roll_deg = roll_raw - 180.0 if roll_raw > 90.0 else (roll_raw + 180.0 if roll_raw < -90.0 else roll_raw)
+
+
+
 
     is_frontal = (
         abs(yaw_deg) <= config.max_yaw_acceptable_deg

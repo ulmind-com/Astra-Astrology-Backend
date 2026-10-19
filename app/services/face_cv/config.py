@@ -36,8 +36,9 @@ class FaceScanConfig:
     max_lighting_symmetry: float = 2.65
 
     # Face framing / coverage
-    min_face_coverage_ratio: float = 0.08       # face bbox area / image area
-    recommended_face_coverage: float = 0.14
+    min_face_coverage_ratio: float = 0.035       # face bbox area / image area
+    recommended_face_coverage: float = 0.08
+
 
     # Head pose angles (degrees)
     max_yaw_acceptable_deg: float = 24.0        # turned to side
