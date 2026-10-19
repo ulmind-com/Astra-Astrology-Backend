@@ -48,6 +48,60 @@ class FaceReadingAvailability(BaseModel):
     min_quality: float
 
 
+
+class HeadPoseOut(BaseModel):
+    yaw: float
+    pitch: float
+    roll: float
+    is_frontal: bool
+
+
+class QualityChecksOut(BaseModel):
+    is_valid: bool
+    status: str
+    face_count: int
+    face_coverage_pct: float
+    blur_score: float
+    brightness_mean: float
+    contrast_std: float
+    lighting_symmetry_ratio: float
+    head_pose: HeadPoseOut | None = None
+    issues: list[str] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=list)
+
+
+class MeasurementDetailOut(BaseModel):
+    name: str
+    value: float
+    description: str
+    formula: str
+    landmarks_used: list[int]
+    status: str = "available"
+
+
+class FaceScanResponse(BaseModel):
+    scan_id: str
+    status: str
+    quality_score: float
+    quality_checks: QualityChecksOut
+    head_pose: HeadPoseOut | None = None
+    measurements: dict[str, float] = Field(default_factory=dict)
+    measurement_details: dict[str, MeasurementDetailOut] = Field(default_factory=dict)
+    measurement_status: str
+    visualization_image: str | None = None
+    reading: FaceReadingOut | None = None
+    coins_charged: int = 0
+    landmark_mapping_version: str
+    model_version: str
+    processing_duration_ms: float
+    warnings: list[str] = Field(default_factory=list)
+    error_message: str | None = None
+
+
+class FaceScanBase64Request(BaseModel):
+    image: str = Field(description="Base64 encoded image string (data URL or raw base64)")
+
+
 class RuleOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -74,3 +128,4 @@ class RuleUpdate(BaseModel):
     priority: int | None = None
     enabled: bool | None = None
     reviewed: bool | None = None
+

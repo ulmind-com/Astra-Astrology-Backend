@@ -1,23 +1,29 @@
-"""Face reading: availability, submitting a measurement, and the rule set."""
-
+import base64
 from typing import Annotated
 
 from beanie import PydanticObjectId
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, File, Query, Request, UploadFile, status
+from loguru import logger
 
 from app.api.dependencies import AdminUser, CurrentUser
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import BadRequestError, NotFoundError, ServiceUnavailableError
+from app.models.enums import TransactionReason
 from app.models.face_reading import Condition, FaceReading, FaceRule
 from app.schemas.common import ApiResponse
 from app.schemas.face_reading import (
     FaceReadingAvailability,
     FaceReadingOut,
+    FaceScanResponse,
+    HeadPoseOut,
+    MeasurementDetailOut,
+    QualityChecksOut,
     ReadingSectionOut,
     RuleOut,
     RuleUpdate,
     SubmitReadingRequest,
 )
 from app.services import face_reading as service
+from app.services.face_cv import QualityStatus, execute_scan_pipeline
 
 router = APIRouter(prefix="/face-reading", tags=["face reading"])
 
@@ -75,6 +81,192 @@ async def submit(
         user=user, measurements=payload.measurements, quality=payload.quality
     )
     return ApiResponse(message="Your reading is ready.", data=_out(reading))
+
+
+@router.post(
+    "/scan",
+    response_model=ApiResponse[FaceScanResponse],
+    summary="Robust MediaPipe + OpenCV facial scanning and Samudrik Shastra reading",
+)
+async def scan(user: CurrentUser, request: Request) -> ApiResponse[FaceScanResponse]:
+    """Processes an image through the production MediaPipe + OpenCV 3D scanning pipeline.
+
+    Stages:
+        A - Image validation, orientation correction, OpenCV decoding
+        B & D - Face detection, quality checks, pose estimation (yaw/pitch/roll)
+        E - 23 geometric biometric ratios strictly bounded in [0.0, 10.0]
+        G - Visualization overlay generation with biometric mesh
+        H - Samudrik Shastra interpretation & coin debit (only when quality is acceptable)
+    """
+    from app.services import settings as settings_service
+    from app.services import wallet as wallet_service
+
+    content_type = request.headers.get("content-type", "")
+    raw_bytes: bytes = b""
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        file_field = form.get("file")
+        if file_field and hasattr(file_field, "read"):
+            raw_bytes = await file_field.read()
+        elif "image" in form and isinstance(form["image"], str):
+            val = form["image"]
+            if "," in val:
+                val = val.split(",", 1)[1]
+            try:
+                raw_bytes = base64.b64decode(val)
+            except Exception:
+                raise BadRequestError("Invalid base64 payload.", error_code="invalid_base64")
+    elif "application/json" in content_type:
+        try:
+            body = await request.json()
+        except Exception:
+            raise BadRequestError("Invalid JSON body.", error_code="invalid_json")
+        val = body.get("image") or body.get("image_base64")
+        if not val or not isinstance(val, str):
+            raise BadRequestError(
+                "Missing 'image' or 'image_base64' string in JSON body.",
+                error_code="missing_image",
+            )
+        if "," in val:
+            val = val.split(",", 1)[1]
+        try:
+            raw_bytes = base64.b64decode(val)
+        except Exception:
+            raise BadRequestError("Invalid base64 string.", error_code="invalid_base64")
+    else:
+        raw_bytes = await request.body()
+
+    if not raw_bytes:
+        raise BadRequestError("Empty image payload received.", error_code="empty_image")
+
+    # Preliminary setting & wallet verification
+    platform = await settings_service.get_settings()
+    if not platform.face_reading_enabled:
+        raise ServiceUnavailableError(
+            "Face reading is not available right now.",
+            error_code="face_reading_disabled",
+        )
+
+    wallet = await wallet_service.get_or_create_wallet(user.id)
+    if platform.face_reading_coins > 0 and wallet.balance_coins < platform.face_reading_coins:
+        raise BadRequestError(
+            f"You need {platform.face_reading_coins} coins for a face reading, but your balance is {wallet.balance_coins}.",
+            error_code="insufficient_coins",
+        )
+
+    # Execute Computer Vision Pipeline
+    try:
+        cv_result = execute_scan_pipeline(raw_bytes)
+    except ValueError as e:
+        raise BadRequestError(str(e), error_code="invalid_image")
+    except Exception as e:
+        logger.exception("Face CV scan failed unexpectedly")
+        raise BadRequestError(f"Facial scanning failed: {str(e)}", error_code="scan_failed")
+
+    pose_out = HeadPoseOut(**cv_result.head_pose) if cv_result.head_pose else None
+    checks_out = QualityChecksOut(
+        is_valid=cv_result.quality_checks.get("is_valid", False),
+        status=cv_result.quality_checks.get("status", cv_result.status.value),
+        face_count=cv_result.quality_checks.get("face_count", 0),
+        face_coverage_pct=cv_result.quality_checks.get("face_coverage_pct", 0.0),
+        blur_score=cv_result.quality_checks.get("blur_score", 0.0),
+        brightness_mean=cv_result.quality_checks.get("brightness_mean", 0.0),
+        contrast_std=cv_result.quality_checks.get("contrast_std", 0.0),
+        lighting_symmetry_ratio=cv_result.quality_checks.get("lighting_symmetry_ratio", 0.0),
+        head_pose=pose_out,
+        issues=cv_result.quality_checks.get("issues", []),
+        recommendations=cv_result.quality_checks.get("recommendations", []),
+    )
+
+    # When image is rejected, do NOT charge and do NOT generate a reading
+    if cv_result.status == QualityStatus.REJECTED:
+        return ApiResponse(
+            message=cv_result.error_message or "Image quality did not meet scanning requirements.",
+            data=FaceScanResponse(
+                scan_id=cv_result.scan_id,
+                status=QualityStatus.REJECTED.value,
+                quality_score=cv_result.quality_score,
+                quality_checks=checks_out,
+                head_pose=pose_out,
+                measurements={},
+                measurement_details={},
+                measurement_status="rejected",
+                visualization_image=None,
+                reading=None,
+                coins_charged=0,
+                landmark_mapping_version=cv_result.landmark_mapping_version,
+                model_version=cv_result.model_version,
+                processing_duration_ms=cv_result.processing_duration_ms,
+                warnings=cv_result.warnings,
+                error_message=cv_result.error_message,
+            ),
+        )
+
+    # For ACCEPTED or RETAKE_RECOMMENDED: Compose astrology reading and debit coins
+    sections = await service.compose(cv_result.measurements)
+    if not sections:
+        raise ServiceUnavailableError(
+            "Face reading rules are currently unavailable. Please try again shortly.",
+            error_code="rules_unavailable",
+        )
+
+    reading = FaceReading(
+        user_id=user.id,
+        measurements=cv_result.measurements,
+        sections=sections,
+        coins_charged=platform.face_reading_coins,
+        quality=round(cv_result.quality_score, 3),
+    )
+    await reading.insert()
+
+    if platform.face_reading_coins > 0:
+        try:
+            await wallet_service.debit(
+                user_id=user.id,
+                amount_coins=platform.face_reading_coins,
+                reason=TransactionReason.CONSULTATION,
+                idempotency_key=f"face-reading:{reading.id}",
+                note="Face reading scan",
+            )
+        except Exception:
+            await reading.delete()
+            raise
+
+    details_out = {
+        k: MeasurementDetailOut(
+            name=v.get("name", k),
+            value=v.get("value", 0.0),
+            description=v.get("description", ""),
+            formula=v.get("formula", ""),
+            landmarks_used=v.get("landmarks_used", []),
+            status=v.get("status", "available"),
+        )
+        for k, v in cv_result.measurement_details.items()
+    }
+
+    return ApiResponse(
+        message="Face scanning complete and reading generated.",
+        data=FaceScanResponse(
+            scan_id=cv_result.scan_id,
+            status=cv_result.status.value,
+            quality_score=cv_result.quality_score,
+            quality_checks=checks_out,
+            head_pose=pose_out,
+            measurements=cv_result.measurements,
+            measurement_details=details_out,
+            measurement_status="valid" if cv_result.status == QualityStatus.ACCEPTED else "retake_recommended",
+            visualization_image=cv_result.visualization_image,
+            reading=_out(reading),
+            coins_charged=reading.coins_charged,
+            landmark_mapping_version=cv_result.landmark_mapping_version,
+            model_version=cv_result.model_version,
+            processing_duration_ms=cv_result.processing_duration_ms,
+            warnings=cv_result.warnings,
+            error_message=None,
+        ),
+    )
+
 
 
 @router.get(

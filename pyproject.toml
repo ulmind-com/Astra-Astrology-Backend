@@ -22,6 +22,9 @@ dependencies = [
     "resend>=2.4.0",
     "loguru>=0.7.2",
     "razorpay>=2.0.1",
+    "opencv-python-headless>=4.10.0",
+    "mediapipe>=0.10.14",
+    "numpy>=1.26.0,<2.0.0",
 ]
 
 [project.optional-dependencies]
