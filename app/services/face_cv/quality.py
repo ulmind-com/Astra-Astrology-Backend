@@ -188,15 +188,37 @@ def assess_quality(
             message="No face detected. Please ensure your full face is visible and well lit.",
         )
 
-    # 2. Sharpness / Blur check
-    sharpness = calculate_sharpness(gray)
+    # 2. Face Bounding Box & Coverage
+    oval_pts = np.array([[landmarks_px[i][0], landmarks_px[i][1]] for i in FACE_OVAL_INDICES], dtype=np.float32)
+    min_x, min_y = np.min(oval_pts, axis=0)
+    max_x, max_y = np.max(oval_pts, axis=0)
+    face_w = max(1.0, max_x - min_x)
+    face_h = max(1.0, max_y - min_y)
+    face_coverage = (face_w * face_h) / float(w * h)
+
+    fx1 = int(max(0, min_x))
+    fy1 = int(max(0, min_y))
+    fx2 = int(min(w, max_x))
+    fy2 = int(min(h, max_y))
+
+    face_crop = gray[fy1:fy2, fx1:fx2]
+
+    # 3. Sharpness / Blur check (evaluated on the face ROI where features matter)
+    full_sharpness = calculate_sharpness(gray)
+    if face_crop.size >= 100:
+        face_sharpness = calculate_sharpness(face_crop)
+        sharpness = max(face_sharpness, full_sharpness)
+    else:
+        sharpness = full_sharpness
+
     if sharpness < config.min_sharpness_acceptable:
         issues.append("Image is too blurry for accurate landmark detection.")
         recommendations.append("Hold camera steady and ensure proper lens focus.")
     elif sharpness < config.min_sharpness_recommended:
         issues.append("Image is slightly soft; sharper focus is recommended.")
+        recommendations.append("Hold camera steady for the highest biometric precision.")
 
-    # 3. Brightness / Exposure check
+    # 4. Brightness / Exposure check
     brightness_mean = float(np.mean(gray))
     overexposed_ratio = float(np.sum(gray >= config.overexposure_pixel_threshold)) / float(gray.size)
 
@@ -207,14 +229,6 @@ def assess_quality(
         issues.append("Image has harsh glare or overexposure.")
         recommendations.append("Avoid direct flash glare or harsh backlighting.")
 
-    # 4. Face Bounding Box & Coverage
-    oval_pts = np.array([[landmarks_px[i][0], landmarks_px[i][1]] for i in FACE_OVAL_INDICES], dtype=np.float32)
-    min_x, min_y = np.min(oval_pts, axis=0)
-    max_x, max_y = np.max(oval_pts, axis=0)
-    face_w = max(1.0, max_x - min_x)
-    face_h = max(1.0, max_y - min_y)
-    face_coverage = (face_w * face_h) / float(w * h)
-
     if face_coverage < config.min_face_coverage_ratio:
         issues.append("Face is too small in the frame.")
         recommendations.append("Move closer to the camera so your face occupies the center.")
@@ -222,12 +236,6 @@ def assess_quality(
         recommendations.append("A slightly closer portrait will give even higher landmark precision.")
 
     # 5. Lighting Symmetry across Face
-    fx1 = int(max(0, min_x))
-    fy1 = int(max(0, min_y))
-    fx2 = int(min(w, max_x))
-    fy2 = int(min(h, max_y))
-
-    face_crop = gray[fy1:fy2, fx1:fx2]
     lighting_symmetry = 1.0
     if face_crop.shape[1] >= 10:
         mid_col = face_crop.shape[1] // 2
@@ -261,21 +269,20 @@ def assess_quality(
         recommendations.append("Keep your head level.")
 
     # Determine Quality Status
-    # Critical rejections:
+    # Critical rejections: only severe blockers that prevent reliable measurement
     is_rejected = (
         sharpness < config.min_sharpness_acceptable
         or brightness_mean < config.min_brightness_acceptable
         or brightness_mean > config.max_brightness_acceptable
         or face_coverage < config.min_face_coverage_ratio
         or not head_pose.is_frontal
-        or (lighting_symmetry < config.min_lighting_symmetry or lighting_symmetry > config.max_lighting_symmetry)
     )
 
     # Score calculation (0.0 to 1.0)
-    sharp_factor = min(1.0, max(0.0, (sharpness - 50.0) / 200.0))
-    pose_factor = max(0.0, 1.0 - (abs(head_pose.yaw_deg) / 25.0 + abs(head_pose.pitch_deg) / 25.0 + abs(head_pose.roll_deg) / 20.0) / 3.0)
+    sharp_factor = min(1.0, max(0.0, sharpness / 60.0))
+    pose_factor = max(0.0, 1.0 - (abs(head_pose.yaw_deg) / 30.0 + abs(head_pose.pitch_deg) / 30.0 + abs(head_pose.roll_deg) / 25.0) / 3.0)
     coverage_factor = min(1.0, max(0.0, face_coverage / config.recommended_face_coverage))
-    quality_score = float(np.clip(0.4 * sharp_factor + 0.4 * pose_factor + 0.2 * coverage_factor, 0.05, 1.0))
+    quality_score = float(np.clip(0.35 * sharp_factor + 0.45 * pose_factor + 0.20 * coverage_factor, 0.1, 1.0))
 
     if is_rejected:
         status = QualityStatus.REJECTED

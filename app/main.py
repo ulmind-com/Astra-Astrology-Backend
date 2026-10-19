@@ -119,6 +119,14 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     init_firebase()
     configure_cloudinary()
 
+    # Pre-warm MediaPipe Face Landmarker in background so first user scan is fast
+    try:
+        import asyncio
+        from app.services.face_cv.detector import get_landmarker
+        asyncio.get_running_loop().run_in_executor(None, get_landmarker)
+    except Exception as e:
+        logger.debug("Face CV warm-up deferred: {}", e)
+
     logger.success("{} is ready on port {}.", settings.APP_NAME, settings.PORT)
     yield
 
