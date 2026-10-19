@@ -18,7 +18,7 @@ moves rather than after.
 from datetime import UTC, datetime, timedelta
 
 from beanie import PydanticObjectId
-from beanie.operators import GTE, LT, And, In
+from beanie.operators import GTE, LT, And, In, Or
 from loguru import logger
 from pymongo.errors import DuplicateKeyError
 
@@ -370,11 +370,21 @@ async def for_user(user_id: PydanticObjectId, *, upcoming_only: bool = False):
 async def for_astrologer(
     astrologer_user_id: PydanticObjectId, *, upcoming_only: bool = False
 ):
-    query = [Appointment.astrologer_user_id == astrologer_user_id]
+    profile = await Astrologer.find_one(Astrologer.user_id == astrologer_user_id)
+    if profile and profile.id:
+        astro_match = Or(
+            Appointment.astrologer_user_id == astrologer_user_id,
+            Appointment.astrologer_id == profile.id,
+        )
+    else:
+        astro_match = Appointment.astrologer_user_id == astrologer_user_id
+
+    query = [astro_match]
     if upcoming_only:
         query.append(GTE(Appointment.ends_at, utcnow()))
         query.append(In(Appointment.status, [AppointmentStatus.BOOKED]))
-    return await Appointment.find(And(*query)).sort(+Appointment.starts_at).to_list()
+        return await Appointment.find(And(*query)).sort(+Appointment.starts_at).to_list()
+    return await Appointment.find(And(*query)).sort(-Appointment.starts_at).to_list()
 
 
 async def _notify(appointment: Appointment) -> None:
