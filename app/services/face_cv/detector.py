@@ -50,7 +50,11 @@ class FaceLandmarkerManager:
                     "Ensure app/assets/face_landmarker.task is downloaded."
                 )
 
-            base_options = python.BaseOptions(model_asset_path=str(model_path))
+            base_options = python.BaseOptions(
+                model_asset_path=str(model_path),
+                delegate=python.BaseOptions.Delegate.CPU,
+            )
+
             options = vision.FaceLandmarkerOptions(
                 base_options=base_options,
                 running_mode=vision.RunningMode.IMAGE,

@@ -6,14 +6,19 @@ ENV UV_COMPILE_BYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# Install system C/C++ runtime libraries required by OpenCV (libGL.so.1) and MediaPipe
+# Install system C/C++ runtime libraries required by OpenCV (libGL.so.1) and MediaPipe (libEGL.so.1)
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    libegl1 \
     libgl1 \
+    libgles2 \
+    libgl1-mesa-dri \
     libglib2.0-0 \
     libgomp1 \
     libsm6 \
     libxext6 \
+    libxrender1 \
     && rm -rf /var/lib/apt/lists/*
+
 
 WORKDIR /app
 
