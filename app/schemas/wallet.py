@@ -185,6 +185,9 @@ class PlatformSettingsOut(BaseModel):
     max_appointment_minutes: int
     appointment_booking_days_ahead: int
 
+    face_reading_coins: int
+    face_reading_enabled: bool
+
     updated_at: datetime
 
 
@@ -210,6 +213,10 @@ class ConsultationDefaultsUpdate(BaseModel):
     min_appointment_minutes: int | None = Field(default=None, ge=5, le=600)
     max_appointment_minutes: int | None = Field(default=None, ge=5, le=600)
     appointment_booking_days_ahead: int | None = Field(default=None, ge=1, le=365)
+
+    # What one face reading costs, and whether it is offered at all.
+    face_reading_coins: int | None = Field(default=None, ge=0, le=1_000_000)
+    face_reading_enabled: bool | None = None
 
 
 class CoinRateUpdate(BaseModel):

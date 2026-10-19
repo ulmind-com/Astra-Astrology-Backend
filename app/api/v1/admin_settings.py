@@ -39,6 +39,8 @@ def _out(doc) -> PlatformSettingsOut:
         min_appointment_minutes=doc.min_appointment_minutes,
         max_appointment_minutes=doc.max_appointment_minutes,
         appointment_booking_days_ahead=doc.appointment_booking_days_ahead,
+        face_reading_coins=doc.face_reading_coins,
+        face_reading_enabled=doc.face_reading_enabled,
         updated_at=doc.updated_at,
     )
 

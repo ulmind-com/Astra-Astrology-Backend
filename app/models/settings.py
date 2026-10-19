@@ -68,6 +68,15 @@ class PlatformSettings(TimestampedDocument):
     # thought about yet.
     appointment_booking_days_ahead: int = Field(default=30, ge=1, le=365)
 
+    # --------------------------------------------------------- face reading
+    # What one face reading costs, in coins. Zero makes it free, which is a
+    # legitimate choice while the rule set is still being tuned.
+    face_reading_coins: int = Field(default=50, ge=0, le=1_000_000)
+
+    # Whether the feature is offered at all. Lets an admin take it down
+    # without a deploy if a reading is going wrong.
+    face_reading_enabled: bool = True
+
     updated_by: PydanticObjectId | None = None
 
     class Settings:

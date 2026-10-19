@@ -117,6 +117,8 @@ async def set_consultation_defaults(
     doc = await get_settings()
 
     for field, value in changes.items():
+        # `None` means the caller did not send the field. `False` is a real
+        # value — switching face reading off must not be read as silence.
         if value is not None:
             setattr(doc, field, value)
 

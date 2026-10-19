@@ -12,6 +12,7 @@ from app.api.v1 import (
     calls,
     chats,
     earnings,
+    face_reading,
     health,
     reviews,
     users,
@@ -37,6 +38,8 @@ api_router.include_router(calls.webhook_router)
 api_router.include_router(chats.router)
 api_router.include_router(chats.maintenance_router)
 api_router.include_router(astrologers.maintenance_router)
+api_router.include_router(face_reading.router)
+api_router.include_router(face_reading.admin_router)
 api_router.include_router(reviews.router)
 api_router.include_router(reviews.admin_router)
 api_router.include_router(earnings.router)
