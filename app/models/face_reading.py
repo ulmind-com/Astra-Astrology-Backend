@@ -29,6 +29,7 @@ class FaceFeature:
 
     FACE_SHAPE = "face_shape"
     FOREHEAD = "forehead"
+    FOREHEAD_LINES = "forehead_lines"
     EYEBROWS = "eyebrows"
     EYES = "eyes"
     NOSE = "nose"
@@ -36,11 +37,12 @@ class FaceFeature:
     CHIN = "chin"
     CHEEKS = "cheeks"
 
-    ALL = [FACE_SHAPE, FOREHEAD, EYEBROWS, EYES, NOSE, LIPS, CHIN, CHEEKS]
+    ALL = [FACE_SHAPE, FOREHEAD, FOREHEAD_LINES, EYEBROWS, EYES, NOSE, LIPS, CHIN, CHEEKS]
 
     LABELS = {
         FACE_SHAPE: "Face shape",
         FOREHEAD: "Forehead",
+        FOREHEAD_LINES: "Forehead Lines & Wrinkles (কপালের রেখা / ভাঁজ)",
         EYEBROWS: "Eyebrows",
         EYES: "Eyes",
         NOSE: "Nose",

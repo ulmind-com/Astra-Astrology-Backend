@@ -1,6 +1,8 @@
 """OpenCV-based 3D facial mesh and biometric measurement visualization module."""
 
 import base64
+from typing import Any
+
 import cv2
 import numpy as np
 
@@ -8,10 +10,10 @@ from app.services.face_cv.landmarks import (
     LandmarkIndex as P,
 )
 from app.services.face_cv.mesh_connections import (
-    FACEMESH_TESSELATION,
     FACEMESH_CONTOURS,
-    RIGHT_IRIS_CONNECTIONS,
+    FACEMESH_TESSELATION,
     LEFT_IRIS_CONNECTIONS,
+    RIGHT_IRIS_CONNECTIONS,
 )
 from app.services.face_cv.quality import QualityStatus
 
@@ -20,6 +22,7 @@ def draw_facial_mesh_overlay(
     img_rgb: np.ndarray,
     landmarks_px: list[tuple[float, float, float]],
     quality_status: QualityStatus,
+    forehead_lines: list[Any] | None = None,
 ) -> str:
     """Draws a high-precision 3D biometric face mesh overlay and returns a base64 JPEG string.
 
@@ -29,6 +32,7 @@ def draw_facial_mesh_overlay(
         - 3D iris and pupil tracking nodes (landmarks 468 & 473)
         - 478 3D micro-coordinate nodes with depth-attenuated luminosity
         - Glowing dual-ring anchor nodes at primary Vedic anthropometric landmarks
+        - Planetary forehead wrinkle & fold line biometric tracking paths
         - Anatomical symmetry and horizontal eye-plane alignment guides
     """
     vis_bgr = cv2.cvtColor(img_rgb.copy(), cv2.COLOR_RGB2BGR)
@@ -67,7 +71,9 @@ def draw_facial_mesh_overlay(
         if start_idx < n_pts and end_idx < n_pts:
             p1 = pts[start_idx]
             p2 = pts[end_idx]
-            cv2.line(mesh_layer, (p1[0], p1[1]), (p2[0], p2[1]), mesh_color, 1, lineType=cv2.LINE_AA)
+            cv2.line(
+                mesh_layer, (p1[0], p1[1]), (p2[0], p2[1]), mesh_color, 1, lineType=cv2.LINE_AA
+            )
 
     # Blend the 3D tesselation wireframe at 36% opacity for subtle, realistic depth
     cv2.addWeighted(mesh_layer, 0.36, vis_bgr, 0.64, 0, vis_bgr)
@@ -77,7 +83,9 @@ def draw_facial_mesh_overlay(
         if start_idx < n_pts and end_idx < n_pts:
             p1 = pts[start_idx]
             p2 = pts[end_idx]
-            cv2.line(vis_bgr, (p1[0], p1[1]), (p2[0], p2[1]), contour_color, 1, lineType=cv2.LINE_AA)
+            cv2.line(
+                vis_bgr, (p1[0], p1[1]), (p2[0], p2[1]), contour_color, 1, lineType=cv2.LINE_AA
+            )
 
     # 3. Layer 3: Irises and Pupils (Landmarks 468-477)
     for start_idx, end_idx in RIGHT_IRIS_CONNECTIONS + LEFT_IRIS_CONNECTIONS:
@@ -87,11 +95,11 @@ def draw_facial_mesh_overlay(
             cv2.line(vis_bgr, (p1[0], p1[1]), (p2[0], p2[1]), iris_color, 1, lineType=cv2.LINE_AA)
 
     # Pupil centers
-    if P.R_PUPIL < n_pts:
+    if n_pts > P.R_PUPIL:
         pr = pts[P.R_PUPIL]
         cv2.circle(vis_bgr, (pr[0], pr[1]), 2, (255, 255, 255), -1, lineType=cv2.LINE_AA)
         cv2.circle(vis_bgr, (pr[0], pr[1]), 4, iris_color, 1, lineType=cv2.LINE_AA)
-    if P.L_PUPIL < n_pts:
+    if n_pts > P.L_PUPIL:
         pl = pts[P.L_PUPIL]
         cv2.circle(vis_bgr, (pl[0], pl[1]), 2, (255, 255, 255), -1, lineType=cv2.LINE_AA)
         cv2.circle(vis_bgr, (pl[0], pl[1]), 4, iris_color, 1, lineType=cv2.LINE_AA)
@@ -130,16 +138,73 @@ def draw_facial_mesh_overlay(
             # Solid core
             cv2.circle(vis_bgr, (p[0], p[1]), 2, accent_color, -1, lineType=cv2.LINE_AA)
 
+    # 5.5 Layer 5.5: Planetary Forehead Wrinkles & Crease Lines Biometric Highlight
+    if forehead_lines:
+        for f_line in forehead_lines:
+            x_s = getattr(f_line, "x_start", 0)
+            x_e = getattr(f_line, "x_end", 0)
+            y_c = getattr(f_line, "y_center", 0)
+            c_pts = getattr(f_line, "contour_points", [])
+            p_name = getattr(f_line, "planet_name", "")
+
+            # If contour points are present, draw conforming curved crease path
+            if c_pts and len(c_pts) >= 2:
+                pts_line = np.array(c_pts, dtype=np.int32).reshape((-1, 1, 2))
+                # Translucent glow
+                cv2.polylines(vis_bgr, [pts_line], False, (40, 180, 250), 3, lineType=cv2.LINE_AA)
+                # Crisp core
+                cv2.polylines(vis_bgr, [pts_line], False, (80, 235, 255), 1, lineType=cv2.LINE_AA)
+            elif x_e > x_s:
+                # Geometric horizontal biometric tracking vector
+                cv2.line(vis_bgr, (x_s, y_c), (x_e, y_c), (40, 180, 250), 3, lineType=cv2.LINE_AA)
+                cv2.line(vis_bgr, (x_s, y_c), (x_e, y_c), (80, 235, 255), 1, lineType=cv2.LINE_AA)
+
+            # Endcap coordinate anchors
+            if x_e > x_s and 0 <= x_s < w and 0 <= x_e < w and 0 <= y_c < h:
+                cv2.circle(vis_bgr, (x_s, y_c), 3, (40, 180, 250), 1, lineType=cv2.LINE_AA)
+                cv2.circle(vis_bgr, (x_s, y_c), 1, (255, 255, 255), -1, lineType=cv2.LINE_AA)
+                cv2.circle(vis_bgr, (x_e, y_c), 3, (40, 180, 250), 1, lineType=cv2.LINE_AA)
+                cv2.circle(vis_bgr, (x_e, y_c), 1, (255, 255, 255), -1, lineType=cv2.LINE_AA)
+
+                # Planetary indicator badge
+                if p_name:
+                    short_tag = p_name.split(" ")[0]
+                    txt_x = min(w - 55, x_e + 6)
+                    cv2.putText(
+                        vis_bgr,
+                        short_tag,
+                        (txt_x, max(12, y_c + 3)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.32,
+                        (80, 235, 255),
+                        1,
+                        cv2.LINE_AA,
+                    )
+
     # 6. Layer 6: Anatomical Alignment Grid (Facial Midline & Eye Plane)
-    if P.R_EYE_OUTER < n_pts and P.L_EYE_OUTER < n_pts:
+    if n_pts > P.R_EYE_OUTER and n_pts > P.L_EYE_OUTER:
         pt_r = pts[P.R_EYE_OUTER]
         pt_l = pts[P.L_EYE_OUTER]
-        cv2.line(vis_bgr, (pt_r[0], pt_r[1]), (pt_l[0], pt_l[1]), (255, 255, 255), 1, lineType=cv2.LINE_AA)
+        cv2.line(
+            vis_bgr,
+            (pt_r[0], pt_r[1]),
+            (pt_l[0], pt_l[1]),
+            (255, 255, 255),
+            1,
+            lineType=cv2.LINE_AA,
+        )
 
-    if P.FOREHEAD_TOP < n_pts and P.CHIN_BOTTOM < n_pts:
+    if n_pts > P.FOREHEAD_TOP and n_pts > P.CHIN_BOTTOM:
         pt_top = pts[P.FOREHEAD_TOP]
         pt_bot = pts[P.CHIN_BOTTOM]
-        cv2.line(vis_bgr, (pt_top[0], pt_top[1]), (pt_bot[0], pt_bot[1]), (255, 255, 255), 1, lineType=cv2.LINE_AA)
+        cv2.line(
+            vis_bgr,
+            (pt_top[0], pt_top[1]),
+            (pt_bot[0], pt_bot[1]),
+            (255, 255, 255),
+            1,
+            lineType=cv2.LINE_AA,
+        )
 
     # Encode to high-quality JPEG
     encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 90]

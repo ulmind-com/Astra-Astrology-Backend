@@ -172,7 +172,7 @@ RULES: list[dict] = [
     {
         "feature": "forehead", "option": "broad_high", "label": "Broad and high forehead",
         "priority": 30, "area": "intellect",
-        "conditions": [{"metric": "forehead_h", "min": 0.198}, {"metric": "brow_cheek", "min": 0.755}],
+        "conditions": [{"metric": "forehead_h", "min": 0.180}, {"metric": "brow_cheek", "min": 0.725}],
         "meaning": (
             "Height and width together make the forehead the most prominent "
             "region of the face, and the tradition treats it as the seat of "
@@ -187,7 +187,7 @@ RULES: list[dict] = [
     {
         "feature": "forehead", "option": "high", "label": "High forehead",
         "priority": 20, "area": "intellect",
-        "conditions": [{"metric": "forehead_h", "min": 0.198}],
+        "conditions": [{"metric": "forehead_h", "min": 0.180}],
         "meaning": (
             "A tall forehead is associated with reflection and with learning "
             "that continues past the age most people stop. The reading is of "
@@ -202,7 +202,7 @@ RULES: list[dict] = [
     {
         "feature": "forehead", "option": "low", "label": "Low forehead",
         "priority": 20, "area": "intellect",
-        "conditions": [{"metric": "forehead_h", "max": 0.174}],
+        "conditions": [{"metric": "forehead_h", "max": 0.145}],
         "meaning": (
             "A short forehead is read not as less capacity but as a different "
             "route to it: conclusions arrive quickly and by instinct rather "
@@ -217,7 +217,7 @@ RULES: list[dict] = [
     {
         "feature": "forehead", "option": "wide", "label": "Wide forehead",
         "priority": 15, "area": "intellect",
-        "conditions": [{"metric": "brow_cheek", "min": 0.755}],
+        "conditions": [{"metric": "brow_cheek", "min": 0.735}],
         "meaning": (
             "Width across the brow is read as range rather than depth — an "
             "interest in many things at once and an ease in moving between "
@@ -232,7 +232,7 @@ RULES: list[dict] = [
     {
         "feature": "forehead", "option": "narrow", "label": "Narrow forehead",
         "priority": 15, "area": "intellect",
-        "conditions": [{"metric": "brow_cheek", "max": 0.730}],
+        "conditions": [{"metric": "brow_cheek", "max": 0.675}],
         "meaning": (
             "A narrow brow concentrates rather than spreads. It is read as "
             "focus — the ability to stay with one matter until it yields, and "
@@ -257,6 +257,53 @@ RULES: list[dict] = [
             "being trusted to decide on others' behalf. It asks only that the "
             "balance be used: an evenness that never commits to a view is "
             "indistinguishable from having none."
+        ),
+    },
+
+    # ========================================================== FOREHEAD LINES (কপালের রেখা / ভাঁজ)
+    {
+        "feature": "forehead_lines", "option": "smooth", "label": "Smooth & Uncreased Forehead (মসৃণ ও রেখাহীন কপাল)",
+        "priority": 10, "area": "intellect", "is_default": True,
+        "conditions": [{"metric": "forehead_lines", "max": 0.5}],
+        "meaning": (
+            "কপালে কোনো দৃশ্যমান ভাঁজ বা রেখা না থাকা মুক্তচিন্তা, তরুণসুলভ প্রাণশক্তি এবং প্রত্যক্ষ পদক্ষেপের নির্দেশক। "
+            "আপনি জটিল তাত্ত্বিক আলোচনায় সময় ব্যয় না করে বাস্তবিক পদক্ষেপ নিতে ভালোবাসেন। খোলামনের দৃষ্টিভঙ্গি আপনাকে প্রতিকূলতায় দ্রুত মানিয়ে নিতে সাহায্য করে।"
+        ),
+    },
+    {
+        "feature": "forehead_lines", "option": "single_line", "label": "Single Prominent Line - Sun (একরেখা কপাল - সূর্য রেখা)",
+        "priority": 20, "area": "ambition",
+        "conditions": [{"metric": "forehead_lines", "min": 0.5, "max": 1.5}],
+        "meaning": (
+            "কপালে একটি সুস্পষ্ট রেখা (সূর্য রেখা) প্রবল ইচ্ছাশক্তি এবং গভীর আত্মবিশ্বাসের পরিচায়ক। "
+            "সমুদ্র শাস্ত্র অনুযায়ী আপনি যেকোনো একটি নির্দিষ্ট লক্ষ্য স্থির করে একাগ্রচিত্তে তা অর্জন করতে সক্ষম। সমাজে স্বকীয় বৈশিষ্ট্য ও দৃঢ় নেতৃত্বের গুণে পরিচিতি লাভ করেন।"
+        ),
+    },
+    {
+        "feature": "forehead_lines", "option": "two_lines", "label": "Two Balanced Lines - Jupiter & Mars (দ্বিরেখা কপাল - বৃহস্পতি ও মঙ্গল)",
+        "priority": 25, "area": "intellect",
+        "conditions": [{"metric": "forehead_lines", "min": 1.5, "max": 2.5}],
+        "meaning": (
+            "কপালে দুটি সুস্পষ্ট সমান্তরাল রেখা প্রজ্ঞা (বৃহস্পতি) এবং কর্মশক্তি (মঙ্গল)-র সুসমন্বিত ভারসাম্যের লক্ষণ। "
+            "আপনি যেকোনো সিদ্ধান্ত নেওয়ার আগে ভালোমন্দ বিচার করেন এবং নির্ভুলভাবে পরিকল্পনা বাস্তবায়ন করেন। পারিবারিক ও সামাজিক ক্ষেত্রে সুপরামর্শদাতা হিসেবে সম্মান লাভ করেন।"
+        ),
+    },
+    {
+        "feature": "forehead_lines", "option": "three_lines", "label": "Three Royal Lines - Trishula Yoga (ত্রিরেখা কপাল - রাজযোগ লক্ষণ)",
+        "priority": 30, "area": "wealth",
+        "conditions": [{"metric": "forehead_lines", "min": 2.5, "max": 3.5}],
+        "meaning": (
+            "সমুদ্র শাস্ত্রে কপালে তিনটি অটুট সমান্তরাল রেখা থাকা পরম সৌভাগ্য ও রাজযোগের প্রতীক (শনি, বৃহস্পতি ও মঙ্গল রেখা)। "
+            "এই লক্ষণ দীর্ঘায়ু, অগাধ জ্ঞান, সামাজিক প্রতিপত্তি এবং অর্থভাগ্যের দ্বার উন্মোচন করে। জীবনে বাধা এলেও আপনি দৃঢ়তার সাথে জয়ী হয়ে প্রতিষ্ঠিত হন।"
+        ),
+    },
+    {
+        "feature": "forehead_lines", "option": "multi_lines", "label": "Multiple Planetary Lines (বহুরেখা কপাল - বহুদর্শী প্রজ্ঞা)",
+        "priority": 25, "area": "intellect",
+        "conditions": [{"metric": "forehead_lines", "min": 3.5}],
+        "meaning": (
+            "কপালে চার বা ততোধিক গ্রহীয় রেখা থাকা বহুদর্শী অভিজ্ঞতা, দূরদৃষ্টি এবং দার্শনিক চিন্তাশীলতার পরিচায়ক। "
+            "আপনি জীবনের বাহ্যিক বিষয়ের চেয়ে অন্তর্নিহিত সত্য অন্বেষণে বেশি আগ্রহী। বহুমুখী প্রতিভার অধিকারী হয়ে বিভিন্ন ক্ষেত্রে পথপ্রদর্শকের ভূমিকা পালন করতে পারেন।"
         ),
     },
 

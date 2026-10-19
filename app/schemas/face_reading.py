@@ -1,8 +1,8 @@
 """Face reading request and response shapes."""
 
 from datetime import datetime
-
 from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -125,6 +125,9 @@ class FaceScanResponse(BaseModel):
     visualization_image: str | None = None
     reading: FaceReadingOut | None = None
     coins_charged: int = 0
+    forehead_lines_count: int = 0
+    forehead_lines_data: list[dict[str, Any]] = Field(default_factory=list)
+    forehead_lines_shastra: dict[str, str] = Field(default_factory=dict)
     landmark_mapping_version: str = "canonical_478_v1"
     model_version: str = "mediapipe_tasks_vision_1.1.1"
     processing_duration_ms: float = 0.0

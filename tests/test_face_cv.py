@@ -266,7 +266,13 @@ def test_pipeline_real_face_scan():
     assert res.quality_score > 0.4
     assert res.head_pose is not None
     assert abs(res.head_pose["yaw_deg"]) < 25.0
-    assert len(res.measurements) == 23
+    assert len(res.measurements) == 26
+    assert "forehead_lines" in res.measurements
+    assert "forehead_lines_depth" in res.measurements
+    assert "forehead_lines_continuous" in res.measurements
+    assert res.forehead_lines_count >= 0
+    assert isinstance(res.forehead_lines_data, list)
+    assert isinstance(res.forehead_lines_shastra, dict)
     assert res.visualization_image.startswith("data:image/jpeg;base64,")
     assert res.processing_duration_ms > 0
 

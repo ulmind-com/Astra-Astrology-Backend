@@ -2,7 +2,7 @@ import base64
 from typing import Annotated
 
 from beanie import PydanticObjectId
-from fastapi import APIRouter, File, Query, Request, UploadFile, status
+from fastapi import APIRouter, Query, Request, status
 from loguru import logger
 
 from app.api.dependencies import AdminUser, CurrentUser
@@ -22,7 +22,6 @@ from app.schemas.face_reading import (
     RuleUpdate,
     SubmitReadingRequest,
 )
-
 from app.services import face_reading as service
 
 router = APIRouter(prefix="/face-reading", tags=["face reading"])
@@ -153,7 +152,8 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[FaceScanRespo
     wallet = await wallet_service.get_or_create_wallet(user.id)
     if platform.face_reading_coins > 0 and wallet.balance_coins < platform.face_reading_coins:
         raise BadRequestError(
-            f"You need {platform.face_reading_coins} coins for a face reading, but your balance is {wallet.balance_coins}.",
+            f"You need {platform.face_reading_coins} coins for a face reading, "
+            f"but your balance is {wallet.balance_coins}.",
             error_code="insufficient_coins",
         )
 
@@ -163,7 +163,8 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[FaceScanRespo
     except ImportError as e:
         logger.exception("Face CV dependencies failed to import: {}", e)
         raise ServiceUnavailableError(
-            "Facial scanning service is missing system runtime libraries (libGL). Please contact support.",
+            "Facial scanning service is missing system runtime libraries (libGL). "
+            "Please contact support.",
             error_code="cv_dependencies_missing",
         )
 
@@ -187,11 +188,12 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[FaceScanRespo
         )
 
     qc = cv_result.quality_checks or {}
+    cov_ratio = float(qc.get("face_coverage_pct", qc.get("face_coverage_ratio", 0.0) * 100.0))
     checks_out = QualityChecksOut(
         is_valid=bool(qc.get("is_valid", cv_result.status != QualityStatus.REJECTED)),
         status=str(qc.get("status", cv_result.status.value)),
         face_count=int(qc.get("face_count", 1)),
-        face_coverage_pct=round(float(qc.get("face_coverage_pct", qc.get("face_coverage_ratio", 0.0) * 100.0)), 2),
+        face_coverage_pct=round(cov_ratio, 2),
         blur_score=round(float(qc.get("blur_score", qc.get("sharpness_score", 0.0))), 2),
         brightness_mean=round(float(qc.get("brightness_mean", 0.0)), 2),
         contrast_std=round(float(qc.get("contrast_std", 0.0)), 2),
@@ -277,10 +279,15 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[FaceScanRespo
             head_pose=pose_out,
             measurements=cv_result.measurements,
             measurement_details=details_out,
-            measurement_status="valid" if cv_result.status == QualityStatus.ACCEPTED else "retake_recommended",
+            measurement_status=(
+                "valid" if cv_result.status == QualityStatus.ACCEPTED else "retake_recommended"
+            ),
             visualization_image=cv_result.visualization_image,
             reading=_out(reading),
             coins_charged=reading.coins_charged,
+            forehead_lines_count=cv_result.forehead_lines_count,
+            forehead_lines_data=cv_result.forehead_lines_data,
+            forehead_lines_shastra=cv_result.forehead_lines_shastra,
             landmark_mapping_version=cv_result.landmark_mapping_version,
             model_version=cv_result.model_version,
             processing_duration_ms=cv_result.processing_duration_ms,

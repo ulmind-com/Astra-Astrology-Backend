@@ -2,22 +2,22 @@
 
 import time
 import uuid
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass, field
 from typing import Any
-import numpy as np
 
-from app.services.face_cv.config import FaceScanConfig, DEFAULT_CONFIG
+from app.services.face_cv.config import DEFAULT_CONFIG, FaceScanConfig
 from app.services.face_cv.detector import get_landmarker
+from app.services.face_cv.forehead_analyzer import analyze_forehead_lines
+from app.services.face_cv.landmarks import LandmarkIndex as P
 from app.services.face_cv.measurements import (
-    extract_measurements,
-    canonicalize_landmarks_3d,
     MeasurementDetail,
+    canonicalize_landmarks_3d,
+    extract_measurements,
 )
 from app.services.face_cv.quality import (
-    decode_and_correct_orientation,
-    assess_quality,
-    QualityAssessment,
     QualityStatus,
+    assess_quality,
+    decode_and_correct_orientation,
 )
 from app.services.face_cv.visualizer import draw_facial_mesh_overlay
 
@@ -35,6 +35,9 @@ class ScanPipelineResult:
     processing_duration_ms: float
     warnings: list[str]
     error_message: str | None = None
+    forehead_lines_count: int = 0
+    forehead_lines_data: list[dict[str, Any]] = field(default_factory=list)
+    forehead_lines_shastra: dict[str, str] = field(default_factory=dict)
     landmark_mapping_version: str = "canonical_478_v1"
     model_version: str = "mediapipe_tasks_vision_1.1.1"
 
@@ -115,7 +118,9 @@ def execute_scan_pipeline(
     if quality_assessment.status == QualityStatus.REJECTED:
         duration_ms = round((time.perf_counter() - start_time) * 1000.0, 1)
         pose_dict = _format_pose(quality_assessment.checks.head_pose)
-        checks_dict = _format_checks(quality_assessment.checks, QualityStatus.REJECTED, detection.face_count)
+        checks_dict = _format_checks(
+            quality_assessment.checks, QualityStatus.REJECTED, detection.face_count
+        )
 
         return ScanPipelineResult(
             scan_id=scan_id,
@@ -135,23 +140,74 @@ def execute_scan_pipeline(
 
     # --- Stage E: Facial feature extraction with 3D Pose Normalization ---
     assert detection.landmarks_norm is not None, "Landmarks must be present for accepted image"
-    rot_mat = quality_assessment.checks.head_pose.rotation_matrix if quality_assessment.checks.head_pose else None
+    pose_checks = quality_assessment.checks.head_pose
+    rot_mat = pose_checks.rotation_matrix if pose_checks else None
     canonical_landmarks = canonicalize_landmarks_3d(detection.landmarks_norm, rot_mat)
     measurements, details = extract_measurements(canonical_landmarks)
 
-    # --- Stage G: Face mesh visualization ---
+    # --- Stage F: Biometric Forehead Wrinkle & Planetary Line Analysis ---
     assert detection.landmarks_px is not None
+    forehead_analysis = analyze_forehead_lines(img_rgb, detection.landmarks_px)
+
+    measurements["forehead_lines"] = float(forehead_analysis.lines_count)
+    measurements["forehead_lines_depth"] = float(forehead_analysis.avg_prominence)
+    measurements["forehead_lines_continuous"] = float(forehead_analysis.continuity_ratio)
+
+    details["forehead_lines"] = MeasurementDetail(
+        name="Forehead Line Count (কপালের রেখা সংখ্যা)",
+        value=float(forehead_analysis.lines_count),
+        description="Detected horizontal forehead wrinkles / planetary crease lines (0 to 7)",
+        formula="Gabor filter bank + ridge contour clustering",
+        landmarks_used=[P.FOREHEAD_TOP, P.GLABELLA, P.BROW_RIDGE_RIGHT, P.BROW_RIDGE_LEFT],
+        status="available",
+    )
+    details["forehead_lines_depth"] = MeasurementDetail(
+        name="Forehead Line Depth / Prominence",
+        value=float(forehead_analysis.avg_prominence),
+        description=(
+            "Normalized contrast depth and prominence of detected forehead creases (0.0 to 1.0)"
+        ),
+        formula="CLAHE gradient contrast / local skin background",
+        landmarks_used=[P.FOREHEAD_TOP, P.GLABELLA],
+        status="available",
+    )
+    details["forehead_lines_continuous"] = MeasurementDetail(
+        name="Forehead Line Continuity Ratio",
+        value=float(forehead_analysis.continuity_ratio),
+        description="Ratio of continuous, unbroken horizontal crease lines across the forehead",
+        formula="continuous_length / total_span_width",
+        landmarks_used=[P.FOREHEAD_TOP, P.GLABELLA],
+        status="available",
+    )
+
+    # --- Stage G: Face mesh visualization ---
     vis_data_url = draw_facial_mesh_overlay(
         img_rgb=img_rgb,
         landmarks_px=detection.landmarks_px,
         quality_status=quality_assessment.status,
+        forehead_lines=forehead_analysis.lines,
     )
 
     duration_ms = round((time.perf_counter() - start_time) * 1000.0, 1)
 
     pose_dict = _format_pose(quality_assessment.checks.head_pose)
-    checks_dict = _format_checks(quality_assessment.checks, quality_assessment.status, detection.face_count)
+    checks_dict = _format_checks(
+        quality_assessment.checks, quality_assessment.status, detection.face_count
+    )
     details_dict = {k: asdict(v) for k, v in details.items()}
+
+    lines_data = [
+        {
+            "y_center": int(line_item.y_center),
+            "x_start": int(line_item.x_start),
+            "x_end": int(line_item.x_end),
+            "width_px": int(line_item.width_px),
+            "prominence": float(line_item.prominence),
+            "is_continuous": bool(line_item.is_continuous),
+            "planet_name": str(line_item.planet_name),
+        }
+        for line_item in forehead_analysis.lines
+    ]
 
     all_warnings = quality_assessment.checks.issues + quality_assessment.checks.recommendations
 
@@ -167,6 +223,9 @@ def execute_scan_pipeline(
         processing_duration_ms=duration_ms,
         warnings=all_warnings,
         error_message=None,
+        forehead_lines_count=forehead_analysis.lines_count,
+        forehead_lines_data=lines_data,
+        forehead_lines_shastra=forehead_analysis.shastra_interpretation,
         landmark_mapping_version=config.landmark_mapping_version,
         model_version=config.model_version,
     )
