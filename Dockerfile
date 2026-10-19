@@ -6,7 +6,17 @@ ENV UV_COMPILE_BYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
+# Install system C/C++ runtime libraries required by OpenCV (libGL.so.1) and MediaPipe
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 \
+    libglib2.0-0 \
+    libgomp1 \
+    libsm6 \
+    libxext6 \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
+
 
 # Dependencies first, so edits to app code don't invalidate the layer.
 COPY pyproject.toml uv.lock ./
