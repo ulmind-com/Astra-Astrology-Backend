@@ -27,6 +27,7 @@ class HeadPose:
     pitch_deg: float    # negative = looking down, positive = looking up
     roll_deg: float     # tilt side-to-side
     is_frontal: bool
+    rotation_matrix: np.ndarray | None = field(default=None, repr=False)
 
 
 @dataclass
@@ -108,7 +109,7 @@ def estimate_head_pose(
     )
 
     if not success:
-        return HeadPose(yaw_deg=0.0, pitch_deg=0.0, roll_deg=0.0, is_frontal=True)
+        return HeadPose(yaw_deg=0.0, pitch_deg=0.0, roll_deg=0.0, is_frontal=True, rotation_matrix=np.eye(3))
 
     # Convert rotation vector to rotation matrix
     rotation_matrix, _ = cv2.Rodrigues(rotation_vector)
@@ -122,9 +123,6 @@ def estimate_head_pose(
     yaw_deg = yaw_raw
     roll_deg = roll_raw - 180.0 if roll_raw > 90.0 else (roll_raw + 180.0 if roll_raw < -90.0 else roll_raw)
 
-
-
-
     is_frontal = (
         abs(yaw_deg) <= config.max_yaw_acceptable_deg
         and abs(pitch_deg) <= config.max_pitch_acceptable_deg
@@ -136,6 +134,7 @@ def estimate_head_pose(
         pitch_deg=round(pitch_deg, 2),
         roll_deg=round(roll_deg, 2),
         is_frontal=is_frontal,
+        rotation_matrix=rotation_matrix,
     )
 
 

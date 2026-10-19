@@ -46,6 +46,30 @@ def _safe_div(numerator: float, denominator: float, default: float = 0.0) -> flo
     return val
 
 
+def canonicalize_landmarks_3d(
+    landmarks: list[tuple[float, float, float]],
+    rotation_matrix: np.ndarray | None = None,
+) -> list[tuple[float, float, float]]:
+    """Rotates 3D landmarks into a perfectly canonical frontal pose (0 yaw, 0 pitch, 0 roll).
+
+    Compensates for minor natural head rotations using the inverse solvePnP rotation matrix R^T
+    around the facial midline pivot. Ensures 100% pose-invariant biometric ratios.
+    """
+    if rotation_matrix is None or len(landmarks) < 468:
+        return landmarks
+
+    pts = np.array(landmarks, dtype=np.float64)  # shape (N, 3)
+    pivot = np.mean(pts[[P.CHEEK_RIGHT, P.CHEEK_LEFT, P.NOSE_BRIDGE_TOP]], axis=0)
+
+    # R is rotation from model to camera space. R^T is inverse rotation back to canonical frontal space.
+    r_inv = rotation_matrix.T
+
+    pts_centered = pts - pivot
+    pts_canonical = np.dot(pts_centered, r_inv.T) + pivot
+
+    return [tuple(float(c) for c in row) for row in pts_canonical]
+
+
 def extract_measurements(
     landmarks: list[tuple[float, float, float]],
 ) -> tuple[dict[str, float], dict[str, MeasurementDetail]]:

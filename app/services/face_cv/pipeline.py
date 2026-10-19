@@ -8,7 +8,11 @@ import numpy as np
 
 from app.services.face_cv.config import FaceScanConfig, DEFAULT_CONFIG
 from app.services.face_cv.detector import get_landmarker
-from app.services.face_cv.measurements import extract_measurements, MeasurementDetail
+from app.services.face_cv.measurements import (
+    extract_measurements,
+    canonicalize_landmarks_3d,
+    MeasurementDetail,
+)
 from app.services.face_cv.quality import (
     decode_and_correct_orientation,
     assess_quality,
@@ -91,6 +95,7 @@ def execute_scan_pipeline(
         d["pitch"] = round(float(d.get("pitch_deg", d.get("pitch", 0.0))), 2)
         d["roll"] = round(float(d.get("roll_deg", d.get("roll", 0.0))), 2)
         d["is_frontal"] = bool(d.get("is_frontal", True))
+        d.pop("rotation_matrix", None)
         return d
 
     def _format_checks(checks_obj, status_val, face_cnt):
@@ -128,9 +133,11 @@ def execute_scan_pipeline(
             model_version=config.model_version,
         )
 
-    # --- Stage E: Facial feature extraction ---
+    # --- Stage E: Facial feature extraction with 3D Pose Normalization ---
     assert detection.landmarks_norm is not None, "Landmarks must be present for accepted image"
-    measurements, details = extract_measurements(detection.landmarks_norm)
+    rot_mat = quality_assessment.checks.head_pose.rotation_matrix if quality_assessment.checks.head_pose else None
+    canonical_landmarks = canonicalize_landmarks_3d(detection.landmarks_norm, rot_mat)
+    measurements, details = extract_measurements(canonical_landmarks)
 
     # --- Stage G: Face mesh visualization ---
     assert detection.landmarks_px is not None
