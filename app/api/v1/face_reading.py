@@ -22,10 +22,12 @@ from app.schemas.face_reading import (
     RuleUpdate,
     SubmitReadingRequest,
 )
+
 from app.services import face_reading as service
-from app.services.face_cv import QualityStatus, execute_scan_pipeline
 
 router = APIRouter(prefix="/face-reading", tags=["face reading"])
+
+
 
 
 def _out(reading: FaceReading) -> FaceReadingOut:
@@ -157,12 +159,22 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[FaceScanRespo
 
     # Execute Computer Vision Pipeline
     try:
+        from app.services.face_cv import QualityStatus, execute_scan_pipeline
+    except ImportError as e:
+        logger.exception("Face CV dependencies failed to import: {}", e)
+        raise ServiceUnavailableError(
+            "Facial scanning service is missing system runtime libraries (libGL). Please contact support.",
+            error_code="cv_dependencies_missing",
+        )
+
+    try:
         cv_result = execute_scan_pipeline(raw_bytes)
     except ValueError as e:
         raise BadRequestError(str(e), error_code="invalid_image")
     except Exception as e:
         logger.exception("Face CV scan failed unexpectedly")
         raise BadRequestError(f"Facial scanning failed: {str(e)}", error_code="scan_failed")
+
 
     pose_out = HeadPoseOut(**cv_result.head_pose) if cv_result.head_pose else None
     checks_out = QualityChecksOut(
