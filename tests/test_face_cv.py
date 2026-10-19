@@ -352,3 +352,37 @@ def test_json_serialization_safety():
     assert parsed["scan_id"] == "test-scan-123"
     assert parsed["measurements"]["wh_ratio"] == 0.75
 
+
+def test_head_pose_schema_normalization():
+    """Validates HeadPoseOut handles yaw_deg, pitch_deg, roll_deg input seamlessly."""
+    from app.schemas.face_reading import HeadPoseOut
+
+    raw_payload = {"yaw_deg": 7.29, "pitch_deg": -7.77, "roll_deg": 0.09, "is_frontal": True}
+    hp = HeadPoseOut(**raw_payload)
+    assert hp.yaw == 7.29
+    assert hp.pitch == -7.77
+    assert hp.roll == 0.09
+    assert hp.is_frontal is True
+
+
+def test_quality_checks_schema_normalization():
+    """Validates QualityChecksOut normalizes sharpness_score and face_coverage_ratio."""
+    from app.schemas.face_reading import QualityChecksOut
+
+    raw_checks = {
+        "sharpness_score": 142.5,
+        "face_coverage_ratio": 0.32,
+        "brightness_mean": 128.0,
+        "overexposed_ratio": 0.01,
+        "lighting_symmetry_ratio": 1.02,
+        "head_pose": {"yaw_deg": 3.1, "pitch_deg": -2.0, "roll_deg": 0.5, "is_frontal": True},
+        "issues": [],
+        "recommendations": [],
+    }
+    qc = QualityChecksOut(**raw_checks)
+    assert qc.blur_score == 142.5
+    assert qc.face_coverage_pct == 32.0
+    assert qc.head_pose is not None
+    assert qc.head_pose.yaw == 3.1
+
+

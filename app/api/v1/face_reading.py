@@ -176,19 +176,29 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[FaceScanRespo
         raise BadRequestError(f"Facial scanning failed: {str(e)}", error_code="scan_failed")
 
 
-    pose_out = HeadPoseOut(**cv_result.head_pose) if cv_result.head_pose else None
+    pose_out = None
+    if cv_result.head_pose:
+        hp = cv_result.head_pose
+        pose_out = HeadPoseOut(
+            yaw=round(float(hp.get("yaw", hp.get("yaw_deg", 0.0))), 2),
+            pitch=round(float(hp.get("pitch", hp.get("pitch_deg", 0.0))), 2),
+            roll=round(float(hp.get("roll", hp.get("roll_deg", 0.0))), 2),
+            is_frontal=bool(hp.get("is_frontal", True)),
+        )
+
+    qc = cv_result.quality_checks or {}
     checks_out = QualityChecksOut(
-        is_valid=cv_result.quality_checks.get("is_valid", False),
-        status=cv_result.quality_checks.get("status", cv_result.status.value),
-        face_count=cv_result.quality_checks.get("face_count", 0),
-        face_coverage_pct=cv_result.quality_checks.get("face_coverage_pct", 0.0),
-        blur_score=cv_result.quality_checks.get("blur_score", 0.0),
-        brightness_mean=cv_result.quality_checks.get("brightness_mean", 0.0),
-        contrast_std=cv_result.quality_checks.get("contrast_std", 0.0),
-        lighting_symmetry_ratio=cv_result.quality_checks.get("lighting_symmetry_ratio", 0.0),
+        is_valid=bool(qc.get("is_valid", cv_result.status != QualityStatus.REJECTED)),
+        status=str(qc.get("status", cv_result.status.value)),
+        face_count=int(qc.get("face_count", 1)),
+        face_coverage_pct=round(float(qc.get("face_coverage_pct", qc.get("face_coverage_ratio", 0.0) * 100.0)), 2),
+        blur_score=round(float(qc.get("blur_score", qc.get("sharpness_score", 0.0))), 2),
+        brightness_mean=round(float(qc.get("brightness_mean", 0.0)), 2),
+        contrast_std=round(float(qc.get("contrast_std", 0.0)), 2),
+        lighting_symmetry_ratio=round(float(qc.get("lighting_symmetry_ratio", 1.0)), 3),
         head_pose=pose_out,
-        issues=cv_result.quality_checks.get("issues", []),
-        recommendations=cv_result.quality_checks.get("recommendations", []),
+        issues=list(qc.get("issues", [])),
+        recommendations=list(qc.get("recommendations", [])),
     )
 
     # When image is rejected, do NOT charge and do NOT generate a reading

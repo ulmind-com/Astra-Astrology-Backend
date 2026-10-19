@@ -83,11 +83,34 @@ def execute_scan_pipeline(
         config=config,
     )
 
+    def _format_pose(hp_obj):
+        if not hp_obj:
+            return None
+        d = asdict(hp_obj) if hasattr(hp_obj, "__dataclass_fields__") else dict(hp_obj)
+        d["yaw"] = round(float(d.get("yaw_deg", d.get("yaw", 0.0))), 2)
+        d["pitch"] = round(float(d.get("pitch_deg", d.get("pitch", 0.0))), 2)
+        d["roll"] = round(float(d.get("roll_deg", d.get("roll", 0.0))), 2)
+        d["is_frontal"] = bool(d.get("is_frontal", True))
+        return d
+
+    def _format_checks(checks_obj, status_val, face_cnt):
+        d = asdict(checks_obj) if hasattr(checks_obj, "__dataclass_fields__") else dict(checks_obj)
+        d["face_count"] = face_cnt
+        d["is_valid"] = status_val != QualityStatus.REJECTED
+        d["status"] = status_val.value if hasattr(status_val, "value") else str(status_val)
+        cov = float(d.get("face_coverage_ratio", 0.0))
+        d["face_coverage_pct"] = round(cov * 100.0, 2)
+        d["blur_score"] = round(float(d.get("sharpness_score", 0.0)), 2)
+        d["contrast_std"] = round(float(d.get("contrast_std", 0.0)), 2)
+        if d.get("head_pose"):
+            d["head_pose"] = _format_pose(d["head_pose"])
+        return d
+
     # If rejected, construct early response with quality breakdown and guidance
     if quality_assessment.status == QualityStatus.REJECTED:
         duration_ms = round((time.perf_counter() - start_time) * 1000.0, 1)
-        checks_dict = asdict(quality_assessment.checks)
-        pose_dict = asdict(quality_assessment.checks.head_pose) if quality_assessment.checks.head_pose else None
+        pose_dict = _format_pose(quality_assessment.checks.head_pose)
+        checks_dict = _format_checks(quality_assessment.checks, QualityStatus.REJECTED, detection.face_count)
 
         return ScanPipelineResult(
             scan_id=scan_id,
@@ -119,8 +142,8 @@ def execute_scan_pipeline(
 
     duration_ms = round((time.perf_counter() - start_time) * 1000.0, 1)
 
-    checks_dict = asdict(quality_assessment.checks)
-    pose_dict = asdict(quality_assessment.checks.head_pose) if quality_assessment.checks.head_pose else None
+    pose_dict = _format_pose(quality_assessment.checks.head_pose)
+    checks_dict = _format_checks(quality_assessment.checks, quality_assessment.status, detection.face_count)
     details_dict = {k: asdict(v) for k, v in details.items()}
 
     all_warnings = quality_assessment.checks.issues + quality_assessment.checks.recommendations
