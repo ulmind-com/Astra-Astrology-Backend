@@ -29,8 +29,9 @@ from app.models.user import User
 MIN_QUALITY = 0.55
 
 # Sanity bounds. A ratio outside these did not come from a face, so the whole
-# payload is refused rather than read.
-METRIC_BOUNDS = (0.0, 10.0)
+# payload is refused rather than read. Signed offsets like eye_tilt or lip_corner
+# can dip slightly below 0 on certain face geometries.
+METRIC_BOUNDS = (-2.0, 10.0)
 
 
 # A face has one shape. Everything else has independent aspects that can both
