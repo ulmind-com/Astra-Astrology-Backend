@@ -68,6 +68,7 @@ def to_profile(user: User, profile: Astrologer) -> AstrologerProfile:
         tagline=profile.tagline,
         bio=profile.bio,
         profile_image_url=profile.profile_image_url,
+        banner_image_url=profile.banner_image_url,
         gallery=profile.gallery,
         intro_video_url=profile.intro_video_url,
         skills=profile.skills,
@@ -513,6 +514,57 @@ async def remove_profile_image(profile: Astrologer) -> Astrologer:
 
     if public_id:
         await storage.delete_file(public_id)
+    return profile
+
+
+async def _upload_banner_image(file, folder: str, user_id) -> storage.UploadResult:  # noqa: ANN001
+    return await storage.upload_file(
+        file,
+        folder=folder,
+        allowed_types=ALLOWED_IMAGE_TYPES,
+        tags=[f"astrologer:{user_id}", "banner"],
+        transformation=[
+            {"width": 1200, "height": 600, "crop": "limit"},
+            {"quality": "auto"},
+        ],
+        image_format="webp",
+    )
+
+
+async def set_banner_image(user: User, profile: Astrologer, file) -> Astrologer:  # noqa: ANN001
+    result = await _upload_banner_image(file, "astrologers/banners", user.id)
+
+    previous = profile.banner_image_public_id
+    profile.banner_image_url = result.url
+    profile.banner_image_public_id = result.public_id
+    await profile.save()
+
+    if previous and previous != result.public_id:
+        await storage.delete_file(previous)
+
+    from app.services import realtime
+
+    await realtime.publish_astrologer(profile)
+    logger.info("Astrologer banner stored for {} ({} bytes)", user.email, result.bytes)
+    return profile
+
+
+async def remove_banner_image(profile: Astrologer) -> Astrologer:
+    from app.core.exceptions import NotFoundError
+    from app.services import realtime
+
+    if not profile.banner_image_url:
+        raise NotFoundError("There is no banner to remove.", error_code="no_banner_image")
+
+    public_id = profile.banner_image_public_id
+    profile.banner_image_url = None
+    profile.banner_image_public_id = None
+    await profile.save()
+
+    if public_id:
+        await storage.delete_file(public_id)
+
+    await realtime.publish_astrologer(profile)
     return profile
 
 

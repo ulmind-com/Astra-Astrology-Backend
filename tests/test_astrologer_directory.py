@@ -311,3 +311,74 @@ async def test_removing_a_missing_photo_is_a_404(client: AsyncClient, sent_mail:
     response = await client.delete(f"{P}/astrologers/me/image", headers=auth)
     assert response.status_code == 404
     assert response.json()["error_code"] == "no_profile_image"
+
+
+async def test_astrologer_can_upload_and_remove_banner(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch, sent_mail: list
+) -> None:
+    from app.services import storage
+
+    uploads: list[dict] = []
+    deleted: list[str] = []
+
+    async def fake_upload(file, folder="misc", **kwargs):  # noqa: ANN001
+        n = len(uploads) + 1
+        uploads.append({"folder": folder, **kwargs})
+        return storage.UploadResult(
+            url=f"https://cdn.test/banner-{n}.webp",
+            public_id=f"astro/banner-{n}",
+            resource_type="image",
+            format="webp",
+            bytes=25_000,
+            width=1200,
+            height=600,
+            folder=folder,
+        )
+
+    async def fake_delete(public_id, resource_type="image"):  # noqa: ANN001
+        deleted.append(public_id)
+        return True
+
+    monkeypatch.setattr(storage, "upload_file", fake_upload)
+    monkeypatch.setattr(storage, "delete_file", fake_delete)
+
+    admin = await make_admin(client)
+    await add_astrologer(client, admin, email="ravi.astro@test.dev")
+    signed_in = await client.post(
+        f"{P}/auth/login",
+        json={"email": "ravi.astro@test.dev", "password": sent_mail[-1]["password"]},
+    )
+    auth = {"Authorization": f"Bearer {signed_in.json()['data']['tokens']['access_token']}"}
+    png = b"\x89PNG\r\n\x1a\n" + b"0" * 64
+
+    # 404 when deleting non-existent banner
+    missing = await client.delete(f"{P}/astrologers/me/banner", headers=auth)
+    assert missing.status_code == 404
+    assert missing.json()["error_code"] == "no_banner_image"
+
+    # Upload banner
+    first = await client.post(
+        f"{P}/astrologers/me/banner", headers=auth, files={"file": ("banner1.png", png, "image/png")}
+    )
+    assert first.status_code == 200, first.text
+    assert first.json()["data"]["banner_image_url"] == "https://cdn.test/banner-1.webp"
+
+    # Check directory includes it
+    pub = await client.get(f"{P}/astrologers")
+    assert pub.status_code == 200
+    assert pub.json()["data"]["items"][0]["banner_image_url"] == "https://cdn.test/banner-1.webp"
+
+    # Replacing deletes old banner
+    second = await client.post(
+        f"{P}/astrologers/me/banner", headers=auth, files={"file": ("banner2.png", png, "image/png")}
+    )
+    assert second.status_code == 200
+    assert second.json()["data"]["banner_image_url"] == "https://cdn.test/banner-2.webp"
+    assert deleted == ["astro/banner-1"]
+
+    # Delete banner
+    removed = await client.delete(f"{P}/astrologers/me/banner", headers=auth)
+    assert removed.status_code == 200
+    assert removed.json()["data"]["banner_image_url"] is None
+    assert deleted == ["astro/banner-1", "astro/banner-2"]
+

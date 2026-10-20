@@ -96,6 +96,33 @@ async def delete_my_image(
     return ApiResponse(message="Photo removed.", data=astrologer_service.to_profile(user, profile))
 
 
+# ------------------------------------------------------------------ banner
+@router.post(
+    "/me/banner",
+    response_model=ApiResponse[AstrologerProfile],
+    summary="Upload or replace my card banner",
+)
+async def upload_my_banner(
+    user: AstrologerUser,
+    profile: CurrentAstrologer,
+    file: UploadFile = File(description="JPEG, PNG, WebP, GIF or HEIC"),
+) -> ApiResponse[AstrologerProfile]:
+    profile = await astrologer_service.set_banner_image(user, profile, file)
+    return ApiResponse(message="Banner updated.", data=astrologer_service.to_profile(user, profile))
+
+
+@router.delete(
+    "/me/banner",
+    response_model=ApiResponse[AstrologerProfile],
+    summary="Remove my card banner",
+)
+async def delete_my_banner(
+    user: AstrologerUser, profile: CurrentAstrologer
+) -> ApiResponse[AstrologerProfile]:
+    profile = await astrologer_service.remove_banner_image(profile)
+    return ApiResponse(message="Banner removed.", data=astrologer_service.to_profile(user, profile))
+
+
 # ----------------------------------------------------------------- gallery
 @router.post(
     "/me/gallery",

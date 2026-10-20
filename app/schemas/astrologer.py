@@ -102,6 +102,7 @@ class AstrologerUpdate(BaseModel):
     specialisations: list[str] | None = Field(default=None, max_length=30)
     qualifications: list[str] | None = Field(default=None, max_length=30)
     experience_years: int | None = Field(default=None, ge=0, le=90)
+    banner_image_url: str | None = None
     intro_video_url: str | None = Field(default=None, max_length=500)
     bank: BankDetails | None = None
 
@@ -186,6 +187,7 @@ class AstrologerProfile(BaseModel):
     tagline: str | None = None
     bio: str | None = None
     profile_image_url: str | None = None
+    banner_image_url: str | None = None
     gallery: list[GalleryImage]
     intro_video_url: str | None = None
 
@@ -254,6 +256,7 @@ class AstrologerPublic(BaseModel):
     tagline: str | None = None
     bio: str | None = None
     profile_image_url: str | None = None
+    banner_image_url: str | None = None
     gallery: list[GalleryImage]
     intro_video_url: str | None = None
 

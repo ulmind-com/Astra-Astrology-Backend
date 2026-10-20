@@ -103,6 +103,8 @@ class Astrologer(TimestampedDocument):
     bio: str | None = Field(default=None, max_length=5000)
     profile_image_url: str | None = None
     profile_image_public_id: str | None = None
+    banner_image_url: str | None = None
+    banner_image_public_id: str | None = None
     gallery: list[GalleryImage] = Field(default_factory=list)
     intro_video_url: str | None = None
 
