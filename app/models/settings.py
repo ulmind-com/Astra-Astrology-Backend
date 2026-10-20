@@ -77,13 +77,6 @@ class PlatformSettings(TimestampedDocument):
     # without a deploy if a reading is going wrong.
     face_reading_enabled: bool = True
 
-    # --------------------------------------------------------- palm reading
-    # What one palm reading costs, in coins.
-    palm_reading_coins: int = Field(default=50, ge=0, le=1_000_000)
-
-    # Whether palm reading is enabled across the platform.
-    palm_reading_enabled: bool = True
-
     updated_by: PydanticObjectId | None = None
 
     class Settings:
