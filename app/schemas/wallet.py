@@ -188,6 +188,9 @@ class PlatformSettingsOut(BaseModel):
     face_reading_coins: int
     face_reading_enabled: bool
 
+    palm_reading_coins: int
+    palm_reading_enabled: bool
+
     updated_at: datetime
 
 
@@ -217,6 +220,10 @@ class ConsultationDefaultsUpdate(BaseModel):
     # What one face reading costs, and whether it is offered at all.
     face_reading_coins: int | None = Field(default=None, ge=0, le=1_000_000)
     face_reading_enabled: bool | None = None
+
+    # What one palm reading costs, and whether it is offered at all.
+    palm_reading_coins: int | None = Field(default=None, ge=0, le=1_000_000)
+    palm_reading_enabled: bool | None = None
 
 
 class CoinRateUpdate(BaseModel):
