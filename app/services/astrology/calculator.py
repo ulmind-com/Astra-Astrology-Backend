@@ -12,6 +12,7 @@ from app.services.astrology.rashi_rules import (
     RASHIS_DATA,
     calculate_kp_sub_lord,
 )
+from app.services.astrology.rashi_translations import get_rashi_translations
 
 # Resilient Swiss Ephemeris import: ensures production server NEVER crashes
 # if C-compiler or precompiled binary was missing in host environment.
@@ -295,25 +296,29 @@ def calculate_rashi(payload: RashiCalculateRequest) -> RashiCalculateResponse:
     asc_rashi_idx = int(asc_lon / 30.0) % 12
     asc_deg_formatted = _format_dms(asc_lon % 30.0)
 
-    # 9. Extract Rashi Metadata & Traits
+    # 9. Extract Localized Rashi Metadata & Traits
     rashi_info = RASHIS_DATA[rashi_idx]
+    lang_pref = getattr(payload, "language", "en") or "en"
+    trans_data = get_rashi_translations(rashi_idx, lang_pref)
+    sel = trans_data["selected"]
+
     traits = RashiTraits(
-        element=rashi_info["element"],
-        modality=rashi_info["modality"],
-        polarity=rashi_info["polarity"],
-        body_parts=rashi_info["body_parts"],
-        nature=rashi_info["nature"],
-        overview=rashi_info["overview"],
-        strengths=rashi_info["strengths"],
-        cautions_and_pitfalls=rashi_info["cautions_and_pitfalls"],
-        beneficial_actions_and_remedies=rashi_info["beneficial_actions_and_remedies"],
-        career_fields=rashi_info["career_fields"],
-        lucky_color=rashi_info["lucky_color"],
+        element=sel.get("element", rashi_info["element"]),
+        modality=sel.get("modality", rashi_info["modality"]),
+        polarity=sel.get("polarity", rashi_info["polarity"]),
+        body_parts=sel.get("body_parts", rashi_info["body_parts"]),
+        nature=sel.get("nature", rashi_info["nature"]),
+        overview=sel.get("overview", rashi_info["overview"]),
+        strengths=sel.get("strengths", rashi_info["strengths"]),
+        cautions_and_pitfalls=sel.get("cautions_and_pitfalls", rashi_info["cautions_and_pitfalls"]),
+        beneficial_actions_and_remedies=sel.get("beneficial_actions_and_remedies", rashi_info["beneficial_actions_and_remedies"]),
+        career_fields=sel.get("career_fields", rashi_info["career_fields"]),
+        lucky_color=sel.get("lucky_color", rashi_info["lucky_color"]),
         lucky_numbers=rashi_info["lucky_numbers"],
-        lucky_gemstone=rashi_info["lucky_gemstone"],
-        lucky_day=rashi_info["lucky_day"],
-        ruling_deity=rashi_info["ruling_deity"],
-        compatible_rashis=rashi_info["compatible_rashis"],
+        lucky_gemstone=sel.get("lucky_gemstone", rashi_info["lucky_gemstone"]),
+        lucky_day=sel.get("lucky_day", rashi_info["lucky_day"]),
+        ruling_deity=sel.get("ruling_deity", rashi_info["ruling_deity"]),
+        compatible_rashis=sel.get("compatible_rashis", rashi_info["compatible_rashis"]),
     )
 
     # Format human-readable date & time
@@ -353,4 +358,6 @@ def calculate_rashi(payload: RashiCalculateRequest) -> RashiCalculateResponse:
         planets=planets_list,
         house_system=payload.house_system.capitalize(),
         chart_style=payload.chart_style,
+        selected_language=lang_pref,
+        translations=trans_data["all"],
     )

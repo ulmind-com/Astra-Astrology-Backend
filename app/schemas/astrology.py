@@ -1,6 +1,6 @@
 """Schemas for Rashi (Moon Sign), Nakshatra & Astrology calculation."""
 
-from typing import Literal
+from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
@@ -32,6 +32,9 @@ class RashiCalculateRequest(BaseModel):
     )
     chart_style: Literal["north_indian", "south_indian", "east_indian"] = Field(
         default="north_indian", description="Visual chart display style"
+    )
+    language: Literal["en", "bn", "hi"] = Field(
+        default="en", description="Preferred language for output traits, cautions, and remedies (en, bn, hi)"
     )
 
 
@@ -112,3 +115,5 @@ class RashiCalculateResponse(BaseModel):
     planets: list[PlanetPosition]
     house_system: str
     chart_style: str
+    selected_language: str = "en"
+    translations: dict[str, Any] = Field(default_factory=dict)
