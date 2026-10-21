@@ -452,6 +452,13 @@ def _calculate_ruling_planets_at_jd(
     )
 
 
+def _add_calendar_years(dt: datetime, years: int) -> datetime:
+    try:
+        return dt.replace(year=dt.year + years)
+    except ValueError:
+        return dt.replace(year=dt.year + years, day=28)
+
+
 def _generate_vimshottari_hierarchy(
     birth_dt: datetime,
     moon_lon: float,
@@ -465,19 +472,19 @@ def _generate_vimshottari_hierarchy(
     nak_lord = NAKSHATRAS_DATA[nak_idx]["lord"]
     rem_fraction = 1.0 - (offset_in_nak / nak_span)
     nak_lord_total_years = DASHA_YEARS[nak_lord]
-    balance_days = rem_fraction * nak_lord_total_years * 365.25
 
-    # Balance formatted string
-    b_y = int(balance_days // 365.25)
-    rem_d = balance_days % 365.25
-    b_m = int(rem_d // 30.4375)
-    b_d = int(rem_d % 30.4375)
-    balance_str = f"{b_y}y, {b_m}m, {b_d}d"
+    # Precise Vedic Year, Month, Day decomposition
+    b_y = int(rem_fraction * nak_lord_total_years)
+    rem_m_float = (rem_fraction * nak_lord_total_years - b_y) * 12.0
+    b_m = int(rem_m_float)
+    b_d = int(round((rem_m_float - b_m) * 30.0))
+    balance_days = b_y * 365.25 + b_m * 30.4375 + b_d
+    balance_str = f"{b_y} Y {b_m} M {b_d} D"
 
     start_idx = DASHA_LORDS_ORDER.index(nak_lord)
     dashas_result: list[KPDashaPeriod] = []
 
-    # First Mahadasha starts at birth and ends after balance_days
+    # First Mahadasha starts at birth and ends after balance
     md_start = birth_dt
     md_end = md_start + timedelta(days=balance_days)
 
@@ -487,9 +494,10 @@ def _generate_vimshottari_hierarchy(
 
         if i > 0:
             md_start = md_end
-            md_end = md_start + timedelta(days=md_years * 365.25)
+            md_end = _add_calendar_years(md_start, md_years)
 
         is_md_current = md_start <= current_dt <= md_end
+        md_duration_str = f"{b_y} Y {b_m} M {b_d} D" if i == 0 else f"{md_years} Years"
 
         # Generate 9 Antardashas for this Mahadasha
         antardashas: list[KPDashaPeriod] = []
@@ -510,6 +518,15 @@ def _generate_vimshottari_hierarchy(
             ad_end = ad_start + timedelta(days=ad_days)
             is_ad_current = ad_start <= current_dt <= ad_end
 
+            ad_tot_months = (md_years * ad_years * 12.0) / TOTAL_DASHA_YEARS
+            ad_dur_y = int(ad_tot_months // 12)
+            ad_dur_m = int(ad_tot_months % 12)
+            ad_dur_d = int(round((ad_tot_months - int(ad_tot_months)) * 30.0))
+            if ad_dur_y > 0:
+                ad_duration_str = f"{ad_dur_y} Y {ad_dur_m} M {ad_dur_d} D"
+            else:
+                ad_duration_str = f"{ad_dur_m} M {ad_dur_d} D"
+
             # Generate 9 Pratyantardashas for this Antardasha
             pratyantardashas: list[KPDashaPeriod] = []
             pad_start_idx = DASHA_LORDS_ORDER.index(ad_lord)
@@ -522,13 +539,20 @@ def _generate_vimshottari_hierarchy(
                 pad_end = pad_start + timedelta(days=pad_days)
                 is_pad_current = pad_start <= current_dt <= pad_end
 
+                pad_m = int(pad_days // 30.4375)
+                pad_d = int(round(pad_days % 30.4375))
+                if pad_m > 0:
+                    pad_duration_str = f"{pad_m} M {pad_d} D"
+                else:
+                    pad_duration_str = f"{int(pad_days)} D"
+
                 pratyantardashas.append(
                     KPDashaPeriod(
                         lord=pad_lord,
                         level=3,
-                        start_date=pad_start.strftime("%d/%m/%Y"),
-                        end_date=pad_end.strftime("%d/%m/%Y"),
-                        duration=f"{int(pad_days)}d",
+                        start_date=pad_start.strftime("%d-%m-%Y"),
+                        end_date=pad_end.strftime("%d-%m-%Y"),
+                        duration=pad_duration_str,
                         is_current=is_pad_current,
                         sub_periods=[],
                     )
@@ -539,9 +563,9 @@ def _generate_vimshottari_hierarchy(
                 KPDashaPeriod(
                     lord=ad_lord,
                     level=2,
-                    start_date=ad_start.strftime("%d/%m/%Y"),
-                    end_date=ad_end.strftime("%d/%m/%Y"),
-                    duration=f"{int(ad_days // 30.4375)}m {int(ad_days % 30.4375)}d",
+                    start_date=ad_start.strftime("%d-%m-%Y"),
+                    end_date=ad_end.strftime("%d-%m-%Y"),
+                    duration=ad_duration_str,
                     is_current=is_ad_current,
                     insight=DASHA_INSIGHTS.get(ad_lord),
                     sub_periods=pratyantardashas,
@@ -553,9 +577,9 @@ def _generate_vimshottari_hierarchy(
             KPDashaPeriod(
                 lord=current_md_lord,
                 level=1,
-                start_date=md_start.strftime("%d/%m/%Y"),
-                end_date=md_end.strftime("%d/%m/%Y"),
-                duration=f"{int((md_end - md_start).days // 365.25)}y {int(((md_end - md_start).days % 365.25) // 30.4375)}m",
+                start_date=md_start.strftime("%d-%m-%Y"),
+                end_date=md_end.strftime("%d-%m-%Y"),
+                duration=md_duration_str,
                 is_current=is_md_current,
                 insight=DASHA_INSIGHTS.get(current_md_lord),
                 sub_periods=antardashas,
@@ -608,7 +632,29 @@ def calculate_kp(payload: KPCalculateRequest) -> KPCalculateResponse:
     # 2. Ephemeris & Julian Day
     if HAS_SWISSEPH and swe is not None:
         jd_dob = swe.julday(calc_year, calc_month, calc_day, calc_hour_utc)
-        swe.set_sid_mode(swe.SIDM_KRISHNAMURTI)
+        ayanamsa_code = getattr(payload, "ayanamsa", "krishnamurti") or "krishnamurti"
+        ay_str = str(ayanamsa_code).lower()
+        if ay_str in ("lahiri",):
+            swe.set_sid_mode(swe.SIDM_LAHIRI)
+            ayanamsa_name = "Lahiri (Chitra Paksha)"
+        elif ay_str in ("bv_raman", "raman"):
+            swe.set_sid_mode(swe.SIDM_RAMAN)
+            ayanamsa_name = "B.V. Raman"
+        elif ay_str in ("kp_new", "kp_vp291"):
+            swe.set_sid_mode(getattr(swe, "SIDM_KRISHNAMURTI_VP291", swe.SIDM_KRISHNAMURTI))
+            ayanamsa_name = "KP New Ayanamsa"
+        elif ay_str in ("yukteshwar",):
+            swe.set_sid_mode(getattr(swe, "SIDM_YUKTESHWAR", swe.SIDM_KRISHNAMURTI))
+            ayanamsa_name = "Sri Yukteshwar"
+        elif ay_str in ("suryasiddhanta",):
+            swe.set_sid_mode(getattr(swe, "SIDM_SURYASIDDHANTA", swe.SIDM_KRISHNAMURTI))
+            ayanamsa_name = "Surya Siddhanta"
+        elif ay_str in ("true_pushya",):
+            swe.set_sid_mode(getattr(swe, "SIDM_TRUE_PUSHYA", swe.SIDM_KRISHNAMURTI))
+            ayanamsa_name = "True Pushya"
+        else:
+            swe.set_sid_mode(swe.SIDM_KRISHNAMURTI)
+            ayanamsa_name = "Krishnamurti (KP Original)"
         ayanamsa_deg = swe.get_ayanamsa_ut(jd_dob)
 
         # 12 Placidus Cusps
@@ -846,7 +892,7 @@ def calculate_kp(payload: KPCalculateRequest) -> KPCalculateResponse:
     # Panchang Object
     panchang = KPPanchang(
         julian_day=int(jd_dob),
-        ayanamsa_name="Krishnamurti (KP)",
+        ayanamsa_name=ayanamsa_name,
         ayanamsa_degrees=round(ayanamsa_deg, 4),
         house_system="Placidus (Semi-arc)",
         sunrise=sunrise_str,
