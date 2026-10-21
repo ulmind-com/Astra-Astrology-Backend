@@ -6,8 +6,11 @@ ENV UV_COMPILE_BYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# Install system C/C++ runtime libraries required by OpenCV (libGL.so.1) and MediaPipe (libEGL.so.1)
+# Install build tools (gcc, g++, make, python3-dev) for compiling C extensions like pyswisseph,
+# plus system C/C++ runtime libraries required by OpenCV (libGL.so.1) and MediaPipe (libEGL.so.1)
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    python3-dev \
     libegl1 \
     libgl1 \
     libgles2 \
