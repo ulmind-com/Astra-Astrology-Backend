@@ -362,6 +362,19 @@ class KPPlanetDetail(BaseModel):
     is_retrograde: bool = False
 
 
+class KPDashaInsight(BaseModel):
+    overview: str
+    career_and_wealth: str
+    favorable_actions: list[str]
+    cautions_and_pitfalls: list[str]
+    remedies: list[str]
+    lucky_day: str
+    lucky_color: str
+    deity: str
+    beej_mantra: str
+    gayatri_mantra: str
+
+
 class KPDashaPeriod(BaseModel):
     lord: str
     level: int  # 1: Mahadasha, 2: Antardasha, 3: Pratyantardasha
@@ -369,6 +382,7 @@ class KPDashaPeriod(BaseModel):
     end_date: str
     duration: str
     is_current: bool = False
+    insight: KPDashaInsight | None = None
     sub_periods: list["KPDashaPeriod"] = Field(default_factory=list)
 
 
