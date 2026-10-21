@@ -2,9 +2,15 @@
 
 import httpx
 from fastapi import APIRouter, Query
-from app.schemas.astrology import RashiCalculateRequest, RashiCalculateResponse
+from app.schemas.astrology import (
+    NakshatraCalculateRequest,
+    NakshatraCalculateResponse,
+    RashiCalculateRequest,
+    RashiCalculateResponse,
+)
 from app.schemas.common import ApiResponse
-from app.services.astrology.calculator import calculate_rashi
+from app.services.astrology.calculator import calculate_nakshatra, calculate_rashi
+from app.services.astrology.nakshatra_rules import NAKSHATRAS_MASTER
 from app.services.astrology.rashi_rules import RASHIS_DATA
 
 router = APIRouter(prefix="/astrology", tags=["astrology"])
@@ -34,6 +40,33 @@ async def get_rashi(payload: RashiCalculateRequest) -> ApiResponse[RashiCalculat
 async def list_rashis() -> ApiResponse[list[dict]]:
     """Returns overview list of all 12 Rashis and their key attributes."""
     return ApiResponse(message="12 Rashis fetched.", data=RASHIS_DATA)
+
+
+@router.post(
+    "/nakshatra",
+    response_model=ApiResponse[NakshatraCalculateResponse],
+    summary="Calculate Janma Nakshatra (Birth Star), Pada, Avakahada Chakra & Tarabala",
+)
+async def get_nakshatra(payload: NakshatraCalculateRequest) -> ApiResponse[NakshatraCalculateResponse]:
+    """Calculates high-precision Birth Star (Janma Nakshatra), Pada, Star Lord,
+    KP Sub-Lord, Avakahada Chakra, Tarabala, and sacred deity/tree/mantra.
+    """
+    result = calculate_nakshatra(payload)
+    return ApiResponse(
+        message=f"Calculated Janma Nakshatra: {result.nakshatra_name_en} ({result.nakshatra_name_bn}) Pada {result.pada}",
+        data=result,
+    )
+
+
+@router.get(
+    "/nakshatras",
+    response_model=ApiResponse[list[dict]],
+    summary="Get all 27 Nakshatras overview",
+)
+async def list_nakshatras() -> ApiResponse[list[dict]]:
+    """Returns overview list of all 27 Nakshatras, deities, symbols, and padas."""
+    return ApiResponse(message="27 Nakshatras fetched.", data=NAKSHATRAS_MASTER)
+
 
 
 @router.get(
