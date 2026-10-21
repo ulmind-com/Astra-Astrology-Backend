@@ -260,3 +260,137 @@ class NakshatraCalculateResponse(BaseModel):
     selected_language: str = "en"
     translations: dict[str, Any] = Field(default_factory=dict)
 
+
+# =============================================================================
+# KP Astrology (Krishnamurti Paddhati) Schemas
+# =============================================================================
+
+
+class KPCalculateRequest(BaseModel):
+    name: str = Field(default="", description="Name of the native")
+    gender: Literal["male", "female", "other"] = Field(default="male", description="Gender")
+    day: int = Field(ge=1, le=31, description="Day of birth (1-31)")
+    month: int = Field(ge=1, le=12, description="Month of birth (1-12)")
+    year: int = Field(ge=1800, le=2100, description="Year of birth (e.g. 2004)")
+    hour: int = Field(default=12, ge=0, le=23, description="Hour of birth (0-23 in 24hr or 1-12 with period)")
+    minute: int = Field(ge=0, le=59, default=0, description="Minute of birth (0-59)")
+    second: int = Field(ge=0, le=59, default=0, description="Second of birth (0-59)")
+    period: Literal["AM", "PM", "24H"] = Field(default="PM", description="Period if 12-hour clock used")
+    place: str = Field(default="", description="Birth place name (e.g. Kolkata, West Bengal)")
+    latitude: float | None = Field(default=None, description="Decimal latitude (-90 to +90)")
+    longitude: float | None = Field(default=None, description="Decimal longitude (-180 to +180)")
+    timezone: float = Field(default=5.5, description="Timezone offset from UTC in hours")
+    ayanamsa: Literal[
+        "krishnamurti",
+        "lahiri",
+        "bv_raman",
+        "yukteshwar",
+        "suryasiddhanta",
+        "true_pushya",
+    ] = Field(default="krishnamurti", description="Ayanamsa system (KP Krishnamurti by default)")
+    house_system: Literal["placidus", "equal", "whole_sign", "koch"] = Field(
+        default="placidus", description="House system (Placidus for KP)"
+    )
+    language: Literal["en", "bn", "hi"] = Field(
+        default="en", description="Output language (en, bn, hi)"
+    )
+
+
+class KPPanchang(BaseModel):
+    julian_day: int
+    ayanamsa_name: str
+    ayanamsa_degrees: float
+    house_system: str
+    sunrise: str
+    sunset: str
+    tithi: str
+    yoga: str
+    karana: str
+    day_name: str
+    vedic_day_name: str
+    balance_dasha: str
+    ascendant_sign: str
+    ascendant_lord: str
+    ascendant_degree: float
+    ascendant_degree_formatted: str
+    moon_rashi: str
+    moon_rashi_lord: str
+    moon_nakshatra: str
+    moon_nakshatra_lord: str
+    moon_degree_formatted: str
+
+
+class KPRulingPlanets(BaseModel):
+    lagna_rashi_lord: str
+    lagna_nakshatra_lord: str
+    lagna_sub_lord: str
+    moon_rashi_lord: str
+    moon_nakshatra_lord: str
+    moon_sub_lord: str
+    day_lord: str
+    date_formatted: str
+    time_formatted: str
+
+
+class KPCuspDetail(BaseModel):
+    cusp: int  # 1 to 12
+    longitude: float
+    degree_formatted: str
+    sign: str
+    sign_index: int
+    sign_lord: str
+    star_lord: str
+    sub_lord: str
+
+
+class KPPlanetDetail(BaseModel):
+    name: str
+    symbol: str
+    code: str
+    longitude: float
+    degree_in_sign: float
+    degree_formatted: str
+    sign: str
+    sign_index: int
+    nakshatra: str
+    pada: int
+    sign_lord: str
+    star_lord: str
+    sub_lord: str
+    rashi_house: int  # 1 to 12 in Rashi chart
+    bhav_house: int  # 1 to 12 in Nirayana Bhava Chalit chart
+    is_retrograde: bool = False
+
+
+class KPDashaPeriod(BaseModel):
+    lord: str
+    level: int  # 1: Mahadasha, 2: Antardasha, 3: Pratyantardasha
+    start_date: str
+    end_date: str
+    duration: str
+    is_current: bool = False
+    sub_periods: list["KPDashaPeriod"] = Field(default_factory=list)
+
+
+class KPCalculateResponse(BaseModel):
+    name: str
+    gender: str
+    birth_date_formatted: str
+    birth_time_formatted: str
+    birth_place: str
+    latitude: float
+    longitude: float
+    timezone: float
+
+    # Core KP Sections
+    panchang: KPPanchang
+    ruling_planets_dob: KPRulingPlanets
+    ruling_planets_casting: KPRulingPlanets
+    cusps: list[KPCuspDetail]
+    planets: list[KPPlanetDetail]
+    dashas: list[KPDashaPeriod]
+
+    selected_language: str = "en"
+    translations: dict[str, Any] = Field(default_factory=dict)
+
+

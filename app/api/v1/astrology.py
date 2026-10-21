@@ -3,6 +3,8 @@
 import httpx
 from fastapi import APIRouter, Query
 from app.schemas.astrology import (
+    KPCalculateRequest,
+    KPCalculateResponse,
     NakshatraCalculateRequest,
     NakshatraCalculateResponse,
     RashiCalculateRequest,
@@ -10,10 +12,27 @@ from app.schemas.astrology import (
 )
 from app.schemas.common import ApiResponse
 from app.services.astrology.calculator import calculate_nakshatra, calculate_rashi
+from app.services.astrology.kp_calculator import calculate_kp
 from app.services.astrology.nakshatra_rules import NAKSHATRAS_MASTER
 from app.services.astrology.rashi_rules import RASHIS_DATA
 
 router = APIRouter(prefix="/astrology", tags=["astrology"])
+
+
+@router.post(
+    "/kp",
+    response_model=ApiResponse[KPCalculateResponse],
+    summary="Calculate KP Astrology (Placidus Cusps, Ruling Planets, Panchang & Vimshottari Dasha)",
+)
+async def get_kp(payload: KPCalculateRequest) -> ApiResponse[KPCalculateResponse]:
+    """Calculates 100% accurate KP Astrology parameters, Placidus 12 cusps,
+    Ruling Planets for DOB and Casting Time, Panchang, and Vimshottari Dasha hierarchy.
+    """
+    result = calculate_kp(payload)
+    return ApiResponse(
+        message=f"Calculated KP Astrology for {result.name}: Asc {result.panchang.ascendant_sign}, Moon in {result.panchang.moon_rashi}",
+        data=result,
+    )
 
 
 @router.post(

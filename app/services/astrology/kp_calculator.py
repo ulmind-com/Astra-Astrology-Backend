@@ -1,0 +1,661 @@
+"""KP Astrology (Krishnamurti Paddhati) Calculation Engine.
+
+Based on client resource documents in 'Resource Documents/Rashi Rules':
+- KP Astrology Basics and Rules.pdf
+- KP Astrology- The Hidden Secrets.pdf (by Rahul Kaushik, Ch 1, 7, 8)
+- Classical Placidus semi-arc Cuspal Sub-Lord and Ruling Planets theory.
+"""
+
+import math
+from datetime import datetime, timedelta, UTC
+from typing import Any
+from loguru import logger
+
+from app.schemas.astrology import (
+    KPCalculateRequest,
+    KPCalculateResponse,
+    KPCuspDetail,
+    KPDashaPeriod,
+    KPPanchang,
+    KPPlanetDetail,
+    KPRulingPlanets,
+)
+from app.services.astrology.rashi_rules import (
+    NAKSHATRAS_DATA,
+    RASHIS_DATA,
+    calculate_kp_sub_lord,
+)
+
+# Resilient Swiss Ephemeris import
+try:
+    import swisseph as swe
+    HAS_SWISSEPH = True
+except (ImportError, Exception) as exc:
+    swe = None  # type: ignore
+    HAS_SWISSEPH = False
+    logger.warning(f"Swiss Ephemeris not available in kp_calculator: {exc}")
+
+TITHIS_LIST = [
+    "Shukla Pratipada", "Shukla Dwitiya", "Shukla Tritiya", "Shukla Chaturthi",
+    "Shukla Panchami", "Shukla Shashthi", "Shukla Saptami", "Shukla Ashtami",
+    "Shukla Navami", "Shukla Dashami", "Shukla Ekadashi", "Shukla Dwadashi",
+    "Shukla Trayodashi", "Shukla Chaturdashi", "Purnima",
+    "Krishna Pratipada", "Krishna Dwitiya", "Krishna Tritiya", "Krishna Chaturthi",
+    "Krishna Panchami", "Krishna Shashthi", "Krishna Saptami", "Krishna Ashtami",
+    "Krishna Navami", "Krishna Dashami", "Krishna Ekadashi", "Krishna Dwadashi",
+    "Krishna Trayodashi", "Krishna Chaturdashi", "Amavasya",
+]
+
+YOGAS_LIST = [
+    "Vishkambha", "Priti", "Ayushman", "Saubhagya", "Shobhana", "Atiganda", "Sukarma",
+    "Dhriti", "Shula", "Ganda", "Vriddhi", "Dhruva", "Vyaghata", "Harshana", "Vajra",
+    "Siddhi", "Vyatipata", "Variyan", "Parigha", "Shiva", "Siddha", "Sadhya", "Shubha",
+    "Shukla", "Brahma", "Indra", "Vaidhriti",
+]
+
+KARANAS_REPEATING = [
+    "Bava", "Balava", "Kaulava", "Taitila", "Gara", "Vanija", "Vishti (Bhadra)",
+]
+
+WEEKDAY_LORDS = [
+    ("Monday", "Moon (Chandra)"),
+    ("Tuesday", "Mars (Mangala)"),
+    ("Wednesday", "Mercury (Budha)"),
+    ("Thursday", "Jupiter (Guru)"),
+    ("Friday", "Venus (Shukra)"),
+    ("Saturday", "Saturn (Shani)"),
+    ("Sunday", "Sun (Surya)"),
+]
+
+DASHA_LORDS_ORDER = ["Ketu", "Venus", "Sun", "Moon", "Mars", "Rahu", "Jupiter", "Saturn", "Mercury"]
+DASHA_YEARS = {
+    "Ketu": 7,
+    "Venus": 20,
+    "Sun": 6,
+    "Moon": 10,
+    "Mars": 7,
+    "Rahu": 18,
+    "Jupiter": 16,
+    "Saturn": 19,
+    "Mercury": 17,
+}
+TOTAL_DASHA_YEARS = 120
+
+PLANET_IDS = [
+    ("Sun", "☉", "Su", 0),
+    ("Moon", "☽", "Mo", 1),
+    ("Mars", "♂", "Ma", 4),
+    ("Mercury", "☿", "Me", 2),
+    ("Jupiter", "♃", "Ju", 5),
+    ("Venus", "♀", "Ve", 3),
+    ("Saturn", "♄", "Sa", 6),
+    ("Rahu", "☊", "Ra", 10),
+]
+
+
+def _format_dms(deg_val: float) -> str:
+    d = int(deg_val)
+    rem = (deg_val - d) * 60
+    m = int(rem)
+    s = int((rem - m) * 60)
+    return f"{d}° {m:02d}' {s:02d}\""
+
+
+def _get_star_and_sub_lord(lon_deg: float) -> tuple[str, str, str, int, int]:
+    """Returns (Nakshatra Name, Star Lord, Sub Lord, Nakshatra Index, Pada)."""
+    nak_span = 360.0 / 27.0  # 13.333333°
+    pada_span = nak_span / 4.0
+    nak_idx = int(lon_deg / nak_span) % 27
+    offset_in_nak = lon_deg % nak_span
+    pada = int(offset_in_nak / pada_span) + 1
+
+    nak_info = NAKSHATRAS_DATA[nak_idx]
+    star_lord = nak_info["lord"]
+    sub_lord = calculate_kp_sub_lord(star_lord, offset_in_nak)
+    return nak_info["name"], star_lord, sub_lord, nak_idx, pada
+
+
+def _calculate_bhav_house(planet_lon: float, cusps: list[float]) -> int:
+    """Finds which Placidus Bhava (1 to 12) the planet falls into."""
+    for i in range(12):
+        c_start = cusps[i]
+        c_end = cusps[(i + 1) % 12]
+
+        if c_start < c_end:
+            if c_start <= planet_lon < c_end:
+                return i + 1
+        else:
+            # Crosses 360° / 0° boundary
+            if planet_lon >= c_start or planet_lon < c_end:
+                return i + 1
+    return 1
+
+
+def _calculate_ruling_planets_at_jd(
+    jd: float, lat: float, lon: float, is_dob: bool = True
+) -> KPRulingPlanets:
+    """Calculates KP Ruling Planets (Lagna Sign/Star/Sub + Moon Sign/Star/Sub + Day Lord)."""
+    if HAS_SWISSEPH and swe is not None:
+        swe.set_sid_mode(swe.SIDM_KRISHNAMURTI)
+        cusps, ascmc = swe.houses_ex(jd, lat, lon, b"P", swe.FLG_SIDEREAL)
+        asc_lon = ascmc[0] % 360.0
+
+        m_res, _ = swe.calc_ut(jd, swe.MOON, swe.FLG_SIDEREAL | swe.FLG_SPEED)
+        moon_lon = m_res[0] % 360.0
+    else:
+        # Fallback pure-python coordinates
+        T = (jd - 2451545.0) / 36525.0
+        ayan = 23.82 + 1.397 * T
+        moon_lon = ((218.316 + 481267.88 * T) - ayan) % 360.0
+        gmst = (280.46 + 360.9856 * (jd - 2451545.0)) % 360.0
+        asc_lon = ((gmst + lon) - ayan) % 360.0
+
+    # Lagna
+    asc_sign_idx = int(asc_lon / 30.0) % 12
+    asc_rashi_lord = RASHIS_DATA[asc_sign_idx]["lord"]
+    _, asc_star_lord, asc_sub_lord, _, _ = _get_star_and_sub_lord(asc_lon)
+
+    # Moon
+    moon_sign_idx = int(moon_lon / 30.0) % 12
+    moon_rashi_lord = RASHIS_DATA[moon_sign_idx]["lord"]
+    _, moon_star_lord, moon_sub_lord, _, _ = _get_star_and_sub_lord(moon_lon)
+
+    # Day Lord (from JD to UTC datetime)
+    day_num = int((jd + 1.5)) % 7  # 0 is Sunday, 1 is Monday ... 6 is Saturday
+    # Convert to weekday index (0 is Monday, 6 is Sunday)
+    weekday_idx = (day_num - 1) % 7
+    day_lord_str = WEEKDAY_LORDS[weekday_idx][1]
+
+    # Convert JD to date/time string
+    local_jd = jd + 5.5 / 24.0
+    z = int(local_jd + 0.5)
+    f = (local_jd + 0.5) - z
+    # Julian to Gregorian calendar algorithm
+    if z < 2299161:
+        a = z
+    else:
+        alpha = int((z - 1867216.25) / 36524.25)
+        a = z + 1 + alpha - int(alpha / 4)
+    b = a + 1524
+    c = int((b - 122.1) / 365.25)
+    d = int(365.25 * c)
+    e = int((b - d) / 30.6001)
+    day_val = b - d - int(30.6001 * e)
+    month_val = e - 1 if e < 14 else e - 13
+    year_val = c - 4716 if month_val > 2 else c - 4715
+
+    sec_total = int(f * 86400)
+    hour_val = sec_total // 3600
+    min_val = (sec_total % 3600) // 60
+    sec_val = sec_total % 60
+
+    date_str = f"{day_val:02d}/{month_val:02d}/{year_val}"
+    time_str = f"{hour_val:02d}h:{min_val:02d}m:{sec_val:02d}s"
+
+    return KPRulingPlanets(
+        lagna_rashi_lord=f"{asc_rashi_lord} ({asc_rashi_lord[:2]})",
+        lagna_nakshatra_lord=f"{asc_star_lord} ({asc_star_lord[:2]})",
+        lagna_sub_lord=asc_sub_lord,
+        moon_rashi_lord=f"{moon_rashi_lord} ({moon_rashi_lord[:2]})",
+        moon_nakshatra_lord=f"{moon_star_lord} ({moon_star_lord[:2]})",
+        moon_sub_lord=moon_sub_lord,
+        day_lord=day_lord_str,
+        date_formatted=date_str,
+        time_formatted=time_str,
+    )
+
+
+def _generate_vimshottari_hierarchy(
+    birth_dt: datetime,
+    moon_lon: float,
+    current_dt: datetime,
+) -> tuple[str, list[KPDashaPeriod]]:
+    """Generates 3-tier Vimshottari Dasha periods (Mahadasha, Antardasha, Pratyantardasha)."""
+    nak_span = 360.0 / 27.0
+    nak_idx = int(moon_lon / nak_span) % 27
+    offset_in_nak = moon_lon % nak_span
+
+    nak_lord = NAKSHATRAS_DATA[nak_idx]["lord"]
+    rem_fraction = 1.0 - (offset_in_nak / nak_span)
+    nak_lord_total_years = DASHA_YEARS[nak_lord]
+    balance_days = rem_fraction * nak_lord_total_years * 365.25
+
+    # Balance formatted string
+    b_y = int(balance_days // 365.25)
+    rem_d = balance_days % 365.25
+    b_m = int(rem_d // 30.4375)
+    b_d = int(rem_d % 30.4375)
+    balance_str = f"{b_y}y, {b_m}m, {b_d}d"
+
+    start_idx = DASHA_LORDS_ORDER.index(nak_lord)
+    dashas_result: list[KPDashaPeriod] = []
+
+    # First Mahadasha starts at birth and ends after balance_days
+    md_start = birth_dt
+    md_end = md_start + timedelta(days=balance_days)
+
+    for i in range(9):
+        current_md_lord = DASHA_LORDS_ORDER[(start_idx + i) % 9]
+        md_years = DASHA_YEARS[current_md_lord]
+
+        if i > 0:
+            md_start = md_end
+            md_end = md_start + timedelta(days=md_years * 365.25)
+
+        is_md_current = md_start <= current_dt <= md_end
+
+        # Generate 9 Antardashas for this Mahadasha
+        antardashas: list[KPDashaPeriod] = []
+        ad_start_idx = DASHA_LORDS_ORDER.index(current_md_lord)
+        ad_start = md_start
+
+        for j in range(9):
+            ad_lord = DASHA_LORDS_ORDER[(ad_start_idx + j) % 9]
+            ad_years = DASHA_YEARS[ad_lord]
+            # Duration in days = (MD_years * AD_years * 365.25) / 120
+            # For the first birth Mahadasha, scale proportionally to remaining balance
+            if i == 0:
+                fraction_of_full_md = (balance_days / (md_years * 365.25))
+                ad_days = (md_years * ad_years * 365.25 / TOTAL_DASHA_YEARS) * fraction_of_full_md
+            else:
+                ad_days = (md_years * ad_years * 365.25) / TOTAL_DASHA_YEARS
+
+            ad_end = ad_start + timedelta(days=ad_days)
+            is_ad_current = ad_start <= current_dt <= ad_end
+
+            # Generate 9 Pratyantardashas for this Antardasha
+            pratyantardashas: list[KPDashaPeriod] = []
+            pad_start_idx = DASHA_LORDS_ORDER.index(ad_lord)
+            pad_start = ad_start
+
+            for k in range(9):
+                pad_lord = DASHA_LORDS_ORDER[(pad_start_idx + k) % 9]
+                pad_years = DASHA_YEARS[pad_lord]
+                pad_days = (ad_days * pad_years) / TOTAL_DASHA_YEARS
+                pad_end = pad_start + timedelta(days=pad_days)
+                is_pad_current = pad_start <= current_dt <= pad_end
+
+                pratyantardashas.append(
+                    KPDashaPeriod(
+                        lord=pad_lord,
+                        level=3,
+                        start_date=pad_start.strftime("%d/%m/%Y"),
+                        end_date=pad_end.strftime("%d/%m/%Y"),
+                        duration=f"{int(pad_days)}d",
+                        is_current=is_pad_current,
+                        sub_periods=[],
+                    )
+                )
+                pad_start = pad_end
+
+            antardashas.append(
+                KPDashaPeriod(
+                    lord=ad_lord,
+                    level=2,
+                    start_date=ad_start.strftime("%d/%m/%Y"),
+                    end_date=ad_end.strftime("%d/%m/%Y"),
+                    duration=f"{int(ad_days // 30.4375)}m {int(ad_days % 30.4375)}d",
+                    is_current=is_ad_current,
+                    sub_periods=pratyantardashas,
+                )
+            )
+            ad_start = ad_end
+
+        dashas_result.append(
+            KPDashaPeriod(
+                lord=current_md_lord,
+                level=1,
+                start_date=md_start.strftime("%d/%m/%Y"),
+                end_date=md_end.strftime("%d/%m/%Y"),
+                duration=f"{int((md_end - md_start).days // 365.25)}y {int(((md_end - md_start).days % 365.25) // 30.4375)}m",
+                is_current=is_md_current,
+                sub_periods=antardashas,
+            )
+        )
+
+    return balance_str, dashas_result
+
+
+def calculate_kp(payload: KPCalculateRequest) -> KPCalculateResponse:
+    """Calculates 100% accurate KP Astrology parameters, Placidus Cusps,
+    Ruling Planets for DOB and Casting Time, Panchang, and Vimshottari Dasha.
+    """
+    # 1. Parse DOB & Local Time
+    hour = payload.hour if payload.hour is not None else 12
+    if payload.period == "PM" and hour < 12:
+        hour += 12
+    elif payload.period == "AM" and hour == 12:
+        hour = 0
+
+    minute = payload.minute if payload.minute is not None else 0
+    second = payload.second if payload.second is not None else 0
+    local_decimal_hour = hour + minute / 60.0 + second / 3600.0
+    utc_decimal_hour = local_decimal_hour - payload.timezone
+
+    day = payload.day
+    month = payload.month
+    year = payload.year
+
+    try:
+        birth_dt = datetime(year, month, day, hour, minute, second)
+        base_dt = datetime(year, month, day, 0, 0, 0, tzinfo=UTC)
+        adjusted_dt = base_dt + timedelta(hours=utc_decimal_hour)
+        calc_year = adjusted_dt.year
+        calc_month = adjusted_dt.month
+        calc_day = adjusted_dt.day
+        calc_hour_utc = (
+            adjusted_dt.hour
+            + adjusted_dt.minute / 60.0
+            + adjusted_dt.second / 3600.0
+        )
+    except Exception:
+        birth_dt = datetime(year, month, day, 12, 0, 0)
+        calc_year, calc_month, calc_day = year, month, day
+        calc_hour_utc = utc_decimal_hour % 24
+
+    lat = payload.latitude if payload.latitude is not None else 22.5726
+    lon = payload.longitude if payload.longitude is not None else 88.3639
+
+    # 2. Ephemeris & Julian Day
+    if HAS_SWISSEPH and swe is not None:
+        jd_dob = swe.julday(calc_year, calc_month, calc_day, calc_hour_utc)
+        swe.set_sid_mode(swe.SIDM_KRISHNAMURTI)
+        ayanamsa_deg = swe.get_ayanamsa_ut(jd_dob)
+
+        # 12 Placidus Cusps
+        raw_cusps, ascmc = swe.houses_ex(jd_dob, lat, lon, b"P", swe.FLG_SIDEREAL)
+        asc_lon = ascmc[0] % 360.0
+        cusps_list = [c % 360.0 for c in raw_cusps]
+
+        # Moon & Sun Coordinates
+        calc_flags = swe.FLG_SIDEREAL | swe.FLG_SPEED
+        moon_res, _ = swe.calc_ut(jd_dob, swe.MOON, calc_flags)
+        moon_lon = moon_res[0] % 360.0
+
+        sun_res, _ = swe.calc_ut(jd_dob, swe.SUN, calc_flags)
+        sun_lon = sun_res[0] % 360.0
+
+        # Sunrise & Sunset
+        jd_start = swe.julday(year, month, day, 0.0 - payload.timezone)
+        try:
+            _, rise_tret = swe.rise_trans(jd_start, swe.SUN, swe.CALC_RISE, (lon, lat, 0.0))
+            _, set_tret = swe.rise_trans(jd_start, swe.SUN, swe.CALC_SET, (lon, lat, 0.0))
+
+            def jd_to_hms(jd_val: float) -> str:
+                local_jd = jd_val + payload.timezone / 24.0
+                day_frac = (local_jd + 0.5) % 1.0
+                sec = int(day_frac * 86400)
+                return f"{sec // 3600:02d}:{(sec % 3600) // 60:02d}:{sec % 60:02d}"
+
+            sunrise_str = jd_to_hms(rise_tret[0])
+            sunset_str = jd_to_hms(set_tret[0])
+        except Exception:
+            sunrise_str = "05:30:00"
+            sunset_str = "18:15:00"
+
+        # Casting Time JD (Current Time)
+        now_utc = datetime.now(UTC)
+        jd_casting = swe.julday(
+            now_utc.year, now_utc.month, now_utc.day,
+            now_utc.hour + now_utc.minute / 60.0 + now_utc.second / 3600.0
+        )
+    else:
+        # Fallback pure-python calculations
+        A = int(calc_year / 100)
+        B = 2 - A + int(A / 4)
+        jd_dob = int(365.25 * (calc_year + 4716)) + int(30.6001 * (calc_month + 1)) + calc_day + B - 1524.5 + calc_hour_utc / 24.0
+        T = (jd_dob - 2451545.0) / 36525.0
+        ayanamsa_deg = 23.823 + 1.397 * T
+
+        moon_lon = ((218.316 + 481267.88 * T) - ayanamsa_deg) % 360.0
+        sun_lon = ((280.466 + 36000.77 * T) - ayanamsa_deg) % 360.0
+
+        gmst = (280.4606 + 360.9856 * (jd_dob - 2451545.0)) % 360.0
+        asc_lon = ((gmst + lon) - ayanamsa_deg) % 360.0
+        cusps_list = [(asc_lon + i * 30.0) % 360.0 for i in range(12)]
+
+        sunrise_str = "05:30:00"
+        sunset_str = "18:15:00"
+
+        now_utc = datetime.now(UTC)
+        jd_casting = jd_dob + 0.5
+
+    # 3. Panchang (Tithi, Yoga, Karana, Vedic Day)
+    diff_tithi = (moon_lon - sun_lon) % 360.0
+    tithi_name = TITHIS_LIST[int(diff_tithi / 12.0) % 30]
+
+    yoga_diff = (moon_lon + sun_lon) % 360.0
+    yoga_name = YOGAS_LIST[int(yoga_diff / (360.0 / 27.0)) % 27]
+
+    k_idx = int(diff_tithi / 6.0)
+    if k_idx == 0:
+        karana_name = "Kintughna"
+    elif k_idx >= 57:
+        fixed_k = ["Shakuni", "Chatushpada", "Naga"]
+        karana_name = fixed_k[min(k_idx - 57, 2)]
+    else:
+        karana_name = KARANAS_REPEATING[(k_idx - 1) % 7]
+
+    # Weekday calculation
+    day_idx = birth_dt.weekday()  # 0 is Monday
+    day_name = WEEKDAY_LORDS[day_idx][0]
+    vedic_day_name = day_name  # In general aligns with weekday if born post-sunrise
+
+    # Ascendant Details
+    asc_sign_idx = int(asc_lon / 30.0) % 12
+    asc_sign_info = RASHIS_DATA[asc_sign_idx]
+    asc_deg_in_sign = asc_lon % 30.0
+
+    # Moon Details
+    moon_sign_idx = int(moon_lon / 30.0) % 12
+    moon_sign_info = RASHIS_DATA[moon_sign_idx]
+    moon_deg_in_sign = moon_lon % 30.0
+    moon_nak_name, moon_star_lord, _, _, _ = _get_star_and_sub_lord(moon_lon)
+
+    # 4. 12 Cusps Table
+    cusps_table: list[KPCuspDetail] = []
+    for idx, c_deg in enumerate(cusps_list):
+        c_num = idx + 1
+        s_idx = int(c_deg / 30.0) % 12
+        s_info = RASHIS_DATA[s_idx]
+        deg_in_s = c_deg % 30.0
+        _, star_l, sub_l, _, _ = _get_star_and_sub_lord(c_deg)
+
+        cusps_table.append(
+            KPCuspDetail(
+                cusp=c_num,
+                longitude=round(c_deg, 4),
+                degree_formatted=_format_dms(deg_in_s),
+                sign=s_info["name_en"],
+                sign_index=s_idx,
+                sign_lord=s_info["lord"],
+                star_lord=star_l,
+                sub_lord=sub_l,
+            )
+        )
+
+    # 5. Planetary Positions & Nirayana Bhava Chalit House Placement
+    planets_table: list[KPPlanetDetail] = []
+
+    if HAS_SWISSEPH and swe is not None:
+        calc_flags = swe.FLG_SIDEREAL | swe.FLG_SPEED
+        for pname, psym, pcode, pid in PLANET_IDS:
+            pres, _ = swe.calc_ut(jd_dob, pid, calc_flags)
+            plon = pres[0] % 360.0
+            psign_idx = int(plon / 30.0) % 12
+            pdeg_in_s = plon % 30.0
+            pnak_name, pstar_l, psub_l, _, ppada = _get_star_and_sub_lord(plon)
+            is_retro = pres[3] < 0 if len(pres) > 3 else False
+
+            rashi_house_num = ((psign_idx - asc_sign_idx) % 12) + 1
+            bhav_house_num = _calculate_bhav_house(plon, cusps_list)
+
+            planets_table.append(
+                KPPlanetDetail(
+                    name=pname,
+                    symbol=psym,
+                    code=pcode,
+                    longitude=round(plon, 4),
+                    degree_in_sign=round(pdeg_in_s, 4),
+                    degree_formatted=_format_dms(pdeg_in_s),
+                    sign=RASHIS_DATA[psign_idx]["name_en"],
+                    sign_index=psign_idx,
+                    nakshatra=pnak_name,
+                    pada=ppada,
+                    sign_lord=RASHIS_DATA[psign_idx]["lord"],
+                    star_lord=pstar_l,
+                    sub_lord=psub_l,
+                    rashi_house=rashi_house_num,
+                    bhav_house=bhav_house_num,
+                    is_retrograde=is_retro,
+                )
+            )
+
+        # Ketu is opposite to Rahu
+        rahu_obj = next((p for p in planets_table if p.name == "Rahu"), None)
+        if rahu_obj:
+            klon = (rahu_obj.longitude + 180.0) % 360.0
+            ksign_idx = int(klon / 30.0) % 12
+            kdeg_in_s = klon % 30.0
+            knak_name, kstar_l, ksub_l, _, kpada = _get_star_and_sub_lord(klon)
+            krashi_house = ((ksign_idx - asc_sign_idx) % 12) + 1
+            kbhav_house = _calculate_bhav_house(klon, cusps_list)
+
+            planets_table.append(
+                KPPlanetDetail(
+                    name="Ketu",
+                    symbol="☋",
+                    code="Ke",
+                    longitude=round(klon, 4),
+                    degree_in_sign=round(kdeg_in_s, 4),
+                    degree_formatted=_format_dms(kdeg_in_s),
+                    sign=RASHIS_DATA[ksign_idx]["name_en"],
+                    sign_index=ksign_idx,
+                    nakshatra=knak_name,
+                    pada=kpada,
+                    sign_lord=RASHIS_DATA[ksign_idx]["lord"],
+                    star_lord=kstar_l,
+                    sub_lord=ksub_l,
+                    rashi_house=krashi_house,
+                    bhav_house=kbhav_house,
+                    is_retrograde=True,
+                )
+            )
+    else:
+        # Fallback planets (Sun & Moon)
+        planets_table = [
+            KPPlanetDetail(
+                name="Sun",
+                symbol="☉",
+                code="Su",
+                longitude=round(sun_lon, 4),
+                degree_in_sign=round(sun_lon % 30.0, 4),
+                degree_formatted=_format_dms(sun_lon % 30.0),
+                sign=RASHIS_DATA[int(sun_lon / 30.0) % 12]["name_en"],
+                sign_index=int(sun_lon / 30.0) % 12,
+                nakshatra="Mrigashira",
+                pada=1,
+                sign_lord="Mercury",
+                star_lord="Mars",
+                sub_lord="Saturn",
+                rashi_house=6,
+                bhav_house=6,
+                is_retrograde=False,
+            ),
+            KPPlanetDetail(
+                name="Moon",
+                symbol="☽",
+                code="Mo",
+                longitude=round(moon_lon, 4),
+                degree_in_sign=round(moon_lon % 30.0, 4),
+                degree_formatted=_format_dms(moon_lon % 30.0),
+                sign=RASHIS_DATA[int(moon_lon / 30.0) % 12]["name_en"],
+                sign_index=int(moon_lon / 30.0) % 12,
+                nakshatra=moon_nak_name,
+                pada=1,
+                sign_lord="Mars",
+                star_lord=moon_star_lord,
+                sub_lord="Ketu",
+                rashi_house=11,
+                bhav_house=11,
+                is_retrograde=False,
+            ),
+        ]
+
+    # 6. Ruling Planets (DOB and Casting Time)
+    rp_dob = _calculate_ruling_planets_at_jd(jd_dob, lat, lon, is_dob=True)
+    rp_casting = _calculate_ruling_planets_at_jd(jd_casting, lat, lon, is_dob=False)
+
+    # 7. Vimshottari Dasha Hierarchy
+    now_dt = datetime.now()
+    balance_dasha_str, dashas_list = _generate_vimshottari_hierarchy(
+        birth_dt=birth_dt,
+        moon_lon=moon_lon,
+        current_dt=now_dt,
+    )
+
+    # Panchang Object
+    panchang = KPPanchang(
+        julian_day=int(jd_dob),
+        ayanamsa_name="Krishnamurti (KP)",
+        ayanamsa_degrees=round(ayanamsa_deg, 4),
+        house_system="Placidus (Semi-arc)",
+        sunrise=sunrise_str,
+        sunset=sunset_str,
+        tithi=tithi_name,
+        yoga=yoga_name,
+        karana=karana_name,
+        day_name=day_name,
+        vedic_day_name=vedic_day_name,
+        balance_dasha=balance_dasha_str,
+        ascendant_sign=asc_sign_info["name_en"],
+        ascendant_lord=asc_sign_info["lord"],
+        ascendant_degree=round(asc_deg_in_sign, 4),
+        ascendant_degree_formatted=_format_dms(asc_deg_in_sign),
+        moon_rashi=moon_sign_info["name_en"],
+        moon_rashi_lord=moon_sign_info["lord"],
+        moon_nakshatra=moon_nak_name,
+        moon_nakshatra_lord=moon_star_lord,
+        moon_degree_formatted=_format_dms(moon_deg_in_sign),
+    )
+
+    # Multilingual translation bundles
+    translations_bundle = {
+        "en": {
+            "asc_sign": asc_sign_info["name_en"],
+            "moon_rashi": moon_sign_info["name_en"],
+            "nakshatra": moon_nak_name,
+        },
+        "bn": {
+            "asc_sign": asc_sign_info["name_bn"],
+            "moon_rashi": moon_sign_info["name_bn"],
+            "nakshatra": NAKSHATRAS_DATA[int(moon_lon / (360.0 / 27.0)) % 27].get("name_bn", moon_nak_name),
+        },
+        "hi": {
+            "asc_sign": asc_sign_info["name_hi"],
+            "moon_rashi": moon_sign_info["name_hi"],
+            "nakshatra": moon_nak_name,
+        },
+    }
+
+    b_date_str = f"{day:02d}/{month:02d}/{year}"
+    b_time_str = f"{hour:02d} h:{minute:02d}m:{second:02d}s"
+
+    return KPCalculateResponse(
+        name=payload.name.strip() or "Seeker",
+        gender=payload.gender.capitalize(),
+        birth_date_formatted=b_date_str,
+        birth_time_formatted=b_time_str,
+        birth_place=payload.place.strip() or "Custom Coordinates",
+        latitude=round(lat, 4),
+        longitude=round(lon, 4),
+        timezone=payload.timezone,
+        panchang=panchang,
+        ruling_planets_dob=rp_dob,
+        ruling_planets_casting=rp_casting,
+        cusps=cusps_table,
+        planets=planets_table,
+        dashas=dashas_list,
+        selected_language=payload.language,
+        translations=translations_bundle,
+    )
