@@ -10,7 +10,7 @@ class RashiCalculateRequest(BaseModel):
     day: int = Field(ge=1, le=31, description="Day of birth (1-31)")
     month: int = Field(ge=1, le=12, description="Month of birth (1-12)")
     year: int = Field(ge=1800, le=2100, description="Year of birth (e.g. 2004)")
-    hour: int = Field(ge=0, le=23, description="Hour of birth (0-23 in 24hr or 1-12 with period)")
+    hour: int = Field(default=12, ge=0, le=23, description="Hour of birth (0-23 in 24hr or 1-12 with period)")
     minute: int = Field(ge=0, le=59, default=0, description="Minute of birth (0-59)")
     second: int = Field(ge=0, le=59, default=0, description="Second of birth (0-59)")
     period: Literal["AM", "PM", "24H"] = Field(default="24H", description="Period if 12-hour clock used")
