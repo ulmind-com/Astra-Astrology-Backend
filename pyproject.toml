@@ -25,6 +25,7 @@ dependencies = [
     "opencv-python-headless>=4.10.0",
     "mediapipe>=0.10.14",
     "numpy>=1.26.0,<2.0.0",
+    "pyswisseph>=2.10.3.2",
 ]
 
 [project.optional-dependencies]
