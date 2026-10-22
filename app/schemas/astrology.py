@@ -15,9 +15,16 @@ class RashiCalculateRequest(BaseModel):
     second: int = Field(ge=0, le=59, default=0, description="Second of birth (0-59)")
     period: Literal["AM", "PM", "24H"] = Field(default="24H", description="Period if 12-hour clock used")
     place: str = Field(default="", description="Birth place name (e.g. Kolkata, West Bengal)")
-    latitude: float | None = Field(default=None, description="Decimal latitude (-90 to +90)")
-    longitude: float | None = Field(default=None, description="Decimal longitude (-180 to +180)")
-    timezone: float = Field(default=5.5, description="Timezone offset from UTC in hours (e.g. +5.5 for IST)")
+    latitude: float | None = Field(
+        default=None, ge=-90.0, le=90.0, description="Decimal latitude (-90 to +90)"
+    )
+    longitude: float | None = Field(
+        default=None, ge=-180.0, le=180.0, description="Decimal longitude (-180 to +180)"
+    )
+    timezone: float = Field(
+        default=5.5, ge=-12.0, le=14.0,
+        description="Timezone offset from UTC in hours (e.g. +5.5 for IST)",
+    )
     timezone_name: str | None = Field(
         default=None,
         description=(
@@ -233,9 +240,16 @@ class NakshatraCalculateRequest(BaseModel):
     second: int = Field(ge=0, le=59, default=0, description="Second of birth (0-59)")
     period: Literal["AM", "PM", "24H"] = Field(default="PM", description="Period if 12-hour clock used")
     place: str = Field(default="", description="Birth place name (e.g. Kolkata, West Bengal)")
-    latitude: float | None = Field(default=None, description="Decimal latitude (-90 to +90)")
-    longitude: float | None = Field(default=None, description="Decimal longitude (-180 to +180)")
-    timezone: float = Field(default=5.5, description="Timezone offset from UTC in hours (e.g. +5.5 for IST)")
+    latitude: float | None = Field(
+        default=None, ge=-90.0, le=90.0, description="Decimal latitude (-90 to +90)"
+    )
+    longitude: float | None = Field(
+        default=None, ge=-180.0, le=180.0, description="Decimal longitude (-180 to +180)"
+    )
+    timezone: float = Field(
+        default=5.5, ge=-12.0, le=14.0,
+        description="Timezone offset from UTC in hours (e.g. +5.5 for IST)",
+    )
     timezone_name: str | None = Field(
         default=None,
         description=(
@@ -385,9 +399,16 @@ class KPCalculateRequest(BaseModel):
     second: int = Field(ge=0, le=59, default=0, description="Second of birth (0-59)")
     period: Literal["AM", "PM", "24H"] = Field(default="PM", description="Period if 12-hour clock used")
     place: str = Field(default="", description="Birth place name (e.g. Kolkata, West Bengal)")
-    latitude: float | None = Field(default=None, description="Decimal latitude (-90 to +90)")
-    longitude: float | None = Field(default=None, description="Decimal longitude (-180 to +180)")
-    timezone: float = Field(default=5.5, description="Timezone offset from UTC in hours")
+    latitude: float | None = Field(
+        default=None, ge=-90.0, le=90.0, description="Decimal latitude (-90 to +90)"
+    )
+    longitude: float | None = Field(
+        default=None, ge=-180.0, le=180.0, description="Decimal longitude (-180 to +180)"
+    )
+    timezone: float = Field(
+        default=5.5, ge=-12.0, le=14.0,
+        description="Timezone offset from UTC in hours",
+    )
     timezone_name: str | None = Field(
         default=None,
         description=(

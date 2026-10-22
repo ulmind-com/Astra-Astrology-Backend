@@ -506,3 +506,37 @@ def test_calculation_meta_is_always_present():
     assert meta.node_type == "mean"
     assert meta.julian_day_ut > 2_000_000
     assert meta.house_system_key == "placidus"
+
+
+# ----------------------------------------------------------------------------------
+# Input bounds. The documented ranges were never enforced, so latitude 999 produced
+# a chart from meaningless geometry instead of a validation error.
+# ----------------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("latitude", 999.0),
+        ("latitude", -91.0),
+        ("longitude", 400.0),
+        ("longitude", -181.0),
+        ("timezone", 99.0),
+        ("timezone", -13.0),
+        ("month", 13),
+        ("day", 32),
+        ("hour", 24),
+        ("minute", 60),
+        ("year", 1700),
+        ("year", 2200),
+    ],
+)
+def test_out_of_range_input_is_rejected(field, value):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        make_request(**{field: value})
+
+
+def test_impossible_calendar_date_is_rejected_cleanly():
+    """31 February must raise a ValueError the API turns into a 422, not a 500."""
+    with pytest.raises(ValueError):
+        calculate_rashi(make_request(day=31, month=2))

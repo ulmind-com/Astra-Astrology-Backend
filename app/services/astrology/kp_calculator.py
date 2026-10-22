@@ -21,6 +21,7 @@ from app.schemas.astrology import (
     KPPlanetDetail,
     KPRulingPlanets,
 )
+from app.services.astrology.timezone_resolver import resolve as resolve_timezone
 from app.services.astrology.rashi_rules import (
     NAKSHATRAS_DATA,
     RASHIS_DATA,
@@ -603,7 +604,24 @@ def calculate_kp(payload: KPCalculateRequest) -> KPCalculateResponse:
     minute = payload.minute if payload.minute is not None else 0
     second = payload.second if payload.second is not None else 0
     local_decimal_hour = hour + minute / 60.0 + second / 3600.0
-    utc_decimal_hour = local_decimal_hour - payload.timezone
+
+    # The offset comes from the IANA zone for the birth place, resolved at the birth
+    # instant, so daylight saving and historical changes are handled. A caller that
+    # supplies only a bare offset still works, but gets neither.
+    resolved_tz = resolve_timezone(
+        year=payload.year,
+        month=payload.month,
+        day=payload.day,
+        hour=hour,
+        minute=minute,
+        second=second,
+        latitude=payload.latitude,
+        longitude=payload.longitude,
+        zone_name=getattr(payload, "timezone_name", None),
+        fallback_offset_hours=payload.timezone,
+    )
+    tz_offset = resolved_tz.offset_hours
+    utc_decimal_hour = local_decimal_hour - tz_offset
 
     day = payload.day
     month = payload.month
@@ -671,13 +689,13 @@ def calculate_kp(payload: KPCalculateRequest) -> KPCalculateResponse:
         sun_lon = sun_res[0] % 360.0
 
         # Sunrise & Sunset
-        jd_start = swe.julday(year, month, day, 0.0 - payload.timezone)
+        jd_start = swe.julday(year, month, day, 0.0 - tz_offset)
         try:
             _, rise_tret = swe.rise_trans(jd_start, swe.SUN, swe.CALC_RISE, (lon, lat, 0.0))
             _, set_tret = swe.rise_trans(jd_start, swe.SUN, swe.CALC_SET, (lon, lat, 0.0))
 
             def jd_to_hms(jd_val: float) -> str:
-                local_jd = jd_val + payload.timezone / 24.0
+                local_jd = jd_val + tz_offset / 24.0
                 day_frac = (local_jd + 0.5) % 1.0
                 sec = int(day_frac * 86400)
                 return f"{sec // 3600:02d}:{(sec % 3600) // 60:02d}:{sec % 60:02d}"
@@ -944,7 +962,7 @@ def calculate_kp(payload: KPCalculateRequest) -> KPCalculateResponse:
         birth_place=payload.place.strip() or "Custom Coordinates",
         latitude=round(lat, 4),
         longitude=round(lon, 4),
-        timezone=payload.timezone,
+        timezone=round(tz_offset, 6),
         panchang=panchang,
         ruling_planets_dob=rp_dob,
         ruling_planets_casting=rp_casting,
