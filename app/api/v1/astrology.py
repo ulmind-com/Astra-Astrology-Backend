@@ -8,6 +8,8 @@ from app.schemas.astrology import (
     KPCalculateResponse,
     KundliCalculateRequest,
     KundliCalculateResponse,
+    KundliMatchingRequest,
+    KundliMatchingResponse,
     NakshatraCalculateRequest,
     NakshatraCalculateResponse,
     RashiCalculateRequest,
@@ -26,6 +28,7 @@ from app.services.astrology.timezone_resolver import (
 )
 from app.services.astrology.kp_calculator import calculate_kp
 from app.services.astrology.kundli_service import calculate_kundli
+from app.services.astrology.kundli_matching_service import calculate_kundli_matching
 from app.services.astrology.nakshatra_rules import NAKSHATRAS_MASTER
 from app.services.astrology.rashi_rules import RASHIS_DATA
 
@@ -78,6 +81,24 @@ async def get_kundli(payload: KundliCalculateRequest) -> ApiResponse[KundliCalcu
         message=f"Calculated Kundli for {result.personal_details.name}: Asc {result.astro_positions.asc}, Rasi {result.planetary_info.rasi}",
         data=result,
     )
+
+
+@router.post(
+    "/kundli-matching",
+    response_model=ApiResponse[KundliMatchingResponse],
+    summary="Calculate complete Kundli Matching (36 Gunas Ashtakoot, Rajjoo, Vedha & Manglik Match)",
+)
+async def get_kundli_matching(payload: KundliMatchingRequest) -> ApiResponse[KundliMatchingResponse]:
+    """Calculates 100% accurate Kundli Matching (Horoscope Compatibility) for Groom & Bride,
+    including 8 Ashtakoot Gunas (36 Points), Rajjoo Dosha, Vedha Dosha, Manglik compatibility,
+    and comparative planetary charts using Swiss Ephemeris.
+    """
+    result = _guard(calculate_kundli_matching, payload, "kundli-matching")
+    return ApiResponse(
+        message=f"Calculated Kundli Matching for {result.groom.name} & {result.bride.name}: Score {result.total_received}/{result.total_out_of}",
+        data=result,
+    )
+
 
 
 @router.post(

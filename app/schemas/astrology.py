@@ -685,4 +685,85 @@ class KundliCalculateResponse(BaseModel):
     translations: dict[str, Any] = Field(default_factory=dict)
 
 
+# =============================================================================
+# Kundli Matching (Horoscope Compatibility / 36 Gun Milan) Schemas
+# =============================================================================
+
+class KundliMatchingPersonInput(BaseModel):
+    name: str = Field(default="Native")
+    day: int = Field(ge=1, le=31)
+    month: int = Field(ge=1, le=12)
+    year: int = Field(ge=1800, le=2100)
+    hour: int = Field(default=12, ge=0, le=23)
+    minute: int = Field(default=0, ge=0, le=59)
+    second: int = Field(default=0, ge=0, le=59)
+    period: Literal["AM", "PM", "24H"] = Field(default="PM")
+    place: str = Field(default="Kolkata, West Bengal, India")
+    latitude: float | None = Field(default=22.5726, ge=-90.0, le=90.0)
+    longitude: float | None = Field(default=88.3639, ge=-180.0, le=180.0)
+    timezone: float = Field(default=5.5, ge=-12.0, le=14.0)
+    ayanamsa: Literal["lahiri", "krishnamurti", "bv_raman", "yukteshwar"] = Field(default="lahiri")
+    house_system: Literal["placidus", "equal", "whole_sign"] = Field(default="placidus")
+
+
+class KundliMatchingRequest(BaseModel):
+    groom: KundliMatchingPersonInput
+    bride: KundliMatchingPersonInput
+    language: Literal["en", "bn", "hi"] = Field(default="en")
+
+
+class KundliMatchingPersonProfile(BaseModel):
+    name: str
+    birth_date_time: str
+    birth_place: str
+    janam_rasi: str
+    rasi_lord: str
+    janam_nakshatra: str
+    nakshatra_lord: str
+    pada: int
+    is_manglik: bool
+    manglik_status_text: str  # "Not a Manglik" / "Manglik"
+    d1_planets: list[KundliChartPlanet]
+    d1_asc_sign: int
+    planets_table: list[KundliTableRow]
+
+
+class KundliMatchingKoota(BaseModel):
+    attribute: str  # "Varna", "Vashya", "Tara", "Yoni", "Maitri", "Gan", "Bhakut", "Nadi"
+    male: str
+    female: str
+    out_of: float
+    received: float
+    area_of_life: str
+    description: str = ""
+
+
+class KundliMatchingDoshas(BaseModel):
+    ashtakoot_score: float
+    ashtakoot_total: float = 36.0
+    rajjoo_dosha: bool
+    rajjoo_text: str  # "Yes" / "No"
+    vedha_dosha: bool
+    vedha_text: str  # "Yes" / "No"
+    manglik_match: bool
+    manglik_match_text: str  # "Yes" / "No"
+    boy_manglik_text: str  # "Not a Manglik" / "Manglik"
+    girl_manglik_text: str  # "Not a Manglik" / "Manglik"
+    verdict_summary: str
+
+
+class KundliMatchingResponse(BaseModel):
+    groom: KundliMatchingPersonProfile
+    bride: KundliMatchingPersonProfile
+    doshas: KundliMatchingDoshas
+    kootas: list[KundliMatchingKoota]
+    total_received: float
+    total_out_of: float = 36.0
+    is_compatible: bool
+    verdict: str
+    selected_language: str = "en"
+    translations: dict[str, Any] = Field(default_factory=dict)
+
+
+
 
