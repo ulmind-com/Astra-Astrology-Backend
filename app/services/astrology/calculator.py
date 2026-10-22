@@ -3,7 +3,10 @@ from datetime import datetime, timedelta, UTC
 from loguru import logger
 from app.schemas.astrology import (
     AvakahadaChakra,
+    BirthPanchang,
     CalculationMeta,
+    ClientNakshatraRules,
+    DisputedValue,
     HouseCusp,
     NakshatraCalculateRequest,
     NakshatraCalculateResponse,
@@ -16,7 +19,8 @@ from app.schemas.astrology import (
     TarabalaItem,
     TimezoneResolution,
 )
-from app.services.astrology import client_rules
+from app.services.astrology import client_nakshatra_rules, client_rules
+from app.services.astrology.panchang import build_panchang
 from app.services.astrology.nakshatra_rules import (
     NAKSHATRAS_MASTER,
     RASHI_TATVA,
@@ -106,12 +110,31 @@ else:
     }
     PLANET_IDS = []
 
+# Nakshatra name -> index, so a PlanetPosition's nakshatra string can be mapped
+# back to the index the technique rules are keyed on.
+NAKSHATRA_INDEX_BY_NAME = {n["name"]: i for i, n in enumerate(NAKSHATRAS_DATA)}
+
 HOUSE_SYSTEM_MAP = {
     "placidus": b"P",
     "koch": b"K",
     "equal": b"A",
     "whole_sign": b"W",
 }
+
+
+def _lang(block: dict, code: str) -> object:
+    """One language out of a translated block, falling back to English.
+
+    A gap in the translation tables used to raise KeyError here, and because the
+    response bundles all three languages at once, a single missing phrase took down
+    every request for that nakshatra regardless of the language asked for. One
+    Hindi entry was in fact missing, so roughly one birth in twenty-seven returned a
+    500. Falling back keeps the reading whole and leaves the gap visible in the logs.
+    """
+    if code in block:
+        return block[code]
+    logger.warning(f"translation missing for language {code!r}; falling back to English")
+    return block.get("en", "")
 
 
 def _format_dms(deg_val: float) -> str:
@@ -469,7 +492,30 @@ def calculate_nakshatra(payload: NakshatraCalculateRequest) -> NakshatraCalculat
     moon_res, _ = swe.calc_ut(jd_ut, swe.MOON, calc_flags)
     moon_lon = moon_res[0] % 360.0
 
-    cusps, asc_lon, _cusp_warnings = _build_cusps(jd_ut, lat, lon, "placidus")
+    cusps, asc_lon, _cusp_warnings = _build_cusps(jd_ut, lat, lon, "whole_sign")
+
+    # The client's nakshatra techniques are conditional on placements - "if the 9th
+    # lord sits here", "if a malefic aspects it" - so the whole chart has to be
+    # computed, not just the Moon. Whole-sign houses are used because that is the
+    # frame Vedic technique rules assume.
+    sun_res, _ = swe.calc_ut(jd_ut, swe.SUN, calc_flags)
+    sun_lon = sun_res[0] % 360.0
+
+    chart_planets: list[PlanetPosition] = []
+    for pid, pname, psymbol in PLANET_IDS:
+        pres, _ = swe.calc_ut(jd_ut, pid, calc_flags)
+        chart_planets.append(
+            _planet_position(
+                pname, psymbol, pres[0] % 360.0, cusps,
+                is_retrograde=bool(len(pres) > 3 and pres[3] < 0),
+            )
+        )
+    _rahu_res, _ = swe.calc_ut(jd_ut, swe.MEAN_NODE, calc_flags)
+    _rahu_lon = _rahu_res[0] % 360.0
+    chart_planets.append(_planet_position("Rahu", "\u260a", _rahu_lon, cusps, is_retrograde=True))
+    chart_planets.append(
+        _planet_position("Ketu", "\u260b", (_rahu_lon + 180.0) % 360.0, cusps, is_retrograde=True)
+    )
 
     nak_idx = int(moon_lon / nak_span_deg) % 27
     offset_in_nak = moon_lon % nak_span_deg
@@ -544,11 +590,11 @@ def calculate_nakshatra(payload: NakshatraCalculateRequest) -> NakshatraCalculat
     # 7. Traits & Interpretations
     current_namakshar = nak_meta["padas"][pada - 1][f"namakshar_{lang_pref}"]
     traits = NakshatraTraits(
-        overview=nak_meta["overview"][lang_pref],
-        strengths=nak_meta["strengths"][lang_pref],
-        cautions_and_pitfalls=nak_meta["cautions_and_pitfalls"][lang_pref],
-        beneficial_actions_and_remedies=nak_meta["beneficial_actions_and_remedies"][lang_pref],
-        career_fields=nak_meta["career_fields"][lang_pref],
+        overview=_lang(nak_meta["overview"], lang_pref),
+        strengths=_lang(nak_meta["strengths"], lang_pref),
+        cautions_and_pitfalls=_lang(nak_meta["cautions_and_pitfalls"], lang_pref),
+        beneficial_actions_and_remedies=_lang(nak_meta["beneficial_actions_and_remedies"], lang_pref),
+        career_fields=_lang(nak_meta["career_fields"], lang_pref),
         lucky_color=nak_meta[f"lucky_color_{lang_pref}"],
         lucky_numbers=nak_meta["lucky_numbers"],
         lucky_gemstone=nak_meta[f"lucky_gemstone_{lang_pref}"],
@@ -576,13 +622,71 @@ def calculate_nakshatra(payload: NakshatraCalculateRequest) -> NakshatraCalculat
             "tatva": RASHI_TATVA[rashi_idx][l_code],
             "paya": paya_dict[l_code],
             "current_namakshar": nak_meta["padas"][pada - 1][f"namakshar_{l_code}"],
-            "overview": nak_meta["overview"][l_code],
-            "strengths": nak_meta["strengths"][l_code],
-            "cautions_and_pitfalls": nak_meta["cautions_and_pitfalls"][l_code],
-            "beneficial_actions_and_remedies": nak_meta["beneficial_actions_and_remedies"][l_code],
-            "career_fields": nak_meta["career_fields"][l_code],
+            "overview": _lang(nak_meta["overview"], l_code),
+            "strengths": _lang(nak_meta["strengths"], l_code),
+            "cautions_and_pitfalls": _lang(nak_meta["cautions_and_pitfalls"], l_code),
+            "beneficial_actions_and_remedies": _lang(nak_meta["beneficial_actions_and_remedies"], l_code),
+            "career_fields": _lang(nak_meta["career_fields"], l_code),
             "rashi_name": rashi_info[f"name_{l_code}"],
         }
+
+    # --- Panchang -----------------------------------------------------------
+    panchang_data = build_panchang(
+        swe, jd_ut, sun_lon, moon_lon, nak_idx, lat, lon, offset_hours, lang_pref
+    )
+    panchang = BirthPanchang(**panchang_data)
+
+    # --- Paya ---------------------------------------------------------------
+    # Paya is not defined in any document the client supplied, and the rule in use
+    # here - the Moon's house counted from the lagna - disagrees with the client's
+    # own reference report on both of the worked charts in it. The value is still
+    # shown, because removing it would be a silent change, but it is marked
+    # disputed and carries the evidence so nobody treats it as settled.
+    _PAYA_NOTICE = {
+        "en": (
+            "Paya is not defined in any of the supplied resource documents, and this "
+            "value disagrees with the client's own reference report on both of its "
+            "worked charts. Treat it as unconfirmed until the intended rule is supplied."
+        ),
+        "bn": (
+            "প্রদত্ত কোনো নথিতে পায়ার সংজ্ঞা নেই, এবং এই মান ক্লায়েন্টের নিজস্ব নমুনা "
+            "রিপোর্টের দুটি কুণ্ডলীতেই মেলে না। সঠিক নিয়ম না পাওয়া পর্যন্ত এটি অনিশ্চিত ধরুন।"
+        ),
+        "hi": (
+            "प्रदत्त किसी भी दस्तावेज़ में पाया की परिभाषा नहीं है, तथा यह मान क्लाइंट की "
+            "अपनी संदर्भ रिपोर्ट की दोनों कुंडलियों से मेल नहीं खाता। सही नियम मिलने तक "
+            "इसे अपुष्ट मानें।"
+        ),
+    }
+    paya = DisputedValue(
+        value=paya_dict[lang_pref],
+        is_disputed=True,
+        notice=_PAYA_NOTICE.get(lang_pref, _PAYA_NOTICE["en"]),
+        evidence=[
+            "Client reference chart 1 (Moon in Hasta, 4th from lagna): report gives Silver, this rule gives Iron.",
+            "Client reference chart 2 (Moon in Krittika, 3rd from lagna): report gives Iron, this rule gives Copper.",
+            "Every other Avakahada field matches that reference exactly on both charts.",
+        ],
+    )
+
+    # --- The client's own nakshatra techniques, applied to this chart --------
+    asc_nak_idx = int(asc_lon / nak_span_deg) % 27
+    chart_facts = client_nakshatra_rules.build_chart_facts(
+        planets=[
+            {
+                "name": p.name,
+                "sign_index": p.sign_index,
+                "nakshatra_index": NAKSHATRA_INDEX_BY_NAME.get(p.nakshatra, 0),
+                "house": p.house,
+            }
+            for p in chart_planets
+        ],
+        ascendant_sign_index=asc_rashi_idx,
+        ascendant_nakshatra_index=asc_nak_idx,
+    )
+    technique_result = client_nakshatra_rules.evaluate_techniques(
+        nak_idx, chart_facts, lang_pref
+    )
 
     b_date_str = f"{payload.day:02d}-{payload.month:02d}-{payload.year}"
     b_time_str = (
@@ -631,5 +735,24 @@ def calculate_nakshatra(payload: NakshatraCalculateRequest) -> NakshatraCalculat
         traits=traits,
         selected_language=lang_pref,
         translations=translations_bundle,
+        panchang=panchang,
+        paya=paya,
+        client_rules=ClientNakshatraRules(**technique_result),
+        rashi_client_rules=client_rules.get_sign_profile(rashi_idx, lang_pref),
+        timezone_resolution=tz_info,
+        planets=chart_planets,
+        ascendant_longitude=round(asc_lon, 4),
+        ascendant_rashi_name_en=RASHIS_DATA[asc_rashi_idx]["name_en"],
+        ascendant_nakshatra_name=NAKSHATRAS_DATA[asc_nak_idx]["name"],
+        calculation=CalculationMeta(
+            engine="swiss_ephemeris",
+            engine_version=getattr(swe, "version", None),
+            ephemeris="Swiss Ephemeris built-in (Moshier analytical, sub-arcsecond)",
+            ayanamsa_key=payload.ayanamsa,
+            house_system_key="whole_sign",
+            node_type="mean",
+            julian_day_ut=round(jd_ut, 6),
+            warnings=[tz_info.note] if tz_info.note else [],
+        ),
     )
 

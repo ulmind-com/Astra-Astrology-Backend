@@ -324,6 +324,79 @@ class NakshatraTraits(BaseModel):
     beej_mantra: str
 
 
+class PanchangElement(BaseModel):
+    index: int
+    name: str
+    name_en: str
+    percentage_elapsed: float | None = None
+
+
+class TithiDetail(PanchangElement):
+    paksha: str
+    paksha_en: str
+
+
+class BirthPanchang(BaseModel):
+    """The panchang elements the client's own reference report lists."""
+
+    tithi: TithiDetail
+    yoga: PanchangElement
+    karana: PanchangElement
+    yunja: PanchangElement
+    sunrise: str | None = None
+    sunset: str | None = None
+
+
+class DisputedValue(BaseModel):
+    """A value we compute but cannot yet source or verify.
+
+    Used where a rule could not be confirmed against any client document AND our
+    computed answer disagrees with the client's own reference output. Showing the
+    value with the disagreement attached is more useful than silently showing a
+    figure we know is contested.
+    """
+
+    value: str
+    is_disputed: bool = False
+    notice: str | None = None
+    evidence: list[str] = Field(default_factory=list)
+
+
+class NakshatraTechnique(BaseModel):
+    """One predictive technique from the client's nakshatra books."""
+
+    technique_no: int
+    theme: str
+    rule: str
+    source: str  # book and technique number
+    because: list[str] = Field(default_factory=list)  # why it applies to this chart
+
+
+class NakshatraBookReference(BaseModel):
+    """The chapter-opener block as the client's book prints it."""
+
+    lord: str
+    deity: str
+    symbol: str
+    padas: str
+    source: str
+
+
+class ClientNakshatraRules(BaseModel):
+    """Techniques from the client's books, evaluated against this chart."""
+
+    nakshatra_index: int
+    nakshatra_name: str
+    has_client_source: bool
+    matched: list[NakshatraTechnique] = Field(default_factory=list)
+    not_matched: list[NakshatraTechnique] = Field(default_factory=list)
+    total_available: int = 0
+    is_afflicted: bool = False
+    affliction_reasons: list[str] = Field(default_factory=list)
+    book_reference: NakshatraBookReference | None = None
+    unavailable_note: str | None = None
+
+
 class NakshatraCalculateResponse(BaseModel):
     name: str
     gender: str
@@ -381,6 +454,28 @@ class NakshatraCalculateResponse(BaseModel):
 
     selected_language: str = "en"
     translations: dict[str, Any] = Field(default_factory=dict)
+
+    # Panchang elements the client's reference report lists
+    panchang: BirthPanchang | None = None
+
+    # Paya is computed but disputed - see DisputedValue
+    paya: DisputedValue | None = None
+
+    # Techniques from the client's own nakshatra books, applied to this chart
+    client_rules: ClientNakshatraRules | None = None
+
+    # Classifications for the Moon's rashi, from the client's 01.pdf
+    rashi_client_rules: ClientSignProfile | None = None
+
+    # Transparency: how the offset was derived and what engine produced the chart
+    timezone_resolution: TimezoneResolution | None = None
+    calculation: CalculationMeta | None = None
+
+    # The chart the techniques were evaluated against
+    planets: list[PlanetPosition] = Field(default_factory=list)
+    ascendant_longitude: float | None = None
+    ascendant_rashi_name_en: str | None = None
+    ascendant_nakshatra_name: str | None = None
 
 
 # =============================================================================

@@ -164,7 +164,7 @@ def calculate_sun_times(
             # birth date rather than to the following day.
             start = jd_ut - 0.5
             result, times = swe.rise_trans(
-                start, swe.SUN, longitude, latitude, 0.0, 0.0, 0.0, flag
+                start, swe.SUN, flag, (longitude, latitude, 0.0)
             )
             if result < 0 or not times or not times[0]:
                 return None

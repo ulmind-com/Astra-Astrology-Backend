@@ -24,6 +24,8 @@ the caller is told which case it hit.
 
 from __future__ import annotations
 
+import math
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -61,14 +63,58 @@ class ResolvedTimezone:
         return f"UTC{sign}{total // 3600:02d}:{(total % 3600) // 60:02d}"
 
 
+# Over water, timezonefinder answers with a nautical zone such as Etc/GMT-5. Those
+# are whole-hour bands derived from longitude alone - the very thing this module
+# exists to replace - and no one is born at sea. A birth place can still land on
+# water: coastal cities, imprecise geocodes and small islands all do it. Such a
+# result is therefore treated as "no answer" and the nearest land zone is sought.
+_NAUTICAL_PREFIXES = ("Etc/", "GMT", "UTC")
+
+
+def _is_nautical(zone_name: str | None) -> bool:
+    return bool(zone_name) and zone_name.startswith(_NAUTICAL_PREFIXES)
+
+
 def zone_for_coordinates(latitude: float, longitude: float) -> str | None:
-    """IANA zone name containing a point, or None over open ocean / no data."""
+    """IANA zone name for a point, preferring a real land zone over a sea band.
+
+    Returns None only when no land zone can be found within about 150 km, which in
+    practice means the middle of an ocean.
+    """
     if _FINDER is None:
         return None
     try:
-        return _FINDER.timezone_at(lat=latitude, lng=longitude) or _FINDER.timezone_at_land(
-            lat=latitude, lng=longitude
-        )
+        direct = _FINDER.timezone_at(lat=latitude, lng=longitude)
+        if direct and not _is_nautical(direct):
+            return direct
+
+        on_land = _FINDER.timezone_at_land(lat=latitude, lng=longitude)
+        if on_land:
+            return on_land
+
+        # Probe outward in rings. The first ring that yields any land zone decides,
+        # and the zone seen most often on that ring wins, so a point just off a
+        # coast picks up the coast rather than a far-off neighbour.
+        for radius in (0.15, 0.35, 0.75, 1.5):
+            found: list[str] = []
+            for bearing in range(0, 360, 30):
+                offset = math.radians(bearing)
+                lat2 = latitude + radius * math.cos(offset)
+                # Degrees of longitude shrink with latitude.
+                scale = max(math.cos(math.radians(latitude)), 0.1)
+                lon2 = longitude + (radius * math.sin(offset)) / scale
+                if not -90.0 <= lat2 <= 90.0:
+                    continue
+                lon2 = ((lon2 + 180.0) % 360.0) - 180.0
+                candidate = _FINDER.timezone_at_land(lat=lat2, lng=lon2)
+                if candidate and not _is_nautical(candidate):
+                    found.append(candidate)
+            if found:
+                return Counter(found).most_common(1)[0][0]
+
+        # Nothing but ocean nearby. A nautical band is still better than nothing,
+        # but the caller is told where it came from through `source`.
+        return direct or None
     except Exception as exc:
         logger.warning(f"timezone lookup failed for ({latitude}, {longitude}): {exc}")
         return None
