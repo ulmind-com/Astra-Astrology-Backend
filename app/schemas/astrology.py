@@ -874,5 +874,70 @@ class KundliMatchingResponse(BaseModel):
     translations: dict[str, Any] = Field(default_factory=dict)
 
 
+# -----------------------------------------------------------------------------
+# Daily Horoscope (100% In-House Swiss Ephemeris Moon Transit & Panchang Engine)
+# -----------------------------------------------------------------------------
+class DailyHoroscopeRequest(BaseModel):
+    date: str | None = Field(default=None, description="Target date in YYYY-MM-DD format (defaults to current date in IST)")
+    sign: str | None = Field(default=None, description="Optional sign filter (e.g. 'aries', 'taurus' or None for all 12 signs)")
+    language: Literal["en", "bn", "hi"] = Field(default="en", description="Output language (en, bn, hi)")
+    latitude: float = Field(default=22.5726, ge=-90.0, le=90.0, description="Observer latitude (default: Kolkata, 22.5726)")
+    longitude: float = Field(default=88.3639, ge=-180.0, le=180.0, description="Observer longitude (default: Kolkata, 88.3639)")
+    timezone: float = Field(default=5.5, ge=-12.0, le=14.0, description="Timezone offset from UTC (default: +5.5 for IST)")
+
+
+class DailySignHoroscope(BaseModel):
+    sign_index: int  # 0 = Aries, 11 = Pisces
+    sign_name: str
+    sign_name_sanskrit: str
+    symbol: str
+    transit_house: int  # 1 to 12 (Moon's current transit house from Janma Rashi)
+    transit_house_name: str  # e.g. "11th House (Labha Bhava)"
+    gochar_verdict: str  # "Highly Auspicious", "Favorable", "Neutral", "Caution Advised"
+    overall_score: int  # 0 to 100 percentage score
+    career_score: int
+    love_score: int
+    finance_score: int
+    health_score: int
+    summary: str
+    career_prediction: str
+    love_prediction: str
+    finance_prediction: str
+    health_prediction: str
+    lucky_number: int
+    lucky_color: str
+    lucky_time: str
+    remedy: str
+    favorable_direction: str
+
+
+class DailyPanchangSummary(BaseModel):
+    tithi: str
+    paksha: str
+    nakshatra: str
+    nakshatra_pada: int
+    yoga: str
+    karana: str
+    vara: str  # Day of week (e.g. Ravivara / Sunday)
+    sunrise: str
+    sunset: str
+    abhijit_muhurat: str
+    rahu_kaal: str
+
+
+class DailyHoroscopeResponse(BaseModel):
+    date: str
+    day_of_week: str
+    vara_lord: str
+    moon_sign: str
+    moon_sign_sanskrit: str
+    moon_degree: str
+    sun_sign: str
+    panchang: DailyPanchangSummary
+    signs: list[DailySignHoroscope]
+    calculation_meta: dict[str, Any] = Field(default_factory=dict)
+
+
+
 
 

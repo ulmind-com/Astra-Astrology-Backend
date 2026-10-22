@@ -4,6 +4,8 @@ import httpx
 from fastapi import APIRouter, HTTPException, Query, status
 from loguru import logger
 from app.schemas.astrology import (
+    DailyHoroscopeRequest,
+    DailyHoroscopeResponse,
     KPCalculateRequest,
     KPCalculateResponse,
     KundliCalculateRequest,
@@ -26,6 +28,7 @@ from app.services.astrology.timezone_resolver import (
     offset_for_zone_at,
     zone_for_coordinates,
 )
+from app.services.astrology.daily_horoscope import calculate_daily_horoscope
 from app.services.astrology.kp_calculator import calculate_kp
 from app.services.astrology.kundli_service import calculate_kundli
 from app.services.astrology.kundli_matching_service import calculate_kundli_matching
@@ -348,3 +351,53 @@ async def get_client_rules(
             "unresolved_in_source": client_rules.UNRESOLVED_IN_SOURCE,
         },
     )
+
+
+@router.post(
+    "/horoscope/daily",
+    response_model=ApiResponse[DailyHoroscopeResponse],
+    summary="Calculate 100% accurate in-house Daily Horoscope (Moon Transit Gochar & Panchang)",
+)
+async def get_daily_horoscope_post(payload: DailyHoroscopeRequest) -> ApiResponse[DailyHoroscopeResponse]:
+    """Calculates 100% in-house Daily Horoscope based on:
+    1. Swiss Ephemeris sidereal planetary coordinates (Lahiri Ayanamsha)
+    2. Classical Vedic Moon transit (Gochar) through 12 Bhavas relative to Janma Rashi
+    3. Client's Rashi attributes and beneficial remedies
+    4. Exact Daily Panchang (Tithi, Nakshatra, Yoga, Karana, Abhijit Muhurat, Rahu Kaal)
+    """
+    result = _guard(calculate_daily_horoscope, payload, "daily-horoscope")
+    return ApiResponse(
+        message=f"Calculated Daily Horoscope for {result.date} ({result.day_of_week})",
+        data=result,
+    )
+
+
+@router.get(
+    "/horoscope/daily",
+    response_model=ApiResponse[DailyHoroscopeResponse],
+    summary="Get 100% accurate Daily Horoscope by query parameters",
+)
+async def get_daily_horoscope_get(
+    date: str | None = Query(default=None, description="Target date in YYYY-MM-DD or None for today"),
+    sign: str | None = Query(default=None, description="Optional sign filter e.g. aries"),
+    language: str = Query(default="en", pattern="^(en|bn|hi)$"),
+    latitude: float = Query(default=22.5726, ge=-90.0, le=90.0),
+    longitude: float = Query(default=88.3639, ge=-180.0, le=180.0),
+    timezone: float = Query(default=5.5, ge=-12.0, le=14.0),
+) -> ApiResponse[DailyHoroscopeResponse]:
+    """Query parameter interface for Daily Horoscope (Moon Transit Gochar & Panchang)."""
+    lang = language if language in {"en", "bn", "hi"} else "en"
+    req = DailyHoroscopeRequest(
+        date=date,
+        sign=sign,
+        language=lang,  # type: ignore[arg-type]
+        latitude=latitude,
+        longitude=longitude,
+        timezone=timezone,
+    )
+    result = _guard(calculate_daily_horoscope, req, "daily-horoscope")
+    return ApiResponse(
+        message=f"Daily Horoscope for {result.date} ({result.day_of_week})",
+        data=result,
+    )
+
