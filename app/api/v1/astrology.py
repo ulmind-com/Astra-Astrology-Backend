@@ -6,6 +6,8 @@ from loguru import logger
 from app.schemas.astrology import (
     KPCalculateRequest,
     KPCalculateResponse,
+    KundliCalculateRequest,
+    KundliCalculateResponse,
     NakshatraCalculateRequest,
     NakshatraCalculateResponse,
     RashiCalculateRequest,
@@ -23,6 +25,7 @@ from app.services.astrology.timezone_resolver import (
     zone_for_coordinates,
 )
 from app.services.astrology.kp_calculator import calculate_kp
+from app.services.astrology.kundli_service import calculate_kundli
 from app.services.astrology.nakshatra_rules import NAKSHATRAS_MASTER
 from app.services.astrology.rashi_rules import RASHIS_DATA
 
@@ -58,6 +61,23 @@ def _guard(fn, payload, what: str):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=_CALC_FAILED
         ) from exc
+
+
+@router.post(
+    "/kundli",
+    response_model=ApiResponse[KundliCalculateResponse],
+    summary="Calculate complete Kundli & Planetary Position (D1, D9, 3x3 Dasha Grid, Tables & Yogas)",
+)
+async def get_kundli(payload: KundliCalculateRequest) -> ApiResponse[KundliCalculateResponse]:
+    """Calculates 100% accurate Vedic Kundli parameters, Placidus 12 cusps,
+    Lagna Chart (D1), Navamsa Chart (D9), 3x3 Vimshottari Dasha grid,
+    Planet & House tables, and Classical Vedic Yogas & Doshas.
+    """
+    result = _guard(calculate_kundli, payload, "kundli")
+    return ApiResponse(
+        message=f"Calculated Kundli for {result.personal_details.name}: Asc {result.astro_positions.asc}, Rasi {result.planetary_info.rasi}",
+        data=result,
+    )
 
 
 @router.post(

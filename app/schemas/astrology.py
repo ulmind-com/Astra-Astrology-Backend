@@ -547,3 +547,142 @@ class KPCalculateResponse(BaseModel):
     translations: dict[str, Any] = Field(default_factory=dict)
 
 
+# =============================================================================
+# Kundli & Planetary Position Schemas
+# =============================================================================
+
+class KundliCalculateRequest(BaseModel):
+    name: str = Field(default="Native", description="Name of native")
+    gender: Literal["male", "female", "other"] = Field(default="male")
+    day: int = Field(ge=1, le=31)
+    month: int = Field(ge=1, le=12)
+    year: int = Field(ge=1800, le=2100)
+    hour: int = Field(default=12, ge=0, le=23)
+    minute: int = Field(default=0, ge=0, le=59)
+    second: int = Field(default=0, ge=0, le=59)
+    period: Literal["AM", "PM", "24H"] = Field(default="PM")
+    place: str = Field(default="Kolaghat, West Bengal, India")
+    latitude: float | None = Field(default=22.4333, ge=-90.0, le=90.0)
+    longitude: float | None = Field(default=87.8500, ge=-180.0, le=180.0)
+    timezone: float = Field(default=5.5, ge=-12.0, le=14.0)
+    ayanamsa: Literal[
+        "lahiri",
+        "krishnamurti",
+        "bv_raman",
+        "yukteshwar",
+        "suryasiddhanta",
+        "true_pushya",
+    ] = Field(default="lahiri")
+    house_system: Literal["placidus", "equal", "whole_sign", "koch"] = Field(default="placidus")
+    chart_style: Literal["north_indian", "south_indian", "east_indian", "wheel"] = Field(default="north_indian")
+    language: Literal["en", "bn", "hi"] = Field(default="en")
+
+
+class KundliPersonalDetails(BaseModel):
+    name: str
+    gender: str
+    date_of_birth: str
+    time_of_birth: str
+    day: str
+    vedic_day: str
+
+
+class KundliAstronomicalInfo(BaseModel):
+    julian_day: int
+    ayan_type: str
+    house_system: str
+    place: str
+    longitude_formatted: str
+    latitude_formatted: str
+
+
+class KundliAstroPositions(BaseModel):
+    asc_lord: str
+    asc: str
+    yoga: str
+    tithi: str
+    sunset: str
+    sunrise: str
+
+
+class KundliPlanetaryInfo(BaseModel):
+    bal_dasa: str
+    karan: str
+    nakshatra_lord: str
+    nakshatra: str
+    rasi_lord: str
+    rasi: str
+
+
+class KundliChartPlanet(BaseModel):
+    name: str
+    symbol: str
+    code: str
+    degree: int
+    sign_num: int  # 1 (Aries) to 12 (Pisces) for D1
+    house_num: int  # 1 to 12 in D1 Lagna chart
+    d9_sign_num: int  # 1 to 12 in D9 Navamsa chart
+    d9_house_num: int  # 1 to 12 relative to D9 Lagna
+    is_retrograde: bool = False
+
+
+class KundliTableRow(BaseModel):
+    name: str  # "Lagna", "Sun", "house 1"
+    longitude_formatted: str  # "21° Leo 35 ' 55\""
+    sign: str
+    nakshatra: str
+    nakshatra_lord: str
+    pada: int
+    sub_lord: str
+    full_degree_formatted: str  # "141° 35 ' 55\""
+
+
+class KundliDashaAntar(BaseModel):
+    lord: str
+    duration: str
+    end_date: str
+
+
+class KundliDashaCard(BaseModel):
+    title: str  # "Balance Mahadasha: Saturn 6 Y 0 M 6 D" or "Mahadasha: Mercury - 17 Years"
+    lord: str
+    years: int
+    antardashas: list[KundliDashaAntar]
+
+
+class KundliYogaItem(BaseModel):
+    name: str  # "Mangalik", "Kaal Sarp Dosh", "Budhaditya Yoga", "Gaja Kesari Yoga", "Kemadruma Yoga"
+    is_present: bool
+    description: str
+    auspicious: bool
+
+
+class KundliActiveYogaDetail(BaseModel):
+    name: str
+    description: str
+    effects: str
+
+
+class KundliCalculateResponse(BaseModel):
+    personal_details: KundliPersonalDetails
+    astronomical_info: KundliAstronomicalInfo
+    astro_positions: KundliAstroPositions
+    planetary_info: KundliPlanetaryInfo
+
+    d1_planets: list[KundliChartPlanet]
+    d9_planets: list[KundliChartPlanet]
+    d1_asc_sign: int  # 1-12
+    d9_asc_sign: int  # 1-12
+
+    planets_table: list[KundliTableRow]
+    houses_table: list[KundliTableRow]
+    dashas_grid: list[KundliDashaCard]
+
+    yogas_status: list[KundliYogaItem]
+    active_yogas_details: list[KundliActiveYogaDetail]
+
+    selected_language: str = "en"
+    translations: dict[str, Any] = Field(default_factory=dict)
+
+
+
