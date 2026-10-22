@@ -26,6 +26,8 @@ dependencies = [
     "mediapipe>=0.10.14",
     "numpy>=1.26.0,<2.0.0",
     "pyswisseph>=2.10.3.2",
+    "timezonefinder>=6.5.0",
+    "tzdata>=2024.1",
 ]
 
 [project.optional-dependencies]

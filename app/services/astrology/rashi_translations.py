@@ -17,7 +17,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "Aries",
             "element": "Fiery",
             "modality": "Movable / Cardinal",
-            "polarity": "Masculine / Day Sign",
+            "polarity": "Masculine / Positive (Odd sign)",
             "body_parts": "Head, brain, forehead, skull, cranial vessels",
             "nature": "Dynamic, enterprising, valiant, energetic, impulsive, leadership-driven",
             "overview": (
@@ -63,7 +63,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "মেষ",
             "element": "অগ্নি তত্ত্ব",
             "modality": "চর রাশি (Movable)",
-            "polarity": "পুরুষ / দিবা রাশি",
+            "polarity": "পুরুষ / ধনাত্মক (বিষম রাশি)",
             "body_parts": "মাথা, মস্তিষ্ক, কপাল, খুলি এবং রক্তনালী",
             "nature": "উদ্যমী, সাহসী, পরাক্রমশালী, স্পষ্টভাষী, নেতৃত্বমুখী ও তেজস্বী",
             "overview": (
@@ -108,7 +108,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "मेष",
             "element": "अग्नि तत्व",
             "modality": "चर राशि (Movable)",
-            "polarity": "पुरुष / दिवा राशि",
+            "polarity": "पुरुष / धनात्मक (विषम राशि)",
             "body_parts": "मस्तिष्क, सिर, ललाट, कपाल और रक्त वाहिकाएं",
             "nature": "ऊर्जावान, साहसी, पराक्रमी, स्पष्टवादी, नेतृत्व-कुशल एवं ओजस्वी",
             "overview": (
@@ -159,7 +159,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "Taurus",
             "element": "Earthy",
             "modality": "Fixed / Static",
-            "polarity": "Feminine / Night Sign",
+            "polarity": "Feminine / Negative (Even sign)",
             "body_parts": "Face, neck, throat, vocal cords, thyroid, chin",
             "nature": "Stable, loyal, patient, luxury-loving, artistic, dependable, methodical",
             "overview": (
@@ -204,7 +204,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "বৃষ",
             "element": "পৃথ্বী তত্ত্ব (Earth)",
             "modality": "স্থির রাশি (Fixed)",
-            "polarity": "স্ত্রী / রাত্রি রাশি",
+            "polarity": "স্ত্রী / ঋণাত্মক (সম রাশি)",
             "body_parts": "মুখমণ্ডল, গলা, কণ্ঠনালী, থাইরয়েড ও চিবুক",
             "nature": "ধৈর্যশীল, বিশ্বস্ত, শান্ত, সৌন্দর্যপ্রিয়, বাস্তববাদী ও নির্ভরযোগ্য",
             "overview": (
@@ -249,7 +249,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "वृषभ",
             "element": "पृथ्वी तत्व",
             "modality": "स्थिर राशि (Fixed)",
-            "polarity": "स्त्री / रात्रि राशि",
+            "polarity": "स्त्री / ऋणात्मक (सम राशि)",
             "body_parts": "मुख, गला, कंठ, थायरॉयड ग्रंथि और ठोड़ी",
             "nature": "धैर्यवान, निष्ठावान, शांत, कलाप्रिय, व्यावहारिक और सुदृढ़",
             "overview": (
@@ -300,7 +300,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "Gemini",
             "element": "Airy",
             "modality": "Dual / Common",
-            "polarity": "Masculine / Day Sign",
+            "polarity": "Masculine / Positive (Odd sign)",
             "body_parts": "Shoulders, arms, hands, respiratory system, nervous system",
             "nature": "Intellectual, witty, communicative, curious, versatile, social",
             "overview": (
@@ -346,7 +346,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "মিথুন",
             "element": "বায়ু তত্ত্ব (Air)",
             "modality": "দ্বিস্বভাব রাশি (Dual)",
-            "polarity": "পুরুষ / দিবা রাশি",
+            "polarity": "পুরুষ / ধনাত্মক (বিষম রাশি)",
             "body_parts": "কাঁধ, হাত, বাহু, শ্বাসযন্ত্র ও স্নায়ুতন্ত্র",
             "nature": "বুদ্ধিদীপ্ত, কৌতূহলী, বাগ্মী, চঞ্চল, রসিক ও বহুমুখী প্রতিভাধর",
             "overview": (
@@ -391,7 +391,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "मिथुन",
             "element": "वायु तत्व",
             "modality": "द्विस्वभाव राशि (Dual)",
-            "polarity": "पुरुष / दिवा राशि",
+            "polarity": "पुरुष / धनात्मक (विषम राशि)",
             "body_parts": "कंधे, हाथ, भुजाएं, श्वसन प्रणाली और तंत्रिका तंत्र",
             "nature": "बुद्धिमान, जिज्ञासु, वाकपटु, चंचल, मिलनसार और बहुमुखी",
             "overview": (
@@ -442,7 +442,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "Cancer",
             "element": "Watery",
             "modality": "Movable / Cardinal",
-            "polarity": "Feminine / Night Sign",
+            "polarity": "Feminine / Negative (Even sign)",
             "body_parts": "Chest, breasts, stomach, digestive tract, diaphragm",
             "nature": "Empathetic, intuitive, maternal, protective, emotional, nostalgic",
             "overview": (
@@ -488,7 +488,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "কর্কট",
             "element": "জল তত্ত্ব (Water)",
             "modality": "চর রাশি (Movable)",
-            "polarity": "স্ত্রী / রাত্রি রাশি",
+            "polarity": "স্ত্রী / ঋণাত্মক (সম রাশি)",
             "body_parts": "বুক, স্তন, পাকস্থলী, পরিপাকতন্ত্র ও মধ্যচ্ছদা",
             "nature": "সংবেদনশীল, স্নেহময়, সহানুভূতিশীল, মাতৃসুলভ, আবেগপ্রবণ ও দূরদর্শী",
             "overview": (
@@ -533,7 +533,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "कर्क",
             "element": "जल तत्व",
             "modality": "चर राशि (Movable)",
-            "polarity": "स्त्री / रात्रि राशि",
+            "polarity": "स्त्री / ऋणात्मक (सम राशि)",
             "body_parts": "छाती, स्तन, आमाशय, पाचन तंत्र और हृदय क्षेत्र",
             "nature": "संवेदनशील, करुणामयी, मातृवत, रक्षात्मक, भावुक और निष्ठावान",
             "overview": (
@@ -584,7 +584,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "Leo",
             "element": "Fiery",
             "modality": "Fixed / Static",
-            "polarity": "Masculine / Day Sign",
+            "polarity": "Masculine / Positive (Odd sign)",
             "body_parts": "Heart, upper back, spine, solar plexus, vitality",
             "nature": "Royal, charismatic, generous, noble, confident, authoritative",
             "overview": (
@@ -630,7 +630,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "সিংহ",
             "element": "অগ্নি তত্ত্ব (Fire)",
             "modality": "স্থির রাশি (Fixed)",
-            "polarity": "পুরুষ / দিবা রাশি",
+            "polarity": "পুরুষ / ধনাত্মক (বিষম রাশি)",
             "body_parts": "হৃৎপিণ্ড, মেরুদণ্ড, পিঠের উপরিভাগ ও জীবনীশক্তি",
             "nature": "রাজকীয়, মহানুভব, তেজস্বী, আত্মবিশ্বাসী, প্রভারশালী ও উদার",
             "overview": (
@@ -675,7 +675,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "सिंह",
             "element": "अग्नि तत्व",
             "modality": "स्थिर राशि (Fixed)",
-            "polarity": "पुरुष / दिवा राशि",
+            "polarity": "पुरुष / धनात्मक (विषम राशि)",
             "body_parts": "हृदय, रीढ़ की हड्डी, ऊपरी पीठ और जीवन शक्ति",
             "nature": "राजसी, उदार, आत्मविश्वासी, प्रभावशाली, साहसी और गरिमामयी",
             "overview": (
@@ -726,7 +726,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "Virgo",
             "element": "Earthy",
             "modality": "Dual / Common",
-            "polarity": "Feminine / Night Sign",
+            "polarity": "Feminine / Negative (Even sign)",
             "body_parts": "Abdomen, digestive tract, intestines, spleen, nervous system",
             "nature": "Analytical, meticulous, methodical, observant, helpful, health-conscious",
             "overview": (
@@ -772,7 +772,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "কন্যা",
             "element": "পৃথ্বী তত্ত্ব (Earth)",
             "modality": "দ্বিস্বভাব রাশি (Dual)",
-            "polarity": "স্ত্রী / রাত্রি রাশি",
+            "polarity": "স্ত্রী / ঋণাত্মক (সম রাশি)",
             "body_parts": "পেট, অন্ত্র, পরিপাকতন্ত্র, প্লীহা ও স্নায়ুতন্ত্র",
             "nature": "বিশ্লেষণী, খুঁতখুঁতে, বাস্তববাদী, বিনম্র, সুশৃঙ্খল ও সেবাপরায়ণ",
             "overview": (
@@ -817,7 +817,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "कन्या",
             "element": "पृथ्वी तत्व",
             "modality": "द्विस्वभाव राशि (Dual)",
-            "polarity": "स्त्री / रात्रि राशि",
+            "polarity": "स्त्री / ऋणात्मक (सम राशि)",
             "body_parts": "उदर, आंतें, पाचन संस्थान और तंत्रिका तंत्र",
             "nature": "विश्लेषणात्मक, सूक्ष्मदर्शी, व्यावहारिक, विनम्र, व्यवस्थित और सेवाभावी",
             "overview": (
@@ -868,7 +868,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "Libra",
             "element": "Airy",
             "modality": "Movable / Cardinal",
-            "polarity": "Masculine / Day Sign",
+            "polarity": "Masculine / Positive (Odd sign)",
             "body_parts": "Kidneys, lower back, adrenal glands, buttocks, lumbar region",
             "nature": "Diplomatic, charming, balanced, justice-oriented, aesthetic, social",
             "overview": (
@@ -914,7 +914,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "তুলা",
             "element": "বায়ু তত্ত্ব (Air)",
             "modality": "চর রাশি (Movable)",
-            "polarity": "পুরুষ / দিবা রাশি",
+            "polarity": "পুরুষ / ধনাত্মক (বিষম রাশি)",
             "body_parts": "কিডনি, কোমরের নিম্নভাগ, অ্যাড্রিনাল গ্রন্থি ও নিতম্ব",
             "nature": "ন্যায়পরায়ণ, ভারসাম্যপূর্ণ, রুচিশীল, শান্তিপ্রিয়, কূটনৈতিক ও মার্জিত",
             "overview": (
@@ -959,7 +959,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "तुला",
             "element": "वायु तत्व",
             "modality": "चर राशि (Movable)",
-            "polarity": "पुरुष / दिवा राशि",
+            "polarity": "पुरुष / धनात्मक (विषम राशि)",
             "body_parts": "गुर्दे (किडनी), कमर का निचला हिस्सा और कटि प्रदेश",
             "nature": "न्यायप्रिय, संतुलित, कलाप्रेमी, कूटनीतिज्ञ, आकर्षक और शांतिप्रिय",
             "overview": (
@@ -1010,7 +1010,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "Scorpio",
             "element": "Watery",
             "modality": "Fixed / Static",
-            "polarity": "Feminine / Night Sign",
+            "polarity": "Feminine / Negative (Even sign)",
             "body_parts": "Reproductive organs, pelvis, excretory system, bladder",
             "nature": "Intense, penetrating, secretive, transformative, loyal, resilient",
             "overview": (
@@ -1056,7 +1056,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "বৃশ্চিক",
             "element": "জল তত্ত্ব (Water)",
             "modality": "স্থির রাশি (Fixed)",
-            "polarity": "স্ত্রী / রাত্রি রাশি",
+            "polarity": "স্ত্রী / ঋণাত্মক (সম রাশি)",
             "body_parts": "প্রজনন অঙ্গ, পেলভিস, মূত্রনালী ও রেচনতন্ত্র",
             "nature": "গভীর, আত্মপ্রত্যয়ী, রহস্যময়, অদম্য মনোবলের অধিকারী ও দৃঢ়চেতা",
             "overview": (
@@ -1101,7 +1101,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "वृश्चिक",
             "element": "जल तत्व",
             "modality": "स्थिर राशि (Fixed)",
-            "polarity": "स्त्री / रात्रि राशि",
+            "polarity": "स्त्री / ऋणात्मक (सम राशि)",
             "body_parts": "प्रजनन अंग, मूत्राशय, पेल्विस और उत्सर्जन तंत्र",
             "nature": "गंभीर, दृढ़-संकल्पी, रहस्यमयी, परिवर्तनकारी और निष्ठावान",
             "overview": (
@@ -1152,7 +1152,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "Sagittarius",
             "element": "Fiery",
             "modality": "Dual / Common",
-            "polarity": "Masculine / Day Sign",
+            "polarity": "Masculine / Positive (Odd sign)",
             "body_parts": "Thighs, hips, femur, sciatic nerve, liver, arterial system",
             "nature": "Philosophical, optimistic, adventurous, visionary, candid, truth-seeking",
             "overview": (
@@ -1197,7 +1197,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "ধনু",
             "element": "অগ্নি তত্ত্ব (Fire)",
             "modality": "দ্বিস্বভাব রাশি (Dual)",
-            "polarity": "পুরুষ / দিবা রাশি",
+            "polarity": "পুরুষ / ধনাত্মক (বিষম রাশি)",
             "body_parts": "উরু, নিতম্ব, ফিমার অস্থি, যকৃৎ (লিভার) ও ধমনী",
             "nature": "দার্শনিক, আশাবাদী, সত্যসন্ধানী, দূরদর্শী, মুক্তমনা ও উদার",
             "overview": (
@@ -1242,7 +1242,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "धनु",
             "element": "अग्नि तत्व",
             "modality": "द्विस्वभाव राशि (Dual)",
-            "polarity": "पुरुष / दिवा राशि",
+            "polarity": "पुरुष / धनात्मक (विषम राशि)",
             "body_parts": "जांघें, कूल्हे, यकृत (लिवर) और धमनियां",
             "nature": "दार्शनिक, आशावादी, सत्यप्रिय, दूरदर्शी, स्पष्टवादी और ज्ञानपिपासु",
             "overview": (
@@ -1293,7 +1293,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "Capricorn",
             "element": "Earthy",
             "modality": "Movable / Cardinal",
-            "polarity": "Feminine / Night Sign",
+            "polarity": "Feminine / Negative (Even sign)",
             "body_parts": "Knees, bones, skeletal joints, teeth, skin, patella",
             "nature": "Pragmatic, disciplined, ambitious, patient, structured, persistent",
             "overview": (
@@ -1339,7 +1339,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "মকর",
             "element": "পৃথ্বী তত্ত্ব (Earth)",
             "modality": "চর রাশি (Movable)",
-            "polarity": "স্ত্রী / রাত্রি রাশি",
+            "polarity": "স্ত্রী / ঋণাত্মক (সম রাশি)",
             "body_parts": "হাঁটু, অস্থিসন্ধি, হাড়, দাঁত ও ত্বক",
             "nature": "পরিশ্রমী, বাস্তববাদী, সুশৃঙ্খল, ধৈর্যশীল, নীতিবান ও দায়িত্বশীল",
             "overview": (
@@ -1384,7 +1384,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "मकर",
             "element": "पृथ्वी तत्व",
             "modality": "चर राशि (Movable)",
-            "polarity": "स्त्री / रात्रि राशि",
+            "polarity": "स्त्री / ऋणात्मक (सम राशि)",
             "body_parts": "घुटने, अस्थियां, जोड़, दांत और त्वचा",
             "nature": "व्यावहारिक, अनुशासित, महत्वाकांक्षी, गंभीर, दृढ़ और धैर्यवान",
             "overview": (
@@ -1435,7 +1435,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "Aquarius",
             "element": "Airy",
             "modality": "Fixed / Static",
-            "polarity": "Masculine / Day Sign",
+            "polarity": "Masculine / Positive (Odd sign)",
             "body_parts": "Ankles, shins, calves, circulatory system, oxygenation",
             "nature": "Humanitarian, visionary, inventive, independent, unconventional, progressive",
             "overview": (
@@ -1481,7 +1481,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "কুম্ভ",
             "element": "বায়ু তত্ত্ব (Air)",
             "modality": "স্থির রাশি (Fixed)",
-            "polarity": "পুরুষ / দিবা রাশি",
+            "polarity": "পুরুষ / ধনাত্মক (বিষম রাশি)",
             "body_parts": "গোড়ালি, পায়ের নলা, রক্ত সঞ্চালন প্রক্রিয়া ও স্নায়ুতন্ত্র",
             "nature": "মানবতাবাদী, উদ্ভাবনী, মুক্তমনা, প্রগতিশীল, দূরদর্শী ও সমাজসংস্কারক",
             "overview": (
@@ -1526,7 +1526,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "कुंभ",
             "element": "वायु तत्व",
             "modality": "स्थिर राशि (Fixed)",
-            "polarity": "पुरुष / दिवा राशि",
+            "polarity": "पुरुष / धनात्मक (विषम राशि)",
             "body_parts": "टखने, पिंडलियां, पैर और रक्त परिसंचरण तंत्र",
             "nature": "मानवतावादी, दूरदर्शी, स्वतंत्र, नवाचारी, वैज्ञानिक और उदार",
             "overview": (
@@ -1577,7 +1577,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "Pisces",
             "element": "Watery",
             "modality": "Dual / Common",
-            "polarity": "Feminine / Night Sign",
+            "polarity": "Feminine / Negative (Even sign)",
             "body_parts": "Feet, toes, lymphatic system, pineal gland, immune system",
             "nature": "Compassionate, mystical, artistic, intuitive, imaginative, transcendent",
             "overview": (
@@ -1623,7 +1623,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "মীন",
             "element": "জল তত্ত্ব (Water)",
             "modality": "দ্বিস্বভাব রাশি (Dual)",
-            "polarity": "স্ত্রী / রাত্রি রাশি",
+            "polarity": "স্ত্রী / ঋণাত্মক (সম রাশি)",
             "body_parts": "পায়ের পাতা, আঙুল, লিম্ফ্যাটিক সিস্টেম ও রোগ প্রতিরোধ ব্যবস্থা",
             "nature": "দয়ালু, আধ্যাত্মিক, কল্পনাপ্রবণ, শিল্পীসুলভ, সংবেদনশীল ও রহস্যসন্ধানী",
             "overview": (
@@ -1668,7 +1668,7 @@ RASHI_TRANSLATIONS: dict[int, dict[str, dict]] = {
             "name": "मीन",
             "element": "जल तत्व",
             "modality": "द्विस्वभाव राशि (Dual)",
-            "polarity": "स्त्री / रात्रि राशि",
+            "polarity": "स्त्री / ऋणात्मक (सम राशि)",
             "body_parts": "पैर के पंजे, तलवे, लसीका तंत्र और रोग प्रतिरोधक प्रणाली",
             "nature": "दयालु, आध्यात्मिक, कल्पनाशील, कलाप्रेमी, परोपकारी और संवेदनशील",
             "overview": (

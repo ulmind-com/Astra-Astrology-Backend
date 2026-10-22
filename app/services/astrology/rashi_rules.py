@@ -1,10 +1,32 @@
-"""Comprehensive Rashi (Moon Sign) rules, classifications, and traits
-derived from the client's resource documents in 'Resource Documents/Rashi Rules':
-- 12 Rashis and Their Planetary Lords.pdf
-- 01.pdf (Dualities, Triplicities, Quadruplicities, Sign properties)
-- Rashi Characteristics and Traits Overview.pdf
-- KP Astrology Basics and Rules.pdf
-- KP Astrology - The Hidden Secrets.pdf
+"""Rashi (Moon Sign) trait tables used for the narrative section of the calculator.
+
+PROVENANCE - read this before treating anything here as client-approved.
+
+Only part of each entry is traceable to a client-supplied document:
+
+  FROM THE CLIENT  element, modality, polarity, body_parts, nature, lord, and the
+                   physical-description portion of overview. These come from
+                   Resource Documents/Rashi Rules/01.pdf, 12 Rashis and Their
+                   Planetary Lords.pdf and Rashi Characteristics and Traits
+                   Overview.pdf, whose combined rashi content is about 4,800 words.
+                   The authoritative, fully cited copies of these now live in
+                   app/services/astrology/client_rules.py, which is what the API
+                   returns as `client_rules`.
+
+  NOT FROM THE     strengths, cautions_and_pitfalls,
+  CLIENT           beneficial_actions_and_remedies, career_fields, lucky_color,
+                   lucky_numbers, lucky_gemstone, lucky_day, ruling_deity and
+                   compatible_rashis. These were written from general Vedic
+                   astrology knowledge to fill out the reading. They are not in any
+                   client file and have not been reviewed or signed off by the
+                   client. lucky_color in particular is NOT the client's rasi-colour
+                   table - that table is in client_rules.COLOURS and is returned
+                   under the `colour` classification group.
+
+An earlier version of this docstring claimed the whole module was "derived from the
+client's resource documents", which was not accurate and would mislead anyone
+auditing the rules. Treat every field in the NOT FROM THE CLIENT list as editorial
+content pending client review.
 """
 
 from typing import Any
@@ -13,13 +35,13 @@ RASHIS_DATA: list[dict[str, Any]] = [
     {
         "index": 0,
         "name_en": "Aries",
-        "name_hi": "Mesha",
+        "name_hi": "मेष",
         "name_bn": "মেষ",
         "symbol": "♈",
         "lord": "Mars",
         "element": "Fiery (অগ্নি)",
         "modality": "Movable / Cardinal (চর)",
-        "polarity": "Masculine / Positive (পুরুষ / দিবা রাশি)",
+        "polarity": "Masculine / Positive / Odd (পুরুষ / বিষম রাশি)",
         "body_parts": "Head, brain, forehead, skull, cranial vessels",
         "nature": "Dynamic, enterprising, valiant, energetic, impulsive, leadership-driven",
         "overview": (
@@ -65,13 +87,13 @@ RASHIS_DATA: list[dict[str, Any]] = [
     {
         "index": 1,
         "name_en": "Taurus",
-        "name_hi": "Vrisha",
+        "name_hi": "वृष",
         "name_bn": "বৃষ",
         "symbol": "♉",
         "lord": "Venus",
         "element": "Earthy (পৃথ্বী)",
         "modality": "Fixed / Static (স্থির)",
-        "polarity": "Feminine / Negative (স্ত্রী / রাত্রি রাশি)",
+        "polarity": "Feminine / Negative / Even (স্ত্রী / সম রাশি)",
         "body_parts": "Face, neck, throat, vocal cords, thyroid, chin",
         "nature": "Stable, loyal, patient, luxury-loving, artistic, dependable, methodical",
         "overview": (
@@ -116,13 +138,13 @@ RASHIS_DATA: list[dict[str, Any]] = [
     {
         "index": 2,
         "name_en": "Gemini",
-        "name_hi": "Mithuna",
+        "name_hi": "मिथुन",
         "name_bn": "মিথুন",
         "symbol": "♊",
         "lord": "Mercury",
         "element": "Airy (বায়ু)",
         "modality": "Dual / Common (দ্বিস্বভাব)",
-        "polarity": "Masculine / Positive (পুরুষ / দিবা রাশি)",
+        "polarity": "Masculine / Positive / Odd (পুরুষ / বিষম রাশি)",
         "body_parts": "Shoulders, arms, hands, respiratory system, nervous system",
         "nature": "Intellectual, witty, communicative, curious, versatile, social",
         "overview": (
@@ -168,13 +190,13 @@ RASHIS_DATA: list[dict[str, Any]] = [
     {
         "index": 3,
         "name_en": "Cancer",
-        "name_hi": "Karka",
+        "name_hi": "कर्क",
         "name_bn": "কর্কট",
         "symbol": "♋",
         "lord": "Moon",
         "element": "Watery (জল)",
         "modality": "Movable / Cardinal (চর)",
-        "polarity": "Feminine / Negative (স্ত্রী / রাত্রি রাশি)",
+        "polarity": "Feminine / Negative / Even (স্ত্রী / সম রাশি)",
         "body_parts": "Chest, breasts, stomach, digestive tract, diaphragm",
         "nature": "Empathetic, intuitive, maternal, protective, emotional, nostalgic",
         "overview": (
@@ -220,13 +242,13 @@ RASHIS_DATA: list[dict[str, Any]] = [
     {
         "index": 4,
         "name_en": "Leo",
-        "name_hi": "Simha",
+        "name_hi": "सिंह",
         "name_bn": "সিংহ",
         "symbol": "♌",
         "lord": "Sun",
         "element": "Fiery (অগ্নি)",
         "modality": "Fixed / Static (স্থির)",
-        "polarity": "Masculine / Positive (পুরুষ / দিবা রাশি)",
+        "polarity": "Masculine / Positive / Odd (পুরুষ / বিষম রাশি)",
         "body_parts": "Heart, upper back, spine, solar plexus, vitality",
         "nature": "Royal, charismatic, generous, noble, confident, authoritative",
         "overview": (
@@ -272,13 +294,13 @@ RASHIS_DATA: list[dict[str, Any]] = [
     {
         "index": 5,
         "name_en": "Virgo",
-        "name_hi": "Kanya",
+        "name_hi": "कन्या",
         "name_bn": "কন্যা",
         "symbol": "♍",
         "lord": "Mercury",
         "element": "Earthy (পৃথ্বী)",
         "modality": "Dual / Common (দ্বিস্বভাব)",
-        "polarity": "Feminine / Negative (স্ত্রী / রাত্রি রাশি)",
+        "polarity": "Feminine / Negative / Even (স্ত্রী / সম রাশি)",
         "body_parts": "Abdomen, intestines, digestive system, spleen, nervous tract",
         "nature": "Analytical, meticulous, disciplined, intellectual, humble, service-minded",
         "overview": (
@@ -323,13 +345,13 @@ RASHIS_DATA: list[dict[str, Any]] = [
     {
         "index": 6,
         "name_en": "Libra",
-        "name_hi": "Tula",
+        "name_hi": "तुला",
         "name_bn": "তুলা",
         "symbol": "♎",
         "lord": "Venus",
         "element": "Airy (বায়ু)",
         "modality": "Movable / Cardinal (চর)",
-        "polarity": "Masculine / Positive (পুরুষ / দিবা রাশি)",
+        "polarity": "Masculine / Positive / Odd (পুরুষ / বিষম রাশি)",
         "body_parts": "Kidneys, lumbar region, lower back, skin, buttocks",
         "nature": "Diplomatic, harmonious, just, charming, artistic, socially graceful",
         "overview": (
@@ -374,13 +396,13 @@ RASHIS_DATA: list[dict[str, Any]] = [
     {
         "index": 7,
         "name_en": "Scorpio",
-        "name_hi": "Vrischika",
+        "name_hi": "वृश्चिक",
         "name_bn": "বৃশ্চিক",
         "symbol": "♏",
         "lord": "Mars",
         "element": "Watery (জল)",
         "modality": "Fixed / Static (স্থির)",
-        "polarity": "Feminine / Negative (স্ত্রী / রাত্রি রাশি)",
+        "polarity": "Feminine / Negative / Even (স্ত্রী / সম রাশি)",
         "body_parts": "Reproductive organs, pelvis, excretory system, bladder",
         "nature": "Intense, investigative, magnetic, secretive, loyal, transformative",
         "overview": (
@@ -426,13 +448,13 @@ RASHIS_DATA: list[dict[str, Any]] = [
     {
         "index": 8,
         "name_en": "Sagittarius",
-        "name_hi": "Dhanu",
+        "name_hi": "धनु",
         "name_bn": "ধনু",
         "symbol": "♐",
         "lord": "Jupiter",
         "element": "Fiery (অগ্নি)",
         "modality": "Dual / Common (দ্বিস্বভাব)",
-        "polarity": "Masculine / Positive (পুরুষ / দিবা রাশি)",
+        "polarity": "Masculine / Positive / Odd (পুরুষ / বিষম রাশি)",
         "body_parts": "Hips, thighs, sciatic nerve, liver, arterial system",
         "nature": "Philosophical, optimistic, righteous, adventurous, truth-seeking, wise",
         "overview": (
@@ -477,13 +499,13 @@ RASHIS_DATA: list[dict[str, Any]] = [
     {
         "index": 9,
         "name_en": "Capricorn",
-        "name_hi": "Makara",
+        "name_hi": "मकर",
         "name_bn": "মকর",
         "symbol": "♑",
         "lord": "Saturn",
         "element": "Earthy (পৃথ্বী)",
         "modality": "Movable / Cardinal (চর)",
-        "polarity": "Feminine / Negative (স্ত্রী / রাত্রি রাশি)",
+        "polarity": "Feminine / Negative / Even (স্ত্রী / সম রাশি)",
         "body_parts": "Knees, joints, bones, skeletal frame, skin, teeth",
         "nature": "Pragmatic, ambitious, disciplined, patient, persevering, authoritative",
         "overview": (
@@ -529,13 +551,13 @@ RASHIS_DATA: list[dict[str, Any]] = [
     {
         "index": 10,
         "name_en": "Aquarius",
-        "name_hi": "Kumbha",
+        "name_hi": "कुम्भ",
         "name_bn": "কুম্ভ",
         "symbol": "♒",
         "lord": "Saturn",
         "element": "Airy (বায়ু)",
         "modality": "Fixed / Static (স্থির)",
-        "polarity": "Masculine / Positive (পুরুষ / দিবা রাশি)",
+        "polarity": "Masculine / Positive / Odd (পুরুষ / বিষম রাশি)",
         "body_parts": "Ankles, shins, calves, circulatory system, nervous transmission",
         "nature": "Visionary, humanitarian, scientific, unconventional, intellectual, egalitarian",
         "overview": (
@@ -580,13 +602,13 @@ RASHIS_DATA: list[dict[str, Any]] = [
     {
         "index": 11,
         "name_en": "Pisces",
-        "name_hi": "Meena",
+        "name_hi": "मीन",
         "name_bn": "মীন",
         "symbol": "♓",
         "lord": "Jupiter",
         "element": "Watery (জল)",
         "modality": "Dual / Common (দ্বিস্বভাব)",
-        "polarity": "Feminine / Negative (স্ত্রী / রাত্রি রাশি)",
+        "polarity": "Feminine / Negative / Even (স্ত্রী / সম রাশি)",
         "body_parts": "Feet, toes, lymphatic system, pineal gland, psychic aura",
         "nature": "Compassionate, spiritual, intuitive, artistic, dreamy, gentle, empathetic",
         "overview": (

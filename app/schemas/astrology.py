@@ -18,6 +18,16 @@ class RashiCalculateRequest(BaseModel):
     latitude: float | None = Field(default=None, description="Decimal latitude (-90 to +90)")
     longitude: float | None = Field(default=None, description="Decimal longitude (-180 to +180)")
     timezone: float = Field(default=5.5, description="Timezone offset from UTC in hours (e.g. +5.5 for IST)")
+    timezone_name: str | None = Field(
+        default=None,
+        description=(
+            "IANA timezone name for the birth place, e.g. 'Asia/Dhaka'. When given, the "
+            "exact offset is resolved at the birth instant, so daylight saving and "
+            "historical changes are accounted for and the `timezone` field is ignored. "
+            "When omitted the zone is derived from latitude/longitude; `timezone` is "
+            "used only if neither is available."
+        ),
+    )
     ayanamsa: Literal[
         "lahiri",
         "bv_raman",
@@ -70,6 +80,84 @@ class RashiTraits(BaseModel):
     compatible_rashis: list[str]
 
 
+class ClientRuleEntry(BaseModel):
+    """One classification group from the client's resource documents."""
+
+    key: str
+    label: str
+    value: str
+    definition: str
+    source: str  # client file and page this group was transcribed from
+    application: str | None = None  # the client's own stated predictive use
+
+
+class GunaReading(BaseModel):
+    source: str
+    value: str
+    note: str
+
+
+class DisputedGuna(BaseModel):
+    """The client's 01.pdf states the Guna classification twice and the two
+    statements disagree for six signs. Both readings are returned rather than
+    silently picking one."""
+
+    readings: list[GunaReading] = Field(default_factory=list)
+    is_disputed: bool = False
+    notice: str | None = None
+
+
+class ClientSignProfile(BaseModel):
+    """Everything about a sign that is traceable to a client-supplied document."""
+
+    index: int
+    name_en: str
+    name_sa: str
+    name_bn: str
+    name_hi: str
+    lord: str
+    classifications: list[ClientRuleEntry] = Field(default_factory=list)
+    guna: DisputedGuna = Field(default_factory=DisputedGuna)
+    body_parts: str = ""
+    places: list[str] = Field(default_factory=list)
+    trait_keywords: list[str] = Field(default_factory=list)
+    sources: list[str] = Field(default_factory=list)
+
+
+class TimezoneResolution(BaseModel):
+    """How the UTC offset used for the calculation was arrived at."""
+
+    offset_hours: float
+    offset_label: str  # e.g. "UTC+05:30"
+    zone_name: str | None = None  # IANA name, e.g. "Asia/Dhaka"
+    abbreviation: str | None = None  # e.g. "IST", "BST"
+    source: str  # "iana" | "manual" | "default"
+    is_dst: bool = False
+    note: str | None = None
+
+
+class HouseCusp(BaseModel):
+    house: int
+    longitude: float
+    sign: str
+    sign_index: int
+    degree_in_sign: float
+    degree_formatted: str
+
+
+class CalculationMeta(BaseModel):
+    """Audit trail for the chart, so nothing about its accuracy is implicit."""
+
+    engine: str  # "swiss_ephemeris"
+    engine_version: str | None = None
+    ephemeris: str  # which ephemeris the positions came from
+    ayanamsa_key: str
+    house_system_key: str
+    node_type: str  # "mean" | "true"
+    julian_day_ut: float
+    warnings: list[str] = Field(default_factory=list)
+
+
 class RashiCalculateResponse(BaseModel):
     name: str
     gender: str
@@ -118,6 +206,16 @@ class RashiCalculateResponse(BaseModel):
     selected_language: str = "en"
     translations: dict[str, Any] = Field(default_factory=dict)
 
+    # Rules traceable to the client's own resource documents
+    client_rules: ClientSignProfile | None = None
+    ascendant_client_rules: ClientSignProfile | None = None
+    kp_reference: dict[str, Any] = Field(default_factory=dict)
+
+    # Transparency: how the offset was derived, the real cusps, and engine details
+    timezone_resolution: TimezoneResolution | None = None
+    house_cusps: list[HouseCusp] = Field(default_factory=list)
+    calculation: CalculationMeta | None = None
+
 
 # =============================================================================
 # Birth Star & Nakshatra Calculator Schemas
@@ -138,6 +236,16 @@ class NakshatraCalculateRequest(BaseModel):
     latitude: float | None = Field(default=None, description="Decimal latitude (-90 to +90)")
     longitude: float | None = Field(default=None, description="Decimal longitude (-180 to +180)")
     timezone: float = Field(default=5.5, description="Timezone offset from UTC in hours (e.g. +5.5 for IST)")
+    timezone_name: str | None = Field(
+        default=None,
+        description=(
+            "IANA timezone name for the birth place, e.g. 'Asia/Dhaka'. When given, the "
+            "exact offset is resolved at the birth instant, so daylight saving and "
+            "historical changes are accounted for and the `timezone` field is ignored. "
+            "When omitted the zone is derived from latitude/longitude; `timezone` is "
+            "used only if neither is available."
+        ),
+    )
     ayanamsa: Literal[
         "lahiri",
         "bv_raman",
@@ -280,6 +388,16 @@ class KPCalculateRequest(BaseModel):
     latitude: float | None = Field(default=None, description="Decimal latitude (-90 to +90)")
     longitude: float | None = Field(default=None, description="Decimal longitude (-180 to +180)")
     timezone: float = Field(default=5.5, description="Timezone offset from UTC in hours")
+    timezone_name: str | None = Field(
+        default=None,
+        description=(
+            "IANA timezone name for the birth place, e.g. 'Asia/Dhaka'. When given, the "
+            "exact offset is resolved at the birth instant, so daylight saving and "
+            "historical changes are accounted for and the `timezone` field is ignored. "
+            "When omitted the zone is derived from latitude/longitude; `timezone` is "
+            "used only if neither is available."
+        ),
+    )
     ayanamsa: Literal[
         "krishnamurti",
         "lahiri",
