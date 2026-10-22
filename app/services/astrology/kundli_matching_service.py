@@ -26,6 +26,7 @@ from app.schemas.astrology import (
     KundliChartPlanet,
     KundliTableRow,
 )
+from app.services.astrology.timezone_resolver import resolve as resolve_timezone
 
 UTC = dt_timezone.utc
 
@@ -173,29 +174,46 @@ def _format_full_degree(lon: float) -> str:
 
 def _calculate_person_chart(p: KundliMatchingPersonInput) -> dict[str, Any]:
     """Calculates astronomical data for groom or bride via Swiss Ephemeris."""
-    hour = p.hour
-    if p.period == "PM" and hour < 12:
-        hour += 12
-    elif p.period == "AM" and hour == 12:
-        hour = 0
-
-    local_decimal_hour = hour + p.minute / 60.0 + p.second / 3600.0
-    utc_decimal_hour = local_decimal_hour - p.timezone
-
-    birth_dt = datetime(p.year, p.month, p.day, hour, p.minute, p.second)
-    base_dt = datetime(p.year, p.month, p.day, 0, 0, 0, tzinfo=UTC)
-    adjusted_dt = base_dt + timedelta(hours=utc_decimal_hour)
-
-    calc_year = adjusted_dt.year
-    calc_month = adjusted_dt.month
-    calc_day = adjusted_dt.day
-    calc_hour_utc = adjusted_dt.hour + adjusted_dt.minute / 60.0 + adjusted_dt.second / 3600.0
-
     lat = p.latitude if p.latitude is not None else 22.5726
     lon = p.longitude if p.longitude is not None else 88.3639
 
+    hour = p.hour if p.hour is not None else 12
+    minute = p.minute if p.minute is not None else 0
+    second = p.second if p.second is not None else 0
+    period = p.period if p.period in ("AM", "PM") else "PM"
+
+    hour_24 = hour
+    if period == "PM" and hour_24 < 12:
+        hour_24 += 12
+    elif period == "AM" and hour_24 == 12:
+        hour_24 = 0
+
+    resolved = resolve_timezone(
+        year=p.year,
+        month=p.month,
+        day=p.day,
+        hour=hour_24,
+        minute=minute,
+        second=second,
+        latitude=lat,
+        longitude=lon,
+        zone_name=getattr(p, "timezone_name", None),
+        fallback_offset_hours=p.timezone,
+    )
+
+    local_decimal = hour_24 + minute / 60.0 + second / 3600.0
+    utc_decimal = local_decimal - resolved.offset_hours
+    base = datetime(p.year, p.month, p.day, tzinfo=UTC)
+    moment = base + timedelta(hours=utc_decimal)
+    utc_hours = (
+        moment.hour
+        + moment.minute / 60.0
+        + moment.second / 3600.0
+        + moment.microsecond / 3_600_000_000.0
+    )
+
     if HAS_SWISSEPH and swe is not None:
-        tjd_ut = swe.julday(calc_year, calc_month, calc_day, calc_hour_utc, swe.GREG_CAL)
+        tjd_ut = swe.julday(moment.year, moment.month, moment.day, utc_hours)
         if p.ayanamsa == "krishnamurti":
             swe.set_sid_mode(swe.SIDM_KRISHNAMURTI)
         elif p.ayanamsa == "bv_raman":
@@ -232,9 +250,9 @@ def _calculate_person_chart(p: KundliMatchingPersonInput) -> dict[str, Any]:
         raw_planets["Asc"] = {"lon": asc_lon, "is_retro": False}
     else:
         # High precision mathematical fallback
-        days_from_j2000 = (birth_dt - datetime(2000, 1, 1, 12, 0)).total_seconds() / 86400.0
+        days_from_j2000 = (moment - datetime(2000, 1, 1, 12, 0, tzinfo=UTC)).total_seconds() / 86400.0
         moon_lon = (218.316 + 13.176396 * days_from_j2000) % 360.0
-        asc_lon = ((hour * 15.0 + p.minute * 0.25) + lon) % 360.0
+        asc_lon = ((hour_24 * 15.0 + minute * 0.25) + lon) % 360.0
         raw_planets = {
             "Sun": {"lon": (280.460 + 0.9856474 * days_from_j2000) % 360.0, "is_retro": False},
             "Moon": {"lon": moon_lon, "is_retro": False},
@@ -320,7 +338,7 @@ def _calculate_person_chart(p: KundliMatchingPersonInput) -> dict[str, Any]:
         )
 
     # Format date and time
-    dt_str = f"{p.day:02d}/{p.month:02d}/{p.year} {p.hour:02d}:{p.minute:02d}:{p.second:02d} {p.period}"
+    dt_str = f"{p.day:02d}/{p.month:02d}/{p.year} {hour:02d}:{minute:02d}:{second:02d} {period}"
 
     profile = KundliMatchingPersonProfile(
         name=p.name,
