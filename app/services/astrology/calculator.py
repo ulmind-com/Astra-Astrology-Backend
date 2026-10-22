@@ -217,11 +217,17 @@ def _resolve_birth_instant(payload) -> tuple[float, float, float, TimezoneResolu
     resolving the IANA zone for the birth coordinates and asking the tz database for
     the offset at that exact local instant.
     """
-    hour = payload.hour
-    if payload.period == "PM" and hour < 12:
-        hour += 12
-    elif payload.period == "AM" and hour == 12:
-        hour = 0
+    raw_hour = getattr(payload, "hour", None)
+    hour = raw_hour if raw_hour is not None else 12
+    minute = getattr(payload, "minute", None) or 0
+    second = getattr(payload, "second", None) or 0
+    period = getattr(payload, "period", "PM") or "PM"
+
+    hour_24 = hour
+    if period == "PM" and hour_24 < 12:
+        hour_24 += 12
+    elif period == "AM" and hour_24 == 12:
+        hour_24 = 0
 
     lat = payload.latitude if payload.latitude is not None else 22.5726
     lon = payload.longitude if payload.longitude is not None else 88.3639
@@ -230,9 +236,9 @@ def _resolve_birth_instant(payload) -> tuple[float, float, float, TimezoneResolu
         year=payload.year,
         month=payload.month,
         day=payload.day,
-        hour=hour,
-        minute=payload.minute,
-        second=payload.second,
+        hour=hour_24,
+        minute=minute,
+        second=second,
         latitude=payload.latitude,
         longitude=payload.longitude,
         zone_name=getattr(payload, "timezone_name", None),
@@ -249,7 +255,7 @@ def _resolve_birth_instant(payload) -> tuple[float, float, float, TimezoneResolu
         note=resolved.note,
     )
 
-    local_decimal = hour + payload.minute / 60.0 + payload.second / 3600.0
+    local_decimal = hour_24 + minute / 60.0 + second / 3600.0
     utc_decimal = local_decimal - resolved.offset_hours
     base = datetime(payload.year, payload.month, payload.day, tzinfo=UTC)
     moment = base + timedelta(hours=utc_decimal)
@@ -260,7 +266,7 @@ def _resolve_birth_instant(payload) -> tuple[float, float, float, TimezoneResolu
         + moment.microsecond / 3_600_000_000.0
     )
     jd_ut = swe.julday(moment.year, moment.month, moment.day, utc_hours)
-    return jd_ut, lat, lon, tz_info, float(hour), resolved.offset_hours
+    return jd_ut, lat, lon, tz_info, float(hour_24), resolved.offset_hours
 
 
 def calculate_rashi(payload: RashiCalculateRequest) -> RashiCalculateResponse:
@@ -375,9 +381,11 @@ def calculate_rashi(payload: RashiCalculateRequest) -> RashiCalculateResponse:
     ]
 
     offset_label = tz_info.offset_label
+    min_val = getattr(payload, "minute", None) or 0
+    sec_val = getattr(payload, "second", None) or 0
     b_date_str = f"{payload.day:02d}-{payload.month:02d}-{payload.year}"
     b_time_str = (
-        f"{int(hour):02d}:{payload.minute:02d}:{payload.second:02d} ({offset_label}"
+        f"{int(hour):02d}:{min_val:02d}:{sec_val:02d} ({offset_label}"
         + (f" {tz_info.abbreviation}" if tz_info.abbreviation else "")
         + ")"
     )

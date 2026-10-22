@@ -180,10 +180,11 @@ def calculate_kundli(payload: KundliCalculateRequest) -> KundliCalculateResponse
     lat = payload.latitude if payload.latitude is not None else 22.5726
     lon = payload.longitude if payload.longitude is not None else 88.3639
 
-    hour = payload.hour if payload.hour is not None else 12
-    minute = payload.minute if payload.minute is not None else 0
-    second = payload.second if payload.second is not None else 0
-    period = payload.period if payload.period in ("AM", "PM") else "PM"
+    raw_hour = getattr(payload, "hour", None)
+    hour = raw_hour if raw_hour is not None else 12
+    minute = getattr(payload, "minute", None) or 0
+    second = getattr(payload, "second", None) or 0
+    period = getattr(payload, "period", "PM") or "PM"
 
     hour_24 = hour
     if period == "PM" and hour_24 < 12:

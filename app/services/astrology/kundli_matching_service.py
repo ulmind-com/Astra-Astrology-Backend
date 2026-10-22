@@ -177,10 +177,11 @@ def _calculate_person_chart(p: KundliMatchingPersonInput) -> dict[str, Any]:
     lat = p.latitude if p.latitude is not None else 22.5726
     lon = p.longitude if p.longitude is not None else 88.3639
 
-    hour = p.hour if p.hour is not None else 12
-    minute = p.minute if p.minute is not None else 0
-    second = p.second if p.second is not None else 0
-    period = p.period if p.period in ("AM", "PM") else "PM"
+    raw_hour = getattr(p, "hour", None)
+    hour = raw_hour if raw_hour is not None else 12
+    minute = getattr(p, "minute", None) or 0
+    second = getattr(p, "second", None) or 0
+    period = getattr(p, "period", "PM") or "PM"
 
     hour_24 = hour
     if period == "PM" and hour_24 < 12:

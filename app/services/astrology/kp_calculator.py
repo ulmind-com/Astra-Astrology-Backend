@@ -595,15 +595,19 @@ def calculate_kp(payload: KPCalculateRequest) -> KPCalculateResponse:
     Ruling Planets for DOB and Casting Time, Panchang, and Vimshottari Dasha.
     """
     # 1. Parse DOB & Local Time
-    hour = payload.hour if payload.hour is not None else 12
-    if payload.period == "PM" and hour < 12:
-        hour += 12
-    elif payload.period == "AM" and hour == 12:
-        hour = 0
+    raw_hour = getattr(payload, "hour", None)
+    hour = raw_hour if raw_hour is not None else 12
+    minute = getattr(payload, "minute", None) or 0
+    second = getattr(payload, "second", None) or 0
+    period = getattr(payload, "period", "PM") or "PM"
 
-    minute = payload.minute if payload.minute is not None else 0
-    second = payload.second if payload.second is not None else 0
-    local_decimal_hour = hour + minute / 60.0 + second / 3600.0
+    hour_24 = hour
+    if period == "PM" and hour_24 < 12:
+        hour_24 += 12
+    elif period == "AM" and hour_24 == 12:
+        hour_24 = 0
+
+    local_decimal_hour = hour_24 + minute / 60.0 + second / 3600.0
 
     # The offset comes from the IANA zone for the birth place, resolved at the birth
     # instant, so daylight saving and historical changes are handled. A caller that
@@ -612,7 +616,7 @@ def calculate_kp(payload: KPCalculateRequest) -> KPCalculateResponse:
         year=payload.year,
         month=payload.month,
         day=payload.day,
-        hour=hour,
+        hour=hour_24,
         minute=minute,
         second=second,
         latitude=payload.latitude,
