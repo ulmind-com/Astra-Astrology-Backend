@@ -861,6 +861,29 @@ class KundliMatchingDoshas(BaseModel):
     verdict_summary: str
 
 
+class MarriageLifeForecast(BaseModel):
+    ideal_marriage_age_groom: str
+    ideal_marriage_age_bride: str
+    auspicious_marriage_years: list[int]
+    auspicious_marriage_years_text: str
+    marital_harmony_score: int  # 0 to 100
+    marital_harmony_verdict: str
+    marital_harmony_description: str
+    children_progeny_score: int  # 0 to 100
+    children_progeny_verdict: str
+    children_progeny_description: str
+    conflict_friction_score: int  # 0 to 100
+    conflict_friction_verdict: str
+    conflict_friction_description: str
+    financial_prosperity_score: int  # 0 to 100
+    financial_prosperity_verdict: str
+    financial_prosperity_description: str
+    future_longevity_score: int  # 0 to 100
+    future_longevity_verdict: str
+    future_longevity_description: str
+    remedies_guidance: list[str] = Field(default_factory=list)
+
+
 class KundliMatchingResponse(BaseModel):
     groom: KundliMatchingPersonProfile
     bride: KundliMatchingPersonProfile
@@ -872,6 +895,8 @@ class KundliMatchingResponse(BaseModel):
     verdict: str
     selected_language: str = "en"
     translations: dict[str, Any] = Field(default_factory=dict)
+    forecast: MarriageLifeForecast | None = None
+
 
 
 # -----------------------------------------------------------------------------
