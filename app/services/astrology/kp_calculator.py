@@ -627,29 +627,22 @@ def calculate_kp(payload: KPCalculateRequest) -> KPCalculateResponse:
     month = payload.month
     year = payload.year
 
-    try:
-        birth_dt = datetime(year, month, day, hour, minute, second)
-        base_dt = datetime(year, month, day, 0, 0, 0, tzinfo=UTC)
-        adjusted_dt = base_dt + timedelta(hours=utc_decimal_hour)
-        calc_year = adjusted_dt.year
-        calc_month = adjusted_dt.month
-        calc_day = adjusted_dt.day
-        calc_hour_utc = (
-            adjusted_dt.hour
-            + adjusted_dt.minute / 60.0
-            + adjusted_dt.second / 3600.0
-        )
-    except Exception:
-        birth_dt = datetime(year, month, day, 12, 0, 0)
-        calc_year, calc_month, calc_day = year, month, day
-        calc_hour_utc = utc_decimal_hour % 24
+    base_dt = datetime(year, month, day, 0, 0, 0, tzinfo=UTC)
+    moment = base_dt + timedelta(hours=utc_decimal_hour)
+    birth_dt = datetime(year, month, day, hour, minute, second)
+    utc_hours = (
+        moment.hour
+        + moment.minute / 60.0
+        + moment.second / 3600.0
+        + moment.microsecond / 3_600_000_000.0
+    )
 
     lat = payload.latitude if payload.latitude is not None else 22.5726
     lon = payload.longitude if payload.longitude is not None else 88.3639
 
     # 2. Ephemeris & Julian Day
     if HAS_SWISSEPH and swe is not None:
-        jd_dob = swe.julday(calc_year, calc_month, calc_day, calc_hour_utc)
+        jd_dob = swe.julday(moment.year, moment.month, moment.day, utc_hours)
         ayanamsa_code = getattr(payload, "ayanamsa", "krishnamurti") or "krishnamurti"
         ay_str = str(ayanamsa_code).lower()
         if ay_str in ("lahiri",):
