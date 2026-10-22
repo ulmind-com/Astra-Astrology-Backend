@@ -660,6 +660,13 @@ class KundliCalculateRequest(BaseModel):
     latitude: float | None = Field(default=22.5726, ge=-90.0, le=90.0)
     longitude: float | None = Field(default=88.3639, ge=-180.0, le=180.0)
     timezone: float = Field(default=5.5, ge=-12.0, le=14.0)
+    timezone_name: str | None = Field(
+        default=None,
+        description=(
+            "IANA timezone name for the birth place. When given, the exact offset is "
+            "resolved at the birth instant and `timezone` is ignored."
+        ),
+    )
     ayanamsa: Literal[
         "lahiri",
         "krishnamurti",
@@ -797,6 +804,13 @@ class KundliMatchingPersonInput(BaseModel):
     latitude: float | None = Field(default=22.5726, ge=-90.0, le=90.0)
     longitude: float | None = Field(default=88.3639, ge=-180.0, le=180.0)
     timezone: float = Field(default=5.5, ge=-12.0, le=14.0)
+    timezone_name: str | None = Field(
+        default=None,
+        description=(
+            "IANA timezone name for the birth place. When given, the exact offset is "
+            "resolved at the birth instant and `timezone` is ignored."
+        ),
+    )
     ayanamsa: Literal["lahiri", "krishnamurti", "bv_raman", "yukteshwar"] = Field(default="lahiri")
     house_system: Literal["placidus", "equal", "whole_sign"] = Field(default="placidus")
 

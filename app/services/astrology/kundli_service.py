@@ -30,6 +30,7 @@ from app.schemas.astrology import (
     KundliYogaItem,
     KundliActiveYogaDetail,
 )
+from app.services.astrology.doshas import assess_manglik
 from app.services.astrology.timezone_resolver import resolve as resolve_timezone
 
 UTC = dt_timezone.utc
@@ -70,7 +71,7 @@ NAKSHATRAS_DATA = [
     {"name": "Vishakha", "lord": "Jupiter", "lord_code": "Ju"},
     {"name": "Anuradha", "lord": "Saturn", "lord_code": "Sa"},
     {"name": "Jyeshtha", "lord": "Mercury", "lord_code": "Me"},
-    {"name": "Moola", "lord": "Ketu", "lord_code": "Ke"},
+    {"name": "Mula", "lord": "Ketu", "lord_code": "Ke"},
     {"name": "Purva Ashadha", "lord": "Venus", "lord_code": "Ve"},
     {"name": "Uttara Ashadha", "lord": "Sun", "lord_code": "Su"},
     {"name": "Shravana", "lord": "Moon", "lord_code": "Mo"},
@@ -386,7 +387,10 @@ def calculate_kundli(payload: KundliCalculateRequest) -> KundliCalculateResponse
         name=payload.name or "Samiran Samanta",
         gender=payload.gender.capitalize(),
         date_of_birth=f"{day:02d}/{month:02d}/{year}",
-        time_of_birth=f"{hour:02d}h:{minute:02d}m:{second:02d}s",
+        time_of_birth=(
+            f"{hour_24:02d}h:{minute:02d}m:{second:02d}s"
+            + (f" ({resolved.offset_label}" + (f" {resolved.abbreviation}" if resolved.abbreviation else "") + ")")
+        ),
         day=day_name,
         vedic_day=vedic_day_name,
     )
@@ -668,14 +672,17 @@ def calculate_kundli(payload: KundliCalculateRequest) -> KundliCalculateResponse
     moon_sign = planet_signs["Moon"]
     planet_from_moon = {p: ((planet_signs[p] - moon_sign) % 12) + 1 for p in raw_planets}
 
-    # 1. Mangalik Dosha: Mars in 1, 2, 4, 7, 8, 12 from Lagna or Moon
-    mars_house_lagna = planet_houses["Mars"]
-    mars_house_moon = planet_from_moon["Mars"]
-    is_manglik_raw = mars_house_lagna in (1, 2, 4, 7, 8, 12) or mars_house_moon in (1, 2, 4, 7, 8, 12)
-    # Cancellation: Mars debilitated in Cancer in 12th, or aspected by Jupiter in Kendra, cancels dosha
-    mars_sign = planet_signs["Mars"]
-    is_manglik_cancelled = (mars_sign == 3 and mars_house_lagna == 12) or (planet_houses["Jupiter"] in (1, 4, 7, 10))
-    is_manglik = is_manglik_raw and not is_manglik_cancelled
+    # 1. Mangalik Dosha. Graded by the shared assessor in `doshas.py` rather than
+    #    decided here, so this page and the matching page can never diverge - which
+    #    is exactly what they did before, one calling a chart Manglik while the
+    #    other did not.
+    manglik = assess_manglik(
+        planet_signs=planet_signs,
+        ascendant_sign=asc_sign_idx,
+        moon_sign=moon_sign,
+        lang=payload.language,
+    )
+    is_manglik = manglik.is_manglik
 
     # 2. Kaal Sarp Dosh: All 7 planets enclosed between Rahu & Ketu
     ra_lon = raw_planets["Rahu"]["lon"]
@@ -717,7 +724,11 @@ def calculate_kundli(payload: KundliCalculateRequest) -> KundliCalculateResponse
         KundliYogaItem(
             name="Mangalik",
             is_present=is_manglik,
-            description="Mars placement in relationship houses. In this chart, Mars is neutralized through Cancer debilitation & Kendra Jupiter aspect.",
+            description=" ".join(
+                [manglik.summary, f"Strength {manglik.percentage}%."]
+                + ([f"Contributing: {'; '.join(manglik.factor_lines()[:3])}."] if manglik.factors else [])
+                + ([f"Relief: {' '.join(manglik.cancellations)}"] if manglik.cancellations else [])
+            ),
             auspicious=not is_manglik,
         ),
         KundliYogaItem(

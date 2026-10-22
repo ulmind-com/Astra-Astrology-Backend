@@ -26,6 +26,7 @@ from app.schemas.astrology import (
     KundliChartPlanet,
     KundliTableRow,
 )
+from app.services.astrology.doshas import assess_manglik, manglik_match
 from app.services.astrology.timezone_resolver import resolve as resolve_timezone
 
 UTC = dt_timezone.utc
@@ -84,8 +85,8 @@ NAKSHATRAS = [
     {"name": "Anuradha", "lord": "Saturn", "lord_code": "Sa", "yoni": "Mriga (Deer)", "yoni_id": 10, "gana": "Deva", "nadi": "Madhya", "rajjoo": "Kantha"},
     # 17 Jyeshtha
     {"name": "Jyeshtha", "lord": "Mercury", "lord_code": "Me", "yoni": "Mriga (Deer)", "yoni_id": 10, "gana": "Rakshasa", "nadi": "Adi", "rajjoo": "Kati"},
-    # 18 Moola
-    {"name": "Moola", "lord": "Ketu", "lord_code": "Ke", "yoni": "Shwana (Dog)", "yoni_id": 4, "gana": "Rakshasa", "nadi": "Adi", "rajjoo": "Kati"},
+    # 18 Mula
+    {"name": "Mula", "lord": "Ketu", "lord_code": "Ke", "yoni": "Shwana (Dog)", "yoni_id": 4, "gana": "Rakshasa", "nadi": "Adi", "rajjoo": "Kati"},
     # 19 Purva Ashadha
     {"name": "Purva Ashadha", "lord": "Venus", "lord_code": "Ve", "yoni": "Vanara (Monkey)", "yoni_id": 11, "gana": "Manushya", "nadi": "Madhya", "rajjoo": "Kantha"},
     # 20 Uttara Ashadha
@@ -125,7 +126,7 @@ VEDHA_PAIRS = {
     (5, 21), (21, 5),    # Ardra - Shravana
     (6, 20), (20, 6),    # Punarvasu - Uttarashadha
     (7, 19), (19, 7),    # Pushya - Purvashadha
-    (8, 18), (18, 8),    # Ashlesha - Moola
+    (8, 18), (18, 8),    # Ashlesha - Mula
     (9, 26), (26, 9),    # Magha - Revati
     (10, 25), (25, 10),  # Purva Phalguni - Uttara Bhadrapada
     (11, 24), (24, 11),  # Uttara Phalguni - Purva Bhadrapada
@@ -172,7 +173,7 @@ def _format_full_degree(lon: float) -> str:
     return f"{d}° {m} ' {s}\""
 
 
-def _calculate_person_chart(p: KundliMatchingPersonInput) -> dict[str, Any]:
+def _calculate_person_chart(p: KundliMatchingPersonInput, lang: str = "en") -> dict[str, Any]:
     """Calculates astronomical data for groom or bride via Swiss Ephemeris."""
     lat = p.latitude if p.latitude is not None else 22.5726
     lon = p.longitude if p.longitude is not None else 88.3639
@@ -288,12 +289,15 @@ def _calculate_person_chart(p: KundliMatchingPersonInput) -> dict[str, Any]:
     mars_house_lagna = ((mars_sign_idx - asc_sign_idx) % 12) + 1
     mars_house_moon = ((mars_sign_idx - m_sign_idx) % 12) + 1
 
-    is_manglik_raw = mars_house_lagna in (1, 2, 4, 7, 8, 12) or mars_house_moon in (1, 2, 4, 7, 8, 12)
-    # Neutralization / Cancellation rules (Cancer debilitation in 12th, or Jupiter Kendra aspect)
-    jup_sign_idx = int(raw_planets["Jupiter"]["lon"] / 30.0) % 12
-    jup_house_lagna = ((jup_sign_idx - asc_sign_idx) % 12) + 1
-    is_cancelled = (mars_sign_idx == 3 and mars_house_lagna == 12) or (jup_house_lagna in (1, 4, 7, 10))
-    is_manglik = is_manglik_raw and not is_cancelled
+    # Graded by the shared assessor, so this page and the kundli page cannot
+    # disagree about the same chart.
+    manglik = assess_manglik(
+        planet_signs={name: int(p["lon"] / 30.0) % 12 for name, p in raw_planets.items()},
+        ascendant_sign=asc_sign_idx,
+        moon_sign=m_sign_idx,
+        lang=lang,
+    )
+    is_manglik = manglik.is_manglik
 
     # D1 Chart Planets List
     d1_planets: list[KundliChartPlanet] = []
@@ -351,7 +355,11 @@ def _calculate_person_chart(p: KundliMatchingPersonInput) -> dict[str, Any]:
         nakshatra_lord=f"{m_nak['lord']} ({m_nak['lord_code']})",
         pada=pada,
         is_manglik=is_manglik,
-        manglik_status_text="Manglik" if is_manglik else "Not a Manglik",
+        manglik_status_text=(
+            f"Manglik ({manglik.severity}, {manglik.percentage}%)"
+            if is_manglik
+            else f"Not a Manglik ({manglik.percentage}%)"
+        ),
         d1_planets=d1_planets,
         d1_asc_sign=asc_sign_num,
         planets_table=planets_table,
@@ -366,13 +374,14 @@ def _calculate_person_chart(p: KundliMatchingPersonInput) -> dict[str, Any]:
         "nak_info": m_nak,
         "pada": pada,
         "is_manglik": is_manglik,
+        "manglik": manglik,
     }
 
 
 def calculate_kundli_matching(payload: KundliMatchingRequest) -> KundliMatchingResponse:
     """Computes comprehensive 36 Guna Ashtakoot Matching and Doshas."""
-    boy_data = _calculate_person_chart(payload.groom)
-    girl_data = _calculate_person_chart(payload.bride)
+    boy_data = _calculate_person_chart(payload.groom, payload.language)
+    girl_data = _calculate_person_chart(payload.bride, payload.language)
 
     b_rashi = boy_data["rashi_info"]
     g_rashi = girl_data["rashi_info"]
