@@ -203,8 +203,14 @@ def assess(
     )
 
     # --- focus -------------------------------------------------------------
+    # Compute Laplacian of the grayscale image first. To avoid boundary jump artifacts
+    # between the palm and dark mask borders, evaluate variance across the eroded palm interior.
     if palm_pixels.size > 0:
-        sharpness = float(cv2.Laplacian(cv2.bitwise_and(gray, gray, mask=mask), cv2.CV_64F).var())
+        lap = cv2.Laplacian(gray, cv2.CV_64F)
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
+        eroded_mask = cv2.erode(mask, kernel)
+        palm_lap = lap[eroded_mask > 0] if np.count_nonzero(eroded_mask) > 100 else lap[mask > 0]
+        sharpness = float(palm_lap.var()) if palm_lap.size > 0 else 0.0
     else:
         sharpness = 0.0
     checks.append(

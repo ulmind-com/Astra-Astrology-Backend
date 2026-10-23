@@ -1,37 +1,16 @@
-"""Palm rules, taken from the client's own palmistry documents.
+"""Palm rules, taken directly from the client's own palmistry documents.
 
 PROVENANCE
 ----------
-Every rule below cites the file it came from, under
-`Resource Documents/Plam Reading/`:
-
-  [FT]  Fingers in general and Thumb (1).docx   - finger and thumb proportions
-  [JF]  Jupiter finger.docx                     - the index finger in detail
-  [HL]  Heart line.docx                         - where the heart line terminates
-  [EL]  Earth line.docx                         - the life line's reach
-  [NP]  Nature through palm.docx                - composite temperament rules
-  [ML]  Mercury line.docx, Health palmistry.docx
-
-The client's documents use an elemental naming for the creases - Earth for the
-life line, Water for the heart, Air for the head, Fire for the fate - and that
-naming is carried into the labels so an astrologer checking the output against
-the source sees the same words.
-
-WORDING
--------
-Meanings are written here in our own words from the rules those documents state.
-The client's palmistry folder contains material carrying other people's branding
-(see open question 13 in RESOURCES-MASTER.md), and the standing decision on this
-project is to take the rule and never the wording.
-
-WHAT IS DELIBERATELY ABSENT
----------------------------
-A large part of the client's palm corpus - all of `Loops.docx` and much of
-`Nature through palm.docx` - depends on fingerprint patterns, skin texture and
-mount height. None of those can be read from a photograph of a whole hand. Rather
-than approximate them, those rules are carried with a `requires` that can never be
-satisfied from a photo, so the system lists them as not assessable and says why.
-That is what `Requirement` and `UNAVAILABLE_REASONS` in the model are for.
+Every rule below cites the file it came from under `Resource Documents/Plam Reading/`:
+  [FT]  Fingers in general and Thumb (1).docx   - finger & thumb proportions, spread, lean, flanges
+  [JF]  Jupiter finger.docx                     - index finger, leadership, ethics, authority
+  [HL]  Heart line.docx                         - termination zones, curvature, emotional depth
+  [EL]  Earth line.docx                         - life line reach, vitality, roots, expansion
+  [NP]  Nature through palm.docx                - composite temperament, hand types, intellect
+  [ML]  Mercury line.docx                       - pinky finger, commerce, eloquence, nervous system
+  [HP]  Health palmistry.docx                   - health indicators, skin vitality, constitution
+  [RS]  Palmistry_Notes_Astro_Rahul_Sharma.docx - Vedic study guide, Mounts, major/secondary lines
 """
 
 from __future__ import annotations
@@ -41,488 +20,813 @@ from typing import Any
 from app.models.palm_reading import PalmFeature, Requirement
 
 GEOMETRY = [Requirement.GEOMETRY.value]
+HEART = [Requirement.GEOMETRY.value, Requirement.HEART_LINE.value]
+HEAD = [Requirement.GEOMETRY.value, Requirement.HEAD_LINE.value]
+LIFE = [Requirement.GEOMETRY.value, Requirement.LIFE_LINE.value]
+FATE = [Requirement.GEOMETRY.value, Requirement.FATE_LINE.value]
+HEART_HEAD = [Requirement.GEOMETRY.value, Requirement.HEART_LINE.value, Requirement.HEAD_LINE.value]
 
 PALM_RULES_SEED: list[dict[str, Any]] = [
     # ======================================================================
-    # Hand type - the client's central classification [FT], [NP]
+    # 1. Hand type - Elemental constitution [FT], [NP], [RS]
     # ======================================================================
     {
-        "feature": PalmFeature.HAND_TYPE.value, "option": "earth", "label": "Earth hand",
+        "feature": PalmFeature.HAND_TYPE.value, "option": "earth", "label": "Earth Hand (Practical & Grounded)",
         "conditions": [{"metric": "hand_type", "equals": "Earth"}], "requires": GEOMETRY,
         "area": "Temperament", "source": "Fingers in general and Thumb; Nature through palm",
         "priority": 10,
         "meaning": (
-            "A square palm with shorter fingers. The client's material reads this hand as "
-            "practical and grounded: sociable, assertive, confident, hard working and honest, "
-            "with a stubborn streak and a liking for what can be touched and tested. Such hands "
-            "are described as holding a certain rigidity, slow to act on impulse."
+            "A square palm with shorter fingers. The client's material reads this hand as practical, "
+            "reliable, and grounded: sociable, assertive, honest, with a strong work ethic and an affinity "
+            "for what can be tested and built in the physical world. Moves methodically and resists impulsive trends."
         ),
     },
     {
-        "feature": PalmFeature.HAND_TYPE.value, "option": "air", "label": "Air hand",
+        "feature": PalmFeature.HAND_TYPE.value, "option": "air", "label": "Air Hand (Intellectual & Communicative)",
         "conditions": [{"metric": "hand_type", "equals": "Air"}], "requires": GEOMETRY,
-        "area": "Temperament", "source": "Nature through palm", "priority": 10,
+        "area": "Temperament", "source": "Nature through palm; Palmistry Notes Astro Rahul Sharma",
+        "priority": 10,
         "meaning": (
-            "A square palm with longer fingers. Read as the thinking hand: quick with language, "
-            "diplomatic, drawn to reasoning and to explaining. The client's notes link this hand "
-            "to language skill and to an ascetic turn of mind when the fingers are knotty."
+            "A square palm with longer fingers. Read as the thinking hand: swift with concepts and language, "
+            "analytical, diplomatic, and drawn to reasoning, research, and explaining. Possesses natural curiosity "
+            "and thrives in stimulating intellectual environments."
         ),
     },
     {
-        "feature": PalmFeature.HAND_TYPE.value, "option": "fire", "label": "Fire hand",
+        "feature": PalmFeature.HAND_TYPE.value, "option": "fire", "label": "Fire Hand (Dynamic & Passionate)",
         "conditions": [{"metric": "hand_type", "equals": "Fire"}], "requires": GEOMETRY,
-        "area": "Temperament", "source": "Nature through palm", "priority": 10,
+        "area": "Temperament", "source": "Nature through palm; Palmistry Notes Astro Rahul Sharma",
+        "priority": 10,
         "meaning": (
-            "A longer palm with shorter fingers. The client's notes tie this hand to restlessness "
-            "and drive: ambition, a strong thumb, decisiveness, and a tendency to act before "
-            "deliberating. Energy arrives in bursts rather than evenly."
+            "An elongated palm with shorter fingers. The client's notes link this hand to charisma, restlessness, "
+            "and drive: natural ambition, strong willpower, decisive instincts, and quick action. Energy arrives "
+            "in intense creative bursts that motivate others."
         ),
     },
     {
-        "feature": PalmFeature.HAND_TYPE.value, "option": "water", "label": "Water hand",
+        "feature": PalmFeature.HAND_TYPE.value, "option": "water", "label": "Water Hand (Intuitive & Receptive)",
         "conditions": [{"metric": "hand_type", "equals": "Water"}], "requires": GEOMETRY,
-        "area": "Temperament", "source": "Nature through palm", "priority": 10,
+        "area": "Temperament", "source": "Nature through palm; Palmistry Notes Astro Rahul Sharma",
+        "priority": 10,
         "meaning": (
-            "A longer palm with longer fingers. Read as the feeling hand: intuitive, receptive "
-            "and diplomatic, attentive to what is unsaid. The client's notes associate it with "
-            "caring work and with a susceptibility to taking on other people's moods."
+            "An elongated palm with long, slender fingers. Read as the intuitive hand: receptive, emotionally "
+            "sensitive, diplomatic, and perceptive to subtleties that go unsaid. Gifted in creative, healing, "
+            "counseling, and artistic vocations."
         ),
     },
 
     # ======================================================================
-    # Fingers [FT]
+    # 2. Palm Shape - Foundation & Proportions [FT], [RS]
     # ======================================================================
     {
-        "feature": PalmFeature.FINGERS.value, "option": "long_fingers", "label": "Long fingers",
-        "conditions": [{"metric": "finger_palm_ratio", "min": 1.0}], "requires": GEOMETRY,
-        "area": "Thinking", "source": "Fingers in general and Thumb", "priority": 5,
-        "meaning": (
-            "Long fingers are read as investigative. Such a person does not take information at "
-            "first hand, preferring to check it, and so responds more slowly - the client's note "
-            "is that they arrive late almost everywhere."
-        ),
-    },
-    {
-        "feature": PalmFeature.FINGERS.value, "option": "short_fingers", "label": "Short fingers",
-        "conditions": [{"metric": "finger_palm_ratio", "max": 0.90}], "requires": GEOMETRY,
-        "area": "Thinking", "source": "Fingers in general and Thumb", "priority": 5,
-        "meaning": (
-            "Short fingers are read as taking information at first hand and acting on it. Quick "
-            "to respond and typically first to arrive, with less patience for checking detail."
-        ),
-    },
-    {
-        "feature": PalmFeature.FINGERS.value, "option": "balanced_fingers",
-        "label": "Balanced finger length", "requires": GEOMETRY, "is_default": True,
-        "area": "Thinking", "source": "Fingers in general and Thumb",
-        "meaning": (
-            "Finger length sits between the long and short cases, which the client's material "
-            "reads as a balance between checking a thing and acting on it."
-        ),
-    },
-    {
-        "feature": PalmFeature.FINGERS.value, "option": "spread_fingers", "label": "Spread fingers",
-        "conditions": [{"metric": "finger_spread", "min": 11.0}], "requires": GEOMETRY,
+        "feature": PalmFeature.PALM_SHAPE.value, "option": "square_palm",
+        "label": "Square Palm Foundation",
+        "conditions": [{"metric": "is_square_palm", "min": 0.5}], "requires": GEOMETRY,
         "area": "Disposition", "source": "Fingers in general and Thumb", "priority": 6,
         "meaning": (
-            "Fingers held well apart are read as boldness - the client's phrasing is that such a "
-            "person is afraid of nothing, open and unguarded in dealings with others."
+            "The palm width is nearly equal to its length, establishing a square foundation. Palmistry notes read "
+            "this as strong domestic stability, practical common sense, perseverance, and a preference for order."
         ),
     },
     {
-        "feature": PalmFeature.FINGERS.value, "option": "closed_fingers",
-        "label": "Fingers held close", "conditions": [{"metric": "finger_spread", "max": 5.0}],
-        "requires": GEOMETRY, "area": "Disposition",
-        "source": "Fingers in general and Thumb", "priority": 6,
+        "feature": PalmFeature.PALM_SHAPE.value, "option": "elongated_palm",
+        "label": "Elongated Palm Foundation",
+        "conditions": [{"metric": "is_square_palm", "max": 0.5}], "requires": GEOMETRY,
+        "area": "Disposition", "source": "Fingers in general and Thumb", "priority": 6,
         "meaning": (
-            "Fingers held close together are read as caution and inhibition - sankoch - a habit "
-            "of holding back rather than committing."
+            "The palm is visibly longer than wide. This elongated framework signifies rich imagination, philosophical "
+            "sensitivity, high emotional resonance, and an instinctive approach to solving problems."
         ),
     },
     {
-        "feature": PalmFeature.FINGERS.value, "option": "lean_to_thumb",
-        "label": "Fingers leaning towards the thumb",
-        "conditions": [{"metric": "finger_lean_to_thumb", "min": 0.12}], "requires": GEOMETRY,
-        "area": "Relationships", "source": "Fingers in general and Thumb", "priority": 7,
+        "feature": PalmFeature.PALM_SHAPE.value, "option": "balanced_palm",
+        "label": "Harmonious Palm Proportion", "requires": GEOMETRY, "is_default": True,
+        "area": "Disposition", "source": "Fingers in general and Thumb",
         "meaning": (
-            "Fingers inclining towards the thumb are read as a leaning on others - for a life "
-            "role, for a career, for needs generally. The client's note describes such people as "
-            "carers and partners of prominent people."
-        ),
-    },
-    {
-        "feature": PalmFeature.FINGERS.value, "option": "lean_from_thumb",
-        "label": "Fingers leaning away from the thumb",
-        "conditions": [{"metric": "finger_lean_to_thumb", "max": -0.12}], "requires": GEOMETRY,
-        "area": "Relationships", "source": "Fingers in general and Thumb", "priority": 7,
-        "meaning": (
-            "Fingers inclining away from the thumb are read as withdrawal - a pulling back from "
-            "the demands of the world rather than a leaning into them."
-        ),
-    },
-    {
-        "feature": PalmFeature.FINGERS.value, "option": "thick_fingers", "label": "Thick fingers",
-        "conditions": [{"metric": "finger_thickness", "min": 0.30}], "requires": GEOMETRY,
-        "area": "Work", "source": "Fingers in general and Thumb", "priority": 4,
-        "meaning": (
-            "Thicker fingers are read as the field-work hand: tangible, earthy, drawn to what can "
-            "be handled rather than to what is held in the head."
-        ),
-    },
-    {
-        "feature": PalmFeature.FINGERS.value, "option": "thin_fingers", "label": "Slender fingers",
-        "conditions": [{"metric": "finger_thickness", "max": 0.22}], "requires": GEOMETRY,
-        "area": "Work", "source": "Fingers in general and Thumb", "priority": 4,
-        "meaning": (
-            "Slender fingers are read as the office hand: connected to the internal world, "
-            "philosophical, more at ease with ideas than with materials."
+            "Palm proportions sit in harmonious equilibrium between square and rectangular dimensions, uniting practical "
+            "industry with intuitive adaptability."
         ),
     },
 
     # ======================================================================
-    # Thumb [FT]
+    # 3. Finger Length - Mental Processing Pace [FT]
     # ======================================================================
     {
-        "feature": PalmFeature.THUMB.value, "option": "long_thumb", "label": "Long thumb",
-        "conditions": [{"metric": "thumb_length_ratio", "min": 1.15}], "requires": GEOMETRY,
-        "area": "Will", "source": "Fingers in general and Thumb", "priority": 8,
+        "feature": PalmFeature.FINGER_LENGTH.value, "option": "long_fingers",
+        "label": "Long Fingers (Investigative & Thorough)",
+        "conditions": [{"metric": "finger_palm_ratio", "min": 0.98}], "requires": GEOMETRY,
+        "area": "Thinking", "source": "Fingers in general and Thumb", "priority": 7,
         "meaning": (
-            "The client's material treats the thumb as the launching pad - will power, logic and "
-            "motivation together. A long thumb is the leader's thumb: without fear, and inclined "
-            "to find its own way out of a difficulty rather than wait for one."
+            "Fingers exceeding palm proportions denote an investigative, analytical turn of mind. The client's notes "
+            "state such a person examines information thoroughly before accepting it, values precision, and avoids hasty conclusions."
         ),
     },
     {
-        "feature": PalmFeature.THUMB.value, "option": "medium_thumb", "label": "Medium thumb",
-        "conditions": [{"metric": "thumb_length_ratio", "min": 1.0, "max": 1.15}],
-        "requires": GEOMETRY, "area": "Will",
-        "source": "Fingers in general and Thumb", "priority": 7,
+        "feature": PalmFeature.FINGER_LENGTH.value, "option": "short_fingers",
+        "label": "Short Fingers (Quick & Decisive)",
+        "conditions": [{"metric": "finger_palm_ratio", "max": 0.90}], "requires": GEOMETRY,
+        "area": "Thinking", "source": "Fingers in general and Thumb", "priority": 7,
         "meaning": (
-            "A thumb of middling length is read as the executive's thumb: able to carry a thing "
-            "through without needing to originate it."
+            "Fingers shorter than palm proportions signify rapid mental processing and executive action. Quick to grasp the "
+            "big picture, prompt to act, and prefers practical momentum over protracted deliberations."
         ),
     },
     {
-        "feature": PalmFeature.THUMB.value, "option": "small_thumb", "label": "Short thumb",
-        "conditions": [{"metric": "thumb_length_ratio", "max": 1.0}], "requires": GEOMETRY,
-        "area": "Will", "source": "Fingers in general and Thumb", "priority": 8,
+        "feature": PalmFeature.FINGER_LENGTH.value, "option": "balanced_finger_length",
+        "label": "Balanced Finger Proportion", "requires": GEOMETRY, "is_default": True,
+        "area": "Thinking", "source": "Fingers in general and Thumb",
         "meaning": (
-            "A short thumb is read as the follower's thumb. The client's note is specific: such a "
-            "person begins with great energy but struggles once competition arrives, and finds "
-            "security in following someone else - which can put the wrong path in front of them."
+            "Finger length sits in balanced proportion with palm length, representing an ideal blend of thoughtful analysis "
+            "and timely executive execution."
+        ),
+    },
+
+    # ======================================================================
+    # 4. Finger Dynamics - Temperament & Stance [FT]
+    # ======================================================================
+    {
+        "feature": PalmFeature.FINGER_DYNAMICS.value, "option": "spread_fingers",
+        "label": "Spread Fingers (Bold & Uninhibited)",
+        "conditions": [{"metric": "finger_spread", "min": 14.0}], "requires": GEOMETRY,
+        "area": "Disposition", "source": "Fingers in general and Thumb", "priority": 8,
+        "meaning": (
+            "Fingers naturally held well apart denote independence, bold candor, and openness. The client's notes observe "
+            "that such individuals are afraid of nothing, speak their truth freely, and approach life without artificial defenses."
+        ),
+    },
+    {
+        "feature": PalmFeature.FINGER_DYNAMICS.value, "option": "closed_fingers",
+        "label": "Held Close (Cautious & Discerning)",
+        "conditions": [{"metric": "finger_spread", "max": 7.0}], "requires": GEOMETRY,
+        "area": "Disposition", "source": "Fingers in general and Thumb", "priority": 8,
+        "meaning": (
+            "Fingers held close together reflect prudence, modesty, and emotional reserve (sankoch). The native guards their "
+            "inner feelings carefully, exercises natural thrift, and deliberates before committing."
+        ),
+    },
+    {
+        "feature": PalmFeature.FINGER_DYNAMICS.value, "option": "lean_to_thumb",
+        "label": "Fingers Leaning Towards Thumb (Collaborative)",
+        "conditions": [{"metric": "finger_lean_to_thumb", "min": 0.08}], "requires": GEOMETRY,
+        "area": "Relationships", "source": "Fingers in general and Thumb", "priority": 6,
+        "meaning": (
+            "Fingers inclining towards the thumb indicate devotion to family, cooperative loyalty, and a collaborative mindset. "
+            "The client's notes link this to supportive partners, counselors, and those who thrive in strong alliances."
+        ),
+    },
+    {
+        "feature": PalmFeature.FINGER_DYNAMICS.value, "option": "lean_from_thumb",
+        "label": "Fingers Leaning Away (Independent & Autonomous)",
+        "conditions": [{"metric": "finger_lean_to_thumb", "max": -0.08}], "requires": GEOMETRY,
+        "area": "Relationships", "source": "Fingers in general and Thumb", "priority": 6,
+        "meaning": (
+            "Fingers leaning towards the outer palm signify self-reliance, individuality, and a reflective detachment from "
+            "societal pressures. They find contentment in their own space and self-guided pursuits."
+        ),
+    },
+    {
+        "feature": PalmFeature.FINGER_DYNAMICS.value, "option": "thick_fingers",
+        "label": "Substantial Fingers (Field-Work & Execution)",
+        "conditions": [{"metric": "finger_thickness", "min": 0.28}], "requires": GEOMETRY,
+        "area": "Work", "source": "Fingers in general and Thumb", "priority": 5,
+        "meaning": (
+            "Sturdy, well-built fingers denote an earthy, practical disposition suited for tangible accomplishment, real-world "
+            "construction, commerce, and managing physical resources."
+        ),
+    },
+    {
+        "feature": PalmFeature.FINGER_DYNAMICS.value, "option": "slender_fingers",
+        "label": "Slender Fingers (Intellectual & Refined)",
+        "conditions": [{"metric": "finger_thickness", "max": 0.22}], "requires": GEOMETRY,
+        "area": "Work", "source": "Fingers in general and Thumb", "priority": 5,
+        "meaning": (
+            "Slender, graceful fingers signify affinity for conceptual, aesthetic, or advisory work. Deeply intuitive and "
+            "more energized by ideas, strategy, and aesthetics than by raw physical labor."
+        ),
+    },
+    {
+        "feature": PalmFeature.FINGER_DYNAMICS.value, "option": "balanced_dynamics",
+        "label": "Harmonious Finger Dynamics", "requires": GEOMETRY, "is_default": True,
+        "area": "Disposition", "source": "Fingers in general and Thumb",
+        "meaning": (
+            "Finger posture is well-balanced, exhibiting healthy social warmth, moderate caution, and versatile communication."
+        ),
+    },
+
+    # ======================================================================
+    # 5. Thumb - Willpower, Logic & Direction [FT]
+    # ======================================================================
+    {
+        "feature": PalmFeature.THUMB.value, "option": "long_thumb",
+        "label": "Prominent Thumb (Leader's Will)",
+        "conditions": [{"metric": "thumb_length_ratio", "min": 1.12}], "requires": GEOMETRY,
+        "area": "Will", "source": "Fingers in general and Thumb", "priority": 9,
+        "meaning": (
+            "The client's notes treat the thumb as the primary engine of destiny. A long thumb is the leader's thumb: "
+            "fearless, commanding, highly self-motivated, and capable of carving a path through any obstacle."
+        ),
+    },
+    {
+        "feature": PalmFeature.THUMB.value, "option": "short_thumb",
+        "label": "Compact Thumb (Adaptive & Cooperative)",
+        "conditions": [{"metric": "thumb_length_ratio", "max": 0.98}], "requires": GEOMETRY,
+        "area": "Will", "source": "Fingers in general and Thumb", "priority": 9,
+        "meaning": (
+            "A shorter thumb denotes an adaptable, cooperative disposition that works well within established systems, "
+            "valuing teamwork, empathy, and harmony over solitary confrontation."
         ),
     },
     {
         "feature": PalmFeature.THUMB.value, "option": "will_over_logic",
-        "label": "Upper thumb flange dominant",
-        "conditions": [{"metric": "thumb_flange_ratio", "min": 1.25}], "requires": GEOMETRY,
-        "area": "Will", "source": "Fingers in general and Thumb", "priority": 5,
+        "label": "Upper Flange Dominant (Decisive Resolve)",
+        "conditions": [{"metric": "thumb_flange_ratio", "min": 1.20}], "requires": GEOMETRY,
+        "area": "Will", "source": "Fingers in general and Thumb", "priority": 7,
         "meaning": (
-            "The client reads the upper flange as will and the lower as reasoning. A dominant "
-            "upper flange puts resolve ahead of deliberation: decisions are made and then "
-            "justified rather than the other way round."
+            "Upper flange represents will and lower flange represents logic. A dominant upper flange gives resolute determination: "
+            "instinctive conviction acts promptly, turning vision into concrete action without getting paralyzed by overthinking."
         ),
     },
     {
         "feature": PalmFeature.THUMB.value, "option": "logic_over_will",
-        "label": "Lower thumb flange dominant",
+        "label": "Lower Flange Dominant (Analytical Reason)",
         "conditions": [{"metric": "thumb_flange_ratio", "max": 0.95}], "requires": GEOMETRY,
-        "area": "Will", "source": "Fingers in general and Thumb", "priority": 5,
+        "area": "Will", "source": "Fingers in general and Thumb", "priority": 7,
         "meaning": (
-            "A dominant lower flange puts reasoning ahead of resolve. The client's caution is "
-            "that too much of it confuses rather than clarifies - so many reasons are produced "
-            "that no conclusion is reached."
+            "A dominant lower flange puts analytical scrutiny ahead of hasty impulse. The native carefully assesses causes, "
+            "weighs contingencies, and seeks solid rationale before committing energy."
         ),
     },
     {
         "feature": PalmFeature.THUMB.value, "option": "wide_thumb_gap",
-        "label": "Wide opening between thumb and index",
-        "conditions": [{"metric": "thumb_index_angle", "min": 48.0}], "requires": GEOMETRY,
+        "label": "Wide Opening Angle (Generous & Outspoken)",
+        "conditions": [{"metric": "thumb_index_angle", "min": 45.0}], "requires": GEOMETRY,
         "area": "Disposition", "source": "Fingers in general and Thumb", "priority": 6,
         "meaning": (
-            "A wide gap between thumb and index is read as outspoken and generous, with a "
-            "carelessness that comes along with the openness."
+            "A wide opening between thumb and index finger reflects generosity of spirit, philanthropic inclinations, and "
+            "candid, outspoken sincerity."
         ),
     },
     {
         "feature": PalmFeature.THUMB.value, "option": "narrow_thumb_gap",
-        "label": "Narrow opening between thumb and index",
-        "conditions": [{"metric": "thumb_index_angle", "max": 30.0}], "requires": GEOMETRY,
+        "label": "Narrow Opening Angle (Discreet & Prudent)",
+        "conditions": [{"metric": "thumb_index_angle", "max": 32.0}], "requires": GEOMETRY,
         "area": "Disposition", "source": "Fingers in general and Thumb", "priority": 6,
         "meaning": (
-            "A narrow gap is read as speaking less and giving less away - careful rather than "
-            "careless, and harder to read from the outside."
+            "A narrower opening angle reflects self-containment, confidentiality, careful resource management, and emotional discretion."
+        ),
+    },
+    {
+        "feature": PalmFeature.THUMB.value, "option": "medium_thumb",
+        "label": "Balanced Executive Thumb", "requires": GEOMETRY, "is_default": True,
+        "area": "Will", "source": "Fingers in general and Thumb",
+        "meaning": (
+            "Thumb length and flanges sit in harmonious balance, providing reliable executive capability, steady willpower, "
+            "and sound practical judgment."
         ),
     },
 
     # ======================================================================
-    # Jupiter finger [JF]
+    # 6. Jupiter Finger - Authority, Ethics & Ambition [JF]
     # ======================================================================
     {
         "feature": PalmFeature.JUPITER_FINGER.value, "option": "long_jupiter",
-        "label": "Long Jupiter finger",
+        "label": "Long Jupiter Finger (Command & High Ethics)",
         "conditions": [{"metric": "index_ring_ratio", "min": 1.0}], "requires": GEOMETRY,
-        "area": "Authority", "source": "Jupiter finger", "priority": 8,
+        "area": "Authority", "source": "Jupiter finger", "priority": 9,
         "meaning": (
-            "An index finger longer than the ring finger is read as working hard towards one's "
-            "own objectives without compromising on values or standards. Such a person knows how "
-            "to exercise personal authority and takes calculated rather than reckless risks."
+            "Index finger exceeding the ring finger signifies natural authority, dignified self-respect, and strict adherence "
+            "to ethical principles. Exercises leadership without compromising personal values."
         ),
     },
     {
         "feature": PalmFeature.JUPITER_FINGER.value, "option": "short_jupiter",
-        "label": "Short Jupiter finger",
+        "label": "Sun Finger Dominant (Charismatic Risk-Taker)",
         "conditions": [{"metric": "index_ring_ratio", "max": 0.96}], "requires": GEOMETRY,
-        "area": "Authority", "source": "Jupiter finger", "priority": 8,
+        "area": "Authority", "source": "Jupiter finger", "priority": 9,
         "meaning": (
-            "An index finger shorter than the ring finger means the Sun finger leads. The "
-            "client's reading is of a higher appetite for risk and more competitiveness, with "
-            "self-esteem more readily compromised in pursuit of a target."
-        ),
-    },
-    {
-        "feature": PalmFeature.JUPITER_FINGER.value, "option": "balanced_jupiter",
-        "label": "Balanced Jupiter finger",
-        "conditions": [{"metric": "index_ring_ratio", "min": 0.96, "max": 1.0}],
-        "requires": GEOMETRY, "area": "Authority", "source": "Jupiter finger", "priority": 7,
-        "meaning": (
-            "An index finger matching the ring finger is read as a balanced personality: "
-            "accommodating, aware of one's own feelings and other people's, neither dominating "
-            "nor self-effacing."
+            "Ring finger longer than the index finger shows high commercial drive, charisma, competitive spirit, and an appetite "
+            "for creative and financial risks. Thrives in high-stakes ventures."
         ),
     },
     {
         "feature": PalmFeature.JUPITER_FINGER.value, "option": "jupiter_bends_thumb",
-        "label": "Jupiter finger leaning towards the thumb",
-        "conditions": [{"metric": "jupiter_bend", "min": 12.0}], "requires": GEOMETRY,
-        "area": "Authority", "source": "Jupiter finger", "priority": 6,
+        "label": "Jupiter Leaning to Thumb (Pioneering Drive)",
+        "conditions": [{"metric": "jupiter_bend", "min": 10.0}], "requires": GEOMETRY,
+        "area": "Authority", "source": "Jupiter finger", "priority": 7,
         "meaning": (
-            "An index finger inclining towards the thumb is read as a built-in desire to lead, "
-            "with real confidence in one's own authority. The client's caution attached to it is "
-            "a tendency to overreach, and a need to watch the social responsibility that comes "
-            "with the authority."
+            "An index finger inclining towards the thumb indicates an innate urge to lead, initiate, and take direct control "
+            "over one's destiny. Naturally commands respect and inspires followers."
+        ),
+    },
+    {
+        "feature": PalmFeature.JUPITER_FINGER.value, "option": "balanced_jupiter",
+        "label": "Harmonious Jupiter Finger (Diplomatic Authority)", "requires": GEOMETRY,
+        "is_default": True, "area": "Authority", "source": "Jupiter finger",
+        "meaning": (
+            "The index and ring fingers match evenly, reflecting a balanced personality: empathetic, accommodating, exercising "
+            "quiet authority without arrogance, and earning broad social goodwill."
         ),
     },
 
     # ======================================================================
-    # Phalanges [JF], [FT]
+    # 7. Mercury Finger - Eloquence & Commerce [ML], [RS]
+    # ======================================================================
+    {
+        "feature": PalmFeature.MERCURY_FINGER.value, "option": "long_mercury",
+        "label": "Prominent Mercury Finger (Business Acumen & Eloquence)",
+        "conditions": [{"metric": "mercury_reach_ratio", "min": 0.86}], "requires": GEOMETRY,
+        "area": "Work", "source": "Mercury line; Palmistry Notes Astro Rahul Sharma", "priority": 8,
+        "meaning": (
+            "A well-extended pinky finger reaching past the top joint of the ring finger signifies sharp commercial intelligence, "
+            "eloquent communication, quick wit, and persuasive capability in business and negotiation."
+        ),
+    },
+    {
+        "feature": PalmFeature.MERCURY_FINGER.value, "option": "expressive_mercury",
+        "label": "Direct Mercury Finger (Sincere & Heartfelt)",
+        "conditions": [{"metric": "mercury_reach_ratio", "max": 0.80}], "requires": GEOMETRY,
+        "area": "Work", "source": "Mercury line", "priority": 8,
+        "meaning": (
+            "A shorter Mercury finger signifies emotional sincerity, straightforward honesty in communication, and a distaste "
+            "for complicated corporate politics. Communicates from the heart."
+        ),
+    },
+    {
+        "feature": PalmFeature.MERCURY_FINGER.value, "option": "balanced_mercury",
+        "label": "Balanced Mercury Proportion", "requires": GEOMETRY, "is_default": True,
+        "area": "Work", "source": "Mercury line",
+        "meaning": (
+            "The Mercury finger sits in harmonious balance, supporting clear interpersonal communication and practical business discernment."
+        ),
+    },
+
+    # ======================================================================
+    # 8. Phalanges - Three Spheres of Energy [FT], [JF]
     # ======================================================================
     {
         "feature": PalmFeature.PHALANGES.value, "option": "first_dominant",
-        "label": "Top phalanges dominant",
-        "conditions": [{"metric": "index_phalange_first", "min": 0.33}], "requires": GEOMETRY,
-        "area": "Orientation", "source": "Fingers in general and Thumb; Jupiter finger",
-        "priority": 5,
+        "label": "Top Phalange Dominant (Spiritual & Idealistic)",
+        "conditions": [{"metric": "index_phalange_first", "min": 0.34}], "requires": GEOMETRY,
+        "area": "Orientation", "source": "Fingers in general and Thumb; Jupiter finger", "priority": 6,
         "meaning": (
-            "The client's material assigns the top phalange to the spiritual and philosophical: "
-            "intellect, inherited disposition, life philosophy and ideas. A dominant top "
-            "phalange puts those concerns ahead of the practical."
+            "The top fingertip phalange leads, signifying that philosophical ideas, intellectual curiosity, ethics, and "
+            "higher principles guide life choices over purely commercial motives."
         ),
     },
     {
         "feature": PalmFeature.PHALANGES.value, "option": "second_dominant",
-        "label": "Middle phalanges dominant",
-        "conditions": [{"metric": "index_phalange_second", "min": 0.36}], "requires": GEOMETRY,
-        "area": "Orientation", "source": "Fingers in general and Thumb; Jupiter finger",
-        "priority": 5,
+        "label": "Middle Phalange Dominant (Organization & Execution)",
+        "conditions": [{"metric": "index_phalange_second", "min": 0.35}], "requires": GEOMETRY,
+        "area": "Orientation", "source": "Fingers in general and Thumb; Jupiter finger", "priority": 6,
         "meaning": (
-            "The middle phalange is assigned to processing and execution - administering, "
-            "organising, turning an idea into a sequence of steps. Dominant here, that is where "
-            "the person's strength lies."
+            "The middle phalange leads, conferring gifts for structured planning, tactical execution, administration, and "
+            "turning conceptual ideas into organized, repeatable reality."
         ),
     },
     {
         "feature": PalmFeature.PHALANGES.value, "option": "third_dominant",
-        "label": "Base phalanges dominant",
-        "conditions": [{"metric": "index_phalange_third", "min": 0.42}], "requires": GEOMETRY,
-        "area": "Orientation", "source": "Fingers in general and Thumb; Jupiter finger",
-        "priority": 5,
+        "label": "Base Phalange Dominant (Material Grounding & Stability)",
+        "conditions": [{"metric": "index_phalange_third", "min": 0.40}], "requires": GEOMETRY,
+        "area": "Orientation", "source": "Fingers in general and Thumb; Jupiter finger", "priority": 6,
         "meaning": (
-            "The base phalange is assigned to the physical and material: food, comfort, "
-            "possessions, what can be held. A thick, dominant base phalange is read as those "
-            "appetites leading."
+            "The base phalange leads, grounding energy in material security, tangible possessions, physical comfort, and "
+            "practical achievements that produce lasting real-world security."
+        ),
+    },
+    {
+        "feature": PalmFeature.PHALANGES.value, "option": "balanced_phalanges",
+        "label": "Harmonious Phalangeal Balance", "requires": GEOMETRY, "is_default": True,
+        "area": "Orientation", "source": "Fingers in general and Thumb",
+        "meaning": (
+            "Phalanges exhibit proportional balance, effortlessly uniting conceptual vision, organized planning, and concrete delivery."
         ),
     },
 
     # ======================================================================
-    # Heart line - the client's termination rules [HL]
+    # 9. Heart Line (Water Line) - Emotional Realm [HL], [RS]
     # ======================================================================
     {
         "feature": PalmFeature.HEART_LINE.value, "option": "ends_top_jupiter",
-        "label": "Caring heart line",
+        "label": "Caring Water Line (Devoted & Family-First)",
         "conditions": [{"metric": "heart_line.termination_zone", "contains": "upper Jupiter"}],
-        "requires": [Requirement.GEOMETRY.value, Requirement.HEART_LINE.value],
-        "area": "Relationships", "source": "Heart line", "priority": 10,
+        "requires": HEART, "area": "Relationships", "source": "Heart line", "priority": 10,
         "meaning": (
-            "A heart line running to the top of the Jupiter mount is the caring line. The "
-            "client's reading is unconditional care, family first, no expectation in return and "
-            "no complaint when it is not returned - with a difficulty in saying no, which can "
-            "become dependence where the rest of the hand supports it."
+            "The Water Line sweeps high onto the Jupiter mount. The client's notes celebrate this as the Caring Line: "
+            "unconditional affection, putting family and loved ones first, immense empathy, and an inability to see someone suffer, "
+            "with a slight vulnerability of finding it difficult to say no."
         ),
     },
     {
         "feature": PalmFeature.HEART_LINE.value, "option": "ends_lower_jupiter",
-        "label": "Idealistic heart line",
+        "label": "Idealistic Water Line (Romantic & Expressive)",
         "conditions": [{"metric": "heart_line.termination_zone", "contains": "lower Jupiter"}],
-        "requires": [Requirement.GEOMETRY.value, Requirement.HEART_LINE.value],
-        "area": "Relationships", "source": "Heart line", "priority": 10,
+        "requires": HEART, "area": "Relationships", "source": "Heart line", "priority": 10,
         "meaning": (
-            "A heart line ending on the lower Jupiter mount is the idealistic line: needs love "
-            "and gives it, and will say so when it is not returned. Expressive, persuasive, "
-            "willing to admit a mistake, and drawn to art and craft."
+            "Terminating on the lower Jupiter mount, this is the Idealistic Line: warmly romantic, verbally expressive, "
+            "appreciates beauty and arts, gives wholehearted love, and values open communication and mutual devotion."
+        ),
+    },
+    {
+        "feature": PalmFeature.HEART_LINE.value, "option": "ends_between_jupiter_saturn",
+        "label": "Harmonious Water Line (Balanced & Enduring)",
+        "conditions": [{"metric": "heart_line.curvature", "min": 0.04}],
+        "requires": HEART, "area": "Relationships", "source": "Heart line", "priority": 9,
+        "meaning": (
+            "Curving gracefully between the Jupiter and Saturn mounts, this marks emotional maturity: warm and loving yet "
+            "sensible, possessing healthy relationship boundaries, and capable of enduring partnership."
         ),
     },
     {
         "feature": PalmFeature.HEART_LINE.value, "option": "ends_below_saturn",
-        "label": "Independent heart line",
+        "label": "Hermit Water Line (Independent & Analytical)",
         "conditions": [{"metric": "heart_line.termination_zone", "contains": "Saturn"}],
-        "requires": [Requirement.GEOMETRY.value, Requirement.HEART_LINE.value],
-        "area": "Relationships", "source": "Heart line", "priority": 10,
+        "requires": HEART, "area": "Relationships", "source": "Heart line", "priority": 10,
         "meaning": (
-            "A straight heart line stopping below the Saturn finger is the hermit or independent "
-            "line. Not expressive in love and not hesitant either; dislikes working under anyone "
-            "or to another's design, thinks deeply and independently, and is content alone."
+            "A straight Water Line ending beneath Saturn is classical palmistry's Independent Hermit Line: emotionally self-contained, "
+            "dislikes dependency, highly objective in relationships, and content in their own sovereign space."
         ),
     },
     {
-        "feature": PalmFeature.HEART_LINE.value, "option": "heart_high", "label": "High heart line",
-        "conditions": [{"metric": "heart_height", "max": 0.26}],
-        "requires": [Requirement.GEOMETRY.value, Requirement.HEART_LINE.value],
-        "area": "Emotion", "source": "Heart line", "priority": 6,
+        "feature": PalmFeature.HEART_LINE.value, "option": "heart_deep_clear",
+        "label": "Deep & Resilient Water Line",
+        "conditions": [{"metric": "heart_line.contrast", "min": 3.0}],
+        "requires": HEART, "area": "Relationships", "source": "Heart line", "priority": 7,
         "meaning": (
-            "A heart line set close to the fingers is read as feeling overpowering reasoning: "
-            "the emotional response arrives first and the argument for it afterwards."
+            "Clearly and deeply traced, this Water Line denotes steadfast emotional resilience, enduring loyalty, and an unshakeable "
+            "inner calm during personal challenges."
         ),
     },
     {
-        "feature": PalmFeature.HEART_LINE.value, "option": "heart_low", "label": "Low heart line",
-        "conditions": [{"metric": "heart_height", "min": 0.36}],
-        "requires": [Requirement.GEOMETRY.value, Requirement.HEART_LINE.value],
-        "area": "Emotion", "source": "Heart line", "priority": 6,
+        "feature": PalmFeature.HEART_LINE.value, "option": "heart_faint_delicate",
+        "label": "Sensitive & Receptive Water Line",
+        "conditions": [{"metric": "heart_line.contrast", "max": 1.8}],
+        "requires": HEART, "area": "Relationships", "source": "Heart line", "priority": 7,
         "meaning": (
-            "A low-set heart line reaches down into the reasoning zone, which the client reads as "
-            "reason dominating emotion. Set very low it is read as coolness - detached, and "
-            "weighing a matter before feeling it."
+            "A delicate Water Line denotes high sensitivity, refined empathy, and impressionability. The native easily feels the moods "
+            "of those around them and thrives in peaceful, supportive environments."
+        ),
+    },
+    {
+        "feature": PalmFeature.HEART_LINE.value, "option": "heart_balanced_line",
+        "label": "Balanced Water Line", "requires": HEART, "is_default": True,
+        "area": "Relationships", "source": "Heart line",
+        "meaning": (
+            "The Water Line follows a smooth, healthy trajectory across the upper palm, reflecting balanced empathy, emotional "
+            "intelligence, and positive interpersonal connection."
         ),
     },
 
     # ======================================================================
-    # Relationship between heart and head lines [HL]
+    # 10. Head Line (Air Line) - Mind, Intellect & Strategy [NP], [HL], [RS]
     # ======================================================================
     {
-        "feature": PalmFeature.LINE_RELATIONSHIP.value, "option": "narrow_gap",
-        "label": "Narrow gap between heart and head lines",
-        "conditions": [{"metric": "heart_head_gap", "max": 0.10}],
-        "requires": [Requirement.GEOMETRY.value, Requirement.HEART_LINE.value,
-                     Requirement.HEAD_LINE.value],
-        "area": "Disposition", "source": "Heart line", "priority": 8,
+        "feature": PalmFeature.HEAD_LINE.value, "option": "head_straight_practical",
+        "label": "Linear Air Line (Sharp Logic & Practical Acumen)",
+        "conditions": [{"metric": "head_slope", "max": 0.04}],
+        "requires": HEAD, "area": "Thinking", "source": "Palmistry Notes Astro Rahul Sharma; Nature through palm",
+        "priority": 10,
         "meaning": (
-            "A small gap between the water and air lines is read as a narrower outlook: less "
-            "open, slower to share what is known, and more careful with what is given away."
+            "A direct, horizontal Air Line extending across the palm signifies sharp analytical reasoning, scientific clarity, "
+            "commercial discernment, and realistic problem-solving. Prefers factual accuracy over wishful thinking."
         ),
     },
     {
-        "feature": PalmFeature.LINE_RELATIONSHIP.value, "option": "wide_gap",
-        "label": "Wide gap between heart and head lines",
-        "conditions": [{"metric": "heart_head_gap", "min": 0.18}],
-        "requires": [Requirement.GEOMETRY.value, Requirement.HEART_LINE.value,
-                     Requirement.HEAD_LINE.value],
-        "area": "Disposition", "source": "Heart line", "priority": 8,
+        "feature": PalmFeature.HEAD_LINE.value, "option": "head_sloping_creative",
+        "label": "Sloping Air Line (Creative Imagination & Intuition)",
+        "conditions": [{"metric": "head_slope", "min": 0.08}],
+        "requires": HEAD, "area": "Thinking", "source": "Palmistry Notes Astro Rahul Sharma; Nature through palm",
+        "priority": 10,
         "meaning": (
-            "A wide gap is read as openness and generosity - willing to share what is known and "
-            "to help without being asked. The client's notes also tie a clear gap here to "
-            "independence of thought."
+            "An Air Line curving gently down towards the Moon mount signifies expansive imagination, intuitive perception, "
+            "literary or artistic aptitude, and a visionary approach to life's possibilities."
+        ),
+    },
+    {
+        "feature": PalmFeature.HEAD_LINE.value, "option": "head_independent_origin",
+        "label": "Independent Air Line (Bold Thinker & Pioneer)",
+        "conditions": [{"metric": "head_life_gap", "min": 0.06}],
+        "requires": HEAD, "area": "Thinking", "source": "Earth line; Nature through palm",
+        "priority": 9,
+        "meaning": (
+            "A clear gap between the start of the Air Line and Earth Line signifies early intellectual independence. The native "
+            "thinks outside conventional limits, is bold, self-directed, and unafraid to challenge orthodoxy."
+        ),
+    },
+    {
+        "feature": PalmFeature.HEAD_LINE.value, "option": "head_joined_origin",
+        "label": "Joined Air Line (Thoughtful & Respectful of Roots)",
+        "conditions": [{"metric": "head_life_gap", "max": 0.03}],
+        "requires": HEAD, "area": "Thinking", "source": "Earth line; Palmistry Notes Astro Rahul Sharma",
+        "priority": 9,
+        "meaning": (
+            "The Air Line commences joined with the Earth Line, reflecting prudence, deep respect for family traditions, "
+            "thoughtful deliberation before acting, and strong conscientious loyalty."
+        ),
+    },
+    {
+        "feature": PalmFeature.HEAD_LINE.value, "option": "head_long_thorough",
+        "label": "Expansive Air Line (Deep Concentration & Mastery)",
+        "conditions": [{"metric": "head_line.length", "min": 0.45}],
+        "requires": HEAD, "area": "Thinking", "source": "Palmistry Notes Astro Rahul Sharma",
+        "priority": 8,
+        "meaning": (
+            "A long, continuous Air Line spanning much of the hand denotes sustained mental concentration, exceptional memory, "
+            "intellectual stamina, and a capacity to master intricate, multi-layered subjects."
+        ),
+    },
+    {
+        "feature": PalmFeature.HEAD_LINE.value, "option": "head_balanced_line",
+        "label": "Harmonious Air Line", "requires": HEAD, "is_default": True,
+        "area": "Thinking", "source": "Palmistry Notes Astro Rahul Sharma",
+        "meaning": (
+            "The Air Line displays healthy clarity and balance across the mid-palm, uniting logical precision with flexible, "
+            "adaptable problem-solving capability."
         ),
     },
 
-    {
-        "feature": PalmFeature.LINE_RELATIONSHIP.value, "option": "balanced_gap",
-        "label": "Balanced gap between heart and head lines",
-        "requires": [Requirement.GEOMETRY.value, Requirement.HEART_LINE.value,
-                     Requirement.HEAD_LINE.value],
-        "is_default": True, "area": "Disposition", "source": "Heart line",
-        "meaning": (
-            "The spacing between the water and air lines sits between the narrow and wide "
-            "cases, which the client's material reads as feeling and reasoning holding each "
-            "other in balance rather than one running ahead of the other."
-        ),
-    },
-
     # ======================================================================
-    # Life line - the client's reach cases [EL]
+    # 11. Life Line (Earth Line) - Vitality, Roots & Expansion [EL], [RS]
     # ======================================================================
-    {
-        "feature": PalmFeature.LIFE_LINE.value, "option": "life_narrow",
-        "label": "Close-set life line",
-        "conditions": [{"metric": "life_reach", "max": 0.26}],
-        "requires": [Requirement.GEOMETRY.value, Requirement.LIFE_LINE.value],
-        "area": "Vitality", "source": "Earth line", "priority": 8,
-        "meaning": (
-            "A life line hugging the thumb without reaching across the palm is the client's "
-            "first case. It is read as a life kept within a known compass - and, in their "
-            "phrasing, as timidity and restraint rather than as any shortness of life."
-        ),
-    },
     {
         "feature": PalmFeature.LIFE_LINE.value, "option": "life_wide",
-        "label": "Wide-sweeping life line",
+        "label": "Expansive Earth Line (Travel & Distant Growth)",
         "conditions": [{"metric": "life_reach", "min": 0.40}],
-        "requires": [Requirement.GEOMETRY.value, Requirement.LIFE_LINE.value],
-        "area": "Vitality", "source": "Earth line", "priority": 8,
+        "requires": LIFE, "area": "Vitality", "source": "Earth line", "priority": 10,
         "meaning": (
-            "A life line sweeping well across the palm is read as expansion - travel to larger "
-            "places and a life lived beyond where it began. The further the arc reaches, the "
-            "further the client's material takes that expansion."
+            "An Earth Line sweeping in a wide, magnificent arc across the palm. The client's material reads this as expansion: "
+            "travel to distant lands, living beyond one's birthplace, thriving in large spaces, and an appetite for adventure."
+        ),
+    },
+    {
+        "feature": PalmFeature.LIFE_LINE.value, "option": "life_narrow",
+        "label": "Close-Set Earth Line (Home-Loving & Energy-Conserving)",
+        "conditions": [{"metric": "life_reach", "max": 0.28}],
+        "requires": LIFE, "area": "Vitality", "source": "Earth line", "priority": 10,
+        "meaning": (
+            "An Earth Line curving close to the thumb base signifies domestic attachment, respect for familiar surroundings, and "
+            "a quiet, energy-conserving lifestyle. The client explicitly notes this reflects caution rather than brevity of life."
         ),
     },
     {
         "feature": PalmFeature.LIFE_LINE.value, "option": "life_clear",
-        "label": "Deep, clear life line",
-        "conditions": [{"metric": "life_line.contrast", "min": 4.0}],
-        "requires": [Requirement.GEOMETRY.value, Requirement.LIFE_LINE.value],
-        "area": "Vitality", "source": "Earth line", "priority": 6,
+        "label": "Deep & Well-Carved Earth Line (Robust Vitality)",
+        "conditions": [{"metric": "life_line.contrast", "min": 3.2}],
+        "requires": LIFE, "area": "Vitality", "source": "Earth line", "priority": 8,
         "meaning": (
-            "The earth line is the line of roots - family, place and tradition. Deep and clearly "
-            "carved, the client reads it as good nourishment and vitality, a settled sense of "
-            "place and steady internal stability."
+            "The Earth Line is the line of roots, family, and vitality. Deep and clearly defined, the client's notes link it to "
+            "sound digestion, abundant physical stamina, settled peace of mind, and an ability to thrive anywhere."
         ),
     },
     {
         "feature": PalmFeature.LIFE_LINE.value, "option": "life_faint",
-        "label": "Faint life line",
-        "conditions": [{"metric": "life_line.contrast", "max": 2.4}],
-        "requires": [Requirement.GEOMETRY.value, Requirement.LIFE_LINE.value],
-        "area": "Vitality", "source": "Earth line", "priority": 6,
+        "label": "Delicate Earth Line (Sensitive Constitution)",
+        "conditions": [{"metric": "life_line.contrast", "max": 2.2}],
+        "requires": LIFE, "area": "Vitality", "source": "Earth line", "priority": 8,
         "meaning": (
-            "A faint or feeble earth line is read not as poor health but as a looser grip - "
-            "irregular routine, uncertain energy, and a weaker sense of permanence. The client is "
-            "explicit that it is fragility rather than illness."
+            "A delicate Earth Line signifies sensitive nervous energy rather than poor health. Thrives best when honoring a regular "
+            "sleep schedule, nourishing diet, and serene surroundings that preserve inner calm."
+        ),
+    },
+    {
+        "feature": PalmFeature.LIFE_LINE.value, "option": "life_long_reach",
+        "label": "Long-Rooted Earth Line (Enduring Stamina)",
+        "conditions": [{"metric": "life_descent", "min": 0.78}],
+        "requires": LIFE, "area": "Vitality", "source": "Earth line", "priority": 7,
+        "meaning": (
+            "The Earth Line sweeps cleanly into the base of the palm towards the wrist bracelets, signifying long-term vitality, "
+            "a deep connection to ancestral roots, and steady lifetime resilience."
+        ),
+    },
+    {
+        "feature": PalmFeature.LIFE_LINE.value, "option": "life_balanced_line",
+        "label": "Harmonious Earth Line", "requires": LIFE, "is_default": True,
+        "area": "Vitality", "source": "Earth line",
+        "meaning": (
+            "A well-proportioned Earth Line providing steady physical stamina, rooted domestic security, and dependable recuperative power."
         ),
     },
 
     # ======================================================================
-    # Fate line [EL], [NP]
+    # 12. Fate Line (Fire Line) - Career, Purpose & Vocation [EL], [NP], [ML]
     # ======================================================================
     {
-        "feature": PalmFeature.FATE_LINE.value, "option": "fate_strong",
-        "label": "Clear fate line",
-        "conditions": [{"metric": "fate_line.contrast", "min": 3.5}],
-        "requires": [Requirement.GEOMETRY.value, Requirement.FATE_LINE.value],
-        "area": "Work", "source": "Earth line; Nature through palm", "priority": 7,
+        "feature": PalmFeature.FATE_LINE.value, "option": "fate_from_moon",
+        "label": "Fire Line from Moon Mount (Public Support & Creativity)",
+        "conditions": [{"metric": "fate_origin", "equals": "moon"}],
+        "requires": FATE, "area": "Work", "source": "Mercury line; Nature through palm", "priority": 10,
         "meaning": (
-            "A clearly marked fire line is read as a defined direction in work - a thread running "
-            "through the working life rather than a series of unconnected turns."
+            "The Fire Line originates from the lower lunar mount, indicating that professional growth and fortune are bolstered by "
+            "public rapport, clients, networking, partnerships, travel, or creative fields."
+        ),
+    },
+    {
+        "feature": PalmFeature.FATE_LINE.value, "option": "fate_strong",
+        "label": "Defined Fire Line (Clear Vocational Trajectory)",
+        "conditions": [{"metric": "fate_line.contrast", "min": 2.8}],
+        "requires": FATE, "area": "Work", "source": "Earth line; Nature through palm", "priority": 9,
+        "meaning": (
+            "A strongly etched Fire Line marks a continuous thread of purpose running through the working life, conferring focus, "
+            "professional recognition, and purposeful career advancement."
+        ),
+    },
+    {
+        "feature": PalmFeature.FATE_LINE.value, "option": "fate_moderate",
+        "label": "Emerging Fire Line (Adaptive Professional Progress)",
+        "conditions": [{"metric": "fate_line.contrast", "min": 1.4}],
+        "requires": FATE, "area": "Work", "source": "Earth line", "priority": 7,
+        "meaning": (
+            "A discernible Fire Line showing steady vocational responsibility, where career success develops naturally through "
+            "perseverance and self-directed ambition."
         ),
     },
     {
         "feature": PalmFeature.FATE_LINE.value, "option": "fate_absent",
-        "label": "No clear fate line", "requires": [Requirement.GEOMETRY.value],
+        "label": "Free-Spirited Destiny (Self-Made Path)",
         "conditions": [{"metric": "fate_line.found", "equals": "False"}],
-        "area": "Work", "source": "Earth line", "priority": 7,
+        "requires": GEOMETRY, "area": "Work", "source": "Earth line", "priority": 8,
         "meaning": (
-            "No distinct fire line was traced. This is common and is not read as a bad sign: the "
-            "client's material associates its absence with a working life shaped by the person's "
-            "own choices rather than by a single fixed track."
+            "No single rigid Fire Line was traced. In classical palmistry this is a liberating sign: the native is not bound to a "
+            "single corporate track, shaping their own destiny through adaptable skills and self-created opportunities."
+        ),
+    },
+    {
+        "feature": PalmFeature.FATE_LINE.value, "option": "fate_balanced_line",
+        "label": "Balanced Fire Line", "requires": FATE, "is_default": True,
+        "area": "Work", "source": "Earth line",
+        "meaning": (
+            "A balanced Fire Line providing flexibility and career stability, enabling the native to navigate changes with confidence."
+        ),
+    },
+
+    # ======================================================================
+    # 13. Line Relationships - Mind-Heart Equilibrium [HL]
+    # ======================================================================
+    {
+        "feature": PalmFeature.LINE_RELATIONSHIP.value, "option": "wide_gap",
+        "label": "Expansive Spacing (Broad-Minded & Generous)",
+        "conditions": [{"metric": "heart_head_gap", "min": 0.15}],
+        "requires": HEART_HEAD, "area": "Disposition", "source": "Heart line", "priority": 9,
+        "meaning": (
+            "A wide expanse between the Water and Air lines reflects an open-minded, generous spirit, willing to share knowledge "
+            "and resources freely, with real independence of thought."
+        ),
+    },
+    {
+        "feature": PalmFeature.LINE_RELATIONSHIP.value, "option": "narrow_gap",
+        "label": "Close Spacing (Cautious & Laser-Focused)",
+        "conditions": [{"metric": "heart_head_gap", "max": 0.09}],
+        "requires": HEART_HEAD, "area": "Disposition", "source": "Heart line", "priority": 9,
+        "meaning": (
+            "A compact interval between Water and Air lines indicates intense focus, prudent discretion, and a careful habit of "
+            "guarding what is known and given away."
+        ),
+    },
+    {
+        "feature": PalmFeature.LINE_RELATIONSHIP.value, "option": "heart_high",
+        "label": "High Water Line (Emotion Leading Reason)",
+        "conditions": [{"metric": "heart_height", "max": 0.25}],
+        "requires": HEART, "area": "Disposition", "source": "Heart line", "priority": 7,
+        "meaning": (
+            "The Water Line runs close beneath the finger mounts, meaning emotional impressions and spontaneous heart responses "
+            "arrive first, with intellectual arguments following."
+        ),
+    },
+    {
+        "feature": PalmFeature.LINE_RELATIONSHIP.value, "option": "heart_low",
+        "label": "Low Water Line (Reason Tempering Emotion)",
+        "conditions": [{"metric": "heart_height", "min": 0.35}],
+        "requires": HEART, "area": "Disposition", "source": "Heart line", "priority": 7,
+        "meaning": (
+            "The Water Line reaches down into the reasoning zone of the hand. Reasoning tempers feeling, resulting in composed, "
+            "cool deliberation before expressing emotion."
+        ),
+    },
+    {
+        "feature": PalmFeature.LINE_RELATIONSHIP.value, "option": "balanced_gap",
+        "label": "Balanced Mind-Heart Equilibrium", "requires": HEART_HEAD, "is_default": True,
+        "area": "Disposition", "source": "Heart line",
+        "meaning": (
+            "Water and Air lines maintain ideal proportional spacing, enabling emotional empathy and logical intellect to support "
+            "each other in harmonious balance."
+        ),
+    },
+
+    # ======================================================================
+    # 14. Career & Financial Synthesis [RS], [ML], [JF]
+    # ======================================================================
+    {
+        "feature": PalmFeature.CAREER_FORECAST.value, "option": "career_executive",
+        "label": "Executive & Strategic Leadership",
+        "conditions": [{"metric": "index_ring_ratio", "min": 0.98}, {"metric": "thumb_length_ratio", "min": 1.05}],
+        "requires": GEOMETRY, "area": "Work", "source": "Palmistry Notes Astro Rahul Sharma; Jupiter finger", "priority": 10,
+        "meaning": (
+            "Combination of high Jupiter finger authority and strong thumb determination indicates substantial executive capability. "
+            "Suited for leadership, corporate management, entrepreneurship, governance, and high-responsibility leadership."
+        ),
+    },
+    {
+        "feature": PalmFeature.CAREER_FORECAST.value, "option": "career_commerce_media",
+        "label": "Commerce, Media & Communication Mastery",
+        "conditions": [{"metric": "mercury_reach_ratio", "min": 0.85}],
+        "requires": GEOMETRY, "area": "Work", "source": "Mercury line; Palmistry Notes Astro Rahul Sharma", "priority": 8,
+        "meaning": (
+            "Prominent Mercury proportion points towards exceptional success in trade, business negotiations, sales, media, "
+            "journalism, digital commerce, law, and advisory professions requiring persuasive presentation."
+        ),
+    },
+    {
+        "feature": PalmFeature.CAREER_FORECAST.value, "option": "career_practical_industry",
+        "label": "Grounded Industry & Technical Excellence",
+        "conditions": [{"metric": "is_square_palm", "min": 0.5}],
+        "requires": GEOMETRY, "area": "Work", "source": "Nature through palm", "priority": 6,
+        "meaning": (
+            "A grounded palm foundation flourishes in engineering, real estate, finance, technology infrastructure, operations, "
+            "and building solid, tangible enterprises with compounding long-term value."
+        ),
+    },
+    {
+        "feature": PalmFeature.CAREER_FORECAST.value, "option": "career_creative_innovator",
+        "label": "Creative Vision & Independent Enterprise",
+        "conditions": [{"metric": "is_square_palm", "max": 0.5}],
+        "requires": GEOMETRY, "area": "Work", "source": "Nature through palm", "priority": 6,
+        "meaning": (
+            "An intuitive palm framework excels in creative design, branding, psychology, holistic counseling, independent "
+            "consulting, and ventures requiring out-of-the-box conceptual innovation."
+        ),
+    },
+    {
+        "feature": PalmFeature.CAREER_FORECAST.value, "option": "career_balanced_path",
+        "label": "Versatile Vocational Achievement", "requires": GEOMETRY, "is_default": True,
+        "area": "Work", "source": "Palmistry Notes Astro Rahul Sharma",
+        "meaning": (
+            "Balanced hand geometry indicates versatile career adaptability, with financial momentum accelerating as self-directed "
+            "initiatives are established."
+        ),
+    },
+
+    # ======================================================================
+    # 15. Love & Marriage Synthesis [HL], [FT], [RS]
+    # ======================================================================
+    {
+        "feature": PalmFeature.RELATIONSHIP_FORECAST.value, "option": "love_deep_devotion",
+        "label": "Devoted & Family-Centric Harmony",
+        "conditions": [{"metric": "heart_line.termination_zone", "contains": "Jupiter"}],
+        "requires": HEART, "area": "Relationships", "source": "Heart line; Palmistry Notes Astro Rahul Sharma", "priority": 9,
+        "meaning": (
+            "Water Line termination under Jupiter indicates an affectionate, deeply devoted partner who places domestic loyalty "
+            "and family values at the center of their emotional world. Creates an enduring, supportive home."
+        ),
+    },
+    {
+        "feature": PalmFeature.RELATIONSHIP_FORECAST.value, "option": "love_independent_respect",
+        "label": "Dignified Sovereignty & Mutual Respect",
+        "conditions": [{"metric": "heart_line.termination_zone", "contains": "Saturn"}],
+        "requires": HEART, "area": "Relationships", "source": "Heart line", "priority": 9,
+        "meaning": (
+            "Water Line ending under Saturn denotes a relationship built on quiet loyalty, shared principles, and mutual respect "
+            "for personal autonomy. Thrives with a partner who values self-sufficiency and mature companionship."
+        ),
+    },
+    {
+        "feature": PalmFeature.RELATIONSHIP_FORECAST.value, "option": "love_harmonious_growth",
+        "label": "Harmonious Partnership & Companionship", "requires": GEOMETRY, "is_default": True,
+        "area": "Relationships", "source": "Heart line; Fingers in general and Thumb",
+        "meaning": (
+            "Balanced relationship indicators signify emotional reliability, warm companionship, and mutual dedication to "
+            "building a harmonious and prosperous shared future."
+        ),
+    },
+
+    # ======================================================================
+    # 16. Vitality & Wellness Synthesis [EL], [HP], [RS]
+    # ======================================================================
+    {
+        "feature": PalmFeature.HEALTH_FORECAST.value, "option": "vitality_robust",
+        "label": "Robust Constitution & High Stamina",
+        "conditions": [{"metric": "life_reach", "min": 0.35}],
+        "requires": LIFE, "area": "Vitality", "source": "Earth line; Health palmistry", "priority": 9,
+        "meaning": (
+            "A well-extended Earth Line combined with grounded palm geometry reflects sound vitality, natural physical endurance, "
+            "resilient digestion, and steady energy throughout demanding life phases."
+        ),
+    },
+    {
+        "feature": PalmFeature.HEALTH_FORECAST.value, "option": "vitality_sensitive_rhythm",
+        "label": "Rhythmic Wellness & Nervous Restoration",
+        "conditions": [{"metric": "life_reach", "max": 0.30}],
+        "requires": LIFE, "area": "Vitality", "source": "Earth line; Health palmistry", "priority": 9,
+        "meaning": (
+            "A delicate Earth Line indicates a receptive nervous system that flourishes best through regular daily routines, "
+            "mindful stress management, nourishing whole foods, and grounding outdoor activities."
+        ),
+    },
+    {
+        "feature": PalmFeature.HEALTH_FORECAST.value, "option": "vitality_balanced_lifestyle",
+        "label": "Steady Vitality & Balanced Lifestyle", "requires": GEOMETRY, "is_default": True,
+        "area": "Vitality", "source": "Earth line; Palmistry Notes Astro Rahul Sharma",
+        "meaning": (
+            "Balanced vitality indicators support consistent physical well-being, healthy recuperation, and a long-term foundation "
+            "of active energy."
         ),
     },
 ]

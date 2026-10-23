@@ -693,9 +693,20 @@ def crease_relationships(creases: dict[str, TracedCrease], size: int) -> dict[st
     if heart and heart.found:
         # Height of the heart line above the wrist, 0 at the knuckles.
         out["heart_height"] = round(float(np.mean([y for _x, y in heart.path])), 4)
+        out["heart_curvature"] = round(heart.curvature, 4)
+        out["heart_length"] = round(heart.length, 4)
+        out["heart_contrast"] = round(heart.contrast, 4)
 
     if head and head.found:
         out["head_height"] = round(float(np.mean([y for _x, y in head.path])), 4)
+        out["head_length"] = round(head.length, 4)
+        out["head_curvature"] = round(head.curvature, 4)
+        out["head_contrast"] = round(head.contrast, 4)
+        if len(head.path) >= 2:
+            # Slope: positive means it slopes downwards into the lower palm (Moon mount)
+            start_pt = head.path[0]
+            end_pt = head.path[-1]
+            out["head_slope"] = round(float(end_pt[1] - start_pt[1]), 4)
 
     life = creases.get("life")
     if life and life.found:
@@ -703,5 +714,26 @@ def crease_relationships(creases: dict[str, TracedCrease], size: int) -> dict[st
         # client's numbered earth-line cases.
         out["life_reach"] = round(float(max(x for x, _y in life.path)), 4)
         out["life_descent"] = round(float(max(y for _x, y in life.path)), 4)
+        out["life_contrast"] = round(life.contrast, 4)
+        out["life_length"] = round(life.length, 4)
+
+    # Gap between Head Line and Life Line at commencement:
+    if head and life and head.found and life.found and head.start and life.start:
+        hl_dist = float(np.hypot(head.start[0] - life.start[0], head.start[1] - life.start[1]))
+        out["head_life_gap"] = round(hl_dist, 4)
+    else:
+        out["head_life_gap"] = 0.04
+
+    fate = creases.get("fate")
+    if fate and fate.found:
+        out["fate_contrast"] = round(fate.contrast, 4)
+        out["fate_length"] = round(fate.length, 4)
+        out["fate_found"] = "True"
+        if fate.start:
+            # If starting near bottom center/right (Moon mount): x > 0.52
+            out["fate_origin"] = "moon" if fate.start[0] > 0.52 else "base"
+    else:
+        out["fate_found"] = "False"
+        out["fate_origin"] = "none"
 
     return out

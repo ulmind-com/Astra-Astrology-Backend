@@ -369,6 +369,7 @@ def _scan_stub(creases_found: dict[str, bool], **values) -> dict:
         "finger_spread": 8.0, "finger_lean_to_thumb": 0.0, "jupiter_bend": 6.0,
         "finger_thickness": 0.26, "index_phalange_first": 0.28,
         "index_phalange_second": 0.30, "index_phalange_third": 0.42,
+        "is_square_palm": 0.0, "mercury_reach_ratio": 0.84,
     }
     measurements.update({k: v for k, v in values.items() if isinstance(v, (int, float))})
     return {
@@ -433,11 +434,12 @@ def test_every_statement_shows_what_produced_it():
     scan = _scan_stub({"heart": True, "head": True, "life": True, "fate": True})
     sections, _ = build_reading(scan, seeded_rules())
     assert sections
+    defaults = {entry["option"] for entry in PALM_RULES_SEED if entry.get("is_default")}
     for section in sections:
         assert section.meaning
         assert section.feature_label
         # A statement with conditions must be able to say which values met them.
-        if section.option not in {"balanced_fingers", "balanced_gap"}:
+        if section.option not in defaults:
             assert section.because, section.option
 
 
@@ -502,10 +504,11 @@ def test_conditions_reference_metrics_the_scan_actually_produces():
     """A rule testing a metric nothing measures can never fire, silently."""
     scan = _scan_stub({"heart": True, "head": True, "life": True, "fate": True})
     available = set(flatten_scan_values(scan))
-    # Metrics produced only by a real image are allowed to be absent from the stub.
+    # Metrics produced only by a real image or crease_relationships
     from_real_scans = {
-        "life_line.contrast", "fate_line.contrast", "fate_line.found",
-        "heart_height", "head_height",
+        "life_line.contrast", "fate_line.contrast", "fate_line.found", "fate_origin",
+        "heart_height", "head_height", "head_slope", "head_life_gap", "head_line.length",
+        "heart_line.contrast", "heart_line.curvature", "life_descent", "life_line.contrast",
     }
     for entry in PALM_RULES_SEED:
         for condition in entry.get("conditions", []):

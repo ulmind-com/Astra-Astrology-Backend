@@ -270,6 +270,24 @@ def extract(landmarks_px: list[tuple[float, float, float]]) -> HandMeasurements:
         L.KNUCKLES,
     )
 
+    # --- Mercury (pinky) finger: communication, business acumen, eloquence ---
+    pinky_length = finger_lengths.get("pinky") or 1.0
+    ring_length = finger_lengths.get("ring") or 1.0
+    m.add(
+        "mercury_reach_ratio",
+        pinky_length / ring_length,
+        "Mercury finger length compared to Sun (ring) finger. Reaching the top "
+        "joint indicates eloquence, business acumen, and public communication.",
+        (L.PINKY_MCP, L.PINKY_TIP, L.RING_MCP, L.RING_TIP),
+    )
+
+    m.add(
+        "is_square_palm",
+        1.0 if (palm_width / palm_length) >= 0.92 else 0.0,
+        "Whether the palm is square (1.0) or elongated (0.0).",
+        (L.WRIST, L.MIDDLE_MCP, L.INDEX_MCP, L.PINKY_MCP),
+    )
+
     return m
 
 

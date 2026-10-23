@@ -30,29 +30,41 @@ class PalmFeature(str, Enum):
     HAND_TYPE = "hand_type"
     PALM_SHAPE = "palm_shape"
     FINGERS = "fingers"
+    FINGER_LENGTH = "finger_length"
+    FINGER_DYNAMICS = "finger_dynamics"
     THUMB = "thumb"
     JUPITER_FINGER = "jupiter_finger"
+    MERCURY_FINGER = "mercury_finger"
     PHALANGES = "phalanges"
     HEART_LINE = "heart_line"
     HEAD_LINE = "head_line"
     LIFE_LINE = "life_line"
     FATE_LINE = "fate_line"
     LINE_RELATIONSHIP = "line_relationship"
+    CAREER_FORECAST = "career_forecast"
+    RELATIONSHIP_FORECAST = "relationship_forecast"
+    HEALTH_FORECAST = "health_forecast"
 
 
 #: Human labels, used in the reading and in the admin list.
 FEATURE_LABELS: dict[str, str] = {
-    PalmFeature.HAND_TYPE: "Hand type",
-    PalmFeature.PALM_SHAPE: "Palm shape",
-    PalmFeature.FINGERS: "Fingers",
-    PalmFeature.THUMB: "Thumb",
-    PalmFeature.JUPITER_FINGER: "Jupiter finger",
-    PalmFeature.PHALANGES: "Phalanges",
-    PalmFeature.HEART_LINE: "Heart line (Water)",
-    PalmFeature.HEAD_LINE: "Head line (Air)",
-    PalmFeature.LIFE_LINE: "Life line (Earth)",
-    PalmFeature.FATE_LINE: "Fate line (Fire)",
-    PalmFeature.LINE_RELATIONSHIP: "Relationship between lines",
+    PalmFeature.HAND_TYPE: "Hand Element & Constitution",
+    PalmFeature.PALM_SHAPE: "Palm Geometry & Proportion",
+    PalmFeature.FINGERS: "Finger Proportion",
+    PalmFeature.FINGER_LENGTH: "Mental Processing Pace",
+    PalmFeature.FINGER_DYNAMICS: "Temperament & Social Stance",
+    PalmFeature.THUMB: "Willpower & Logic (Thumb)",
+    PalmFeature.JUPITER_FINGER: "Ambition & Authority (Jupiter)",
+    PalmFeature.MERCURY_FINGER: "Communication & Commerce (Mercury)",
+    PalmFeature.PHALANGES: "Phalangeal Orientation",
+    PalmFeature.HEART_LINE: "Emotional Flow (Water Line)",
+    PalmFeature.HEAD_LINE: "Intellect & Strategy (Air Line)",
+    PalmFeature.LIFE_LINE: "Vitality & Roots (Earth Line)",
+    PalmFeature.FATE_LINE: "Career & Destiny (Fire Line)",
+    PalmFeature.LINE_RELATIONSHIP: "Mind-Heart Equilibrium",
+    PalmFeature.CAREER_FORECAST: "Career & Financial Synthesis",
+    PalmFeature.RELATIONSHIP_FORECAST: "Love & Marriage Synthesis",
+    PalmFeature.HEALTH_FORECAST: "Vitality & Wellness Synthesis",
 }
 
 

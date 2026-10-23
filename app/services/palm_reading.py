@@ -177,7 +177,18 @@ def build_reading(
 
 
 async def load_rules() -> list[PalmRule]:
-    return await PalmRule.find_all().to_list()
+    rules = await PalmRule.find_all().to_list()
+    # Self-healing: if database rules are missing or outdated in count compared to PALM_RULES_SEED, sync immediately
+    if not rules or len(rules) < len(PALM_RULES_SEED):
+        try:
+            logger.info(
+                f"Syncing palm rules: DB has {len(rules)}, expected at least {len(PALM_RULES_SEED)}"
+            )
+            await seed_rules(force=False)
+            rules = await PalmRule.find_all().to_list()
+        except Exception as exc:
+            logger.error(f"Error auto-seeding palm rules: {exc}")
+    return rules
 
 
 async def seed_rules(force: bool = False) -> dict[str, int]:

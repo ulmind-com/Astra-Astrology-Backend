@@ -33,26 +33,25 @@ class PalmScanConfig:
     working_width: int = 1280
 
     # --- quality gates -------------------------------------------------------
-    #: Variance of the Laplacian over the palm region. A blurred palm has no
-    #: traceable creases at all, so this is the strictest gate.
-    min_sharpness: float = 55.0
+    #: Variance of the Laplacian over the palm region (computed strictly inside the
+    #: eroded palm mask to eliminate mask border boundary artifacts).
+    min_sharpness: float = 20.0
     #: Mean brightness of the palm region, 0-255.
-    min_brightness: float = 45.0
-    max_brightness: float = 225.0
+    min_brightness: float = 40.0
+    max_brightness: float = 230.0
     #: Fraction of palm pixels at the very top of the range. A blown-out palm has
     #: lost the creases to glare.
-    max_overexposed_ratio: float = 0.18
-    #: Palm area as a fraction of the frame. Too small and the creases span too few
-    #: pixels to measure.
-    min_palm_area_ratio: float = 0.045
+    max_overexposed_ratio: float = 0.22
+    #: Palm area as a fraction of the frame.
+    min_palm_area_ratio: float = 0.035
     #: The palm must be roughly facing the camera. Measured as how far the knuckle
     #: row and the wrist axis depart from perpendicular.
-    max_tilt_degrees: float = 32.0
+    max_tilt_degrees: float = 36.0
     #: How much the hand may rotate in-plane before the normalisation stops being
     #: reliable.
     max_roll_degrees: float = 45.0
     #: Fingers must be open enough that the palm is not occluded.
-    min_finger_extension: float = 0.55
+    min_finger_extension: float = 0.50
 
     # --- normalised palm frame ----------------------------------------------
     #: The palm is warped into a square of this size before any crease work, so
@@ -71,16 +70,13 @@ class PalmScanConfig:
     clahe_clip_limit: float = 3.0
     clahe_tile_grid: int = 8
     #: A traced path must average at least this much valley response to be called a
-    #: line rather than skin texture. This is the gate that makes the difference
-    #: between reporting a line and inventing one.
-    min_line_response: float = 0.17
+    #: line rather than skin texture.
+    min_line_response: float = 0.12
     #: And must hold that response over at least this fraction of its length.
-    min_line_continuity: float = 0.45
+    min_line_continuity: float = 0.35
     #: How far a traced path must stand above the median response of the band it
-    #: was found in. The search always returns a best path, so this is the test
-    #: that separates a crease from the least dark streak in a featureless region:
-    #: a straight line through skin texture scores about 1.0.
-    min_contrast_ratio: float = 1.6
+    #: was found in.
+    min_contrast_ratio: float = 1.35
     #: Smoothness penalty per row of lateral movement in the trace. This has to be
     #: small relative to the response values it competes against: the map is
     #: normalised to 0..1 and real creases sit around 0.1 to 0.4, so a penalty of
