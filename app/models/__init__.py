@@ -10,6 +10,7 @@ from app.models.earning import EarningEntry
 from app.models.otp import OtpCode
 from app.models.pending_registration import PendingRegistration
 from app.models.face_reading import FaceReading, FaceRule
+from app.models.palm_reading import PalmReading, PalmRule
 from app.models.review import Review
 from app.models.settings import CoinRateChange, PlatformSettings
 from app.models.user import User
@@ -41,6 +42,8 @@ DOCUMENT_MODELS: list[type[Document]] = [
     ChatSession,
     FaceReading,
     FaceRule,
+    PalmReading,
+    PalmRule,
     Review,
     EarningEntry,
 ]
@@ -57,6 +60,8 @@ __all__ = [
     "ChatSession",
     "FaceReading",
     "FaceRule",
+    "PalmReading",
+    "PalmRule",
     "Review",
     "EarningEntry",
     "CoinRateChange",

@@ -77,6 +77,14 @@ class PlatformSettings(TimestampedDocument):
     # without a deploy if a reading is going wrong.
     face_reading_enabled: bool = True
 
+    # What one palm reading costs, in coins. Zero makes it free, matching how face
+    # reading is priced, so the admin sets both the same way.
+    palm_reading_coins: int = Field(default=50, ge=0, le=1_000_000)
+
+    # Lets the admin take palm reading down without a deploy, which matters for a
+    # feature whose accuracy depends on photo quality in the field.
+    palm_reading_enabled: bool = True
+
     updated_by: PydanticObjectId | None = None
 
     class Settings:

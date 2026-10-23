@@ -53,6 +53,12 @@ from app.services.palm_cv.config import DEFAULT_CONFIG, PalmScanConfig
 
 CreaseName = Literal["heart", "head", "life", "fate"]
 
+#: Raw Gabor response that counts as a fully formed crease. Measured from real
+#: palms: a clear crease reaches roughly 1800 at the 99th percentile, while a
+#: featureless surface stays near 150 once the contrast stretch is removed. Fixed
+#: rather than per-image, so a weak palm reads as weak.
+RESPONSE_REFERENCE = 1800.0
+
 #: The client's documents name the creases after elements. Both names are carried
 #: so a rule written either way can be matched.
 CREASE_ELEMENTAL = {
@@ -117,6 +123,14 @@ class CanonicalPalm:
     #: Where each knuckle landed in canonical coordinates, used to say which finger
     #: a crease ends under.
     knuckles_canonical: dict[str, tuple[float, float]]
+    #: True when the frame was flipped so the thumb sits on the left. Needed to map
+    #: a canonical point back to the original photo.
+    mirrored: bool = False
+    #: Thumb knuckle and thumb base in canonical coordinates. The life line sweeps
+    #: around the ball of the thumb, so its search is centred from these rather
+    #: than from a fixed point in the frame.
+    thumb_canonical: tuple[float, float] = (0.1, 0.6)
+    thumb_base_canonical: tuple[float, float] = (0.1, 0.9)
 
 
 def build_canonical_palm(
@@ -194,6 +208,14 @@ def build_canonical_palm(
         image_rgb, matrix, (size, size), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE
     )
 
+    def _to_canonical(index: int) -> tuple[float, float]:
+        point = np.array([[points[index][0], points[index][1]]], dtype=np.float32)
+        warped = cv2.perspectiveTransform(point.reshape(1, 1, 2), matrix).reshape(2)
+        return float(warped[0] / size), float(warped[1] / size)
+
+    thumb_canonical = _to_canonical(L.THUMB_MCP)
+    thumb_base_canonical = _to_canonical(L.THUMB_CMC)
+
     knuckles: dict[str, tuple[float, float]] = {}
     for finger, (mcp, *_rest) in L.FINGER_CHAINS.items():
         point = np.array([[landmarks_px[mcp][0], landmarks_px[mcp][1]]], dtype=np.float32)
@@ -220,8 +242,44 @@ def build_canonical_palm(
     # around the rim.
     mask = cv2.erode(mask, np.ones((11, 11), np.uint8), iterations=1)
 
-    response = _valley_response(canonical, config)
-    response[mask == 0] = 0.0
+    # Zeroing outside the palm *after* filtering leaves the mask boundary as a hard
+    # step, and a Gabor bank fires harder on that step than on any real crease - so
+    # a trace would happily follow the rim of the mask and report it as a line. Two
+    # things prevent it: the outside is filled with the palm's own mean colour
+    # before filtering, so no step exists for the filter to find, and the mask is
+    # then eroded by more than the kernel radius before being applied, so any
+    # residue at the edge falls outside it.
+    filled = canonical.copy()
+    inside = mask > 0
+    if np.any(inside):
+        mean_colour = canonical[inside].mean(axis=0).astype(np.uint8)
+        filled[~inside] = mean_colour
+        # Soften the seam so the fill itself does not become an edge.
+        blurred = cv2.GaussianBlur(filled, (0, 0), sigmaX=config.gabor_kernel_size / 3.0)
+        rim = cv2.dilate(mask, np.ones((5, 5), np.uint8)) - cv2.erode(
+            mask, np.ones((5, 5), np.uint8)
+        )
+        filled[rim > 0] = blurred[rim > 0]
+
+    response = _valley_response(filled, config)
+
+    safe_margin = config.gabor_kernel_size | 1
+    response_mask = cv2.erode(mask, np.ones((safe_margin, safe_margin), np.uint8), iterations=1)
+    response[response_mask == 0] = 0.0
+    mask = response_mask
+
+    # Put the thumb on the left for every hand. A left and a right palm are mirror
+    # images, so without this every band and every rule would need two versions and
+    # the pair would drift apart. Mirroring once here means the rest of the module
+    # only ever sees one orientation.
+    mirrored = thumb_across > 0
+    if mirrored:
+        canonical = np.ascontiguousarray(canonical[:, ::-1])
+        response = np.ascontiguousarray(response[:, ::-1])
+        mask = np.ascontiguousarray(mask[:, ::-1])
+        knuckles = {name: (1.0 - x, y) for name, (x, y) in knuckles.items()}
+        thumb_canonical = (1.0 - thumb_canonical[0], thumb_canonical[1])
+        thumb_base_canonical = (1.0 - thumb_base_canonical[0], thumb_base_canonical[1])
 
     return CanonicalPalm(
         image=canonical,
@@ -230,6 +288,9 @@ def build_canonical_palm(
         matrix=matrix,
         size=size,
         knuckles_canonical=knuckles,
+        mirrored=mirrored,
+        thumb_canonical=thumb_canonical,
+        thumb_base_canonical=thumb_base_canonical,
     )
 
 
@@ -245,7 +306,11 @@ def _valley_response(canonical_rgb: np.ndarray, config: PalmScanConfig) -> np.nd
     # plain luminance conversion.
     channels = canonical_rgb.astype(np.float32)
     gray = (0.15 * channels[:, :, 0] + 0.5 * channels[:, :, 1] + 0.35 * channels[:, :, 2])
-    gray = cv2.normalize(gray, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    # Deliberately NOT stretched to full range. A min-max stretch turns a palm with
+    # almost no contrast into one with a great deal of it, which is how a featureless
+    # surface ends up producing confident "creases". The channel mix already lands in
+    # 0..255, so it is used as it is.
+    gray = np.clip(gray, 0, 255).astype(np.uint8)
 
     clahe = cv2.createCLAHE(
         clipLimit=config.clahe_clip_limit,
@@ -280,10 +345,14 @@ def _valley_response(canonical_rgb: np.ndarray, config: PalmScanConfig) -> np.nd
         accumulated = np.maximum(accumulated, filtered)
 
     accumulated[accumulated < 0] = 0.0
-    peak = float(accumulated.max())
-    if peak > 1e-6:
-        accumulated /= peak
-    return accumulated.astype(np.float32)
+
+    # Scaled against a fixed reference rather than against this image's own maximum.
+    # Dividing by the max guarantees that *something* reaches 1.0 in every image,
+    # including an image of a blank surface, which is precisely how noise gets
+    # promoted to a crease. A fixed divisor means a weak palm produces a weak
+    # response and is reported as one.
+    accumulated /= RESPONSE_REFERENCE
+    return np.clip(accumulated, 0.0, 1.0).astype(np.float32)
 
 
 def _trace_horizontal(
@@ -356,21 +425,74 @@ def _trace_vertical(
     return [(y, x) for x, y in path], score
 
 
+def _trace_polar(
+    response: np.ndarray,
+    centre: tuple[float, float],
+    angle_from: float,
+    angle_to: float,
+    radius_from: float,
+    radius_to: float,
+    config: PalmScanConfig,
+    steps: int = 180,
+    radius_bins: int = 96,
+) -> list[tuple[int, int]]:
+    """Trace an arc by searching in polar coordinates about a centre.
+
+    The life line sweeps around the ball of the thumb, so over much of its run it
+    is neither horizontal nor vertical and a Cartesian scan fits it badly: the
+    search has to move further sideways per step than the smoothness penalty will
+    allow, and it settles for a straight chord instead of the arc.
+
+    Resampling the band into (angle, radius) makes the arc nearly a straight line
+    in those coordinates, and the same dynamic programme that traces the heart line
+    then follows it cleanly.
+    """
+    height, width = response.shape
+    cx, cy = centre
+
+    polar = np.zeros((radius_bins, steps), dtype=np.float32)
+    coords: list[list[tuple[int, int]]] = []
+    for si in range(steps):
+        theta = angle_from + (angle_to - angle_from) * si / max(1, steps - 1)
+        column: list[tuple[int, int]] = []
+        for ri in range(radius_bins):
+            radius = radius_from + (radius_to - radius_from) * ri / max(1, radius_bins - 1)
+            x = int(round(cx + radius * np.cos(theta)))
+            y = int(round(cy + radius * np.sin(theta)))
+            if 0 <= x < width and 0 <= y < height:
+                polar[ri, si] = response[y, x]
+            column.append((x, y))
+        coords.append(column)
+
+    path_polar, _ = _trace_horizontal(polar, 0, radius_bins, 0, steps, config)
+    if not path_polar:
+        return []
+
+    # Map back to image coordinates, dropping anything that fell outside the frame.
+    out: list[tuple[int, int]] = []
+    for si, ri in path_polar:
+        if 0 <= si < steps and 0 <= ri < radius_bins:
+            x, y = coords[si][ri]
+            if 0 <= x < width and 0 <= y < height:
+                out.append((x, y))
+    return out
+
+
 def _score_path(
     response: np.ndarray,
     path: list[tuple[int, int]],
-    band: tuple[int, int, int, int],
     config: PalmScanConfig,
 ) -> tuple[float, float, float]:
-    """How strongly a path registers, how continuously, and how far above its band.
+    """How strongly a path registers, how continuously, and how far above its surroundings.
 
-    The contrast ratio is the one that matters. The dynamic-programming search
-    always returns a best path, so on a weak photo it returns a flat line through
-    noise - and that line can still clear an absolute threshold. Dividing by the
-    band's own median asks the only question worth asking: is this brighter than
-    the skin around it, or is it just the least dark part of a featureless region?
-    A straight line through texture scores about 1.0 here; a real crease scores
-    well above it.
+    The contrast ratio is the test that matters, and it is taken against the band
+    immediately around the traced path rather than against a fixed rectangle. Two
+    reasons. A rectangle only describes where a Cartesian trace searched, so for
+    the life line - which is traced in polar coordinates - the rectangle and the
+    path did not correspond, and a flat palm could score high contrast against a
+    region the path never visited. And comparing a path with its own neighbours is
+    the better question anyway: a crease is darker than the skin *beside* it, which
+    is precisely what distinguishes it from an evenly shaded region.
     """
     if not path:
         return 0.0, 0.0, 0.0
@@ -382,14 +504,17 @@ def _score_path(
     )
     strength = float(values.mean())
 
-    row_lo, row_hi, col_lo, col_hi = band
-    region = response[max(0, row_lo):min(height, row_hi), max(0, col_lo):min(width, col_hi)]
-    inside = region[region > 0.0]
-    baseline = float(np.median(inside)) if inside.size else 0.0
+    # Everything within a short distance of the path, minus the path itself.
+    line_mask = np.zeros((height, width), dtype=np.uint8)
+    points = np.array([[x, y] for x, y in path], dtype=np.int32)
+    cv2.polylines(line_mask, [points], False, 255, 3)
+    near = cv2.dilate(line_mask, np.ones((21, 21), np.uint8), iterations=1)
+    surroundings = (near > 0) & (line_mask == 0) & (response > 0.0)
+
+    neighbourhood = response[surroundings]
+    baseline = float(np.median(neighbourhood)) if neighbourhood.size > 32 else 0.0
     contrast = float(strength / baseline) if baseline > 1e-6 else 0.0
 
-    # Continuity is measured against the band too, so a crease that fades over part
-    # of its run is not punished for the photo being darker there.
     clear_level = max(config.min_line_response, baseline * config.min_contrast_ratio)
     clear = float(np.count_nonzero(values >= clear_level)) / float(values.size)
 
@@ -455,14 +580,13 @@ def trace_creases(
     def finish(
         name: CreaseName,
         path_px: list[tuple[int, int]],
-        band: tuple[int, int, int, int],
         extra_notes: list[str] | None = None,
     ) -> TracedCrease:
         notes = list(extra_notes or [])
         if not path_px:
             return TracedCrease(name=name, found=False, notes=notes + ["No path could be traced."])
 
-        strength, continuity, contrast = _score_path(response, path_px, band, config)
+        strength, continuity, contrast = _score_path(response, path_px, config)
         path_norm = [(x / size, y / size) for x, y in path_px]
         found = (
             contrast >= config.min_contrast_ratio
@@ -496,23 +620,39 @@ def trace_creases(
     heart_path, _ = _trace_horizontal(
         response, heart_band[0], heart_band[1], heart_band[2], heart_band[3], config
     )
-    results["heart"] = finish("heart", heart_path, heart_band)
+    results["heart"] = finish("heart", heart_path)
 
     # --- head (air) line: mid palm, across, starting near the thumb-index gap -
     head_band = (int(0.34 * size), int(0.60 * size), int(0.08 * size), int(0.92 * size))
     head_path, _ = _trace_horizontal(
         response, head_band[0], head_band[1], head_band[2], head_band[3], config
     )
-    results["head"] = finish("head", head_path, head_band)
+    results["head"] = finish("head", head_path)
 
     # --- life (earth) line: arcs around the ball of the thumb ----------------
     # Traced vertically on the radial side, because the arc is closer to vertical
     # than horizontal over most of its run.
-    life_band = (int(0.28 * size), int(0.98 * size), int(0.06 * size), int(0.52 * size))
-    life_path, _ = _trace_vertical(
-        response, life_band[2], life_band[3], life_band[0], life_band[1], config
+    # The life line arcs around the ball of the thumb, which in the normalised
+    # frame always sits at the lower left. The arc is swept about a centre just
+    # inside the thumb side of the palm base.
+    life_band = (int(0.22 * size), int(0.98 * size), int(0.04 * size), int(0.58 * size))
+    thumb_x, thumb_y = palm.thumb_base_canonical
+    life_centre = (
+        float(np.clip(thumb_x - 0.06, 0.0, 0.3) * size),
+        float(np.clip(thumb_y + 0.10, 0.6, 1.0) * size),
     )
-    results["life"] = finish("life", life_path, life_band)
+    life_path = _trace_polar(
+        response,
+        centre=life_centre,
+        # From pointing up (towards the index) round to pointing right (towards the
+        # middle of the palm base), which is the sweep the line actually takes.
+        angle_from=float(np.deg2rad(-88.0)),
+        angle_to=float(np.deg2rad(-6.0)),
+        radius_from=0.18 * size,
+        radius_to=0.72 * size,
+        config=config,
+    )
+    results["life"] = finish("life", life_path)
 
     # --- fate (fire) line: vertical, wrist towards the middle finger ----------
     fate_band = (int(0.20 * size), int(0.98 * size), int(0.34 * size), int(0.70 * size))
@@ -522,7 +662,6 @@ def trace_creases(
     results["fate"] = finish(
         "fate",
         fate_path,
-        fate_band,
         ["The fate line is absent in many hands; not finding one is a normal result."],
     )
 

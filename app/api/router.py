@@ -14,6 +14,7 @@ from app.api.v1 import (
     chats,
     earnings,
     face_reading,
+    palm_reading,
     health,
     reviews,
     users,
@@ -42,6 +43,7 @@ api_router.include_router(chats.maintenance_router)
 api_router.include_router(astrologers.maintenance_router)
 api_router.include_router(face_reading.router)
 api_router.include_router(face_reading.admin_router)
+api_router.include_router(palm_reading.router)
 api_router.include_router(reviews.router)
 api_router.include_router(reviews.admin_router)
 api_router.include_router(earnings.router)

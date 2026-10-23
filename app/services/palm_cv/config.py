@@ -86,8 +86,10 @@ class PalmScanConfig:
     #: normalised to 0..1 and real creases sit around 0.1 to 0.4, so a penalty of
     #: the same order makes every optimal path a straight line regardless of what
     #: the creases are doing. Set well below the signal, the path follows the
-    #: crease and the penalty only suppresses jitter.
-    trace_smoothness: float = 0.10
+    #: crease and the penalty only suppresses jitter. Swept against real palms:
+    #: above about 0.65 the head line stops being followed at all, below about
+    #: 0.20 the path starts hopping between neighbouring creases.
+    trace_smoothness: float = 0.35
     #: Steps either side a trace may move per column. Larger follows sharper curves
     #: but also follows noise.
     trace_max_step: int = 3
