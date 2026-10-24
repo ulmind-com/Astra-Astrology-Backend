@@ -44,6 +44,9 @@ class PalmFeature(str, Enum):
     CAREER_FORECAST = "career_forecast"
     RELATIONSHIP_FORECAST = "relationship_forecast"
     HEALTH_FORECAST = "health_forecast"
+    MOUNTS_3D = "mounts_3d"
+    FINGER_FLEXIBILITY_3D = "finger_flexibility_3d"
+    PALM_HOLLOW_3D = "palm_hollow_3d"
 
 
 #: Human labels, used in the reading and in the admin list.
@@ -65,6 +68,9 @@ FEATURE_LABELS: dict[str, str] = {
     PalmFeature.CAREER_FORECAST: "Career & Financial Synthesis",
     PalmFeature.RELATIONSHIP_FORECAST: "Love & Marriage Synthesis",
     PalmFeature.HEALTH_FORECAST: "Vitality & Wellness Synthesis",
+    PalmFeature.MOUNTS_3D: "3D Mount Topography & Planetary Energies",
+    PalmFeature.FINGER_FLEXIBILITY_3D: "3D Joint Flexibility & Spontaneity",
+    PalmFeature.PALM_HOLLOW_3D: "3D Plain of Mars & Core Fortitude",
 }
 
 
@@ -233,6 +239,14 @@ class PalmReading(TimestampedDocument):
     hand_type: dict = Field(default_factory=dict)
     creases: dict = Field(default_factory=dict)
     crease_relationships: dict = Field(default_factory=dict)
+
+    #: 3D world scan coordinates, mount elevations, and depth metrics
+    landmarks_3d: list[list[float]] = Field(default_factory=list)
+    world_landmarks_mm: list[list[float]] = Field(default_factory=list)
+    mount_elevations_3d: dict = Field(default_factory=dict)
+    palm_cup_depth_mm: float = Field(default=0.0)
+    finger_flexibility_3d: dict = Field(default_factory=dict)
+    finger_inclinations_3d: dict = Field(default_factory=dict)
 
     sections: list[ReadingSection] = Field(default_factory=list)
     skipped: list[SkippedFeature] = Field(default_factory=list)

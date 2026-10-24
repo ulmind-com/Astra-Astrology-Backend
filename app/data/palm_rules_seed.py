@@ -829,6 +829,109 @@ PALM_RULES_SEED: list[dict[str, Any]] = [
             "of active energy."
         ),
     },
+
+    # ======================================================================
+    # 17. 3D Mount Topography & Planetary Energies [JF], [HP], [RS]
+    # ======================================================================
+    {
+        "feature": PalmFeature.MOUNTS_3D.value, "option": "mount_jupiter_prominent",
+        "label": "Elevated Jupiter Mount (Executive Authority & Wisdom)",
+        "conditions": [{"metric": "jupiter_mount_mm", "min": -7.2}],
+        "requires": GEOMETRY, "area": "Planetary Energy", "source": "Jupiter finger; Palmistry Notes Astro Rahul Sharma", "priority": 12,
+        "meaning": (
+            "3D topographic scan indicates a prominent Jupiter Mount under the index knuckle. In Astro Rahul Sharma's palmistry notes, "
+            "an elevated Jupiter mount grants natural leadership commanding respect, expansive vision, philosophical insight, "
+            "and dignified self-respect. The native naturally mentors others and holds high ethical standards."
+        ),
+    },
+    {
+        "feature": PalmFeature.MOUNTS_3D.value, "option": "mount_venus_vitality",
+        "label": "Full Venus Mount (Warmth, Vitality & Charisma)",
+        "conditions": [{"metric": "venus_mount_mm", "min": -25.5}],
+        "requires": GEOMETRY, "area": "Planetary Energy", "source": "Earth line; Health palmistry", "priority": 11,
+        "meaning": (
+            "3D elevation mapping reveals an expansive, vibrant Venusian zone at the thumb base. Signifies deep warmth, "
+            "sensory refinement, generous hospitality, and an innate capacity to savor art, culinary pleasures, and loving domestic life."
+        ),
+    },
+    {
+        "feature": PalmFeature.MOUNTS_3D.value, "option": "mount_moon_intuitive",
+        "label": "Expansive Lunar Mount (Intuitive Imagination & Wanderlust)",
+        "conditions": [{"metric": "moon_mount_mm", "min": -3.5}],
+        "requires": GEOMETRY, "area": "Planetary Energy", "source": "Nature through palm; Loops", "priority": 10,
+        "meaning": (
+            "3D topographic scan highlights a well-developed Lunar Mount (Moon). Reflects a powerful subconscious mind, "
+            "vivid creative imagination, empathy, intuitive dreams, and an affinity for travel and exploring distant horizons."
+        ),
+    },
+    {
+        "feature": PalmFeature.MOUNTS_3D.value, "option": "mount_balanced_distribution",
+        "label": "Harmonious Mount Balance (Even Temperament)",
+        "requires": GEOMETRY, "is_default": True, "area": "Planetary Energy", "source": "Palmistry Notes Astro Rahul Sharma",
+        "meaning": (
+            "3D elevation scan demonstrates an evenly distributed palm terrain without extreme imbalances. "
+            "Signals emotional stability, balanced ambition, steady fortitude, and practical everyday competence."
+        ),
+    },
+
+    # ======================================================================
+    # 18. 3D Joint Flexibility & Spontaneity [FG], [NP]
+    # ======================================================================
+    {
+        "feature": PalmFeature.FINGER_FLEXIBILITY_3D.value, "option": "dorsiflexion_spontaneous",
+        "label": "3D Spontaneous & Psychologically Agile (Flexible Joints)",
+        "conditions": [{"metric": "is_spontaneous_flexible", "min": 0.5}],
+        "requires": GEOMETRY, "area": "Flexibility", "source": "Fingers in general and Thumb (1)", "priority": 12,
+        "meaning": (
+            "3D joint angle measurement captures backward dorsiflexion. Client notes state that flexible, backward-curving digits "
+            "signify an open, highly spontaneous psyche: 'Can do multiple jobs at one time. Open psychologically. "
+            "Freedom comes before structure.' The native adapts instantly to sudden opportunities and thrives outside rigid bureaucracy."
+        ),
+    },
+    {
+        "feature": PalmFeature.FINGER_FLEXIBILITY_3D.value, "option": "dorsiflexion_structured",
+        "label": "3D Methodical & Resilient Focus (Stiff Fingers)",
+        "conditions": [{"metric": "is_stiff_fingers", "min": 0.5}],
+        "requires": GEOMETRY, "area": "Flexibility", "source": "Fingers in general and Thumb (1)", "priority": 11,
+        "meaning": (
+            "3D scan reveals firm, unyielding digit alignment. Client document notes: 'Stiff fingers like on Earth hand indicates "
+            "disciplined, methodical mental processing; likes to work in structured systems and reliable frameworks.' "
+            "Values consistency, deep endurance, and unwavering dependability."
+        ),
+    },
+    {
+        "feature": PalmFeature.FINGER_FLEXIBILITY_3D.value, "option": "dorsiflexion_adaptable",
+        "label": "Balanced Executive Adaptability",
+        "requires": GEOMETRY, "is_default": True, "area": "Flexibility", "source": "Fingers in general and Thumb (1)",
+        "meaning": (
+            "3D finger flexibility sits in the optimal golden zone (15°-28°). Combines practical discipline with the "
+            "ability to pivot effectively when circumstances require."
+        ),
+    },
+
+    # ======================================================================
+    # 19. 3D Plain of Mars & Core Fortitude [HP], [RS]
+    # ======================================================================
+    {
+        "feature": PalmFeature.PALM_HOLLOW_3D.value, "option": "hollow_deep_resilience",
+        "label": "Deep Palm Cup (Tested Resilience & Emotional Fortitude)",
+        "conditions": [{"metric": "hollow_depth_mm", "min": 3.8}],
+        "requires": GEOMETRY, "area": "Constitution", "source": "Palmistry Notes Astro Rahul Sharma; Health palmistry", "priority": 12,
+        "meaning": (
+            "3D scan measures a distinct hollow in the center of the palm (Plain of Mars / Rahu field). "
+            "Traditional palmistry regards this as an indicator of internal fortitude: the native faces life's tests "
+            "with patience and tenacity, transmuting early challenges into formidable inner strength and lasting triumph."
+        ),
+    },
+    {
+        "feature": PalmFeature.PALM_HOLLOW_3D.value, "option": "hollow_direct_flow",
+        "label": "Balanced Palm Hollow (Direct Action & Steady Flow)",
+        "requires": GEOMETRY, "is_default": True, "area": "Constitution", "source": "Palmistry Notes Astro Rahul Sharma",
+        "meaning": (
+            "The 3D plain of the palm exhibits a firm, level contour. Energy flows directly into action without lingering "
+            "hesitation, supporting straightforward communication and steady, unencumbered progress."
+        ),
+    },
 ]
 
 

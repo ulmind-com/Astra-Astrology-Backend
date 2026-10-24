@@ -327,3 +327,76 @@ def hand_type(values: dict[str, float]) -> dict[str, Any]:
         "finger_palm_ratio": round(fingers, 4),
         "confidence": round(confidence, 3),
     }
+
+
+def extract_3d_metrics(
+    landmarks_px: list[tuple[float, float, float]],
+    landmarks_world: list[tuple[float, float, float]] | None = None,
+) -> dict[str, Any]:
+    """Compute 3D palm metrics: mount elevations, palm cup depth, finger dorsiflexion and inclinations."""
+    if landmarks_world and len(landmarks_world) == 21:
+        pts3d = np.array([[p[0] * 1000.0, p[1] * 1000.0, p[2] * 1000.0] for p in landmarks_world], dtype=np.float32)
+        unit = "mm"
+    else:
+        pts3d = np.array(landmarks_px, dtype=np.float32)
+        unit = "norm"
+
+    wrist = pts3d[L.WRIST]
+    idx_mcp = pts3d[L.INDEX_MCP]
+    mid_mcp = pts3d[L.MIDDLE_MCP]
+    ring_mcp = pts3d[L.RING_MCP]
+    pinky_mcp = pts3d[L.PINKY_MCP]
+    thumb_cmc = pts3d[L.THUMB_CMC]
+    thumb_mcp = pts3d[L.THUMB_MCP]
+
+    axis = mid_mcp - wrist
+    across = pinky_mcp - idx_mcp
+    normal = np.cross(across, axis)
+    normal_len = float(np.linalg.norm(normal))
+    normal = normal / (normal_len + 1e-9)
+
+    palm_center = (wrist + idx_mcp + mid_mcp + ring_mcp + pinky_mcp) / 5.0
+    hollow_depth = abs(float(np.dot(palm_center - mid_mcp, normal)))
+
+    mounts = {
+        "jupiter_mount_mm": round(float(np.dot(idx_mcp - wrist, normal)), 2),
+        "saturn_mount_mm": round(float(np.dot(mid_mcp - wrist, normal)), 2),
+        "sun_mount_mm": round(float(np.dot(ring_mcp - wrist, normal)), 2),
+        "mercury_mount_mm": round(float(np.dot(pinky_mcp - wrist, normal)), 2),
+        "venus_mount_mm": round(float(np.dot(thumb_mcp - wrist, normal)), 2),
+        "moon_mount_mm": round(float(np.dot(pinky_mcp * 0.5 + wrist * 0.5 - wrist, normal)), 2),
+    }
+
+    mid_tip = pts3d[L.MIDDLE_TIP]
+    mid_finger_vec = mid_tip - mid_mcp
+    axis_norm = axis / (np.linalg.norm(axis) + 1e-9)
+    bend_rad = np.arctan2(np.dot(mid_finger_vec, normal), np.dot(mid_finger_vec, axis_norm))
+    dorsiflexion = float(np.degrees(bend_rad))
+
+    mid_vec = pts3d[L.MIDDLE_TIP] - mid_mcp
+    ring_vec = pts3d[L.RING_TIP] - ring_mcp
+    dot_sr = np.dot(mid_vec, ring_vec) / (np.linalg.norm(mid_vec) * np.linalg.norm(ring_vec) + 1e-9)
+    saturn_sun_tilt = float(np.degrees(np.arccos(np.clip(dot_sr, -1.0, 1.0))))
+
+    idx_vec = pts3d[L.INDEX_TIP] - idx_mcp
+    th_vec = pts3d[L.THUMB_TIP] - thumb_mcp
+    dot_jt = np.dot(idx_vec, th_vec) / (np.linalg.norm(idx_vec) * np.linalg.norm(th_vec) + 1e-9)
+    jupiter_thumb_angle = float(np.degrees(np.arccos(np.clip(dot_jt, -1.0, 1.0))))
+
+    is_spontaneous = 1.0 if abs(dorsiflexion) >= 28.0 else 0.0
+    is_stiff = 1.0 if abs(dorsiflexion) < 12.0 else 0.0
+    thumb_gap_wide = 1.0 if jupiter_thumb_angle >= 50.0 else 0.0
+    saturn_leaning_sun = 1.0 if saturn_sun_tilt >= 7.5 else 0.0
+
+    return {
+        "hollow_depth_mm": round(hollow_depth, 2),
+        "dorsiflexion_deg": round(dorsiflexion, 1),
+        "saturn_sun_tilt_deg": round(saturn_sun_tilt, 1),
+        "jupiter_thumb_angle_deg": round(jupiter_thumb_angle, 1),
+        "is_spontaneous_flexible": is_spontaneous,
+        "is_stiff_fingers": is_stiff,
+        "thumb_gap_wide": thumb_gap_wide,
+        "saturn_leaning_sun": saturn_leaning_sun,
+        "mount_elevations": mounts,
+        "unit": unit,
+    }

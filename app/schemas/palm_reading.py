@@ -85,6 +85,14 @@ class PalmScanResponse(BaseModel):
     #: the reason. Shown rather than omitted.
     skipped: list[SkippedFeatureOut] = Field(default_factory=list)
 
+    #: 3D world scan coordinates, mount elevations, and depth metrics
+    landmarks_3d: list[list[float]] = Field(default_factory=list)
+    world_landmarks_mm: list[list[float]] = Field(default_factory=list)
+    mount_elevations_3d: dict[str, float] = Field(default_factory=dict)
+    palm_cup_depth_mm: float = 0.0
+    finger_flexibility_3d: dict[str, Any] = Field(default_factory=dict)
+    finger_inclinations_3d: dict[str, float] = Field(default_factory=dict)
+
     #: The traced overlay, so the reading can be checked against what was read.
     overlay_image: str | None = None
     response_image: str | None = None
@@ -102,6 +110,15 @@ class PalmReadingOut(BaseModel):
     hand_type: dict[str, Any] = Field(default_factory=dict)
     sections: list[ReadingSectionOut] = Field(default_factory=list)
     skipped: list[SkippedFeatureOut] = Field(default_factory=list)
+
+    #: 3D world scan coordinates, mount elevations, and depth metrics
+    landmarks_3d: list[list[float]] = Field(default_factory=list)
+    world_landmarks_mm: list[list[float]] = Field(default_factory=list)
+    mount_elevations_3d: dict[str, float] = Field(default_factory=dict)
+    palm_cup_depth_mm: float = 0.0
+    finger_flexibility_3d: dict[str, Any] = Field(default_factory=dict)
+    finger_inclinations_3d: dict[str, float] = Field(default_factory=dict)
+
     overlay_image: str | None = None
     coins_charged: int = 0
     quality_score: float = 1.0

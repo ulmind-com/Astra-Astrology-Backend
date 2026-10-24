@@ -9,7 +9,7 @@ from app.services.palm_cv.creases import (
     trace_creases,
 )
 from app.services.palm_cv.detector import HandDetection, get_landmarker
-from app.services.palm_cv.measurements import HandMeasurements, extract, hand_type
+from app.services.palm_cv.measurements import HandMeasurements, extract, extract_3d_metrics, hand_type
 from app.services.palm_cv.pipeline import PalmScanResult, execute_scan
 from app.services.palm_cv.visualizer import draw_overlay, draw_response_map, to_data_url
 from app.services.palm_cv.quality import QualityStatus, assess, decode_image
@@ -26,6 +26,7 @@ __all__ = [
     "get_landmarker",
     "HandMeasurements",
     "extract",
+    "extract_3d_metrics",
     "hand_type",
     "PalmScanResult",
     "execute_scan",

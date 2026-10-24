@@ -27,7 +27,7 @@ from app.services.palm_cv.creases import (
     trace_creases,
 )
 from app.services.palm_cv.detector import get_landmarker
-from app.services.palm_cv.measurements import extract, hand_type
+from app.services.palm_cv.measurements import extract, extract_3d_metrics, hand_type
 from app.services.palm_cv.quality import QualityStatus, assess, decode_image, hand_pose
 from app.services.palm_cv.visualizer import draw_overlay, draw_response_map, to_data_url
 
@@ -55,6 +55,14 @@ class PalmScanResult:
     overlay_image: str | None = None
     response_image: str | None = None
 
+    #: 3D world scan coordinates, mount elevations, and depth metrics
+    landmarks_3d: list[list[float]] = field(default_factory=list)
+    world_landmarks_mm: list[list[float]] = field(default_factory=list)
+    mount_elevations_3d: dict[str, float] = field(default_factory=dict)
+    palm_cup_depth_mm: float = 0.0
+    finger_flexibility_3d: dict[str, Any] = field(default_factory=dict)
+    finger_inclinations_3d: dict[str, float] = field(default_factory=dict)
+
     processing_ms: float = 0.0
     warnings: list[str] = field(default_factory=list)
 
@@ -79,6 +87,12 @@ class PalmScanResult:
             "hand_type": self.hand_type,
             "creases": self.creases,
             "crease_relationships": self.crease_relationships,
+            "landmarks_3d": self.landmarks_3d,
+            "world_landmarks_mm": self.world_landmarks_mm,
+            "mount_elevations_3d": self.mount_elevations_3d,
+            "palm_cup_depth_mm": round(self.palm_cup_depth_mm, 2),
+            "finger_flexibility_3d": self.finger_flexibility_3d,
+            "finger_inclinations_3d": self.finger_inclinations_3d,
             "overlay_image": self.overlay_image,
             "response_image": self.response_image,
             "processing_ms": round(self.processing_ms, 1),
@@ -144,6 +158,39 @@ def execute_scan(
         result.measurements = {k: round(v, 4) for k, v in measured.values.items()}
         result.measurement_details = {k: m.as_dict() for k, m in measured.details.items()}
         result.hand_type = hand_type(measured.values)
+
+        # --- 3D scan & depth topography ------------------------------------
+        metrics_3d = extract_3d_metrics(detection.landmarks_px, detection.landmarks_world)
+        result.palm_cup_depth_mm = metrics_3d["hollow_depth_mm"]
+        result.mount_elevations_3d = metrics_3d["mount_elevations"]
+        result.finger_flexibility_3d = {
+            "dorsiflexion_deg": metrics_3d["dorsiflexion_deg"],
+            "is_spontaneous": bool(metrics_3d["is_spontaneous_flexible"]),
+            "is_stiff": bool(metrics_3d["is_stiff_fingers"]),
+        }
+        result.finger_inclinations_3d = {
+            "saturn_to_sun_deg": metrics_3d["saturn_sun_tilt_deg"],
+            "jupiter_to_thumb_deg": metrics_3d["jupiter_thumb_angle_deg"],
+        }
+        if detection.landmarks_norm:
+            result.landmarks_3d = [[round(p[0], 4), round(p[1], 4), round(p[2], 4)] for p in detection.landmarks_norm]
+        if detection.landmarks_world:
+            result.world_landmarks_mm = [
+                [round(p[0] * 1000.0, 2), round(p[1] * 1000.0, 2), round(p[2] * 1000.0, 2)]
+                for p in detection.landmarks_world
+            ]
+
+        # Feed 3D metrics directly into measurements for rule evaluation
+        result.measurements["hollow_depth_mm"] = metrics_3d["hollow_depth_mm"]
+        result.measurements["dorsiflexion_deg"] = metrics_3d["dorsiflexion_deg"]
+        result.measurements["is_spontaneous_flexible"] = metrics_3d["is_spontaneous_flexible"]
+        result.measurements["is_stiff_fingers"] = metrics_3d["is_stiff_fingers"]
+        result.measurements["saturn_sun_tilt_deg"] = metrics_3d["saturn_sun_tilt_deg"]
+        result.measurements["jupiter_thumb_angle_deg"] = metrics_3d["jupiter_thumb_angle_deg"]
+        result.measurements["thumb_gap_wide"] = metrics_3d["thumb_gap_wide"]
+        result.measurements["saturn_leaning_sun"] = metrics_3d["saturn_leaning_sun"]
+        for m_name, m_val in metrics_3d["mount_elevations"].items():
+            result.measurements[m_name] = m_val
 
         # --- creases -------------------------------------------------------
         palm = build_canonical_palm(image, detection.landmarks_px, config)

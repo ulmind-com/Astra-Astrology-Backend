@@ -370,6 +370,11 @@ def _scan_stub(creases_found: dict[str, bool], **values) -> dict:
         "finger_thickness": 0.26, "index_phalange_first": 0.28,
         "index_phalange_second": 0.30, "index_phalange_third": 0.42,
         "is_square_palm": 0.0, "mercury_reach_ratio": 0.84,
+        "hollow_depth_mm": 4.2, "dorsiflexion_deg": -25.0, "is_spontaneous_flexible": 0.0,
+        "is_stiff_fingers": 0.0, "saturn_sun_tilt_deg": 5.0, "jupiter_thumb_angle_deg": 48.0,
+        "thumb_gap_wide": 0.0, "saturn_leaning_sun": 0.0,
+        "jupiter_mount_mm": -7.0, "saturn_mount_mm": 0.0, "sun_mount_mm": -5.0,
+        "mercury_mount_mm": -7.5, "venus_mount_mm": -24.0, "moon_mount_mm": -3.8,
     }
     measurements.update({k: v for k, v in values.items() if isinstance(v, (int, float))})
     return {

@@ -29,6 +29,8 @@ class HandDetection:
     #: "Left" or "Right", as seen by the camera.
     handedness: str | None
     handedness_confidence: float
+    #: Real-world metric 3D coordinates (x, y, z) in meters from MediaPipe world landmarks.
+    landmarks_world: list[tuple[float, float, float]] | None = None
 
 
 class HandLandmarkerManager:
@@ -103,6 +105,10 @@ class HandLandmarkerManager:
         norm = [(p.x, p.y, p.z) for p in points]
         px = [(p.x * width, p.y * height, p.z * width) for p in points]
 
+        world = None
+        if result.hand_world_landmarks and result.hand_world_landmarks[0]:
+            world = [(p.x, p.y, p.z) for p in result.hand_world_landmarks[0]]
+
         handedness = None
         confidence = 0.0
         if result.handedness and result.handedness[0]:
@@ -116,6 +122,7 @@ class HandLandmarkerManager:
             landmarks_px=px,
             handedness=handedness,
             handedness_confidence=confidence,
+            landmarks_world=world,
         )
 
 
