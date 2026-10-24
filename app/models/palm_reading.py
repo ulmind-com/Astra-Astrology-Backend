@@ -202,7 +202,7 @@ class PalmRule(TimestampedDocument):
         indexes = [
             pymongo.IndexModel(
                 [("feature", pymongo.ASCENDING), ("option", pymongo.ASCENDING)],
-                name="palm_rule_feature_option",
+                name="palm_rule_unique",
                 unique=True,
             ),
             pymongo.IndexModel([("enabled", pymongo.ASCENDING)], name="palm_rule_enabled"),
