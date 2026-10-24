@@ -208,7 +208,9 @@ def execute_scan(
 
         if include_images:
             try:
-                result.overlay_image = to_data_url(draw_overlay(palm, creases))
+                result.overlay_image = to_data_url(
+                    draw_overlay(palm, creases, original_image=image)
+                )
                 result.response_image = to_data_url(draw_response_map(palm), quality=70)
             except Exception as exc:
                 # A reading without its picture is still a reading.

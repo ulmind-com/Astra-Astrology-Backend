@@ -24,8 +24,8 @@ class PalmScanConfig:
 
     # --- input limits --------------------------------------------------------
     #: Below this the creases are simply not resolved and tracing becomes guessing.
-    min_image_width: int = 480
-    min_image_height: int = 480
+    min_image_width: int = 320
+    min_image_height: int = 320
     #: Guards against a decode bomb and keeps processing time bounded.
     max_image_pixels: int = 40_000_000
     #: Large images are worked at this width; beyond it the extra pixels cost time

@@ -565,6 +565,58 @@ def _termination_zone(point: tuple[float, float], knuckles: dict[str, tuple[floa
     return f"{height} {classical}"
 
 
+def smooth_path(
+    path_norm: list[tuple[float, float]],
+    window: int = 21,
+    sigma: float = 4.0,
+) -> list[tuple[float, float]]:
+    """Apply 1D Gaussian kernel smoothing to path coordinates to eliminate discretization staircases."""
+    if len(path_norm) < 5:
+        return list(path_norm)
+    w = min(window, len(path_norm))
+    if w % 2 == 0:
+        w -= 1
+    xs = np.array([p[0] for p in path_norm], dtype=np.float32)
+    ys = np.array([p[1] for p in path_norm], dtype=np.float32)
+    radius = w // 2
+    kernel = cv2.getGaussianKernel(w, sigma).flatten()
+    xs_padded = np.pad(xs, radius, mode="edge")
+    ys_padded = np.pad(ys, radius, mode="edge")
+    xs_smooth = np.convolve(xs_padded, kernel, mode="valid")
+    ys_smooth = np.convolve(ys_padded, kernel, mode="valid")
+    return [(float(x), float(y)) for x, y in zip(xs_smooth, ys_smooth)]
+
+
+def trim_path(
+    path_px: list[tuple[int, int]],
+    response: np.ndarray,
+    threshold: float = 0.12,
+) -> list[tuple[int, int]]:
+    """Trim leading and trailing points where valley response drops into flat skin."""
+    if not path_px:
+        return []
+    h, w = response.shape
+    start_idx = 0
+    while start_idx < len(path_px):
+        x, y = path_px[start_idx]
+        val = response[min(h - 1, max(0, y)), min(w - 1, max(0, x))]
+        if val >= threshold:
+            break
+        start_idx += 1
+
+    end_idx = len(path_px) - 1
+    while end_idx > start_idx:
+        x, y = path_px[end_idx]
+        val = response[min(h - 1, max(0, y)), min(w - 1, max(0, x))]
+        if val >= threshold:
+            break
+        end_idx -= 1
+
+    if end_idx - start_idx < 10:
+        return path_px
+    return path_px[start_idx : end_idx + 1]
+
+
 def trace_creases(
     palm: CanonicalPalm, config: PalmScanConfig = DEFAULT_CONFIG
 ) -> dict[str, TracedCrease]:
@@ -586,8 +638,10 @@ def trace_creases(
         if not path_px:
             return TracedCrease(name=name, found=False, notes=notes + ["No path could be traced."])
 
-        strength, continuity, contrast = _score_path(response, path_px, config)
-        path_norm = [(x / size, y / size) for x, y in path_px]
+        # Trim flat skin ends where crease has petered out
+        trimmed_px = trim_path(path_px, response, threshold=0.12)
+        strength, continuity, contrast = _score_path(response, trimmed_px, config)
+        path_norm = [(x / size, y / size) for x, y in trimmed_px]
         found = (
             contrast >= config.min_contrast_ratio
             and strength >= config.min_line_response
@@ -598,66 +652,70 @@ def trace_creases(
                 "Traced, but the crease did not register strongly enough to report. "
                 "This usually means lighting or focus rather than an absent line."
             )
+
+        # Smooth with Gaussian subpixel interpolation when found
+        smooth_norm = smooth_path(path_norm, window=21, sigma=4.0) if found else []
+
         return TracedCrease(
             name=name,
             found=found,
-            path=path_norm if found else [],
+            path=smooth_norm,
             strength=strength,
             continuity=continuity,
             contrast=contrast,
-            length=_path_length(path_norm),
-            curvature=_curvature(path_norm),
-            start=path_norm[0] if found else None,
-            end=path_norm[-1] if found else None,
+            length=_path_length(smooth_norm),
+            curvature=_curvature(smooth_norm),
+            start=smooth_norm[0] if found else None,
+            end=smooth_norm[-1] if found else None,
             termination_zone=(
-                _termination_zone(path_norm[0], palm.knuckles_canonical) if found else None
+                _termination_zone(smooth_norm[0], palm.knuckles_canonical) if found else None
             ),
             notes=notes,
         )
 
     # --- heart (water) line: upper palm, running across below the knuckles ----
-    heart_band = (int(0.08 * size), int(0.36 * size), int(0.10 * size), int(0.95 * size))
+    heart_band = (int(0.14 * size), int(0.38 * size), int(0.15 * size), int(0.95 * size))
     heart_path, _ = _trace_horizontal(
         response, heart_band[0], heart_band[1], heart_band[2], heart_band[3], config
     )
     results["heart"] = finish("heart", heart_path)
 
-    # --- head (air) line: mid palm, across, starting near the thumb-index gap -
-    head_band = (int(0.34 * size), int(0.60 * size), int(0.08 * size), int(0.92 * size))
-    head_path, _ = _trace_horizontal(
-        response, head_band[0], head_band[1], head_band[2], head_band[3], config
-    )
-    results["head"] = finish("head", head_path)
-
-    # --- life (earth) line: arcs around the ball of the thumb ----------------
-    # Traced vertically on the radial side, because the arc is closer to vertical
-    # than horizontal over most of its run.
-    # The life line arcs around the ball of the thumb, which in the normalised
-    # frame always sits at the lower left. The arc is swept about a centre just
-    # inside the thumb side of the palm base.
-    life_band = (int(0.22 * size), int(0.98 * size), int(0.04 * size), int(0.58 * size))
-    thumb_x, thumb_y = palm.thumb_base_canonical
-    life_centre = (
-        float(np.clip(thumb_x - 0.06, 0.0, 0.3) * size),
-        float(np.clip(thumb_y + 0.10, 0.6, 1.0) * size),
-    )
-    life_path = _trace_polar(
-        response,
-        centre=life_centre,
-        # From pointing up (towards the index) round to pointing right (towards the
-        # middle of the palm base), which is the sweep the line actually takes.
-        angle_from=float(np.deg2rad(-88.0)),
-        angle_to=float(np.deg2rad(-6.0)),
-        radius_from=0.18 * size,
-        radius_to=0.72 * size,
-        config=config,
+    # --- life (earth) line: radial thenar corridor ---------------------------
+    # Starts at the radial webbing between thumb and index, arcs cleanly around
+    # the thenar eminence (ball of thumb) all the way down towards the wrist.
+    life_band = (int(0.30 * size), int(0.95 * size), int(0.10 * size), int(0.55 * size))
+    life_path, _ = _trace_vertical(
+        response, life_band[2], life_band[3], life_band[0], life_band[1], config
     )
     results["life"] = finish("life", life_path)
 
-    # --- fate (fire) line: vertical, wrist towards the middle finger ----------
-    fate_band = (int(0.20 * size), int(0.98 * size), int(0.34 * size), int(0.70 * size))
+    # --- head (air) line: mid palm, across from radial webbing to percussion ---
+    # Suppress the heart line valley so the head line search never hops onto or
+    # merges with the heart crease.
+    resp_no_heart = response.copy()
+    if heart_path:
+        heart_mask = np.zeros_like(response, dtype=np.uint8)
+        cv2.polylines(heart_mask, [np.array(heart_path, dtype=np.int32)], False, 255, 24)
+        resp_no_heart[heart_mask > 0] = 0.0
+
+    head_band = (int(0.35 * size), int(0.65 * size), int(0.10 * size), int(0.90 * size))
+    head_path, _ = _trace_horizontal(
+        resp_no_heart, head_band[0], head_band[1], head_band[2], head_band[3], config
+    )
+    results["head"] = finish("head", head_path)
+
+    # --- fate (fire) line: central Saturn axis -------------------------------
+    # Must run along the middle finger axis (Saturn mount, x ~ 0.46..0.66).
+    # Mask out the life line corridor so the fate search NEVER steals the life crease.
+    resp_saturn = response.copy()
+    if life_path:
+        life_mask = np.zeros_like(response, dtype=np.uint8)
+        cv2.polylines(life_mask, [np.array(life_path, dtype=np.int32)], False, 255, 30)
+        resp_saturn[life_mask > 0] = 0.0
+
+    fate_band = (int(0.20 * size), int(0.95 * size), int(0.46 * size), int(0.66 * size))
     fate_path, _ = _trace_vertical(
-        response, fate_band[2], fate_band[3], fate_band[0], fate_band[1], config
+        resp_saturn, fate_band[2], fate_band[3], fate_band[0], fate_band[1], config
     )
     results["fate"] = finish(
         "fate",
