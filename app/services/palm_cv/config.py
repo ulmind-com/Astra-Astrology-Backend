@@ -33,9 +33,10 @@ class PalmScanConfig:
     working_width: int = 1280
 
     # --- quality gates -------------------------------------------------------
-    #: Variance of the Laplacian over the palm region (computed strictly inside the
-    #: eroded palm mask to eliminate mask border boundary artifacts).
-    min_sharpness: float = 20.0
+    #: Variance of the Laplacian over the palm region (evaluated at a normalized
+    #: reference palm scale across the eroded palm interior). Real in-focus webcam
+    #: and mobile photos sit between 3.0 and 45.0, while blurry or unfocused photos fall below 2.0.
+    min_sharpness: float = 2.4
     #: Mean brightness of the palm region, 0-255.
     min_brightness: float = 40.0
     max_brightness: float = 230.0

@@ -203,13 +203,27 @@ def assess(
     )
 
     # --- focus -------------------------------------------------------------
-    # Compute Laplacian of the grayscale image first. To avoid boundary jump artifacts
-    # between the palm and dark mask borders, evaluate variance across the eroded palm interior.
+    # Compute Laplacian variance over the palm region at a scale-normalized reference.
+    # High-resolution sensors and webcams spread skin texture across many pixels, diluting
+    # raw Laplacian variance inversely with resolution. Normalizing to a 256px palm reference
+    # box gives a resolution-invariant focus metric.
     if palm_pixels.size > 0:
-        lap = cv2.Laplacian(gray, cv2.CV_64F)
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
-        eroded_mask = cv2.erode(mask, kernel)
-        palm_lap = lap[eroded_mask > 0] if np.count_nonzero(eroded_mask) > 100 else lap[mask > 0]
+        pts = np.array([[landmarks_px[i][0], landmarks_px[i][1]] for i in L.PALM_BOUNDARY], dtype=np.float32)
+        x_min, y_min = np.min(pts, axis=0)
+        x_max, y_max = np.max(pts, axis=0)
+        w = max(10.0, float(x_max - x_min))
+        h = max(10.0, float(y_max - y_min))
+
+        scale = 256.0 / max(w, h)
+        new_w = max(1, int(round(gray.shape[1] * scale)))
+        new_h = max(1, int(round(gray.shape[0] * scale)))
+        scaled_gray = cv2.resize(gray, (new_w, new_h), interpolation=cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR)
+        scaled_mask = cv2.resize(mask, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
+
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+        eroded_mask = cv2.erode(scaled_mask, kernel)
+        lap = cv2.Laplacian(scaled_gray, cv2.CV_64F)
+        palm_lap = lap[eroded_mask > 0] if np.count_nonzero(eroded_mask) > 50 else lap[scaled_mask > 0]
         sharpness = float(palm_lap.var()) if palm_lap.size > 0 else 0.0
     else:
         sharpness = 0.0
