@@ -66,6 +66,9 @@ CREASE_ELEMENTAL = {
     "head": "Air line",
     "life": "Earth line",
     "fate": "Fire line",
+    "sun": "Sun line",
+    "mercury": "Mercury line",
+    "mars": "Mars line",
 }
 
 
@@ -96,7 +99,7 @@ class TracedCrease:
     def as_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
-            "elemental_name": CREASE_ELEMENTAL[self.name],
+            "elemental_name": CREASE_ELEMENTAL.get(self.name, f"{self.name.title()} line"),
             "found": self.found,
             "strength": round(self.strength, 4),
             "continuity": round(self.continuity, 4),
