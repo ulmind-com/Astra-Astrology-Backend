@@ -93,6 +93,13 @@ class PalmScanResponse(BaseModel):
     finger_flexibility_3d: dict[str, Any] = Field(default_factory=dict)
     finger_inclinations_3d: dict[str, float] = Field(default_factory=dict)
 
+    #: Astrological extensions: Secondary lines, Sacred marks, Timeline, Skin vitality
+    secondary_lines: dict[str, Any] = Field(default_factory=dict)
+    sacred_marks: list[dict[str, Any]] = Field(default_factory=list)
+    timeline: list[dict[str, Any]] = Field(default_factory=list)
+    skin_vitality: dict[str, Any] = Field(default_factory=dict)
+    karmic_summary: dict[str, Any] = Field(default_factory=dict)
+
     #: The traced overlay, so the reading can be checked against what was read.
     overlay_image: str | None = None
     response_image: str | None = None
@@ -118,6 +125,12 @@ class PalmReadingOut(BaseModel):
     palm_cup_depth_mm: float = 0.0
     finger_flexibility_3d: dict[str, Any] = Field(default_factory=dict)
     finger_inclinations_3d: dict[str, float] = Field(default_factory=dict)
+
+    secondary_lines: dict[str, Any] = Field(default_factory=dict)
+    sacred_marks: list[dict[str, Any]] = Field(default_factory=list)
+    timeline: list[dict[str, Any]] = Field(default_factory=list)
+    skin_vitality: dict[str, Any] = Field(default_factory=dict)
+    karmic_summary: dict[str, Any] = Field(default_factory=dict)
 
     overlay_image: str | None = None
     coins_charged: int = 0

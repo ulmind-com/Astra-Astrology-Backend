@@ -47,6 +47,10 @@ class PalmFeature(str, Enum):
     MOUNTS_3D = "mounts_3d"
     FINGER_FLEXIBILITY_3D = "finger_flexibility_3d"
     PALM_HOLLOW_3D = "palm_hollow_3d"
+    SUN_LINE = "sun_line"
+    MARS_LINE = "mars_line"
+    SACRED_MARKS = "sacred_marks"
+    SKIN_VITALITY = "skin_vitality"
 
 
 #: Human labels, used in the reading and in the admin list.
@@ -71,6 +75,10 @@ FEATURE_LABELS: dict[str, str] = {
     PalmFeature.MOUNTS_3D: "3D Mount Topography & Planetary Energies",
     PalmFeature.FINGER_FLEXIBILITY_3D: "3D Joint Flexibility & Spontaneity",
     PalmFeature.PALM_HOLLOW_3D: "3D Plain of Mars & Core Fortitude",
+    PalmFeature.SUN_LINE: "Sun Line (Fame, Public Eminence & Surya Radiance)",
+    PalmFeature.MARS_LINE: "Mars Line (Guardian Vitality & Sanjeevani Shield)",
+    PalmFeature.SACRED_MARKS: "Sacred Marks & Auspicious Yogas (Chihnas)",
+    PalmFeature.SKIN_VITALITY: "Ayurvedic Skin Radiance & Prana Flush",
 }
 
 
@@ -247,6 +255,12 @@ class PalmReading(TimestampedDocument):
     palm_cup_depth_mm: float = Field(default=0.0)
     finger_flexibility_3d: dict = Field(default_factory=dict)
     finger_inclinations_3d: dict = Field(default_factory=dict)
+
+    secondary_lines: dict = Field(default_factory=dict)
+    sacred_marks: list[dict] = Field(default_factory=list)
+    timeline: list[dict] = Field(default_factory=list)
+    skin_vitality: dict = Field(default_factory=dict)
+    karmic_summary: dict = Field(default_factory=dict)
 
     sections: list[ReadingSection] = Field(default_factory=list)
     skipped: list[SkippedFeature] = Field(default_factory=list)

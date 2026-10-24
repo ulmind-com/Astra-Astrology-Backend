@@ -514,6 +514,10 @@ def test_conditions_reference_metrics_the_scan_actually_produces():
         "life_line.contrast", "fate_line.contrast", "fate_line.found", "fate_origin",
         "heart_height", "head_height", "head_slope", "head_life_gap", "head_line.length",
         "heart_line.contrast", "heart_line.curvature", "life_descent", "life_line.contrast",
+        "sun_found", "sun_contrast", "sun_length",
+        "mars_found", "mars_contrast", "mars_length",
+        "mark_mystic_cross", "mark_trishula_fate", "mark_matsya_ketu", "mark_raksha_kavach",
+        "skin_vitality_score",
     }
     for entry in PALM_RULES_SEED:
         for condition in entry.get("conditions", []):

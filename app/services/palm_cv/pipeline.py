@@ -20,6 +20,13 @@ from typing import Any
 import numpy as np
 from loguru import logger
 
+from app.services.palm_cv.astrology_insights import (
+    assess_active_passive,
+    assess_skin_vitality,
+    build_chronological_timeline,
+    detect_sacred_marks,
+    trace_secondary_lines,
+)
 from app.services.palm_cv.config import DEFAULT_CONFIG, PalmScanConfig
 from app.services.palm_cv.creases import (
     build_canonical_palm,
@@ -63,6 +70,13 @@ class PalmScanResult:
     finger_flexibility_3d: dict[str, Any] = field(default_factory=dict)
     finger_inclinations_3d: dict[str, float] = field(default_factory=dict)
 
+    #: Astrological extensions: Secondary lines, Sacred marks, Timeline, Skin vitality
+    secondary_lines: dict[str, Any] = field(default_factory=dict)
+    sacred_marks: list[dict[str, Any]] = field(default_factory=list)
+    timeline: list[dict[str, Any]] = field(default_factory=list)
+    skin_vitality: dict[str, Any] = field(default_factory=dict)
+    karmic_summary: dict[str, Any] = field(default_factory=dict)
+
     processing_ms: float = 0.0
     warnings: list[str] = field(default_factory=list)
 
@@ -93,6 +107,11 @@ class PalmScanResult:
             "palm_cup_depth_mm": round(self.palm_cup_depth_mm, 2),
             "finger_flexibility_3d": self.finger_flexibility_3d,
             "finger_inclinations_3d": self.finger_inclinations_3d,
+            "secondary_lines": self.secondary_lines,
+            "sacred_marks": self.sacred_marks,
+            "timeline": self.timeline,
+            "skin_vitality": self.skin_vitality,
+            "karmic_summary": self.karmic_summary,
             "overlay_image": self.overlay_image,
             "response_image": self.response_image,
             "processing_ms": round(self.processing_ms, 1),
@@ -198,6 +217,30 @@ def execute_scan(
         result.creases = {name: crease.as_dict() for name, crease in creases.items()}
         result.crease_relationships = crease_relationships(creases, palm.size)
 
+        # --- astrology insights (secondary lines, sacred marks, timeline, skin)
+        sec_lines: dict[str, Any] = {}
+        marks: list[dict[str, Any]] = []
+        try:
+            sec_lines = trace_secondary_lines(palm, creases, config)
+            result.secondary_lines = {name: c.as_dict() for name, c in sec_lines.items()}
+            for sec_name, sec_c in sec_lines.items():
+                result.measurements[f"{sec_name}_found"] = 1.0 if sec_c.found else 0.0
+                result.measurements[f"{sec_name}_contrast"] = round(sec_c.contrast, 4)
+                result.measurements[f"{sec_name}_length"] = round(sec_c.length, 4)
+
+            marks = detect_sacred_marks(palm, creases, sec_lines)
+            result.sacred_marks = marks
+            for m in marks:
+                result.measurements[f"mark_{m['id']}"] = 1.0
+
+            result.timeline = build_chronological_timeline(creases, result.measurements, result.hand_type)
+            result.skin_vitality = assess_skin_vitality(image, palm)
+            result.measurements["skin_vitality_score"] = float(result.skin_vitality.get("vitality_score", 85))
+
+            result.karmic_summary = assess_active_passive(detection.handedness)
+        except Exception as err:
+            logger.warning(f"astrology insights enrichment failed: {err}")
+
         missing = [name for name, crease in creases.items() if not crease.found]
         if missing:
             result.warnings.append(
@@ -209,7 +252,13 @@ def execute_scan(
         if include_images:
             try:
                 result.overlay_image = to_data_url(
-                    draw_overlay(palm, creases, original_image=image)
+                    draw_overlay(
+                        palm,
+                        creases,
+                        original_image=image,
+                        secondary_creases=sec_lines if isinstance(sec_lines, dict) else None,
+                        sacred_marks=marks,
+                    )
                 )
                 result.response_image = to_data_url(draw_response_map(palm), quality=70)
             except Exception as exc:

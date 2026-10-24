@@ -33,6 +33,18 @@ CREASE_LABELS: dict[str, str] = {
     "fate": "Fate (Fire)",
 }
 
+SECONDARY_COLOURS: dict[str, tuple[int, int, int]] = {
+    "sun": (255, 215, 0),      # gold
+    "mercury": (0, 229, 255),   # cyan
+    "mars": (255, 112, 67),    # coral
+}
+
+SECONDARY_LABELS: dict[str, str] = {
+    "sun": "Sun (Apollo)",
+    "mercury": "Mercury (Health)",
+    "mars": "Mars (Guardian)",
+}
+
 
 def _draw_badge(
     canvas: np.ndarray,
@@ -76,6 +88,8 @@ def draw_overlay(
     landmarks_px: list[tuple[float, float, float]] | None = None,
     show_skeleton: bool = False,
     original_image: np.ndarray | None = None,
+    secondary_creases: dict[str, TracedCrease] | None = None,
+    sacred_marks: list[dict[str, Any]] | None = None,
 ) -> np.ndarray:
     """The palm with every traced crease drawn on it.
 
@@ -95,6 +109,8 @@ def draw_overlay(
                 cv2.line(canvas, pa, pb, (220, 220, 220), 1, cv2.LINE_AA)
 
         placed_boxes: list[tuple[int, int, int, int]] = []
+
+        # 1. Principal Creases
         for name, crease in creases.items():
             if not crease.found or len(crease.path) < 2:
                 continue
@@ -102,7 +118,6 @@ def draw_overlay(
             colour = CREASE_COLOURS.get(name, (255, 255, 255))
             light_colour = tuple(min(255, int(c * 0.4 + 200 * 0.6)) for c in colour)
 
-            # Map canonical normalized points back to original image coordinates
             can_pts = []
             for x, y in crease.path:
                 cx = (1.0 - x) * palm.size if palm.mirrored else x * palm.size
@@ -117,7 +132,6 @@ def draw_overlay(
             cv2.polylines(canvas, [pts_int], False, colour, 3, cv2.LINE_AA)
             cv2.polylines(canvas, [pts_int], False, light_colour, 1, cv2.LINE_AA)
 
-            # Strategic anchor index per crease to place badges in non-conflicting palm quadrants
             if name == "heart":
                 badge_anchor_idx = min(len(pts_int) - 1, int(len(pts_int) * 0.85))
             elif name == "head":
@@ -146,6 +160,41 @@ def draw_overlay(
 
             box = _draw_badge(canvas, label_text, (bx, by), colour)
             placed_boxes.append(box)
+
+        # 2. Secondary Creases (Sun, Mercury, Mars)
+        if secondary_creases:
+            for name, crease in secondary_creases.items():
+                if not crease.found or len(crease.path) < 2:
+                    continue
+                label_text = SECONDARY_LABELS.get(name, name)
+                colour = SECONDARY_COLOURS.get(name, (200, 200, 200))
+                light_colour = tuple(min(255, int(c * 0.5 + 200 * 0.5)) for c in colour)
+
+                can_pts = []
+                for x, y in crease.path:
+                    cx = (1.0 - x) * palm.size if palm.mirrored else x * palm.size
+                    cy = y * palm.size
+                    can_pts.append([cx, cy])
+                can_arr = np.array(can_pts, dtype=np.float32).reshape(-1, 1, 2)
+                orig_pts = cv2.perspectiveTransform(can_arr, inv_matrix).reshape(-1, 2)
+                pts_int = np.round(orig_pts).astype(np.int32)
+
+                cv2.polylines(canvas, [pts_int], False, (14, 12, 10), 4, cv2.LINE_AA)
+                cv2.polylines(canvas, [pts_int], False, colour, 2, cv2.LINE_AA)
+                cv2.polylines(canvas, [pts_int], False, light_colour, 1, cv2.LINE_AA)
+
+                anchor = pts_int[len(pts_int) // 2]
+                bx, by = int(anchor[0] + 6), int(anchor[1] - 6)
+                for _ in range(8):
+                    overlap = any(not (bx + 105 < ox1 or bx > ox2 or by < oy1 or by - 20 > oy2) for ox1, oy1, ox2, oy2 in placed_boxes)
+                    if overlap:
+                        by += 20
+                        if by > h - 18:
+                            by = 22
+                    else:
+                        break
+                box = _draw_badge(canvas, label_text, (bx, by), colour)
+                placed_boxes.append(box)
 
         return canvas
 

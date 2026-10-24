@@ -932,6 +932,128 @@ PALM_RULES_SEED: list[dict[str, Any]] = [
             "hesitation, supporting straightforward communication and steady, unencumbered progress."
         ),
     },
+
+    # ======================================================================
+    # 20. Sun Line (Surya Rekha / Apollo Line) [RS]
+    # ======================================================================
+    {
+        "feature": PalmFeature.SUN_LINE.value, "option": "sun_prominent",
+        "label": "Prominent Sun Line (Public Eminence & Creative Glory)",
+        "conditions": [{"metric": "sun_found", "min": 0.5}, {"metric": "sun_contrast", "min": 2.2}],
+        "requires": GEOMETRY, "area": "Destiny", "source": "Palmistry Notes Astro Rahul Sharma", "priority": 12,
+        "meaning": (
+            "A well-defined Sun Line rising toward the Mount of Apollo denotes immense creative brilliance, public renown, "
+            "and government or institutional favor. Bestows natural charisma, artistic distinction, and financial prosperity."
+        ),
+    },
+    {
+        "feature": PalmFeature.SUN_LINE.value, "option": "sun_faint_or_absent",
+        "label": "Self-Made Quiet Competence",
+        "requires": GEOMETRY, "is_default": True, "area": "Destiny", "source": "Palmistry Notes Astro Rahul Sharma",
+        "meaning": (
+            "Success is built through steady, self-reliant competence rather than immediate public fame. "
+            "The native prefers substance over ostentation, finding satisfaction in tangible real-world accomplishment."
+        ),
+    },
+
+    # ======================================================================
+    # 21. Mars Line (Mangal Rekha / Sanjeevani Shield) [EL], [RS]
+    # ======================================================================
+    {
+        "feature": PalmFeature.MARS_LINE.value, "option": "mars_line_guardian",
+        "label": "Sanjeevani Line (Guardian Angel & Vital Shield)",
+        "conditions": [{"metric": "mars_found", "min": 0.5}],
+        "requires": GEOMETRY, "area": "Vitality", "source": "Earth line; Palmistry Notes Astro Rahul Sharma", "priority": 12,
+        "meaning": (
+            "A clear Mars Line running parallel to the Life Line on the Venus mount is revered in Vedic palmistry as the Sanjeevani Rekha. "
+            "It acts as a divine protective shield: bestowing supernatural recovery from acute illness, protection during travel, "
+            "and exceptional physical stamina."
+        ),
+    },
+    {
+        "feature": PalmFeature.MARS_LINE.value, "option": "mars_line_standard",
+        "label": "Harmonious Single Vitality Arc",
+        "requires": GEOMETRY, "is_default": True, "area": "Vitality", "source": "Earth line",
+        "meaning": (
+            "Vitality flows directly along the primary Earth Line. Health and resilience are maintained through regular lifestyle "
+            "habits, balanced nutrition, and peaceful emotional surroundings."
+        ),
+    },
+
+    # ======================================================================
+    # 22. Sacred Marks & Auspicious Yogas [RS], [HP]
+    # ======================================================================
+    {
+        "feature": PalmFeature.SACRED_MARKS.value, "option": "mark_mystic_cross_active",
+        "label": "Mystic Cross (La Croix Mystique - Esoteric Wisdom)",
+        "conditions": [{"metric": "mark_mystic_cross", "min": 0.5}],
+        "requires": GEOMETRY, "area": "Spirituality", "source": "Palmistry Notes Astro Rahul Sharma", "priority": 15,
+        "meaning": (
+            "The sacred Mystic Cross resides in the Plain of Mars between the Heart and Head lines. "
+            "Signifies an extraordinary sixth sense, predictive dreams, spiritual discernment, and a natural gift for "
+            "astrology, healing, and understanding human destiny."
+        ),
+    },
+    {
+        "feature": PalmFeature.SACRED_MARKS.value, "option": "mark_trishula_active",
+        "label": "Shiva Trishula (Trident of Authority & Rajayoga)",
+        "conditions": [{"metric": "mark_trishula_fate", "min": 0.5}],
+        "requires": GEOMETRY, "area": "Destiny", "source": "Palmistry Notes Astro Rahul Sharma", "priority": 14,
+        "meaning": (
+            "A sacred trident crowning the upper Fate line on the Saturn mount. Regarded in classical Samudrika Shastra as a premier "
+            "Rajayoga marker: unyielding moral authority, protection from defeat, and widespread societal influence."
+        ),
+    },
+    {
+        "feature": PalmFeature.SACRED_MARKS.value, "option": "mark_matsya_active",
+        "label": "Matsya Chinha (Sacred Fish of Wealth & Moksha)",
+        "conditions": [{"metric": "mark_matsya_ketu", "min": 0.5}],
+        "requires": GEOMETRY, "area": "Destiny", "source": "Palmistry Notes Astro Rahul Sharma", "priority": 13,
+        "meaning": (
+            "The Matsya symbol at the palm base indicates unexpected financial prosperity, charitable generosity, religious merit, "
+            "and peaceful spiritual liberation."
+        ),
+    },
+    {
+        "feature": PalmFeature.SACRED_MARKS.value, "option": "mark_raksha_active",
+        "label": "Raksha Kavach (Protective Shield Square)",
+        "conditions": [{"metric": "mark_raksha_kavach", "min": 0.5}],
+        "requires": GEOMETRY, "area": "Vitality", "source": "Palmistry Notes Astro Rahul Sharma", "priority": 11,
+        "meaning": (
+            "A protective square configuration shields the vitality axis from acute perils, ensuring that personal adversity "
+            "turns into renewed wisdom and lasting security."
+        ),
+    },
+    {
+        "feature": PalmFeature.SACRED_MARKS.value, "option": "mark_standard_flow",
+        "label": "Unencumbered Pranic Geometry",
+        "requires": GEOMETRY, "is_default": True, "area": "Spirituality", "source": "Palmistry Notes Astro Rahul Sharma",
+        "meaning": (
+            "Energy circulates cleanly through the major planetary channels, free from conflicting marks or turbulent crossbars."
+        ),
+    },
+
+    # ======================================================================
+    # 23. Ayurvedic Skin Radiance & Prana Flush [HP]
+    # ======================================================================
+    {
+        "feature": PalmFeature.SKIN_VITALITY.value, "option": "skin_high_vitality",
+        "label": "Radiant Agni & Optimal Pranic Flush",
+        "conditions": [{"metric": "skin_vitality_score", "min": 88.0}],
+        "requires": GEOMETRY, "area": "Constitution", "source": "Health palmistry", "priority": 10,
+        "meaning": (
+            "The colorimetric radiance of the palm reflects vigorous blood circulation, balanced Agni (digestive fire), and "
+            "high constitutional resilience. Sustains boundless optimism, active stamina, and swift recuperative capability."
+        ),
+    },
+    {
+        "feature": PalmFeature.SKIN_VITALITY.value, "option": "skin_balanced_vitality",
+        "label": "Harmonious Constitutional Vitality",
+        "requires": GEOMETRY, "is_default": True, "area": "Constitution", "source": "Health palmistry",
+        "meaning": (
+            "Palm flush reflects steady, well-regulated circulation and serene nervous energy, supporting continuous long-term vitality."
+        ),
+    },
 ]
 
 
