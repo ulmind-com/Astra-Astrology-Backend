@@ -68,22 +68,33 @@ class PlatformSettings(TimestampedDocument):
     # thought about yet.
     appointment_booking_days_ahead: int = Field(default=30, ge=1, le=365)
 
-    # --------------------------------------------------------- face reading
-    # What one face reading costs, in coins. Zero makes it free, which is a
-    # legitimate choice while the rule set is still being tuned.
-    face_reading_coins: int = Field(default=50, ge=0, le=1_000_000)
+    # --------------------------------------------------------- astrology & scanning features
+    daily_horoscope_coins: int = Field(default=0, ge=0, le=1_000_000)
+    daily_horoscope_enabled: bool = True
 
-    # Whether the feature is offered at all. Lets an admin take it down
-    # without a deploy if a reading is going wrong.
-    face_reading_enabled: bool = True
+    kundli_coins: int = Field(default=20, ge=0, le=1_000_000)
+    kundli_enabled: bool = True
 
-    # What one palm reading costs, in coins. Zero makes it free, matching how face
-    # reading is priced, so the admin sets both the same way.
-    palm_reading_coins: int = Field(default=50, ge=0, le=1_000_000)
+    kundli_matching_coins: int = Field(default=20, ge=0, le=1_000_000)
+    kundli_matching_enabled: bool = True
 
-    # Lets the admin take palm reading down without a deploy, which matters for a
-    # feature whose accuracy depends on photo quality in the field.
+    kp_calculator_coins: int = Field(default=20, ge=0, le=1_000_000)
+    kp_calculator_enabled: bool = True
+
+    dasha_calculator_coins: int = Field(default=15, ge=0, le=1_000_000)
+    dasha_calculator_enabled: bool = True
+
+    rashi_calculator_coins: int = Field(default=10, ge=0, le=1_000_000)
+    rashi_calculator_enabled: bool = True
+
+    nakshatra_calculator_coins: int = Field(default=10, ge=0, le=1_000_000)
+    nakshatra_calculator_enabled: bool = True
+
+    palm_reading_coins: int = Field(default=25, ge=0, le=1_000_000)
     palm_reading_enabled: bool = True
+
+    face_reading_coins: int = Field(default=25, ge=0, le=1_000_000)
+    face_reading_enabled: bool = True
 
     updated_by: PydanticObjectId | None = None
 

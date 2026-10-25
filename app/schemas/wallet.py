@@ -185,10 +185,77 @@ class PlatformSettingsOut(BaseModel):
     max_appointment_minutes: int
     appointment_booking_days_ahead: int
 
-    face_reading_coins: int
-    face_reading_enabled: bool
+    face_reading_coins: int = 25
+    face_reading_enabled: bool = True
+    palm_reading_coins: int = 25
+    palm_reading_enabled: bool = True
+
+    daily_horoscope_coins: int = 0
+    daily_horoscope_enabled: bool = True
+
+    kundli_coins: int = 20
+    kundli_enabled: bool = True
+
+    kundli_matching_coins: int = 20
+    kundli_matching_enabled: bool = True
+
+    kp_calculator_coins: int = 20
+    kp_calculator_enabled: bool = True
+
+    dasha_calculator_coins: int = 15
+    dasha_calculator_enabled: bool = True
+
+    rashi_calculator_coins: int = 10
+    rashi_calculator_enabled: bool = True
+
+    nakshatra_calculator_coins: int = 10
+    nakshatra_calculator_enabled: bool = True
 
     updated_at: datetime
+
+
+class FeaturePricingItem(BaseModel):
+    feature_id: str
+    name: str
+    coins: int
+    is_free: bool
+    enabled: bool
+    description: str = ""
+
+
+class FeaturePricingMapResponse(BaseModel):
+    features: dict[str, FeaturePricingItem]
+
+
+class FeaturePricingUpdate(BaseModel):
+    """Any feature field may be sent on its own; others keep their values."""
+
+    daily_horoscope_coins: int | None = Field(default=None, ge=0, le=1_000_000)
+    daily_horoscope_enabled: bool | None = None
+
+    kundli_coins: int | None = Field(default=None, ge=0, le=1_000_000)
+    kundli_enabled: bool | None = None
+
+    kundli_matching_coins: int | None = Field(default=None, ge=0, le=1_000_000)
+    kundli_matching_enabled: bool | None = None
+
+    kp_calculator_coins: int | None = Field(default=None, ge=0, le=1_000_000)
+    kp_calculator_enabled: bool | None = None
+
+    dasha_calculator_coins: int | None = Field(default=None, ge=0, le=1_000_000)
+    dasha_calculator_enabled: bool | None = None
+
+    rashi_calculator_coins: int | None = Field(default=None, ge=0, le=1_000_000)
+    rashi_calculator_enabled: bool | None = None
+
+    nakshatra_calculator_coins: int | None = Field(default=None, ge=0, le=1_000_000)
+    nakshatra_calculator_enabled: bool | None = None
+
+    palm_reading_coins: int | None = Field(default=None, ge=0, le=1_000_000)
+    palm_reading_enabled: bool | None = None
+
+    face_reading_coins: int | None = Field(default=None, ge=0, le=1_000_000)
+    face_reading_enabled: bool | None = None
 
 
 class ConsultationDefaultsUpdate(BaseModel):

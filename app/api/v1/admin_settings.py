@@ -15,6 +15,7 @@ from app.schemas.wallet import (
     CoinRateChangeOut,
     CoinRateUpdate,
     ConsultationDefaultsUpdate,
+    FeaturePricingUpdate,
     PlatformSettingsOut,
     RechargeLimitsUpdate,
 )
@@ -39,8 +40,24 @@ def _out(doc) -> PlatformSettingsOut:
         min_appointment_minutes=doc.min_appointment_minutes,
         max_appointment_minutes=doc.max_appointment_minutes,
         appointment_booking_days_ahead=doc.appointment_booking_days_ahead,
-        face_reading_coins=doc.face_reading_coins,
-        face_reading_enabled=doc.face_reading_enabled,
+        face_reading_coins=getattr(doc, "face_reading_coins", 25),
+        face_reading_enabled=getattr(doc, "face_reading_enabled", True),
+        palm_reading_coins=getattr(doc, "palm_reading_coins", 25),
+        palm_reading_enabled=getattr(doc, "palm_reading_enabled", True),
+        daily_horoscope_coins=getattr(doc, "daily_horoscope_coins", 0),
+        daily_horoscope_enabled=getattr(doc, "daily_horoscope_enabled", True),
+        kundli_coins=getattr(doc, "kundli_coins", 20),
+        kundli_enabled=getattr(doc, "kundli_enabled", True),
+        kundli_matching_coins=getattr(doc, "kundli_matching_coins", 20),
+        kundli_matching_enabled=getattr(doc, "kundli_matching_enabled", True),
+        kp_calculator_coins=getattr(doc, "kp_calculator_coins", 20),
+        kp_calculator_enabled=getattr(doc, "kp_calculator_enabled", True),
+        dasha_calculator_coins=getattr(doc, "dasha_calculator_coins", 15),
+        dasha_calculator_enabled=getattr(doc, "dasha_calculator_enabled", True),
+        rashi_calculator_coins=getattr(doc, "rashi_calculator_coins", 10),
+        rashi_calculator_enabled=getattr(doc, "rashi_calculator_enabled", True),
+        nakshatra_calculator_coins=getattr(doc, "nakshatra_calculator_coins", 10),
+        nakshatra_calculator_enabled=getattr(doc, "nakshatra_calculator_enabled", True),
         updated_at=doc.updated_at,
     )
 
@@ -115,6 +132,23 @@ async def update_consultation_defaults(
             f"{doc.default_video_coins_per_minute} coins a minute · "
             f"{doc.default_commission_percent:g}% commission."
         ),
+        data=_out(doc),
+    )
+
+
+@router.patch(
+    "/feature-pricing",
+    response_model=ApiResponse[PlatformSettingsOut],
+    summary="Update coin pricing and enabled states for astrology features",
+)
+async def update_feature_pricing(
+    payload: FeaturePricingUpdate, admin: AdminUser
+) -> ApiResponse[PlatformSettingsOut]:
+    doc = await settings_service.set_feature_pricing(
+        changes=payload.model_dump(exclude_unset=True), admin_id=admin.id
+    )
+    return ApiResponse(
+        message="Feature coin pricing updated successfully.",
         data=_out(doc),
     )
 

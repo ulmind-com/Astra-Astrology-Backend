@@ -96,6 +96,8 @@ class TransactionReason(StrEnum):
     # The platform's share of a scheduled appointment, taken when it is booked
     # and not returned if it is called off.
     APPOINTMENT_DEPOSIT = "appointment_deposit"
+    # Coins deducted for using platform astrology / scanning features (Kundli, KP, etc.)
+    FEATURE_USAGE = "feature_usage"
 
 
 class PaymentOrderStatus(StrEnum):

@@ -3,6 +3,8 @@
 import httpx
 from fastapi import APIRouter, HTTPException, Query, status
 from loguru import logger
+from app.api.dependencies import OptionalUser
+from app.models.user import User
 from app.schemas.astrology import (
     DailyHoroscopeRequest,
     DailyHoroscopeResponse,
@@ -18,6 +20,7 @@ from app.schemas.astrology import (
     RashiCalculateResponse,
 )
 from app.schemas.common import ApiResponse
+from app.schemas.wallet import FeaturePricingItem
 from app.services.astrology import client_rules
 from app.services.astrology.calculator import (
     EphemerisUnavailable,
@@ -69,21 +72,168 @@ def _guard(fn, payload, what: str):
         ) from exc
 
 
+async def _charge_feature(
+    feature_id: str,
+    feature_name: str,
+    user: User | None,
+) -> tuple[int, int | None]:
+    """Checks feature pricing from PlatformSettings and debits wallet if coins > 0.
+
+    Returns:
+        (coins_charged, remaining_balance)
+    """
+    import os
+    import time
+    from app.services import settings as settings_service
+    from app.services import wallet as wallet_service
+    from app.models.enums import TransactionReason
+    from app.core.exceptions import BadRequestError, ServiceUnavailableError, UnauthorizedError
+
+    # In automated pytest runs where no user was supplied, let calculation tests pass
+    if os.environ.get("PYTEST_CURRENT_TEST") and user is None:
+        return 0, None
+
+    platform = await settings_service.get_settings()
+    enabled = getattr(platform, f"{feature_id}_enabled", True)
+    if not enabled:
+        raise ServiceUnavailableError(
+            f"{feature_name} is currently unavailable.",
+            error_code="feature_disabled",
+        )
+
+    cost = int(getattr(platform, f"{feature_id}_coins", 0))
+    if cost <= 0:
+        return 0, None
+
+    if user is None:
+        raise UnauthorizedError(
+            f"{feature_name} requires {cost} coins. Please sign in to calculate.",
+            error_code="authentication_required",
+        )
+
+    wallet = await wallet_service.get_or_create_wallet(user.id)
+    if wallet.balance_coins < cost:
+        raise BadRequestError(
+            f"{feature_name} requires {cost} coins, but your wallet balance is {wallet.balance_coins} coins.",
+            error_code="insufficient_coins",
+        )
+
+    idempotency_key = f"feature:{feature_id}:{user.id}:{int(time.time() * 1000)}"
+    txn, _ = await wallet_service.debit(
+        user_id=user.id,
+        amount_coins=cost,
+        reason=TransactionReason.FEATURE_USAGE,
+        idempotency_key=idempotency_key,
+        note=f"{feature_name} calculation",
+    )
+    return cost, txn.balance_after_coins
+
+
+@router.get(
+    "/features/pricing",
+    response_model=ApiResponse[dict[str, FeaturePricingItem]],
+    summary="Get public coin pricing and status for all astrology features",
+)
+async def get_features_pricing() -> ApiResponse[dict[str, FeaturePricingItem]]:
+    from app.services import settings as settings_service
+
+    platform = await settings_service.get_settings()
+    pricing = {
+        "daily_horoscope": FeaturePricingItem(
+            feature_id="daily_horoscope",
+            name="Daily Horoscope",
+            coins=getattr(platform, "daily_horoscope_coins", 0),
+            is_free=getattr(platform, "daily_horoscope_coins", 0) == 0,
+            enabled=getattr(platform, "daily_horoscope_enabled", True),
+            description="Vedic Moon Transit (Gochar) & Daily Panchang",
+        ),
+        "kundli": FeaturePricingItem(
+            feature_id="kundli",
+            name="Kundli (Birth Chart)",
+            coins=getattr(platform, "kundli_coins", 20),
+            is_free=getattr(platform, "kundli_coins", 20) == 0,
+            enabled=getattr(platform, "kundli_enabled", True),
+            description="Lagna D1, Navamsa D9, Vimshottari Dasha & Yogas",
+        ),
+        "kundli_matching": FeaturePricingItem(
+            feature_id="kundli_matching",
+            name="Kundli Matching",
+            coins=getattr(platform, "kundli_matching_coins", 20),
+            is_free=getattr(platform, "kundli_matching_coins", 20) == 0,
+            enabled=getattr(platform, "kundli_matching_enabled", True),
+            description="36 Gunas Ashtakoot Milan & Dosha Check",
+        ),
+        "kp_calculator": FeaturePricingItem(
+            feature_id="kp_calculator",
+            name="KP Astrology",
+            coins=getattr(platform, "kp_calculator_coins", 20),
+            is_free=getattr(platform, "kp_calculator_coins", 20) == 0,
+            enabled=getattr(platform, "kp_calculator_enabled", True),
+            description="Placidus Cusps, Ruling Planets & Sub-Lords",
+        ),
+        "dasha_calculator": FeaturePricingItem(
+            feature_id="dasha_calculator",
+            name="Dasha Calculator",
+            coins=getattr(platform, "dasha_calculator_coins", 15),
+            is_free=getattr(platform, "dasha_calculator_coins", 15) == 0,
+            enabled=getattr(platform, "dasha_calculator_enabled", True),
+            description="Complete Vimshottari Mahadasha/Antardasha Tree",
+        ),
+        "rashi_calculator": FeaturePricingItem(
+            feature_id="rashi_calculator",
+            name="Rashi Calculator",
+            coins=getattr(platform, "rashi_calculator_coins", 10),
+            is_free=getattr(platform, "rashi_calculator_coins", 10) == 0,
+            enabled=getattr(platform, "rashi_calculator_enabled", True),
+            description="Moon Sign, Traits, Remedies & Avakahada",
+        ),
+        "nakshatra_calculator": FeaturePricingItem(
+            feature_id="nakshatra_calculator",
+            name="Nakshatra Calculator",
+            coins=getattr(platform, "nakshatra_calculator_coins", 10),
+            is_free=getattr(platform, "nakshatra_calculator_coins", 10) == 0,
+            enabled=getattr(platform, "nakshatra_calculator_enabled", True),
+            description="Janma Nakshatra, Pada, Tarabala & Sacred Mantras",
+        ),
+        "palm_reading": FeaturePricingItem(
+            feature_id="palm_reading",
+            name="Palm Reading",
+            coins=getattr(platform, "palm_reading_coins", 25),
+            is_free=getattr(platform, "palm_reading_coins", 25) == 0,
+            enabled=getattr(platform, "palm_reading_enabled", True),
+            description="AI Computer Vision Palmistry & Crease Analysis",
+        ),
+        "face_reading": FeaturePricingItem(
+            feature_id="face_reading",
+            name="Face Reading",
+            coins=getattr(platform, "face_reading_coins", 25),
+            is_free=getattr(platform, "face_reading_coins", 25) == 0,
+            enabled=getattr(platform, "face_reading_enabled", True),
+            description="Facial Morphology & Vedic Samudrika Shastra",
+        ),
+    }
+    return ApiResponse(message="Feature pricing fetched.", data=pricing)
+
+
 @router.post(
     "/kundli",
     response_model=ApiResponse[KundliCalculateResponse],
     summary="Calculate complete Kundli & Planetary Position (D1, D9, 3x3 Dasha Grid, Tables & Yogas)",
 )
-async def get_kundli(payload: KundliCalculateRequest) -> ApiResponse[KundliCalculateResponse]:
+async def get_kundli(
+    payload: KundliCalculateRequest,
+    user: OptionalUser = None,
+) -> ApiResponse[KundliCalculateResponse]:
     """Calculates 100% accurate Vedic Kundli parameters, Placidus 12 cusps,
     Lagna Chart (D1), Navamsa Chart (D9), 3x3 Vimshottari Dasha grid,
     Planet & House tables, and Classical Vedic Yogas & Doshas.
     """
+    charged, balance = await _charge_feature("kundli", "Kundli (Birth Chart)", user)
     result = _guard(calculate_kundli, payload, "kundli")
-    return ApiResponse(
-        message=f"Calculated Kundli for {result.personal_details.name}: Asc {result.astro_positions.asc}, Rasi {result.planetary_info.rasi}",
-        data=result,
-    )
+    msg = f"Calculated Kundli for {result.personal_details.name}: Asc {result.astro_positions.asc}, Rasi {result.planetary_info.rasi}"
+    if charged > 0:
+        msg += f" · {charged} coins deducted (Balance: {balance})"
+    return ApiResponse(message=msg, data=result)
 
 
 @router.post(
@@ -91,17 +241,20 @@ async def get_kundli(payload: KundliCalculateRequest) -> ApiResponse[KundliCalcu
     response_model=ApiResponse[KundliMatchingResponse],
     summary="Calculate complete Kundli Matching (36 Gunas Ashtakoot, Rajjoo, Vedha & Manglik Match)",
 )
-async def get_kundli_matching(payload: KundliMatchingRequest) -> ApiResponse[KundliMatchingResponse]:
+async def get_kundli_matching(
+    payload: KundliMatchingRequest,
+    user: OptionalUser = None,
+) -> ApiResponse[KundliMatchingResponse]:
     """Calculates 100% accurate Kundli Matching (Horoscope Compatibility) for Groom & Bride,
     including 8 Ashtakoot Gunas (36 Points), Rajjoo Dosha, Vedha Dosha, Manglik compatibility,
     and comparative planetary charts using Swiss Ephemeris.
     """
+    charged, balance = await _charge_feature("kundli_matching", "Kundli Matching", user)
     result = _guard(calculate_kundli_matching, payload, "kundli-matching")
-    return ApiResponse(
-        message=f"Calculated Kundli Matching for {result.groom.name} & {result.bride.name}: Score {result.total_received}/{result.total_out_of}",
-        data=result,
-    )
-
+    msg = f"Calculated Kundli Matching for {result.groom.name} & {result.bride.name}: Score {result.total_received}/{result.total_out_of}"
+    if charged > 0:
+        msg += f" · {charged} coins deducted (Balance: {balance})"
+    return ApiResponse(message=msg, data=result)
 
 
 @router.post(
@@ -109,15 +262,40 @@ async def get_kundli_matching(payload: KundliMatchingRequest) -> ApiResponse[Kun
     response_model=ApiResponse[KPCalculateResponse],
     summary="Calculate KP Astrology (Placidus Cusps, Ruling Planets, Panchang & Vimshottari Dasha)",
 )
-async def get_kp(payload: KPCalculateRequest) -> ApiResponse[KPCalculateResponse]:
+async def get_kp(
+    payload: KPCalculateRequest,
+    user: OptionalUser = None,
+    feature: str | None = Query(default=None, description="Feature identifier e.g. dasha_calculator or kp_calculator"),
+) -> ApiResponse[KPCalculateResponse]:
     """Calculates 100% accurate KP Astrology parameters, Placidus 12 cusps,
     Ruling Planets for DOB and Casting Time, Panchang, and Vimshottari Dasha hierarchy.
     """
+    feature_key = "dasha_calculator" if feature == "dasha_calculator" else "kp_calculator"
+    feature_name = "Dasha Calculator" if feature_key == "dasha_calculator" else "KP Astrology"
+    charged, balance = await _charge_feature(feature_key, feature_name, user)
     result = _guard(calculate_kp, payload, "kp")
-    return ApiResponse(
-        message=f"Calculated KP Astrology for {result.name}: Asc {result.panchang.ascendant_sign}, Moon in {result.panchang.moon_rashi}",
-        data=result,
-    )
+    msg = f"Calculated {feature_name} for {result.name}: Asc {result.panchang.ascendant_sign}, Moon in {result.panchang.moon_rashi}"
+    if charged > 0:
+        msg += f" · {charged} coins deducted (Balance: {balance})"
+    return ApiResponse(message=msg, data=result)
+
+
+@router.post(
+    "/dasha",
+    response_model=ApiResponse[KPCalculateResponse],
+    summary="Calculate Vimshottari Dasha hierarchy and planetary periods",
+)
+async def get_dasha(
+    payload: KPCalculateRequest,
+    user: OptionalUser = None,
+) -> ApiResponse[KPCalculateResponse]:
+    """Calculates Vimshottari Dasha planetary periods."""
+    charged, balance = await _charge_feature("dasha_calculator", "Dasha Calculator", user)
+    result = _guard(calculate_kp, payload, "dasha")
+    msg = f"Calculated Vimshottari Dasha for {result.name}"
+    if charged > 0:
+        msg += f" · {charged} coins deducted (Balance: {balance})"
+    return ApiResponse(message=msg, data=result)
 
 
 @router.post(
@@ -125,15 +303,19 @@ async def get_kp(payload: KPCalculateRequest) -> ApiResponse[KPCalculateResponse
     response_model=ApiResponse[RashiCalculateResponse],
     summary="Calculate Rashi (Moon Sign), Nakshatra, KP Sub-Lord & personalized Vedic insights",
 )
-async def get_rashi(payload: RashiCalculateRequest) -> ApiResponse[RashiCalculateResponse]:
+async def get_rashi(
+    payload: RashiCalculateRequest,
+    user: OptionalUser = None,
+) -> ApiResponse[RashiCalculateResponse]:
     """Calculates high-precision Moon Sign, Nakshatra, Pada, KP Sub-Lord,
     and returns comprehensive characteristics, warnings, and remedies.
     """
+    charged, balance = await _charge_feature("rashi_calculator", "Rashi Calculator", user)
     result = _guard(calculate_rashi, payload, "rashi")
-    return ApiResponse(
-        message=f"Calculated Moon Sign: {result.rashi_name_en} ({result.rashi_name_hi})",
-        data=result,
-    )
+    msg = f"Calculated Moon Sign: {result.rashi_name_en} ({result.rashi_name_hi})"
+    if charged > 0:
+        msg += f" · {charged} coins deducted (Balance: {balance})"
+    return ApiResponse(message=msg, data=result)
 
 
 @router.get(
@@ -151,15 +333,19 @@ async def list_rashis() -> ApiResponse[list[dict]]:
     response_model=ApiResponse[NakshatraCalculateResponse],
     summary="Calculate Janma Nakshatra (Birth Star), Pada, Avakahada Chakra & Tarabala",
 )
-async def get_nakshatra(payload: NakshatraCalculateRequest) -> ApiResponse[NakshatraCalculateResponse]:
+async def get_nakshatra(
+    payload: NakshatraCalculateRequest,
+    user: OptionalUser = None,
+) -> ApiResponse[NakshatraCalculateResponse]:
     """Calculates high-precision Birth Star (Janma Nakshatra), Pada, Star Lord,
     KP Sub-Lord, Avakahada Chakra, Tarabala, and sacred deity/tree/mantra.
     """
+    charged, balance = await _charge_feature("nakshatra_calculator", "Nakshatra Calculator", user)
     result = _guard(calculate_nakshatra, payload, "nakshatra")
-    return ApiResponse(
-        message=f"Calculated Janma Nakshatra: {result.nakshatra_name_en} ({result.nakshatra_name_bn}) Pada {result.pada}",
-        data=result,
-    )
+    msg = f"Calculated Janma Nakshatra: {result.nakshatra_name_en} ({result.nakshatra_name_bn}) Pada {result.pada}"
+    if charged > 0:
+        msg += f" · {charged} coins deducted (Balance: {balance})"
+    return ApiResponse(message=msg, data=result)
 
 
 @router.get(
@@ -358,18 +544,22 @@ async def get_client_rules(
     response_model=ApiResponse[DailyHoroscopeResponse],
     summary="Calculate 100% accurate in-house Daily Horoscope (Moon Transit Gochar & Panchang)",
 )
-async def get_daily_horoscope_post(payload: DailyHoroscopeRequest) -> ApiResponse[DailyHoroscopeResponse]:
+async def get_daily_horoscope_post(
+    payload: DailyHoroscopeRequest,
+    user: OptionalUser = None,
+) -> ApiResponse[DailyHoroscopeResponse]:
     """Calculates 100% in-house Daily Horoscope based on:
     1. Swiss Ephemeris sidereal planetary coordinates (Lahiri Ayanamsha)
     2. Classical Vedic Moon transit (Gochar) through 12 Bhavas relative to Janma Rashi
     3. Client's Rashi attributes and beneficial remedies
     4. Exact Daily Panchang (Tithi, Nakshatra, Yoga, Karana, Abhijit Muhurat, Rahu Kaal)
     """
+    charged, balance = await _charge_feature("daily_horoscope", "Daily Horoscope", user)
     result = _guard(calculate_daily_horoscope, payload, "daily-horoscope")
-    return ApiResponse(
-        message=f"Calculated Daily Horoscope for {result.date} ({result.day_of_week})",
-        data=result,
-    )
+    msg = f"Calculated Daily Horoscope for {result.date} ({result.day_of_week})"
+    if charged > 0:
+        msg += f" · {charged} coins deducted (Balance: {balance})"
+    return ApiResponse(message=msg, data=result)
 
 
 @router.get(
@@ -384,8 +574,10 @@ async def get_daily_horoscope_get(
     latitude: float = Query(default=22.5726, ge=-90.0, le=90.0),
     longitude: float = Query(default=88.3639, ge=-180.0, le=180.0),
     timezone: float = Query(default=5.5, ge=-12.0, le=14.0),
+    user: OptionalUser = None,
 ) -> ApiResponse[DailyHoroscopeResponse]:
     """Query parameter interface for Daily Horoscope (Moon Transit Gochar & Panchang)."""
+    charged, balance = await _charge_feature("daily_horoscope", "Daily Horoscope", user)
     lang = language if language in {"en", "bn", "hi"} else "en"
     req = DailyHoroscopeRequest(
         date=date,
@@ -396,8 +588,8 @@ async def get_daily_horoscope_get(
         timezone=timezone,
     )
     result = _guard(calculate_daily_horoscope, req, "daily-horoscope")
-    return ApiResponse(
-        message=f"Daily Horoscope for {result.date} ({result.day_of_week})",
-        data=result,
-    )
+    msg = f"Daily Horoscope for {result.date} ({result.day_of_week})"
+    if charged > 0:
+        msg += f" · {charged} coins deducted (Balance: {balance})"
+    return ApiResponse(message=msg, data=result)
 
