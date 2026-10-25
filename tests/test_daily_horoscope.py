@@ -93,3 +93,73 @@ def test_daily_horoscope_sign_filter():
     data = response.json()
     assert len(data["data"]["signs"]) == 1
     assert data["data"]["signs"][0]["sign_name"] == "Leo"
+
+
+def test_daily_horoscope_24_horas_and_disha_shoola():
+    req = DailyHoroscopeRequest(date="2026-10-22", language="bn")
+    res = calculate_daily_horoscope(req)
+
+    # Disha Shoola
+    assert res.panchang.disha_shoola != ""
+    assert res.panchang.disha_remedy != ""
+    assert len(res.panchang.favorable_chandra_rashis) > 0
+
+    # 24 Horas
+    assert len(res.panchang.horas) == 24
+    day_horas = [h for h in res.panchang.horas if h.is_day]
+    night_horas = [h for h in res.panchang.horas if not h.is_day]
+    assert len(day_horas) == 12
+    assert len(night_horas) == 12
+
+    # First hora lord must match vara lord
+    assert res.panchang.horas[0].planet == res.vara_lord
+    assert res.panchang.horas[0].start_time != ""
+    assert res.panchang.horas[0].end_time != ""
+
+
+def test_daily_horoscope_chandrashtama_vedha_and_sade_sati():
+    req = DailyHoroscopeRequest(date="2026-10-22", language="bn")
+    res = calculate_daily_horoscope(req)
+
+    chandrashtama_found = False
+    for s in res.signs:
+        assert s.beej_mantra != ""
+        assert s.charity_dana != ""
+        assert s.sade_sati_status is not None
+        assert s.guru_gochar_verdict is not None
+        assert s.tara_bala is not None
+        if s.transit_house == 8:
+            chandrashtama_found = True
+            assert s.is_chandrashtama is True
+            assert s.chandrashtama_advice is not None
+            assert "চন্দ্রাষ্টম" in s.chandrashtama_advice
+
+    assert chandrashtama_found is True
+
+
+def test_daily_horoscope_personalization_nakshatra_and_chart():
+    # Direct birth nakshatra index
+    req_nak = DailyHoroscopeRequest(
+        date="2026-10-22",
+        language="bn",
+        birth_nakshatra_index=0,  # Ashwini
+    )
+    res_nak = calculate_daily_horoscope(req_nak)
+    assert res_nak.personalized_profile is not None
+    assert res_nak.personalized_profile.birth_nakshatra_name == "Ashwini"
+    assert res_nak.personalized_profile.birth_nakshatra_name_bn == "অশ্বিনী"
+    assert res_nak.personalized_profile.birth_nakshatra_lord == "Ketu"
+    assert 1 <= res_nak.personalized_profile.tara_bala.tara_index <= 9
+
+    # Via birth date and time calculation
+    req_chart = DailyHoroscopeRequest(
+        date="2026-10-22",
+        language="en",
+        birth_date="1995-08-20",
+        birth_time="09:15",
+    )
+    res_chart = calculate_daily_horoscope(req_chart)
+    assert res_chart.personalized_profile is not None
+    assert 0 <= res_chart.personalized_profile.birth_nakshatra_index <= 26
+    assert 1 <= res_chart.personalized_profile.tara_bala.tara_index <= 9
+
