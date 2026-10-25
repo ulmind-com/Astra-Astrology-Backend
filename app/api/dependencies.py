@@ -52,6 +52,28 @@ def require_roles(*roles: UserRole):
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+async def get_optional_user(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+) -> User | None:
+    """Extracts the signed-in user if a valid bearer token was provided, else returns None."""
+    if credentials is None or not credentials.credentials:
+        return None
+    try:
+        payload = decode_token(credentials.credentials, expected_type="access")
+        subject = payload.get("sub")
+        if not subject or not PydanticObjectId.is_valid(subject):
+            return None
+        user = await User.get(PydanticObjectId(subject))
+        if user is None or not user.is_active:
+            return None
+        return user
+    except Exception:
+        return None
+
+
+OptionalUser = Annotated[User | None, Depends(get_optional_user)]
 AdminUser = Annotated[User, Depends(require_roles(UserRole.ADMIN, UserRole.SUPER_ADMIN))]
 SuperAdminUser = Annotated[User, Depends(require_roles(UserRole.SUPER_ADMIN))]
 AstrologerUser = Annotated[User, Depends(require_roles(UserRole.ASTROLOGER))]

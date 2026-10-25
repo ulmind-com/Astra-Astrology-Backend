@@ -1,5 +1,7 @@
 """Reading and changing the platform settings."""
 
+from typing import Any
+
 from beanie import PydanticObjectId
 from loguru import logger
 from pymongo.errors import DuplicateKeyError
@@ -10,20 +12,32 @@ from app.models.settings import SETTINGS_KEY, CoinRateChange, PlatformSettings
 
 async def get_settings() -> PlatformSettings:
     """Returns the singleton, creating it with defaults the first time."""
-    existing = await PlatformSettings.find_one(PlatformSettings.key == SETTINGS_KEY)
-    if existing is not None:
-        return existing
+    from app.db.mongodb import is_ready
 
-    created = PlatformSettings()
+    if not is_ready():
+        return PlatformSettings.model_construct()
+
     try:
-        await created.insert()
-    except DuplicateKeyError:
-        # Two requests raced; the unique index settled it.
         existing = await PlatformSettings.find_one(PlatformSettings.key == SETTINGS_KEY)
-        if existing is None:  # pragma: no cover - the index guarantees one
-            raise
-        return existing
-    return created
+        if existing is not None:
+            return existing
+
+        created = PlatformSettings()
+        try:
+            await created.insert()
+        except DuplicateKeyError:
+            # Two requests raced; the unique index settled it.
+            existing = await PlatformSettings.find_one(PlatformSettings.key == SETTINGS_KEY)
+            if existing is None:  # pragma: no cover - the index guarantees one
+                return created
+            return existing
+        return created
+    except Exception as exc:
+        logger.warning(
+            "Could not read platform settings from MongoDB ({}); using in-memory defaults.",
+            exc,
+        )
+        return PlatformSettings.model_construct()
 
 
 async def _publish(doc: PlatformSettings, *, reprice: bool) -> None:
@@ -156,6 +170,27 @@ async def set_consultation_defaults(
     logger.info("Consultation defaults updated by {}: {}", admin_id, changes)
     # These are the numbers every unpriced astrologer charges.
     await _publish(doc, reprice=True)
+    return doc
+
+
+async def set_feature_pricing(
+    *, changes: dict[str, Any], admin_id: PydanticObjectId | None
+) -> PlatformSettings:
+    """Sets coin cost and availability for astrology and scanning features."""
+    from app.db.mongodb import is_ready
+
+    doc = await get_settings()
+
+    for field, value in changes.items():
+        if value is not None:
+            setattr(doc, field, value)
+
+    doc.updated_by = admin_id
+    if is_ready():
+        await doc.save()
+        await _publish(doc, reprice=False)
+
+    logger.info("Feature pricing updated by {}: {}", admin_id, changes)
     return doc
 
 
