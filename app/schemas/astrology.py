@@ -909,6 +909,60 @@ class DailyHoroscopeRequest(BaseModel):
     latitude: float = Field(default=22.5726, ge=-90.0, le=90.0, description="Observer latitude (default: Kolkata, 22.5726)")
     longitude: float = Field(default=88.3639, ge=-180.0, le=180.0, description="Observer longitude (default: Kolkata, 88.3639)")
     timezone: float = Field(default=5.5, ge=-12.0, le=14.0, description="Timezone offset from UTC (default: +5.5 for IST)")
+    # Personalization options
+    birth_nakshatra_index: int | None = Field(default=None, ge=0, le=26, description="Native's Janma Nakshatra index 0 to 26")
+    birth_date: str | None = Field(default=None, description="Native birth date YYYY-MM-DD for personalized transit chart")
+    birth_time: str | None = Field(default=None, description="Native birth time HH:MM")
+    birth_rashi_index: int | None = Field(default=None, ge=0, le=11, description="Native Janma Rashi index 0 to 11")
+
+
+class HoraItem(BaseModel):
+    hora_index: int  # 1 to 24
+    hora_number: int  # 1 to 12 within Day/Night
+    is_day: bool
+    start_time: str
+    end_time: str
+    planet: str
+    planet_bn: str
+    planet_hi: str
+    planet_sa: str
+    is_auspicious: bool
+    category: str
+    category_bn: str
+    category_hi: str
+    verdict: str
+    verdict_bn: str = ""
+    verdict_hi: str = ""
+    best_activities: str
+    best_activities_bn: str
+    best_activities_hi: str
+
+
+class TaraBalaSummary(BaseModel):
+    tara_index: int  # 1 to 9
+    tara_name: str
+    tara_name_bn: str
+    tara_name_hi: str
+    is_auspicious: bool
+    score_percent: int
+    verdict: str
+    verdict_bn: str
+    verdict_hi: str
+    guidance: str
+    guidance_bn: str
+    guidance_hi: str
+
+
+class PersonalizedNakshatraProfile(BaseModel):
+    birth_nakshatra_index: int
+    birth_nakshatra_name: str
+    birth_nakshatra_name_bn: str
+    birth_nakshatra_name_hi: str
+    birth_nakshatra_lord: str
+    birth_nakshatra_deity: str
+    sacred_tree: str
+    beej_mantra: str
+    tara_bala: TaraBalaSummary
 
 
 class DailySignHoroscope(BaseModel):
@@ -934,6 +988,17 @@ class DailySignHoroscope(BaseModel):
     lucky_time: str
     remedy: str
     favorable_direction: str
+    # Classical Vedic expansions
+    is_chandrashtama: bool = False
+    chandrashtama_advice: str | None = None
+    vedha_active: bool = False
+    vedha_planet: str | None = None
+    vedha_description: str | None = None
+    sade_sati_status: str | None = None
+    guru_gochar_verdict: str | None = None
+    beej_mantra: str = ""
+    charity_dana: str = ""
+    tara_bala: TaraBalaSummary | None = None
 
 
 class DailyPanchangSummary(BaseModel):
@@ -948,6 +1013,10 @@ class DailyPanchangSummary(BaseModel):
     sunset: str
     abhijit_muhurat: str
     rahu_kaal: str
+    disha_shoola: str = ""
+    disha_remedy: str = ""
+    favorable_chandra_rashis: list[str] = Field(default_factory=list)
+    horas: list[HoraItem] = Field(default_factory=list)
 
 
 class DailyHoroscopeResponse(BaseModel):
@@ -960,6 +1029,7 @@ class DailyHoroscopeResponse(BaseModel):
     sun_sign: str
     panchang: DailyPanchangSummary
     signs: list[DailySignHoroscope]
+    personalized_profile: PersonalizedNakshatraProfile | None = None
     calculation_meta: dict[str, Any] = Field(default_factory=dict)
 
 
