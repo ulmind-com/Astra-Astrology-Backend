@@ -20,9 +20,12 @@ from app.api.v1 import (
     users,
     wallet,
     ws,
+    ai_astrologer,
 )
 
 api_router = APIRouter()
+
+api_router.include_router(ai_astrologer.router)
 
 api_router.include_router(ws.router)
 api_router.include_router(health.router)

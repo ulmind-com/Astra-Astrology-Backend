@@ -139,6 +139,15 @@ class Settings(BaseSettings):
     # How long an unanswered call keeps ringing.
     CALL_RING_TIMEOUT_SECONDS: int = 45
 
+    # ------------------------------------------------------------- groq ai
+    GROQ_API_KEY: str = ""
+    GROQ_DEFAULT_MODEL: str = "openai/gpt-oss-120b"
+    GROQ_FALLBACK_MODEL: str = "qwen/qwen3.8-27b"
+
+    @property
+    def groq_configured(self) -> bool:
+        return bool(self.GROQ_API_KEY)
+
     @field_validator("RECHARGE_PACKS_PAISE", mode="before")
     @classmethod
     def _split_packs(cls, v: object) -> object:

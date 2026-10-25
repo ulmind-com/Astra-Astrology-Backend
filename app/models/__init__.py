@@ -12,6 +12,12 @@ from app.models.pending_registration import PendingRegistration
 from app.models.face_reading import FaceReading, FaceRule
 from app.models.palm_reading import PalmReading, PalmRule
 from app.models.review import Review
+from app.models.ai_astrologer import (
+    AIChatFeedback,
+    AIChatSession,
+    AICustomRule,
+    AIKnowledgeDoc,
+)
 from app.models.settings import CoinRateChange, PlatformSettings
 from app.models.user import User
 from app.models.wallet import (
@@ -46,10 +52,18 @@ DOCUMENT_MODELS: list[type[Document]] = [
     PalmRule,
     Review,
     EarningEntry,
+    AIKnowledgeDoc,
+    AICustomRule,
+    AIChatSession,
+    AIChatFeedback,
 ]
 
 __all__ = [
     "DOCUMENT_MODELS",
+    "AIKnowledgeDoc",
+    "AICustomRule",
+    "AIChatSession",
+    "AIChatFeedback",
     "Astrologer",
     "CallSession",
     "Appointment",
