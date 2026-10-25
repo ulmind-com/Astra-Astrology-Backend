@@ -92,16 +92,19 @@ async def my_reviews(user: CurrentUser) -> ApiResponse[list[ReviewOut]]:
     summary="What people said about an astrologer",
 )
 async def for_astrologer(
-    astrologer_id: PydanticObjectId,
+    astrologer_id: str,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=50)] = 20,
 ) -> ApiResponse[ReviewPage]:
     """Public. This is the whole point of a review."""
-    profile = await Astrologer.get(astrologer_id)
+    profile = await Astrologer.find_one(Astrologer.slug == astrologer_id)
+    if profile is None and PydanticObjectId.is_valid(astrologer_id):
+        profile = await Astrologer.get(PydanticObjectId(astrologer_id))
+
     if profile is None or not profile.is_listed:
         raise NotFoundError("Astrologer not found.", error_code="astrologer_not_found")
 
-    items, total = await service.for_astrologer(astrologer_id, skip=skip, limit=limit)
+    items, total = await service.for_astrologer(profile.id, skip=skip, limit=limit)
     return ApiResponse(
         message="Reviews fetched.",
         data=ReviewPage(
@@ -110,7 +113,7 @@ async def for_astrologer(
             summary=ReviewSummary(
                 average=profile.rating.average,
                 count=profile.rating.count,
-                breakdown=await service.breakdown(astrologer_id),
+                breakdown=await service.breakdown(profile.id),
             ),
         ),
     )
