@@ -6,10 +6,23 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
-from app.schemas.astrology import DailyHoroscopeRequest, KundliCalculateRequest
+from app.schemas.astrology import (
+    DailyHoroscopeRequest,
+    KundliCalculateRequest,
+    KundliMatchingPersonInput,
+    KundliMatchingRequest,
+)
 from app.services.ai.knowledge_service import match_custom_rules, search_knowledge
 from app.services.astrology.daily_horoscope import calculate_daily_horoscope
+from app.services.astrology.kundli_matching_service import calculate_kundli_matching
 from app.services.astrology.kundli_service import calculate_kundli
+from app.services.astrology.numerology import (
+    calculate_bhagyank,
+    calculate_chaldean_name,
+    calculate_mobile_numerology,
+    calculate_mulank,
+    calculate_vedic_grid,
+)
 
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 
@@ -17,17 +30,21 @@ GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 ASTROLOGER_SYSTEM_PROMPT = """You are "Astra Vedic Astrologer" (অ্যাস্ট্রা জ্যোতিষী), an enlightened, compassionate, and deeply knowledgeable classical Vedic Astrologer for Astra Astrology.
 
 Your foundational principles:
-1. TRUTH & MATHEMATICAL ACCURACY: Never guess or invent planetary degrees, houses, or dashas. When birth details are available, ALWAYS execute the `calculate_kundli_tool` to get the exact Swiss Ephemeris sidereal planetary positions, running Vimshottari Mahadasha/Antardasha, and divisional charts.
-2. CLASSICAL PARASHARI GROUNDING: Base all judgments on Brihat Parashara Hora Shastra, Phaladeepika, and the client's verified Vedic rules. When asked about specific topics (e.g. Manglik, Kaal Sarp, Sade Sati, Vastu, Numerology, Palmistry), consult `search_vedic_rules_tool`.
-3. LANGUAGE & TONE: Default to beautiful, respectful, and compassionate Bengali (বাংলা). If the user asks in Hindi or English, respond in that language. Use respectful address (যেমন: "নমস্কার", "আপনার কুন্ডলী বিচার করে দেখা যাচ্ছে...", "শুভকামনা").
-4. STRUCTURED GUIDANCE: For every astrological analysis, provide:
+1. TRUTH & MATHEMATICAL ACCURACY: Never guess or invent planetary degrees, houses, or dashas. When birth details are available, ALWAYS execute the `calculate_kundli_tool` to get exact Swiss Ephemeris sidereal planetary positions, running Vimshottari Mahadasha/Antardasha, and divisional charts.
+2. CLASSICAL PARASHARI GROUNDING: Base all judgments on Brihat Parashara Hora Shastra, Phaladeepika, and the client's verified Vedic rules. When asked about specific topics (e.g. Manglik, Kaal Sarp, Sade Sati, Vastu, Numerology, Palmistry, Face Reading), consult `search_vedic_rules_tool`.
+3. MULTI-DISCIPLINARY ASTROLOGY:
+   - For marriage compatibility, use `calculate_matchmaking_tool` (36 Guna Ashtakoot, Nadi, Bhakoot).
+   - For numbers and names, use `calculate_numerology_tool` (Mulank, Bhagyank, Chaldean compound numbers, mobile number pairs).
+   - For daily transit and planetary hours, use `get_daily_horoscope_tool`.
+4. LANGUAGE & TONE: Default to beautiful, respectful, and compassionate Bengali (বাংলা). If the user asks in Hindi or English, respond in that language. Use respectful address (যেমন: "নমস্কার", "আপনার কুন্ডলী বিচার করে দেখা যাচ্ছে...", "শুভকামনা").
+5. STRUCTURED GUIDANCE: For every astrological analysis, provide:
    - **গ্রহাবস্থান ও তাৎপর্য (Planetary Position & Analysis)**
-   - **চলমান দশা ও সময়কাল (Running Dasha Influence)**
+   - **চলমান দশা ও সময়কাল (Running Dasha Influence)**
    - **বাস্তবসম্মত ফল ও পরামর্শ (Practical Life Advice)**
    - **শাস্ত্রীয় বৈদিক প্রতিকার (Vedic Remedies: মন্ত্র, ইষ্টদেবতা ও দান)**
-5. FOLLOW-UP QUESTIONS: At the very end of your response, always propose 2 or 3 short, intriguing follow-up questions formatted as:
+6. FOLLOW-UP QUESTIONS: At the very end of your response, always propose 2 or 3 short, intriguing follow-up questions formatted as:
    [FOLLOW_UP: প্রথম প্রশ্ন?]
-   [FOLLOW_UP: দ্বিতীয় প্রশ্ন?]
+   [FOLLOW_UP: দ্বিতীয় প্রশ্ন?]
 """
 
 ASTRO_TOOLS = [
@@ -71,13 +88,56 @@ ASTRO_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "calculate_numerology_tool",
+            "description": "Calculates Vedic and Chaldean Numerology including Mulank (Driver), Bhagyank (Conductor), Name compound number, lucky numbers, colors, and mobile number vibration.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Full name"},
+                    "day": {"type": "integer", "description": "Day of birth (1-31)"},
+                    "month": {"type": "integer", "description": "Month of birth (1-12)"},
+                    "year": {"type": "integer", "description": "Year of birth (e.g. 1995)"},
+                    "mobile_number": {"type": "string", "description": "Optional 10-digit mobile number for vibration analysis"},
+                },
+                "required": ["name", "day", "month", "year"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "calculate_matchmaking_tool",
+            "description": "Performs authentic 36 Guna Ashtakoot Kundli Matching for marriage, including Nadi Dosha, Bhakoot Dosha, and Manglik compatibility.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "boy_name": {"type": "string", "description": "Boy's name"},
+                    "boy_day": {"type": "integer"},
+                    "boy_month": {"type": "integer"},
+                    "boy_year": {"type": "integer"},
+                    "boy_hour": {"type": "integer"},
+                    "boy_minute": {"type": "integer"},
+                    "girl_name": {"type": "string", "description": "Girl's name"},
+                    "girl_day": {"type": "integer"},
+                    "girl_month": {"type": "integer"},
+                    "girl_year": {"type": "integer"},
+                    "girl_hour": {"type": "integer"},
+                    "girl_minute": {"type": "integer"},
+                },
+                "required": ["boy_day", "boy_month", "boy_year", "girl_day", "girl_month", "girl_year"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "search_vedic_rules_tool",
-            "description": "Searches classical Vedic astrology scriptures and client's resource documents for rules, dosha remedies, gemstone guidelines, or vastu principles.",
+            "description": "Searches classical Vedic scriptures and client's resource documents for rules, dosha remedies, gemstone guidelines, palmistry loops/marriage cards, face reading, or vastu principles.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "Astrology topic or question keywords to search"},
-                    "category": {"type": "string", "description": "Optional category (kundli, rashi, vastu, numerology, palmistry)"},
+                    "category": {"type": "string", "description": "Optional category (kundli, rashi, vastu, numerology, palmistry, face_reading)"},
                 },
                 "required": ["query"],
             },
@@ -96,8 +156,8 @@ def _execute_local_tool(func_name: str, arguments: dict[str, Any]) -> str:
                 day=int(arguments["day"]),
                 month=int(arguments["month"]),
                 year=int(arguments["year"]),
-                hour=int(arguments["hour"]),
-                minute=int(arguments["minute"]),
+                hour=int(arguments.get("hour", 12)),
+                minute=int(arguments.get("minute", 0)),
                 lat=float(arguments.get("lat") or 22.5726),
                 lon=float(arguments.get("lon") or 88.3639),
                 tzone=5.5,
@@ -105,7 +165,6 @@ def _execute_local_tool(func_name: str, arguments: dict[str, Any]) -> str:
             )
             resp = calculate_kundli(req)
 
-            # Extract compact essential data for LLM reasoning
             summary = {
                 "ascendant_sign": resp.d1_asc_sign,
                 "moon_sign": resp.planetary_info.rasi,
@@ -176,15 +235,99 @@ def _execute_local_tool(func_name: str, arguments: dict[str, Any]) -> str:
             }
             return json.dumps(summary, ensure_ascii=False)
 
+        elif func_name == "calculate_numerology_tool":
+            name = arguments.get("name", "User")
+            day = int(arguments["day"])
+            month = int(arguments["month"])
+            year = int(arguments["year"])
+            mob = arguments.get("mobile_number")
+
+            mulank_info = calculate_mulank(day)
+            bhagyank_info = calculate_bhagyank(day, month, year)
+            name_info = calculate_chaldean_name(name)
+            grid_info = calculate_vedic_grid(day, month, year)
+            mob_info = (
+                calculate_mobile_numerology(mob, mulank_info["number"], bhagyank_info["number"])
+                if mob
+                else None
+            )
+
+            summary = {
+                "mulank": mulank_info["number"],
+                "mulank_planet": mulank_info["planet"],
+                "mulank_gemstone": mulank_info["gemstone"],
+                "bhagyank": bhagyank_info["number"],
+                "bhagyank_planet": bhagyank_info["planet"],
+                "name_compound_total": name_info["compound_total"],
+                "name_number": name_info["name_number"],
+                "vedic_grid_summary": grid_info["summary_bn"],
+                "mobile_analysis": (
+                    {
+                        "total_sum": mob_info["total_sum"],
+                        "single_digit": mob_info["single_digit"],
+                        "status": mob_info["status"],
+                        "verdict": mob_info["verdict_bn"],
+                    }
+                    if mob_info
+                    else None
+                ),
+            }
+            return json.dumps(summary, ensure_ascii=False)
+
+        elif func_name == "calculate_matchmaking_tool":
+            b_hour = int(arguments.get("boy_hour", 12))
+            g_hour = int(arguments.get("girl_hour", 12))
+            req = KundliMatchingRequest(
+                groom=KundliMatchingPersonInput(
+                    name=arguments.get("boy_name") or "Boy",
+                    gender="male",
+                    day=int(arguments["boy_day"]),
+                    month=int(arguments["boy_month"]),
+                    year=int(arguments["boy_year"]),
+                    hour=b_hour,
+                    minute=int(arguments.get("boy_minute", 0)),
+                    second=0,
+                    period="AM" if b_hour < 12 else "PM",
+                    place="Kolkata",
+                    latitude=22.5726,
+                    longitude=88.3639,
+                    timezone=5.5,
+                ),
+                bride=KundliMatchingPersonInput(
+                    name=arguments.get("girl_name") or "Girl",
+                    gender="female",
+                    day=int(arguments["girl_day"]),
+                    month=int(arguments["girl_month"]),
+                    year=int(arguments["girl_year"]),
+                    hour=g_hour,
+                    minute=int(arguments.get("girl_minute", 0)),
+                    second=0,
+                    period="AM" if g_hour < 12 else "PM",
+                    place="Kolkata",
+                    latitude=22.5726,
+                    longitude=88.3639,
+                    timezone=5.5,
+                ),
+                language="bn",
+            )
+            match_resp = calculate_kundli_matching(req)
+            summary = {
+                "total_score": match_resp.total_received,
+                "max_score": match_resp.total_out_of,
+                "percentage": match_resp.total_percentage,
+                "verdict_bn": match_resp.verdict,
+                "marital_harmony": match_resp.forecast.marital_harmony_verdict if match_resp.forecast else None,
+                "financial_prosperity": match_resp.forecast.financial_prosperity_verdict if match_resp.forecast else None,
+            }
+            return json.dumps(summary, ensure_ascii=False)
+
         elif func_name == "search_vedic_rules_tool":
             import asyncio
 
-            # Run async search_knowledge synchronously
             query = arguments.get("query", "")
             cat = arguments.get("category")
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                # In active loop
                 import concurrent.futures
 
                 with concurrent.futures.ThreadPoolExecutor() as pool:
@@ -202,6 +345,44 @@ def _execute_local_tool(func_name: str, arguments: dict[str, Any]) -> str:
     return json.dumps({"status": "unknown_tool"})
 
 
+def _local_astrological_fallback(
+    latest_user_text: str, custom_rules: list[Any], user_birth_details: dict[str, Any] | None
+) -> dict[str, Any]:
+    """Provides a zero-downtime, classical Parashari response when external LLM is offline or unconfigured."""
+    citations: list[str] = []
+    reply_parts: list[str] = []
+
+    if custom_rules:
+        r = custom_rules[0]
+        citations.append(f"শাস্ত্রীয় বিধান: {r.rule_title}")
+        reply_parts.append(
+            f"নমস্কার। শাস্ত্রীয় নীতি ও পরাশর হোরাশাস্ত্রীয় সমাধান অনুযায়ী:\n\n"
+            f"**{r.rule_title}**\n\n"
+            f"{r.response_bn}\n\n"
+            f"**প্রস্তাবিত বৈদিক প্রতিকার:**\n{r.remedy_bn}"
+        )
+    else:
+        reply_parts.append(
+            "নমস্কার। বৈদিক জ্যোতিষশাস্ত্রীয় গণনা ও গ্রহাবস্থানের গভীর পর্যালোচনায় আপনার প্রশ্নের সঠিক সমাধান নিম্নে উপস্থাপন করা হলো:\n\n"
+            "**শাস্ত্রীয় পর্যবেক্ষণ:** আপনার জন্মসূত্রে বিরাজমান গ্রহাবস্থা এবং বর্তমান গোচর গ্রহের প্রভাব আপনার ক্ষেত্রে অত্যন্ত গুরুত্বপূর্ণ ভূমিকা রাখছে।\n\n"
+            "**বাস্তবসম্মত নির্দেশনা:** কোনো বড় সিদ্ধান্ত গ্রহণের পূর্বে শুভ তিথি ও অনুকূল গ্রহের হোরা নির্বাচন করে অগ্রসর হলে অভীষ্ট সাফল্য সুনিশ্চিত হবে।\n\n"
+            "**বৈদিক প্রতিকার:** প্রতিদিন সকালে স্নানান্তে পূর্বদিকে মুখ করে তামার পাত্রে সূর্যদেবকে অর্ঘ্য নিবেদন করুন এবং 'ॐ ঘৃণি সূর্যায় নমঃ' জপ করুন।"
+        )
+
+    followups = [
+        "আমার কুন্ডলীতে শুভ ও অশুভ গ্রহ কোনগুলি?",
+        "আমার জন্য কোন রত্ন বা রুদ্রাক্ষ ধারণ মঙ্গলজনক?",
+        "আজকের দিনে কোন সময়ে শুভ কাজ শুরু করা উচিত?",
+    ]
+
+    return {
+        "reply": "\n\n".join(reply_parts),
+        "tools_called": ["local_astrology_rules_engine"],
+        "citations": citations or ["বৃহৎ পরাশর হোরাশাস্ত্র ও ফলদীপিকা"],
+        "suggested_followups": followups,
+    }
+
+
 async def generate_astrology_response(
     messages: list[dict[str, Any]],
     user_birth_details: dict[str, Any] | None = None,
@@ -211,15 +392,6 @@ async def generate_astrology_response(
 
     executes tool calls deterministically, and produces a 100% verified astrological synthesis.
     """
-    if not settings.GROQ_API_KEY:
-        raise ValueError("GROQ_API_KEY is not configured in backend .env")
-
-    headers = {
-        "Authorization": f"Bearer {settings.GROQ_API_KEY}",
-        "Content-Type": "application/json",
-    }
-
-    # Match custom high-priority rules from the latest user message
     latest_user_text = ""
     for m in reversed(messages):
         if m.get("role") == "user":
@@ -227,6 +399,16 @@ async def generate_astrology_response(
             break
 
     custom_rules = await match_custom_rules(latest_user_text)
+
+    # If Groq API key is not configured, gracefully fallback to local authoritative astrology synthesis
+    if not settings.GROQ_API_KEY:
+        return _local_astrological_fallback(latest_user_text, custom_rules, user_birth_details)
+
+    headers = {
+        "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
     custom_rules_context = ""
     if custom_rules:
         rule_texts = [
@@ -246,7 +428,7 @@ async def generate_astrology_response(
             f"Date of Birth: {user_birth_details.get('day')}/{user_birth_details.get('month')}/{user_birth_details.get('year')}\n"
             f"Time of Birth: {user_birth_details.get('hour')}:{user_birth_details.get('minute')}\n"
             f"Place: {user_birth_details.get('place', 'Kolkata')} (Lat: {user_birth_details.get('lat', 22.5726)}, Lon: {user_birth_details.get('lon', 88.3639)})\n"
-            f"You may invoke `calculate_kundli_tool` with these details if the user asks personal horoscope questions.\n"
+            f"You may invoke `calculate_kundli_tool` or `calculate_numerology_tool` with these details.\n"
         )
 
     full_system_prompt = (
@@ -262,31 +444,29 @@ async def generate_astrology_response(
     tools_called: list[str] = []
     citations: list[str] = [r.rule_title for r in custom_rules]
 
-    # Groq API invocation with fallback handling
     model_to_use = settings.GROQ_DEFAULT_MODEL or "openai/gpt-oss-120b"
 
     async with httpx.AsyncClient(timeout=45.0) as client:
-        # Step 1: Initial call with tools
         payload = {
             "model": model_to_use,
             "messages": api_messages,
             "tools": ASTRO_TOOLS,
             "tool_choice": "auto",
-            "temperature": 0.3,  # Low temperature for authentic astrological consistency
+            "temperature": 0.3,
             "max_tokens": 2048,
         }
 
         try:
             resp = await client.post(GROQ_CHAT_URL, headers=headers, json=payload)
-            if resp.status_code == 400 or resp.status_code == 404:
-                # Try fallback model
+            if resp.status_code in (400, 404):
                 payload["model"] = settings.GROQ_FALLBACK_MODEL or "qwen/qwen3.8-27b"
                 resp = await client.post(GROQ_CHAT_URL, headers=headers, json=payload)
 
             resp.raise_for_status()
             data = resp.json()
-        except Exception as e:
-            raise RuntimeError(f"Groq API error: {e}")
+        except Exception:
+            # Safe fallback if API quota or connection issue occurs
+            return _local_astrological_fallback(latest_user_text, custom_rules, user_birth_details)
 
         choice = data["choices"][0]
         assistant_message = choice["message"]
@@ -323,12 +503,15 @@ async def generate_astrology_response(
                 "temperature": 0.3,
                 "max_tokens": 2048,
             }
-            final_resp = await client.post(
-                GROQ_CHAT_URL, headers=headers, json=final_payload
-            )
-            final_resp.raise_for_status()
-            final_data = final_resp.json()
-            raw_reply = final_data["choices"][0]["message"]["content"]
+            try:
+                final_resp = await client.post(
+                    GROQ_CHAT_URL, headers=headers, json=final_payload
+                )
+                final_resp.raise_for_status()
+                final_data = final_resp.json()
+                raw_reply = final_data["choices"][0]["message"]["content"]
+            except Exception:
+                return _local_astrological_fallback(latest_user_text, custom_rules, user_birth_details)
         else:
             raw_reply = assistant_message.get("content", "")
 
@@ -347,7 +530,6 @@ async def generate_astrology_response(
 
     final_content = "\n".join(clean_lines).strip()
 
-    # Fallback follow-ups if model didn't provide any
     if not followups:
         followups = [
             "আমার কুন্ডলীতে কোন কোন রাজযোগ আছে?",
