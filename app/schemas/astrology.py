@@ -765,6 +765,133 @@ class KundliActiveYogaDetail(BaseModel):
     effects: str
 
 
+class PlanetaryDignityItem(BaseModel):
+    planet: str
+    planet_bn: str
+    planet_hi: str
+    sign: str
+    sign_bn: str
+    house: int
+    degree: float
+    degree_formatted: str
+    dignity: str  # Exalted, Own, Moolatrikona, Friend, Neutral, Enemy, Debilitated
+    dignity_bn: str
+    dignity_hi: str
+    is_combust: bool = False
+    is_retrograde: bool = False
+    avastha: str  # Bal, Kumar, Yuva, Vriddha, Mrita
+    avastha_bn: str
+    avastha_hi: str
+    neechabhanga: bool = False
+    neechabhanga_reason: str | None = None
+
+
+class HousePredictionItem(BaseModel):
+    house_number: int  # 1 to 12
+    house_name: str
+    house_name_bn: str
+    house_name_hi: str
+    sign: str
+    sign_bn: str
+    sign_lord: str
+    sign_lord_bn: str
+    lord_placement_house: int
+    occupants: list[str] = Field(default_factory=list)
+    occupants_bn: list[str] = Field(default_factory=list)
+    overview: str
+    overview_bn: str
+    overview_hi: str
+    career_wealth_effect: str
+    career_wealth_effect_bn: str
+    career_wealth_effect_hi: str
+    relationship_family_effect: str
+    relationship_family_effect_bn: str
+    relationship_family_effect_hi: str
+
+
+class ExtendedYogaItem(BaseModel):
+    name: str
+    name_bn: str
+    name_hi: str
+    category: str  # Pancha Mahapurusha, Raj Yoga, Dhana Yoga, Auspicious, Inauspicious
+    category_bn: str
+    is_present: bool
+    description: str
+    description_bn: str
+    description_hi: str
+    effects: str
+    effects_bn: str
+    effects_hi: str
+
+
+class DoshaAnalysisItem(BaseModel):
+    dosha_name: str
+    dosha_name_bn: str
+    dosha_name_hi: str
+    is_present: bool
+    severity: str  # High, Moderate, Mild, Cancelled, None
+    severity_bn: str
+    specific_type: str | None = None
+    specific_type_bn: str | None = None
+    cancellation_reason: str | None = None
+    cancellation_reason_bn: str | None = None
+    remedy: str
+    remedy_bn: str
+    remedy_hi: str
+
+
+class GemstoneItem(BaseModel):
+    category: str  # Life Stone (Lagna Lord), Lucky Stone (9th Lord), Career Stone (5th/10th Lord)
+    category_bn: str
+    stone_name: str
+    stone_name_bn: str
+    stone_name_hi: str
+    sanskrit_name: str
+    ruling_planet: str
+    ruling_planet_bn: str
+    metal: str
+    metal_bn: str
+    finger: str
+    finger_bn: str
+    wearing_day: str
+    wearing_day_bn: str
+    beej_mantra: str
+    benefit: str
+    benefit_bn: str
+
+
+class PersonalRemedies(BaseModel):
+    life_stone: GemstoneItem
+    lucky_stone: GemstoneItem
+    career_stone: GemstoneItem
+    rudraksha_recommendation: str
+    rudraksha_recommendation_bn: str
+    rudraksha_recommendation_hi: str
+    ishta_devata: str
+    ishta_devata_bn: str
+    ishta_devata_hi: str
+    lucky_colors: list[str]
+    lucky_colors_bn: list[str]
+    lucky_numbers: list[int]
+    favorable_direction: str
+    favorable_direction_bn: str
+
+
+class CurrentDashaInfo(BaseModel):
+    mahadasha_lord: str
+    mahadasha_lord_bn: str
+    antardasha_lord: str
+    antardasha_lord_bn: str
+    start_date: str
+    end_date: str
+    verdict: str
+    verdict_bn: str
+    verdict_hi: str
+    guidance: str
+    guidance_bn: str
+    guidance_hi: str
+
+
 class KundliCalculateResponse(BaseModel):
     personal_details: KundliPersonalDetails
     astronomical_info: KundliAstronomicalInfo
@@ -776,12 +903,26 @@ class KundliCalculateResponse(BaseModel):
     d1_asc_sign: int  # 1-12
     d9_asc_sign: int  # 1-12
 
+    # Advanced Divisional Charts (D10 Dasamsha for Career, D7 Saptamsha for Progeny)
+    d10_planets: list[KundliChartPlanet] = Field(default_factory=list)
+    d10_asc_sign: int = 1
+    d7_planets: list[KundliChartPlanet] = Field(default_factory=list)
+    d7_asc_sign: int = 1
+
     planets_table: list[KundliTableRow]
     houses_table: list[KundliTableRow]
     dashas_grid: list[KundliDashaCard]
 
     yogas_status: list[KundliYogaItem]
     active_yogas_details: list[KundliActiveYogaDetail]
+
+    # Advanced Classical Vedic Additions
+    planetary_dignities: list[PlanetaryDignityItem] = Field(default_factory=list)
+    house_predictions: list[HousePredictionItem] = Field(default_factory=list)
+    extended_yogas: list[ExtendedYogaItem] = Field(default_factory=list)
+    doshas_analysis: list[DoshaAnalysisItem] = Field(default_factory=list)
+    remedies: PersonalRemedies | None = None
+    current_dasha: CurrentDashaInfo | None = None
 
     selected_language: str = "en"
     translations: dict[str, Any] = Field(default_factory=dict)
