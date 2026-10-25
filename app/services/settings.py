@@ -188,6 +188,8 @@ async def set_feature_pricing(
     doc.updated_by = admin_id
     if is_ready():
         await doc.save()
+        from app.services import realtime
+        await realtime.publish_feature_pricing(doc)
         await _publish(doc, reprice=False)
 
     logger.info("Feature pricing updated by {}: {}", admin_id, changes)

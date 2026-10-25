@@ -162,6 +162,93 @@ async def publish_astrologer(profile: Any) -> None:
 
 
 # ------------------------------------------------------------------ settings
+def build_feature_pricing_payload(platform: Any) -> dict[str, dict[str, Any]]:
+    """Builds a JSON-safe dictionary of all 9 astrology & scanning features."""
+    return {
+        "daily_horoscope": {
+            "feature_id": "daily_horoscope",
+            "name": "Daily Horoscope",
+            "coins": getattr(platform, "daily_horoscope_coins", 0),
+            "is_free": getattr(platform, "daily_horoscope_coins", 0) == 0,
+            "enabled": getattr(platform, "daily_horoscope_enabled", True),
+            "description": "Daily Transit, Panchang & Planetary Analysis",
+        },
+        "kundli": {
+            "feature_id": "kundli",
+            "name": "Kundli Generator",
+            "coins": getattr(platform, "kundli_coins", 20),
+            "is_free": getattr(platform, "kundli_coins", 20) == 0,
+            "enabled": getattr(platform, "kundli_enabled", True),
+            "description": "Complete Kundli, D1/D9 Charts, Planetary Table & 3x3 Dasha",
+        },
+        "kundli_matching": {
+            "feature_id": "kundli_matching",
+            "name": "Kundli Matching",
+            "coins": getattr(platform, "kundli_matching_coins", 20),
+            "is_free": getattr(platform, "kundli_matching_coins", 20) == 0,
+            "enabled": getattr(platform, "kundli_matching_enabled", True),
+            "description": "36 Gunas Ashtakoot Milan & Dosha Check",
+        },
+        "kp_calculator": {
+            "feature_id": "kp_calculator",
+            "name": "KP Astrology",
+            "coins": getattr(platform, "kp_calculator_coins", 20),
+            "is_free": getattr(platform, "kp_calculator_coins", 20) == 0,
+            "enabled": getattr(platform, "kp_calculator_enabled", True),
+            "description": "Placidus Cusps, Ruling Planets & Sub-Lords",
+        },
+        "dasha_calculator": {
+            "feature_id": "dasha_calculator",
+            "name": "Dasha Calculator",
+            "coins": getattr(platform, "dasha_calculator_coins", 15),
+            "is_free": getattr(platform, "dasha_calculator_coins", 15) == 0,
+            "enabled": getattr(platform, "dasha_calculator_enabled", True),
+            "description": "Complete Vimshottari Mahadasha/Antardasha Tree",
+        },
+        "rashi_calculator": {
+            "feature_id": "rashi_calculator",
+            "name": "Rashi Calculator",
+            "coins": getattr(platform, "rashi_calculator_coins", 10),
+            "is_free": getattr(platform, "rashi_calculator_coins", 10) == 0,
+            "enabled": getattr(platform, "rashi_calculator_enabled", True),
+            "description": "Moon Sign, Traits, Remedies & Avakahada",
+        },
+        "nakshatra_calculator": {
+            "feature_id": "nakshatra_calculator",
+            "name": "Nakshatra Calculator",
+            "coins": getattr(platform, "nakshatra_calculator_coins", 10),
+            "is_free": getattr(platform, "nakshatra_calculator_coins", 10) == 0,
+            "enabled": getattr(platform, "nakshatra_calculator_enabled", True),
+            "description": "Janma Nakshatra, Pada, Tarabala & Sacred Mantras",
+        },
+        "palm_reading": {
+            "feature_id": "palm_reading",
+            "name": "Palm Reading",
+            "coins": getattr(platform, "palm_reading_coins", 25),
+            "is_free": getattr(platform, "palm_reading_coins", 25) == 0,
+            "enabled": getattr(platform, "palm_reading_enabled", True),
+            "description": "AI Computer Vision Palmistry & Crease Analysis",
+        },
+        "face_reading": {
+            "feature_id": "face_reading",
+            "name": "Face Reading",
+            "coins": getattr(platform, "face_reading_coins", 25),
+            "is_free": getattr(platform, "face_reading_coins", 25) == 0,
+            "enabled": getattr(platform, "face_reading_enabled", True),
+            "description": "Facial Morphology & Vedic Samudrika Shastra",
+        },
+    }
+
+
+async def publish_feature_pricing(platform: Any) -> None:
+    """Tells all connected clients (web & admin) that feature prices or toggles changed."""
+    try:
+        payload = build_feature_pricing_payload(platform)
+        _broadcast({"type": "feature_pricing", "data": payload})
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not broadcast live feature pricing: {}", exc)
+
+
 async def publish_settings(platform: Any) -> None:
     """The numbers every price on the site is derived from."""
     _broadcast(
@@ -181,6 +268,7 @@ async def publish_settings(platform: Any) -> None:
             },
         }
     )
+    await publish_feature_pricing(platform)
 
 
 async def publish_all_astrologers() -> int:

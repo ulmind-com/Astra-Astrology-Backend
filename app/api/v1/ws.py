@@ -71,6 +71,20 @@ async def live(websocket: WebSocket, token: str | None = Query(default=None)) ->
     try:
         await websocket.send_json({"type": "ready", "data": {"signed_in": bool(user_id)}})
 
+        # Deliver current feature pricing immediately upon connection
+        try:
+            from app.services import settings as settings_service
+
+            platform = await settings_service.get_settings()
+            connection.offer(
+                {
+                    "type": "feature_pricing",
+                    "data": realtime.build_feature_pricing_payload(platform),
+                }
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Could not queue initial feature pricing: {}", exc)
+
         while True:
             # The client pings; anything arriving proves the socket is alive.
             # Nothing arriving for longer than the timeout means it is not.

@@ -61,3 +61,34 @@ async def test_feature_pricing_update_and_enforcement():
     assert settings.kundli_coins == 20
     assert settings.daily_horoscope_coins == 0
     assert settings.nakshatra_calculator_coins == 10
+
+
+@pytest.mark.asyncio
+async def test_realtime_feature_pricing_broadcast():
+    """Verify realtime broadcast helper creates valid payload and queues to connections."""
+    from app.services import realtime
+
+    platform = await settings_service.get_settings()
+    payload = realtime.build_feature_pricing_payload(platform)
+
+    assert "kundli" in payload
+    assert payload["kundli"]["coins"] == platform.kundli_coins
+    assert payload["kundli"]["enabled"] == platform.kundli_enabled
+    assert "daily_horoscope" in payload
+    assert "palm_reading" in payload
+
+    # Test dummy connection queueing
+    class DummyWs:
+        pass
+
+    conn = realtime.Connection(DummyWs(), user_id="test-user", role="user")
+    realtime.register(conn)
+    try:
+        await realtime.publish_feature_pricing(platform)
+        # Message should be queued in conn.queue
+        assert not conn.queue.empty()
+        msg = conn.queue.get_nowait()
+        assert msg["type"] == "feature_pricing"
+        assert msg["data"]["kundli"]["coins"] == platform.kundli_coins
+    finally:
+        realtime.unregister(conn)
