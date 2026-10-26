@@ -37,6 +37,7 @@ from app.services.ai.knowledge_service import (
 router = APIRouter(tags=["ai-astrologer"])
 
 
+@router.post("/ai-astrologer/chat", response_model=ApiResponse[AIChatResponse])
 @router.post("/ai-chat/message", response_model=ApiResponse[AIChatResponse])
 async def send_ai_chat_message(
     payload: AIChatRequest,
@@ -62,8 +63,44 @@ async def send_ai_chat_message(
         if user and not session.user_id:
             session.user_id = user.id
 
-    # If no birth details passed, check if logged in user has birth profile saved
+    # If flat birth parameters were provided, parse them into birth_details
     effective_birth = session.birth_details
+    if not effective_birth and payload.birth_date:
+        try:
+            parts = [p.strip() for p in payload.birth_date.replace("/", "-").split("-") if p.strip()]
+            if len(parts) == 3:
+                if len(parts[0]) == 4:
+                    year, month, day = int(parts[0]), int(parts[1]), int(parts[2])
+                else:
+                    day, month, year = int(parts[0]), int(parts[1]), int(parts[2])
+            else:
+                day, month, year = 1, 1, 2000
+
+            hour = 12
+            minute = 0
+            if payload.birth_time:
+                t_parts = payload.birth_time.strip().split(":")
+                if len(t_parts) >= 2:
+                    hour = int(t_parts[0])
+                    minute = int(t_parts[1])
+
+            effective_birth = {
+                "name": (user.full_name if user else "User") or "User",
+                "gender": "male",
+                "day": day,
+                "month": month,
+                "year": year,
+                "hour": hour,
+                "minute": minute,
+                "place": payload.birth_place or "Kolkata",
+                "lat": float(payload.latitude or 22.5726),
+                "lon": float(payload.longitude or 88.3639),
+            }
+            session.birth_details = effective_birth
+        except Exception:
+            pass
+
+    # If still no birth details passed, check if logged in user has birth profile saved
     if not effective_birth and user and user.profile:
         p = user.profile
         if p.birth_date:
@@ -100,13 +137,20 @@ async def send_ai_chat_message(
     result = await generate_astrology_response(
         messages=history_to_send,
         user_birth_details=effective_birth,
+        preferred_language=payload.preferred_language or "bn",
     )
+
+    # Convert citations for chat message item storage
+    stored_citations = [
+        c["source"] if isinstance(c, dict) and "source" in c else str(c)
+        for c in result.get("citations", [])
+    ]
 
     # Append assistant response
     assistant_msg_item = ChatMessageItem(
         role="assistant",
         content=result["reply"],
-        citations=result["citations"],
+        citations=stored_citations,
         tools_called=result["tools_called"],
         suggested_followups=result["suggested_followups"],
     )
@@ -117,6 +161,7 @@ async def send_ai_chat_message(
         data=AIChatResponse(
             session_id=session.session_id,
             reply=result["reply"],
+            language=payload.preferred_language or "bn",
             tools_called=result["tools_called"],
             citations=result["citations"],
             suggested_followups=result["suggested_followups"],
@@ -124,6 +169,7 @@ async def send_ai_chat_message(
     )
 
 
+@router.get("/ai-astrologer/session/{session_id}", response_model=ApiResponse[dict])
 @router.get("/ai-chat/session/{session_id}", response_model=ApiResponse[dict])
 async def get_ai_chat_session(session_id: str) -> ApiResponse[dict]:
     """Retrieves conversation history for a given session."""
@@ -142,6 +188,7 @@ async def get_ai_chat_session(session_id: str) -> ApiResponse[dict]:
     )
 
 
+@router.get("/ai-astrologer/sessions", response_model=ApiResponse[list[dict]])
 @router.get("/ai-chat/sessions", response_model=ApiResponse[list[dict]])
 async def list_user_ai_sessions(
     user: Annotated[User | None, Depends(get_optional_user)] = None,
@@ -170,6 +217,7 @@ async def list_user_ai_sessions(
     )
 
 
+@router.delete("/ai-astrologer/session/{session_id}", response_model=ApiResponse[dict])
 @router.delete("/ai-chat/session/{session_id}", response_model=ApiResponse[dict])
 async def delete_ai_chat_session(session_id: str) -> ApiResponse[dict]:
     """Deletes an AI chat session."""
@@ -179,17 +227,19 @@ async def delete_ai_chat_session(session_id: str) -> ApiResponse[dict]:
     return ApiResponse(data={"deleted": True})
 
 
+@router.post("/ai-astrologer/feedback", response_model=ApiResponse[dict])
 @router.post("/ai-chat/feedback", response_model=ApiResponse[dict])
 async def submit_ai_feedback(payload: AIFeedbackRequest) -> ApiResponse[dict]:
     """Submits thumbs up or thumbs down feedback for continuous self-learning."""
     session = await AIChatSession.find_one(AIChatSession.session_id == payload.session_id)
-    user_query = ""
-    ai_response = ""
+    user_query = payload.user_query or ""
+    ai_response = payload.ai_response or ""
 
     if session and len(session.messages) > payload.message_index:
         msg = session.messages[payload.message_index]
-        ai_response = msg.content
-        if payload.message_index > 0:
+        if not ai_response:
+            ai_response = msg.content
+        if payload.message_index > 0 and not user_query:
             user_query = session.messages[payload.message_index - 1].content
 
     feedback = await save_user_feedback(

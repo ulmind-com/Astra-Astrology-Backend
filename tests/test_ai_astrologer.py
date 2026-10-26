@@ -16,7 +16,8 @@ def test_text_cleaning_and_chunking():
     assert "বৃহস্পতি" in chunks[0]
 
 
-def test_local_tool_execution():
+@pytest.mark.asyncio
+async def test_local_tool_execution():
     # 1. Test kundli tool execution
     kundli_args = {
         "name": "Arjun",
@@ -29,15 +30,16 @@ def test_local_tool_execution():
         "lon": 88.3639,
         "place": "Kolkata",
     }
-    raw_res = _execute_local_tool("calculate_kundli_tool", kundli_args)
+    raw_res, citations = await _execute_local_tool("calculate_kundli_tool", kundli_args)
     data = json.loads(raw_res)
     assert "ascendant_sign" in data
     assert "moon_sign" in data
     assert "current_dasha" in data
+    assert len(citations) > 0
 
     # 2. Test daily horoscope tool execution
     horo_args = {"rashi_index": 0}  # Aries
-    horo_res = _execute_local_tool("get_daily_horoscope_tool", horo_args)
+    horo_res, horo_citations = await _execute_local_tool("get_daily_horoscope_tool", horo_args)
     horo_data = json.loads(horo_res)
     assert "sign_name" in horo_data
     assert "beej_mantra" in horo_data

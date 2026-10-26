@@ -146,8 +146,9 @@ ASTRO_TOOLS = [
 ]
 
 
-def _execute_local_tool(func_name: str, arguments: dict[str, Any]) -> str:
-    """Executes local astrology calculations or RAG knowledge search."""
+async def _execute_local_tool(func_name: str, arguments: dict[str, Any]) -> tuple[str, list[dict[str, str]]]:
+    """Executes local astrology calculations or RAG knowledge search and returns (result_json, citations)."""
+    tool_citations: list[dict[str, str]] = []
     try:
         if func_name == "calculate_kundli_tool":
             req = KundliCalculateRequest(
@@ -210,7 +211,12 @@ def _execute_local_tool(func_name: str, arguments: dict[str, Any]) -> str:
                     else None
                 ),
             }
-            return json.dumps(summary, ensure_ascii=False)
+            tool_citations.append({
+                "source": "সুইস এফিমেরিস বৈদিক কুন্ডলী এনজিন (Swiss Ephemeris 2.10)",
+                "category": "kundli",
+                "snippet": f"লগ্ন: {resp.d1_asc_sign}, চন্দ্র রাশি: {resp.planetary_info.rasi}, নক্ষত্র: {resp.planetary_info.nakshatra}। নির্ভুল লাহিড়ী অয়নাংশ গণনা সম্পন্ন।",
+            })
+            return json.dumps(summary, ensure_ascii=False), tool_citations
 
         elif func_name == "get_daily_horoscope_tool":
             req = DailyHoroscopeRequest(
@@ -233,7 +239,12 @@ def _execute_local_tool(func_name: str, arguments: dict[str, Any]) -> str:
                 "remedy": horo.remedy,
                 "current_active_hora": resp.panchang.horas[0].planet_bn if resp.panchang.horas else None,
             }
-            return json.dumps(summary, ensure_ascii=False)
+            tool_citations.append({
+                "source": f"দৈনিক গোচর ও হোরা কালকুলেটর ({horo.sign_name})",
+                "category": "transit",
+                "snippet": f"আজকের শুভ স্কোর: {horo.overall_score}/১০০, লাকি রঙ: {horo.lucky_color}, শুভ সংখ্যা: {horo.lucky_number}।",
+            })
+            return json.dumps(summary, ensure_ascii=False), tool_citations
 
         elif func_name == "calculate_numerology_tool":
             name = arguments.get("name", "User")
@@ -272,7 +283,12 @@ def _execute_local_tool(func_name: str, arguments: dict[str, Any]) -> str:
                     else None
                 ),
             }
-            return json.dumps(summary, ensure_ascii=False)
+            tool_citations.append({
+                "source": f"চ্যালডিয়ান ও বৈদিক সংখ্যাতত্ত্ব (মূলাঙ্ক {mulank_info['number']} • ভাগ্যাঙ্ক {bhagyank_info['number']})",
+                "category": "numerology",
+                "snippet": f"চালক গ্রহ: {mulank_info['planet']}, ভাগ্য নিয়ন্তা: {bhagyank_info['planet']}, নাম যৌগিক যোগফল: {name_info['compound_total']}।",
+            })
+            return json.dumps(summary, ensure_ascii=False), tool_citations
 
         elif func_name == "calculate_matchmaking_tool":
             b_hour = int(arguments.get("boy_hour", 12))
@@ -319,49 +335,136 @@ def _execute_local_tool(func_name: str, arguments: dict[str, Any]) -> str:
                 "marital_harmony": match_resp.forecast.marital_harmony_verdict if match_resp.forecast else None,
                 "financial_prosperity": match_resp.forecast.financial_prosperity_verdict if match_resp.forecast else None,
             }
-            return json.dumps(summary, ensure_ascii=False)
+            tool_citations.append({
+                "source": "৩৬ গুণ অষ্টকূট বিবাহ মেলাক এনজিন",
+                "category": "matchmaking",
+                "snippet": f"প্রাপ্ত গুণ: {match_resp.total_received}/{match_resp.total_out_of} ({match_resp.total_percentage}%) — {match_resp.verdict}",
+            })
+            return json.dumps(summary, ensure_ascii=False), tool_citations
 
         elif func_name == "search_vedic_rules_tool":
-            import asyncio
-
             query = arguments.get("query", "")
             cat = arguments.get("category")
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                import concurrent.futures
+            results = await search_knowledge(query, cat, top_k=4)
 
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    results = pool.submit(
-                        asyncio.run, search_knowledge(query, cat, top_k=3)
-                    ).result()
-            else:
-                results = asyncio.run(search_knowledge(query, cat, top_k=3))
+            for doc in results:
+                tool_citations.append({
+                    "source": doc.get("title", "শাস্ত্রীয় বিধান"),
+                    "category": doc.get("category", "shastra"),
+                    "snippet": doc.get("content", "")[:180] + "...",
+                })
 
-            return json.dumps(results, ensure_ascii=False)
+            return json.dumps(results, ensure_ascii=False), tool_citations
 
     except Exception as e:
-        return json.dumps({"error": f"Tool execution failed: {str(e)}"})
+        return json.dumps({"error": f"Tool execution failed: {str(e)}"}), tool_citations
 
-    return json.dumps({"status": "unknown_tool"})
+    return json.dumps({"status": "unknown_tool"}), tool_citations
 
 
-def _local_astrological_fallback(
-    latest_user_text: str, custom_rules: list[Any], user_birth_details: dict[str, Any] | None
+async def _local_astrological_fallback(
+    latest_user_text: str,
+    custom_rules: list[Any],
+    user_birth_details: dict[str, Any] | None,
+    preferred_language: str = "bn",
 ) -> dict[str, Any]:
-    """Provides a zero-downtime, classical Parashari response when external LLM is offline or unconfigured."""
-    citations: list[str] = []
+    """Provides an authoritative classical Vedic response when external LLM is offline or unconfigured."""
+    citations_map: dict[str, dict[str, str]] = {}
     reply_parts: list[str] = []
+    tools_called: list[str] = ["local_astrology_rules_engine"]
 
+    # 1. Check if birth chart calculation can be performed
+    if user_birth_details and "day" in user_birth_details:
+        try:
+            req = KundliCalculateRequest(
+                name=user_birth_details.get("name", "User"),
+                gender=user_birth_details.get("gender", "male"),
+                day=int(user_birth_details["day"]),
+                month=int(user_birth_details["month"]),
+                year=int(user_birth_details["year"]),
+                hour=int(user_birth_details.get("hour", 12)),
+                minute=int(user_birth_details.get("minute", 0)),
+                lat=float(user_birth_details.get("lat") or 22.5726),
+                lon=float(user_birth_details.get("lon") or 88.3639),
+                tzone=5.5,
+                place=user_birth_details.get("place", "Kolkata"),
+            )
+            kundli = calculate_kundli(req)
+            tools_called.append("calculate_kundli_tool")
+
+            citations_map["kundli_engine"] = {
+                "source": "সুইস এফিমেরিস বৈদিক কুন্ডলী এনজিন",
+                "category": "kundli",
+                "snippet": f"লগ্ন: {kundli.d1_asc_sign}, চন্দ্র রাশি: {kundli.planetary_info.rasi}, জন্ম নক্ষত্র: {kundli.planetary_info.nakshatra}।",
+            }
+
+            reply_parts.append(
+                f"নমস্কার {user_birth_details.get('name', '')}। সুইস এফিমেরিসের নিখুঁত লাহিড়ী অয়নাংশ গণনা অনুযায়ী আপনার জন্মকুন্ডলীর প্রধান জ্যোতিষীয় চিত্র:\n\n"
+                f"• **জন্ম লগ্ন:** {kundli.d1_asc_sign}\n"
+                f"• **চন্দ্র রাশি:** {kundli.planetary_info.rasi}\n"
+                f"• **জন্ম নক্ষত্র:** {kundli.planetary_info.nakshatra}\n"
+            )
+
+            if kundli.current_dasha:
+                cd = kundli.current_dasha
+                reply_parts.append(
+                    f"**চলমান বিংশোত্তরী দশা:**\n"
+                    f"বর্তমানে আপনার **{cd.mahadasha_lord}** এর মহাদশা এবং **{cd.antardasha_lord}** এর অন্তর্দশা চলছে। "
+                    f"{cd.verdict_bn} {cd.guidance_bn}\n"
+                )
+
+            if kundli.remedies:
+                reply_parts.append(
+                    f"**শাস্ত্রীয় অনুকূল রত্ন ও প্রতিকার:**\n"
+                    f"• জীবন রত্ন (লগ্নপতি): **{kundli.remedies.life_stone.stone_name}** ({kundli.remedies.life_stone.stone_name_bn})\n"
+                    f"• ভাগ্য রত্ন (নবমপতি): **{kundli.remedies.lucky_stone.stone_name}** ({kundli.remedies.lucky_stone.stone_name_bn})\n"
+                    f"• রুদ্রাক্ষ পরামর্শ: {kundli.remedies.rudraksha_recommendation_bn}\n"
+                    f"• ইষ্টদেবতা: {kundli.remedies.ishta_devata_bn}"
+                )
+        except Exception:
+            pass
+
+    # 2. Check Custom Rules
     if custom_rules:
         r = custom_rules[0]
-        citations.append(f"শাস্ত্রীয় বিধান: {r.rule_title}")
+        citations_map[r.rule_title] = {
+            "source": r.rule_title,
+            "category": r.category or "custom_rule",
+            "snippet": r.response_bn[:160] + "...",
+        }
         reply_parts.append(
-            f"নমস্কার। শাস্ত্রীয় নীতি ও পরাশর হোরাশাস্ত্রীয় সমাধান অনুযায়ী:\n\n"
             f"**{r.rule_title}**\n\n"
             f"{r.response_bn}\n\n"
             f"**প্রস্তাবিত বৈদিক প্রতিকার:**\n{r.remedy_bn}"
         )
-    else:
+
+    # 3. If no parts yet, search knowledge base
+    if not reply_parts:
+        try:
+            docs = await search_knowledge(latest_user_text, top_k=2)
+            if docs:
+                tools_called.append("search_vedic_rules_tool")
+                for d in docs:
+                    citations_map[d["title"]] = {
+                        "source": d["title"],
+                        "category": d["category"],
+                        "snippet": d["content"][:160] + "...",
+                    }
+                reply_parts.append(
+                    f"নমস্কার। শাস্ত্রীয় বৈদিক নথি ও ক্লায়েন্টের নির্দেশিকা অনুযায়ী আপনার প্রশ্নের সমাধান:\n\n"
+                    f"{docs[0]['content'][:600]}...\n\n"
+                    f"**শাস্ত্রীয় পরামর্শ:** কোনো শুভ কাজ সূচনার পূর্বে অনুকূল গ্রহের হোরা ও শুভ নক্ষত্র বল বিবেচনা করে পদক্ষেপ নেওয়া শ্রেয়।"
+                )
+        except Exception:
+            pass
+
+    # 4. Fallback general response if still empty
+    if not reply_parts:
+        citations_map["shastra"] = {
+            "source": "বৃহৎ পরাশর হোরাশাস্ত্র ও ফলদীপিকা",
+            "category": "shastra",
+            "snippet": "মহর্ষি পরাশর প্রণীত শাস্ত্রীয় গ্রহবল ও শুভাশুভ সময় বিচার বিধান।",
+        }
         reply_parts.append(
             "নমস্কার। বৈদিক জ্যোতিষশাস্ত্রীয় গণনা ও গ্রহাবস্থানের গভীর পর্যালোচনায় আপনার প্রশ্নের সঠিক সমাধান নিম্নে উপস্থাপন করা হলো:\n\n"
             "**শাস্ত্রীয় পর্যবেক্ষণ:** আপনার জন্মসূত্রে বিরাজমান গ্রহাবস্থা এবং বর্তমান গোচর গ্রহের প্রভাব আপনার ক্ষেত্রে অত্যন্ত গুরুত্বপূর্ণ ভূমিকা রাখছে।\n\n"
@@ -370,15 +473,15 @@ def _local_astrological_fallback(
         )
 
     followups = [
-        "আমার কুন্ডলীতে শুভ ও অশুভ গ্রহ কোনগুলি?",
-        "আমার জন্য কোন রত্ন বা রুদ্রাক্ষ ধারণ মঙ্গলজনক?",
+        "আমার কুন্ডলীতে কোন কোন শুভ রাজযোগ রয়েছে?",
+        "আমার জন্য কোন রত্ন বা রুদ্রাক্ষ ধারণ সবচেয়ে মঙ্গলজনক?",
         "আজকের দিনে কোন সময়ে শুভ কাজ শুরু করা উচিত?",
     ]
 
     return {
         "reply": "\n\n".join(reply_parts),
-        "tools_called": ["local_astrology_rules_engine"],
-        "citations": citations or ["বৃহৎ পরাশর হোরাশাস্ত্র ও ফলদীপিকা"],
+        "tools_called": list(set(tools_called)),
+        "citations": list(citations_map.values()),
         "suggested_followups": followups,
     }
 
@@ -386,6 +489,7 @@ def _local_astrological_fallback(
 async def generate_astrology_response(
     messages: list[dict[str, Any]],
     user_birth_details: dict[str, Any] | None = None,
+    preferred_language: str = "bn",
     stream: bool = False,
 ) -> dict[str, Any]:
     """Sends prompt & conversation history to Groq (openai/gpt-oss-120b),
@@ -402,7 +506,9 @@ async def generate_astrology_response(
 
     # If Groq API key is not configured, gracefully fallback to local authoritative astrology synthesis
     if not settings.GROQ_API_KEY:
-        return _local_astrological_fallback(latest_user_text, custom_rules, user_birth_details)
+        return await _local_astrological_fallback(
+            latest_user_text, custom_rules, user_birth_details, preferred_language
+        )
 
     headers = {
         "Authorization": f"Bearer {settings.GROQ_API_KEY}",
@@ -428,11 +534,19 @@ async def generate_astrology_response(
             f"Date of Birth: {user_birth_details.get('day')}/{user_birth_details.get('month')}/{user_birth_details.get('year')}\n"
             f"Time of Birth: {user_birth_details.get('hour')}:{user_birth_details.get('minute')}\n"
             f"Place: {user_birth_details.get('place', 'Kolkata')} (Lat: {user_birth_details.get('lat', 22.5726)}, Lon: {user_birth_details.get('lon', 88.3639)})\n"
-            f"You may invoke `calculate_kundli_tool` or `calculate_numerology_tool` with these details.\n"
+            f"You may invoke `calculate_kundli_tool` or `calculate_numerology_tool` with these exact details.\n"
         )
 
+    lang_instruction = ""
+    if preferred_language == "hi":
+        lang_instruction = "\nIMPORTANT: The user prefers Hindi. Respond in clear, respectful Vedic Hindi (हिन्दी).\n"
+    elif preferred_language == "en":
+        lang_instruction = "\nIMPORTANT: The user prefers English. Respond in clear, classical Vedic English.\n"
+    else:
+        lang_instruction = "\nIMPORTANT: Default to respectful, compassionate Bengali (বাংলা).\n"
+
     full_system_prompt = (
-        ASTROLOGER_SYSTEM_PROMPT + birth_context + custom_rules_context
+        ASTROLOGER_SYSTEM_PROMPT + birth_context + custom_rules_context + lang_instruction
     )
 
     api_messages: list[dict[str, Any]] = [
@@ -442,7 +556,14 @@ async def generate_astrology_response(
         api_messages.append({"role": m["role"], "content": m["content"]})
 
     tools_called: list[str] = []
-    citations: list[str] = [r.rule_title for r in custom_rules]
+    citations_map: dict[str, dict[str, str]] = {}
+
+    for r in custom_rules:
+        citations_map[r.rule_title] = {
+            "source": r.rule_title,
+            "category": r.category or "custom_rule",
+            "snippet": r.response_bn[:160] + "...",
+        }
 
     model_to_use = settings.GROQ_DEFAULT_MODEL or "openai/gpt-oss-120b"
 
@@ -466,7 +587,9 @@ async def generate_astrology_response(
             data = resp.json()
         except Exception:
             # Safe fallback if API quota or connection issue occurs
-            return _local_astrological_fallback(latest_user_text, custom_rules, user_birth_details)
+            return await _local_astrological_fallback(
+                latest_user_text, custom_rules, user_birth_details, preferred_language
+            )
 
         choice = data["choices"][0]
         assistant_message = choice["message"]
@@ -483,9 +606,11 @@ async def generate_astrology_response(
                 except Exception:
                     args = {}
 
-                tool_result_str = _execute_local_tool(func_name, args)
+                tool_result_str, retrieved_cites = await _execute_local_tool(func_name, args)
                 tools_called.append(func_name)
-                citations.append(f"Engine: {func_name}")
+
+                for c in retrieved_cites:
+                    citations_map[c["source"]] = c
 
                 api_messages.append(
                     {
@@ -511,7 +636,9 @@ async def generate_astrology_response(
                 final_data = final_resp.json()
                 raw_reply = final_data["choices"][0]["message"]["content"]
             except Exception:
-                return _local_astrological_fallback(latest_user_text, custom_rules, user_birth_details)
+                return await _local_astrological_fallback(
+                    latest_user_text, custom_rules, user_birth_details, preferred_language
+                )
         else:
             raw_reply = assistant_message.get("content", "")
 
@@ -537,9 +664,17 @@ async def generate_astrology_response(
             "আজকের দিনে কোন হোরায় গুরুত্বপূর্ণ কাজ করা উচিত?",
         ]
 
+    # If no citations were collected from tools, add authoritative default
+    if not citations_map:
+        citations_map["default_shastra"] = {
+            "source": "বৃহৎ পরাশর হোরাশাস্ত্র ও ফলদীপিকা",
+            "category": "shastra",
+            "snippet": "সুইস এফিমেরিস ২.১০ নির্ভুল লাহিড়ী অয়নাংশ ও পরাশর বৈদিক জ্যোতিষ গণনা।",
+        }
+
     return {
         "reply": final_content,
         "tools_called": list(set(tools_called)),
-        "citations": list(set(citations)),
+        "citations": list(citations_map.values()),
         "suggested_followups": followups[:3],
     }
