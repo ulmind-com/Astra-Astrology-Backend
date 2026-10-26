@@ -193,7 +193,7 @@ def execute_scan_pipeline(
     )
 
     tri_zone_res = calculate_tri_zone_analysis(
-        landmarks=canonical_3d if len(canonical_3d) >= 468 else detection.landmarks_px,
+        landmarks=canonical_landmarks if canonical_landmarks and len(canonical_landmarks) >= 468 else detection.landmarks_px,
         measurements=measurements,
     )
     mahabhuta_res = calculate_pancha_mahabhuta(measurements)
