@@ -22,7 +22,15 @@ from app.schemas.astrology import (
     HoraItem,
     PersonalizedNakshatraProfile,
     TaraBalaSummary,
+    ChoghadiyaItem,
+    PlanetaryDrishtiItem,
+    PanchakStatus,
+    AshtakavargaTransitPoints,
+    NumerologyDailySynergy,
+    BiorhythmHour,
+    DualTransitInsight,
 )
+import app.services.astrology.client_rules as client_rules
 from app.services.astrology.calculator import (
     EphemerisUnavailable,
     HAS_SWISSEPH,
@@ -819,6 +827,652 @@ PLANET_DISPLAY_NAMES: dict[str, dict[str, str]] = {
 }
 
 
+
+# -----------------------------------------------------------------------------
+# Vedic Choghadiya Data & Calculation (Amrit, Shubh, Labh, Char, Rog, Kaal, Udveg)
+# -----------------------------------------------------------------------------
+CHOGHADIYA_METADATA: dict[str, dict[str, Any]] = {
+    "Amrit": {
+        "bn": "অমৃত", "hi": "अमृत", "ruler": "Moon", "status": "auspicious",
+        "guidance_en": "Supreme nectar muhurat. Highly auspicious for starting major ventures, signing agreements, ceremonies, and travel.",
+        "guidance_bn": "অমৃত মুহূর্ত। নতুন কার্যারম্ভ, গৃহপ্রবেশ, চুক্তি স্বাক্ষর ও শুভ কাজের জন্য সর্বোত্তম।",
+        "guidance_hi": "अमृत मुहूर्त। सभी प्रकार के शुभ कार्य, नवीन उद्यम, यात्रा और समझौते के लिए सर्वोत्तम।",
+    },
+    "Shubh": {
+        "bn": "শুভ", "hi": "शुभ", "ruler": "Jupiter", "status": "auspicious",
+        "guidance_en": "Highly propitious period ruled by Guru. Favorable for education, religious rites, investments, and medical healing.",
+        "guidance_bn": "শুভ মুহূর্ত। বৃহস্পতির প্রভাবে পুজো-অর্চনা, বিদ্যালাভ, নতুন বিনিয়োগ ও মাঙ্গলিক অনুষ্ঠানের জন্য প্রশস্ত।",
+        "guidance_hi": "शुभ मुहूर्त। धार्मिक अनुष्ठान, शिक्षा, नवीन निवेश और मांगलिक कार्यों हेतु अत्यंत अनुकूल।",
+    },
+    "Labh": {
+        "bn": "লাভ", "hi": "लाभ", "ruler": "Mercury", "status": "auspicious",
+        "guidance_en": "Dynamic wealth & commercial window ruled by Budha. Ideal for business, trading, tech, and negotiation.",
+        "guidance_bn": "লাভ মুহূর্ত। বুধের কৃপায় ব্যবসা-বাণিজ্য, শেয়ার লেনদেন, নতুন চুক্তি ও আর্থিক লাভের জন্য শ্রেষ্ঠ।",
+        "guidance_hi": "लाभ मुहूर्त। व्यापार, नए वित्तीय अनुबंध, संचार और लाभ प्राप्ति हेतु श्रेष्ठ समय।",
+    },
+    "Char": {
+        "bn": "চল", "hi": "चर", "ruler": "Venus", "status": "auspicious",
+        "guidance_en": "Movable/dynamic period ruled by Shukra. Favorable for journeys, vehicle purchases, arts, and dynamic movements.",
+        "guidance_bn": "চল মুহূর্ত। শুক্রের অধীন। যাত্রা, গাড়ি কেনা, স্থান পরিবর্তন, শিল্পচর্চা ও সক্রিয় কাজের জন্য শুভ।",
+        "guidance_hi": "चर मुहूर्त। यात्रा, वाहन क्रय, कलात्मक कार्य और गतिशील गतिविधियों के लिए शुभ।",
+    },
+    "Rog": {
+        "bn": "রোগ", "hi": "रोग", "ruler": "Mars", "status": "inauspicious",
+        "guidance_en": "Adverse window ruled by Mars. Avoid beginning treatment or celebrating; suitable only for fierce/technical tasks.",
+        "guidance_bn": "রোগ মুহূর্ত। মঙ্গলের প্রভাব। নতুন চিকিৎসা বা মাঙ্গলিক কাজ পরিহার করুন। শত্রু দমন বা শ্রমসাধ্য কাজ চলে।",
+        "guidance_hi": "रोग मुहूर्त। मांगलिक कार्यों व नए उपचार से बचें। केवल साहसिक व तकनीकी कार्यों हेतु उपयुक्त।",
+    },
+    "Kaal": {
+        "bn": "কাল", "hi": "काल", "ruler": "Saturn", "status": "inauspicious",
+        "guidance_en": "Strict/obstructive period ruled by Saturn. Delay important meetings, loans, and celebrations. Keep a low profile.",
+        "guidance_bn": "কাল মুহূর্ত। শনির প্রভাব। ঋণ গ্রহণ, বড় চুক্তি বা শুভ উৎসব স্থগিত রাখা বিধেয়। সংযম পালন করুন।",
+        "guidance_hi": "काल मुहूर्त। शनि की कठोर ऊर्जा। महत्वपूर्ण बैठकें और वित्तीय निर्णय टालें।",
+    },
+    "Udveg": {
+        "bn": "উদ্বেগ", "hi": "उद्वेग", "ruler": "Sun", "status": "inauspicious",
+        "guidance_en": "Agitated/tense window ruled by Sun. Avoid government disputes, confrontations, and stressful commitments.",
+        "guidance_bn": "উদ্বেগ মুহূর্ত। রবির উগ্রতা। সরকারি বিরোধ, বিবাদ বা মানসিক চাপ তৈরি করে এমন বিষয় এড়িয়ে চলুন।",
+        "guidance_hi": "उद्वेग मुहूर्त। कलह और विवाद से दूर रहें। शांति बनाए रखें और तनावपूर्ण कार्य टालें।",
+    },
+}
+
+CHOGHADIYA_DAY_SEQS: list[list[str]] = [
+    ["Udveg", "Char", "Labh", "Amrit", "Kaal", "Shubh", "Rog", "Udveg"],         # Sunday
+    ["Amrit", "Kaal", "Shubh", "Rog", "Udveg", "Char", "Labh", "Amrit"],         # Monday
+    ["Rog", "Udveg", "Char", "Labh", "Amrit", "Kaal", "Shubh", "Rog"],           # Tuesday
+    ["Labh", "Amrit", "Kaal", "Shubh", "Rog", "Udveg", "Char", "Labh"],         # Wednesday
+    ["Shubh", "Rog", "Udveg", "Char", "Labh", "Amrit", "Kaal", "Shubh"],         # Thursday
+    ["Char", "Labh", "Amrit", "Kaal", "Shubh", "Rog", "Udveg", "Char"],           # Friday
+    ["Kaal", "Shubh", "Rog", "Udveg", "Char", "Labh", "Amrit", "Kaal"],         # Saturday
+]
+
+CHOGHADIYA_NIGHT_SEQS: list[list[str]] = [
+    ["Shubh", "Amrit", "Char", "Rog", "Kaal", "Labh", "Udveg", "Shubh"],         # Sunday night
+    ["Char", "Rog", "Kaal", "Labh", "Udveg", "Shubh", "Amrit", "Char"],         # Monday night
+    ["Kaal", "Labh", "Udveg", "Shubh", "Amrit", "Char", "Rog", "Kaal"],         # Tuesday night
+    ["Udveg", "Shubh", "Amrit", "Char", "Rog", "Kaal", "Labh", "Udveg"],         # Wednesday night
+    ["Amrit", "Char", "Rog", "Kaal", "Labh", "Udveg", "Shubh", "Amrit"],         # Thursday night
+    ["Rog", "Kaal", "Labh", "Udveg", "Shubh", "Amrit", "Char", "Rog"],           # Friday night
+    ["Labh", "Udveg", "Shubh", "Amrit", "Char", "Rog", "Kaal", "Labh"],         # Saturday night
+]
+
+
+def _calculate_16_choghadiya(
+    sunrise_h: float,
+    sunset_h: float,
+    next_sunrise_h: float,
+    weekday_idx: int,
+    lang: Lang,
+) -> list[ChoghadiyaItem]:
+    """Computes all 16 Vedic Choghadiyas (8 Day + 8 Night) with exact times and client rules."""
+    items: list[ChoghadiyaItem] = []
+    day_span = sunset_h - sunrise_h
+    day_slot = day_span / 8.0
+
+    day_seq = CHOGHADIYA_DAY_SEQS[weekday_idx % 7]
+    for i in range(8):
+        s_h = sunrise_h + i * day_slot
+        e_h = sunrise_h + (i + 1) * day_slot
+        name_en = day_seq[i]
+        meta = CHOGHADIYA_METADATA.get(name_en, {})
+        items.append(
+            ChoghadiyaItem(
+                period_index=i,
+                is_day=True,
+                name=name_en,
+                name_bn=meta.get("bn", name_en),
+                name_hi=meta.get("hi", name_en),
+                ruler_planet=meta.get("ruler", "Sun"),
+                start_time=_fmt_time_str(s_h),
+                end_time=_fmt_time_str(e_h),
+                status=meta.get("status", "neutral"),
+                guidance=meta.get(f"guidance_{lang}", meta.get("guidance_en", "")),
+                guidance_bn=meta.get("guidance_bn", ""),
+                guidance_hi=meta.get("guidance_hi", ""),
+            )
+        )
+
+    night_span = (next_sunrise_h + 24.0) - sunset_h
+    night_slot = night_span / 8.0
+    night_seq = CHOGHADIYA_NIGHT_SEQS[weekday_idx % 7]
+    for j in range(8):
+        s_h = sunset_h + j * night_slot
+        e_h = sunset_h + (j + 1) * night_slot
+        s_fmt = s_h if s_h < 24.0 else s_h - 24.0
+        e_fmt = e_h if e_h < 24.0 else e_h - 24.0
+        name_en = night_seq[j]
+        meta = CHOGHADIYA_METADATA.get(name_en, {})
+        items.append(
+            ChoghadiyaItem(
+                period_index=8 + j,
+                is_day=False,
+                name=name_en,
+                name_bn=meta.get("bn", name_en),
+                name_hi=meta.get("hi", name_en),
+                ruler_planet=meta.get("ruler", "Sun"),
+                start_time=_fmt_time_str(s_fmt),
+                end_time=_fmt_time_str(e_fmt),
+                status=meta.get("status", "neutral"),
+                guidance=meta.get(f"guidance_{lang}", meta.get("guidance_en", "")),
+                guidance_bn=meta.get("guidance_bn", ""),
+                guidance_hi=meta.get("guidance_hi", ""),
+            )
+        )
+    return items
+
+
+# -----------------------------------------------------------------------------
+# Vedic Panchak Engine (Dhanishta 3rd pada to Revati)
+# -----------------------------------------------------------------------------
+def _calculate_panchak(moon_lon: float, weekday_idx: int, lang: Lang) -> PanchakStatus:
+    """Determines whether Moon is in Vedic Panchak (296.6667° to 360°) and its precise category."""
+    is_active = (moon_lon >= 296.6666667 and moon_lon < 360.0)
+    if not is_active:
+        return PanchakStatus(
+            is_panchak=False,
+            panchak_type="None",
+            panchak_type_bn="পঞ্চক মুক্ত",
+            panchak_type_hi="पंचक रहित",
+            severity="none",
+            description="Moon is free from Panchak dosha. All auspicious sanskars are unobstructed.",
+            description_bn="চন্দ্র পঞ্চক মুক্ত। গৃহনির্মাণ, ছাদ ঢালাই ও শুভ কাজ নির্বিঘ্নে সম্পন্ন করা যাবে।",
+            description_hi="चन्द्रमा पंचक से मुक्त है। सभी शुभ कार्य और गृह निर्माण निर्बाध रूप से किए जा सकते हैं।",
+            prohibited_activities=[],
+        )
+
+    panchak_catalog = {
+        0: ("Rog Panchak", "রোগ পঞ্চক", "रोग पंचक", "high",
+            "Panchak on Sunday induces physical weakness or ailments. Avoid commencing new treatments or starting major physical endeavors.",
+            "রবিবার পঞ্চক শারীরিক দুর্বলতা বা রোগ বৃদ্ধি করতে পারে। নতুন চিকিৎসা শুরু করা এড়িয়ে চলুন।",
+            "रविवार को पंचक शारीरिक कष्ट दे सकता है। नए उपचार व अत्यधिक श्रम से बचें।",
+            "Avoid starting new medical treatments; offer water to Surya."),
+        1: ("Raj Panchak", "রাজ পঞ্চক", "राज पंचक", "low",
+            "Panchak on Monday is royal and highly auspicious for state affairs, property acquisition, and careers.",
+            "সোমবার পঞ্চক অত্যন্ত শুভ 'রাজ পঞ্চক'। সরকারি কাজ, সম্পত্তি ক্রয় ও পেশাগত সাফল্যের জন্য অনুকূল।",
+            "सोमवार को राज पंचक होता है जो संपत्ति व सरकारी कार्यों के लिए बहुत शुभ है।",
+            "No major prohibitions; highly favorable for governance and real estate."),
+        2: ("Agni Panchak", "অগ্নি পঞ্চক", "अग्नि पंचक", "medium",
+            "Panchak on Tuesday carries fire and dispute risks. Strictly avoid electrical work, furnace setup, or heated debates.",
+            "মঙ্গলবার অগ্নি পঞ্চক অগ্নিকাণ্ড ও বিবাদের ঝুঁকি বাড়ায়। ইলেকট্রিক্যাল কাজ ও বিতর্ক এড়িয়ে চলুন।",
+            "मंगलवार को अग्नि पंचक में आग, औजार और विवादों से दूर रहना चाहिए।",
+            "Strictly avoid electrical equipment work, fire installations, or heated confrontations."),
+        3: ("Laghu Panchak", "লঘু পঞ্চক", "लघु पंचक", "low",
+            "Panchak on Wednesday brings mild effects; routine work proceeds smoothly.",
+            "বুধবার লঘু পঞ্চক মৃদু প্রভাব ফেলে; সাধারণ কাজ নির্দ্বিধায় সম্পন্ন করা যায়।",
+            "बुधवार को लघु पंचक सामान्य फल देता है।",
+            "Avoid financial speculation."),
+        4: ("Laghu Panchak", "লঘু পঞ্চক", "लघु पंचक", "low",
+            "Panchak on Thursday is mild and shielded by Guru's wisdom.",
+            "বৃহস্পতিবার লঘু পঞ্চক গুরুর প্রভাবে সুরক্ষিত থাকে।",
+            "गुरुवार को लघु पंचक में गुरु कृपा से सुरक्षा रहती है।",
+            "Avoid southern direction journeys."),
+        5: ("Chor Panchak", "চোর পঞ্চক", "চোর পঞ্চক", "medium",
+            "Panchak on Friday warns of theft, monetary negligence, and impulsive luxury spending. Avoid starting major travel.",
+            "শুক্রবার চোর পঞ্চক আর্থিক ক্ষতি বা চুরির আশঙ্কা বাড়ায়। মূল্যবান জিনিস সামলান ও দক্ষিণমুখী যাত্রা বর্জন করুন।",
+            "शुक्रवार को चोर पंचक में धन हानि और चोरी से सावधान रहें। दक्षिण दिशा की यात्रा से बचें।",
+            "Avoid travel towards south, unsecured money transactions, or leaving valuables unattended."),
+        6: ("Mrityu Panchak", "মৃত্যু পঞ্চক", "মৃত্যু পঞ্চক", "high",
+            "Panchak on Saturday carries severe obstructive energy. Strictly avoid roof casting, south travel, cot making, or high-risk tasks.",
+            "শনিবার মৃত্যু পঞ্চক অত্যন্ত সংবেদনশীল। ছাদ ঢালাই, দক্ষিণ যাত্রা ও ঝুঁকিপূর্ণ সিদ্ধান্ত বর্জন করুন।",
+            "शनिवार को मृत्यु पंचक में छत ढलाई, दक्षिण दिशा में यात्रा और जोखिम भरे कार्यों से बचना आवश्यक है।",
+            "Strictly prohibit roof casting (chad dhalai), traveling South, making wooden beds/cots, or wood gathering."),
+    }
+
+    info = panchak_catalog.get(weekday_idx % 7, panchak_catalog[3])
+    return PanchakStatus(
+        is_panchak=True,
+        panchak_type=info[0],
+        panchak_type_bn=info[1],
+        panchak_type_hi=info[2],
+        severity=info[3],
+        description=info[4],
+        description_bn=info[5],
+        description_hi=info[6],
+        prohibited_activities=[info[7]],
+    )
+
+
+# -----------------------------------------------------------------------------
+# Real-Time Planetary Drishti & Transit Yoga Matrix
+# -----------------------------------------------------------------------------
+def _calculate_planetary_drishti(
+    planet_longitudes: dict[str, float],
+    moon_sign_idx: int,
+    moon_deg_in_sign: float,
+    lang: Lang,
+) -> list[PlanetaryDrishtiItem]:
+    """Calculates classical Parashari aspects and transit conjunction yogas onto the Transit Moon."""
+    drishtis: list[PlanetaryDrishtiItem] = []
+    moon_total_lon = moon_sign_idx * 30.0 + moon_deg_in_sign
+
+    # 1. Gajakesari Yoga Gochar (Jupiter in Kendra from Moon: 1st, 4th, 7th, 10th)
+    if "Jupiter" in planet_longitudes:
+        jup_lon = planet_longitudes["Jupiter"]
+        jup_sign = int(jup_lon / 30.0) % 12
+        house_diff = ((jup_sign - moon_sign_idx) % 12) + 1
+        if house_diff in [1, 4, 7, 10]:
+            drishtis.append(
+                PlanetaryDrishtiItem(
+                    aspecting_planet="Jupiter",
+                    aspect_type=f"Kendra Sambandha ({house_diff}th House)",
+                    yoga_name="Gajakesari Gochar Yoga",
+                    yoga_name_bn="গজকেশরী গোচর যোগ",
+                    yoga_name_hi="गजकेसरी गोचर योग",
+                    is_positive=True,
+                    impact="Gajakesari Gochar active! Bestows exceptional mental clarity, mentor blessings, diplomatic triumph, and financial stability today.",
+                    impact_bn="গজকেশরী গোচর সক্রিয়! মানসিক স্থৈর্য, গুরুর আশীর্বাদ, কর্মে পদোন্নতি ও আর্থিক সুরক্ষার মহা শুভ যোগ।",
+                    impact_hi="गजकेसरी गोचर सक्रिय! मानसिक शांति, गुरु का आशीर्वाद, मान-सम्मान और वित्तीय समृद्धि का योग।",
+                    classical_remedy="Offer yellow flowers or bananas to Lord Vishnu or Guru.",
+                    classical_remedy_bn="ভগবান বিষ্ণু অথবা বৃহস্পতি দেবের উদ্দেশ্যে হলুদ ফুল বা ফল নিবেদন করুন।",
+                    classical_remedy_hi="भगवान विष्णु को पीले फूल और फल अर्पित करें।",
+                )
+            )
+
+    # 2. Chandra-Mangala Gochar (Moon conjunct Mars)
+    if "Mars" in planet_longitudes:
+        mars_lon = planet_longitudes["Mars"]
+        mars_sign = int(mars_lon / 30.0) % 12
+        if mars_sign == moon_sign_idx:
+            drishtis.append(
+                PlanetaryDrishtiItem(
+                    aspecting_planet="Mars",
+                    aspect_type="Yuti (Conjunction)",
+                    yoga_name="Chandra-Mangala Yoga",
+                    yoga_name_bn="চন্দ্র-মঙ্গল ধন যোগ",
+                    yoga_name_hi="चन्द्र-मंगल धन योग",
+                    is_positive=True,
+                    impact="Chandra-Mangala Yoga! Supercharges entrepreneurial drive, land deals, and decisive financial courage.",
+                    impact_bn="চন্দ্র-মঙ্গল গোচর যোগ! উদ্যম বৃদ্ধি, জমিজমা সংক্রান্ত সিদ্ধান্ত ও আর্থিক লেনদেনে দারুণ আত্মবিশ্বাস পাবেন।",
+                    impact_hi="चन्द्र-मंगल योग! अदम्य साहस, भूमि संबंधित लाभ और त्वरित व्यापारिक निर्णयों के लिए फलदायी।",
+                    classical_remedy="Chant Hanuman Chalisa and donate jaggery.",
+                    classical_remedy_bn="হনুমান চালিসা পাঠ করুন এবং গুড় বা মিষ্টি দান করুন।",
+                    classical_remedy_hi="हनुमान चालीसा का पाठ करें और गुड़ का दान करें।",
+                )
+            )
+        elif ((mars_sign - moon_sign_idx) % 12) + 1 in [4, 7, 8]:
+            drishtis.append(
+                PlanetaryDrishtiItem(
+                    aspecting_planet="Mars",
+                    aspect_type="Special Drishti (4th/7th/8th Aspect)",
+                    yoga_name="Mangala Drishti",
+                    yoga_name_bn="মঙ্গলের দৃষ্টি প্রভাব",
+                    yoga_name_hi="मंगल की दृष्टि प्रभाव",
+                    is_positive=False,
+                    impact="Mars casts drishti on Moon. Guard against temperamental outbursts, driving haste, or blood pressure fluctuations.",
+                    impact_bn="মঙ্গলের দৃষ্টির প্রভাব। রাগ নিয়ন্ত্রণ করুন, গাড়ি সাবধানে চালান এবং তাড়াহুড়ো করে সিদ্ধান্ত নেবেন না।",
+                    impact_hi="मंगल की दृष्टि से मन में उत्तेजना रह सकती है। वाहन संभलकर चलाएं और वाद-विवाद से बचें।",
+                    classical_remedy="Drink water from a silver cup and avoid arguments.",
+                    classical_remedy_bn="রুপোর পাত্রে জল পান করুন এবং বিতর্ক থেকে বিরত থাকুন।",
+                    classical_remedy_hi="चांदी के पात्र में जल पिएं और वाद-विवाद से बचें।",
+                )
+            )
+
+    # 3. Visha Yoga / Saturn Drishti (Moon with or aspected by Saturn)
+    if "Saturn" in planet_longitudes:
+        sat_lon = planet_longitudes["Saturn"]
+        sat_sign = int(sat_lon / 30.0) % 12
+        house_diff = ((sat_sign - moon_sign_idx) % 12) + 1
+        if house_diff == 1:
+            drishtis.append(
+                PlanetaryDrishtiItem(
+                    aspecting_planet="Saturn",
+                    aspect_type="Visha Yoga (Moon + Saturn Conjunction)",
+                    yoga_name="Visha Yoga Gochar",
+                    yoga_name_bn="বিষ যোগ গোচর",
+                    yoga_name_hi="विष योग गोचर",
+                    is_positive=False,
+                    impact="Visha Yoga transit window. May cause melancholic thoughts or delay. Engage in meditation and avoid rash choices.",
+                    impact_bn="বিষ যোগ গোচর। মন বিষাদগ্রস্ত হতে পারে বা কাজে কিছুটা বিলম্ব হবে। শিব আরাধনা ও ধ্যান শুভ।",
+                    impact_hi="विष योग प्रभाव। मानसिक अवसाद या कार्य में देरी संभव है। धैर्य रखें और ॐ नमः शिवाय का जप करें।",
+                    classical_remedy="Perform Shiva Jalabhishekam with raw milk.",
+                    classical_remedy_bn="শিবলিঙ্গে কাঁচা দুধ ও গঙ্গাজল অর্পণ করুন।",
+                    classical_remedy_hi="शिवलिंग पर कच्चा दूध और जल अर्पित करें।",
+                )
+            )
+        elif house_diff in [3, 7, 10]:
+            drishtis.append(
+                PlanetaryDrishtiItem(
+                    aspecting_planet="Saturn",
+                    aspect_type=f"Saturn Aspect ({house_diff}th Drishti)",
+                    yoga_name="Shani Drishti",
+                    yoga_name_bn="শনির দৃষ্টি প্রভাব",
+                    yoga_name_hi="शनि दृष्टि प्रभाव",
+                    is_positive=False,
+                    impact="Saturn's sobering aspect demands discipline, meticulous record-keeping, and emotional detachment.",
+                    impact_bn="শনির দৃষ্টির কারণে কাজে নিষ্ঠা ও অধ্যবসায়ের প্রয়োজন। আবেগ পরিহার করে বাস্তবমুখী থাকুন।",
+                    impact_hi="शनि की दृष्टि कार्य में अनुशासन और धैर्य की मांग करती है। जल्दबाजी न करें।",
+                    classical_remedy="Light a mustard oil lamp under a Peepal tree in the evening.",
+                    classical_remedy_bn="সন্ধ্যাবেলায় অশ্বত্থ গাছের তলায় সর্ষের তেলের প্রদীপ প্রজ্বলন করুন।",
+                    classical_remedy_hi="संध्या समय पीपल के वृक्ष के नीचे सरसों के तेल का दीपक जलाएं।",
+                )
+            )
+
+    # 4. Venus Harmony (Shukra-Chandra Trine / Kendra)
+    if "Venus" in planet_longitudes:
+        ven_lon = planet_longitudes["Venus"]
+        ven_sign = int(ven_lon / 30.0) % 12
+        diff = ((ven_sign - moon_sign_idx) % 12) + 1
+        if diff in [1, 5, 9]:
+            drishtis.append(
+                PlanetaryDrishtiItem(
+                    aspecting_planet="Venus",
+                    aspect_type="Trikona / Shubh Sambandha",
+                    yoga_name="Chandra-Shukra Sambandha",
+                    yoga_name_bn="চন্দ্র-শুক্র শুভ সম্বন্ধ",
+                    yoga_name_hi="चन्द्र-शुक्र शुभ संबंध",
+                    is_positive=True,
+                    impact="Chandra-Shukra harmony! Enhances creative magnetism, artistic taste, romantic harmony, and public relations.",
+                    impact_bn="চন্দ্র-শুক্রের শুভ সম্বন্ধ! শিল্পকর্ম, প্রণয় সম্পর্ক, ফ্যাশন ও পারিবারিক আনন্দে চমৎকার সময়।",
+                    impact_hi="चन्द्र-शुक्र योग! कलात्मक कार्यों, दांपत्य सुख और सामाजिक संबंधों के लिए अत्यंत सुखद।",
+                    classical_remedy="Chant Mahalakshmi Ashtakam and donate white rice.",
+                    classical_remedy_bn="মহালক্ষ্মী অষ্টকম পাঠ করুন এবং আতপ চাল বা চিনি দান করুন।",
+                    classical_remedy_hi="महालक्ष्मी अष्टकम का पाठ करें व सफेद चावल दान करें।",
+                )
+            )
+
+    return drishtis
+
+
+# -----------------------------------------------------------------------------
+# Ashtakavarga Transit Engine (Parashara SAV & BAV Point Multipliers)
+# -----------------------------------------------------------------------------
+PARASHARA_SAV_BASELINES: list[int] = [28, 28, 30, 27, 29, 29, 26, 28, 28, 30, 29, 28]
+PARASHARA_BAV_MOON: list[int] = [4, 5, 5, 6, 4, 5, 3, 4, 5, 5, 4, 4]
+
+
+def _calculate_ashtakavarga(sign_idx: int, lang: Lang) -> AshtakavargaTransitPoints:
+    """Computes Sarvashtakavarga (SAV) and Moon Bhinnashtakavarga (BAV) transit points and verdicts."""
+    sav = PARASHARA_SAV_BASELINES[sign_idx % 12]
+    bav = PARASHARA_BAV_MOON[sign_idx % 12]
+
+    if sav >= 30 and bav >= 5:
+        grade_en = "Maha Shubh (Very Strong)"
+        grade_bn = "মহা শুভ (পরম সুরক্ষা)"
+        grade_hi = "महा शुभ (अत्यधिक बलवान)"
+        multiplier = 1.15
+    elif sav >= 28 and bav >= 4:
+        grade_en = "Shubh (Auspicious)"
+        grade_bn = "শুভ (অনুকূল)"
+        grade_hi = "शुभ (अनुकूल)"
+        multiplier = 1.05
+    else:
+        grade_en = "Madhyam / Alpaphala (Caution)"
+        grade_bn = "মধ্যম / সাবধানী (কম বল)"
+        grade_hi = "मध्यम / सतर्कता (कम बल)"
+        multiplier = 0.90
+
+    return AshtakavargaTransitPoints(
+        sign_index=sign_idx,
+        sarvashtakavarga_points=sav,
+        moon_bhinnashtakavarga_points=bav,
+        strength_grade=grade_bn if lang == "bn" else (grade_hi if lang == "hi" else grade_en),
+        strength_grade_bn=grade_bn,
+        strength_grade_hi=grade_hi,
+        score_multiplier=multiplier,
+    )
+
+
+# -----------------------------------------------------------------------------
+# Client's NEW NUMRO.docx §3.5 Daily Numerology Synergy Engine
+# -----------------------------------------------------------------------------
+def _calculate_numerology_synergy(
+    birth_date_str: str | None,
+    weekday_idx: int,
+    lang: Lang,
+) -> NumerologyDailySynergy | None:
+    """Calculates Mulank & Bhagyank and pairs them with reigning Day Lord using client's exact §3.5 rules."""
+    if not birth_date_str:
+        return None
+
+    try:
+        parts = birth_date_str.strip().split("-")
+        y, m, d = int(parts[0]), int(parts[1]), int(parts[2])
+    except Exception:
+        return None
+
+    def reduce_sum(n: int) -> int:
+        while n > 9:
+            n = sum(int(ch) for ch in str(n))
+        return n
+
+    mulank = reduce_sum(d)
+    bhagyank = reduce_sum(y + m + d)
+
+    day_lords = [1, 2, 9, 5, 3, 6, 8]
+    day_lord_num = day_lords[weekday_idx % 7]
+
+    planet_names = {
+        1: "Sun", 2: "Moon", 3: "Jupiter", 4: "Rahu",
+        5: "Mercury", 6: "Venus", 7: "Ketu", 8: "Saturn", 9: "Mars",
+    }
+    ruling_planet = planet_names.get(mulank, "Sun")
+
+    friendship_table = {
+        1: {"friends": [2, 3, 9], "neutrals": [5], "enemies": [4, 6, 7, 8]},
+        2: {"friends": [1, 5], "neutrals": [3, 6, 8], "enemies": [4, 7, 9]},
+        3: {"friends": [1, 2, 9], "neutrals": [5, 8], "enemies": [4, 6, 7]},
+        4: {"friends": [5, 6, 8], "neutrals": [7, 3], "enemies": [1, 2, 9]},
+        5: {"friends": [1, 6], "neutrals": [3, 8, 9], "enemies": [2, 4, 7]},
+        6: {"friends": [5, 8], "neutrals": [3, 4, 7], "enemies": [1, 2, 9]},
+        7: {"friends": [6, 8], "neutrals": [3, 5], "enemies": [1, 2, 4, 9]},
+        8: {"friends": [4, 5, 6, 7], "neutrals": [3], "enemies": [1, 2, 9]},
+        9: {"friends": [1, 2, 3], "neutrals": [5], "enemies": [4, 6, 7, 8]},
+    }
+
+    m_entry = friendship_table.get(mulank, {"friends": [], "neutrals": [], "enemies": []})
+    if day_lord_num == mulank:
+        rel = "Self / Royal Resonance"
+        rel_bn = "আত্মীয় / রাজকীয় সম্পর্ক"
+        rel_hi = "स्व-संबंध / राजयोग"
+        score = 96
+    elif day_lord_num in m_entry["friends"]:
+        rel = "Friendly (Mitra)"
+        rel_bn = "মিত্র সম্পর্ক (পরম শুভ)"
+        rel_hi = "मित्र संबंध (शुभ)"
+        score = 88
+    elif day_lord_num in m_entry["neutrals"]:
+        rel = "Neutral (Sama)"
+        rel_bn = "সম সম্পর্ক (মধ্যম)"
+        rel_hi = "सम संबंध (मध्यम)"
+        score = 70
+    else:
+        rel = "Enemy (Shatru)"
+        rel_bn = "শত্রু সম্পর্ক (সতর্কতা)"
+        rel_hi = "शत्रु संबंध (सतर्कता)"
+        score = 52
+
+    advice_en = f"Mulank {mulank} vibrates in '{rel}' with today's Day Lord {day_lord_num}. Synergy score {score}%."
+    advice_bn = f"আপনার মূলাঙ্ক {mulank}-এর সাথে আজকের বার অধিপতি সংখ্যা {day_lord_num}-এর সম্পর্ক '{rel_bn}'। শুভ সুরসংগতি সূচক {score}%।"
+    advice_hi = f"आपके मूलांक {mulank} और दिन-स्वामी संख्या {day_lord_num} का संबंध '{rel_hi}' है। सद्भाव स्कोर {score}%।"
+
+    return NumerologyDailySynergy(
+        mulank=mulank,
+        bhagyank=bhagyank,
+        ruling_planet=ruling_planet,
+        day_relationship=rel,
+        day_relationship_bn=rel_bn,
+        day_relationship_hi=rel_hi,
+        synergy_score_pct=score,
+        advice=advice_bn if lang == "bn" else (advice_hi if lang == "hi" else advice_en),
+        advice_bn=advice_bn,
+        advice_hi=advice_hi,
+    )
+
+
+# -----------------------------------------------------------------------------
+# 24-Hour Cosmic Biorhythm Energy Engine
+# -----------------------------------------------------------------------------
+def _calculate_24h_biorhythm(
+    horas_24: list[HoraItem],
+    choghadiyas_16: list[ChoghadiyaItem],
+    ashtakavarga_pts: int = 28,
+    panchak_active: bool = False,
+) -> list[BiorhythmHour]:
+    """Generates an hour-by-hour cosmic energy index (0-100) combining reigning Hora, Choghadiya & Ashtakavarga."""
+    biorhythm: list[BiorhythmHour] = []
+
+    choghadiya_scores = {
+        "Amrit": 95,
+        "Shubh": 88,
+        "Labh": 82,
+        "Char": 75,
+        "Rog": 42,
+        "Kaal": 35,
+        "Udveg": 40,
+    }
+
+    hora_planet_scores = {
+        "Jupiter": 92,
+        "Venus": 88,
+        "Mercury": 80,
+        "Moon": 78,
+        "Sun": 76,
+        "Mars": 55,
+        "Saturn": 48,
+    }
+
+    for h in range(24):
+        active_hora = horas_24[h] if h < len(horas_24) else horas_24[0]
+        h_score = hora_planet_scores.get(active_hora.planet, 70)
+
+        c_idx = (h * 16) // 24
+        active_c = choghadiyas_16[c_idx] if c_idx < len(choghadiyas_16) else choghadiyas_16[0]
+        c_score = choghadiya_scores.get(active_c.name, 70)
+
+        sav_mod = (ashtakavarga_pts - 28) * 1.5
+        panchak_mod = -4 if panchak_active else 0
+
+        total_idx = int(max(20, min(99, (h_score * 0.55 + c_score * 0.45) + sav_mod + panchak_mod)))
+
+        if total_idx >= 80:
+            phase_en = "Peak Focus & Victory"
+            phase_bn = "শীর্ষ উদ্যম ও শুভকাল"
+            phase_hi = "सर्वोत्तम ऊर्जा व सफलता"
+        elif total_idx >= 65:
+            phase_en = "Favorable Action"
+            phase_bn = "অনুকূল কর্মপ্রবাহ"
+            phase_hi = "अनुकूल कार्य समय"
+        elif total_idx >= 50:
+            phase_en = "Moderate / Routine"
+            phase_bn = "সাধারণ গতি"
+            phase_hi = "सामान्य कार्य"
+        else:
+            phase_en = "Introspective / Caution"
+            phase_bn = "ধীরস্থির ও সতর্কতা"
+            phase_hi = "धैर्य व सावधानी"
+
+        biorhythm.append(
+            BiorhythmHour(
+                hour=h,
+                time_label=f"{h:02d}:00 - {(h+1)%24:02d}:00",
+                energy_score=total_idx,
+                dominant_graha=active_hora.planet,
+                status=phase_en,
+                status_bn=phase_bn,
+                status_hi=phase_hi,
+            )
+        )
+    return biorhythm
+
+
+# -----------------------------------------------------------------------------
+# Dual Transit Engine (Moon Gochar for Mind + Lagna Gochar for Physical Reality)
+# -----------------------------------------------------------------------------
+def _calculate_dual_transit(
+    moon_house_transit: int,
+    lagna_house_transit: int | None,
+    sign_name_en: str,
+    lang: Lang,
+) -> DualTransitInsight | None:
+    """Combines Moon Gochar (Internal emotional state) with Lagna Gochar (External worldly manifestations)."""
+    if lagna_house_transit is None:
+        return None
+
+    house_keywords = {
+        1: ("Vitality & Self-Transformation", "আত্মবিশ্বাস ও শারীরিক তেজ", "आत्मबल व नई शुरुआत"),
+        2: ("Wealth Accumulation & Speech", "আর্থিক সঞ্চয় ও বাচনভঙ্গি", "धन संचय व वाणी"),
+        3: ("Courage, Siblings & Initiatives", "সাহসিক পদক্ষেপ ও ভ্রাতৃসুখ", "पराक्रम व नवीन प्रयास"),
+        4: ("Domestic Bliss, Property & Mother", "গৃহসুখ, যানবাহন ও মানসিক শান্তি", "गृहसुख व वाहन"),
+        5: ("Intelligence, Romance & Speculation", "বুদ্ধিদীপ্ত সিদ্ধান্ত ও সৃষ্টিশীলতা", "ज्ञान, संतान व निवेश"),
+        6: ("Victory over Debt, Disease & Rivals", "ঋণমুক্তি, রোগারোগ্য ও বিজয়", "शत्रु विजय व स्वास्थ्य"),
+        7: ("Partnerships, Spouse & Public Deals", "অংশীদারি বাণিজ্য ও দাম্পত্য সুখ", "साझेदारी व दांपत्य"),
+        8: ("Transformation, Research & Secrets", "গভীর গবেষণা ও অপ্রত্যাশিত পরিবর্তন", "गूढ़ अनुसंधान व परिवर्तन"),
+        9: ("Dharma, Fortune & Higher Mentorship", "ভাগ্যোদয়, তীর্থভ্রমণ ও গুরুকৃপা", "भाग्योदय व तीर्थाटन"),
+        10: ("Career Zenith, Authority & Prestige", "পেশাগত উন্নতি, প্রতিষ্ঠা ও কর্তৃত্ব", "कर्मक्षेत्र व पदोन्नति"),
+        11: ("Fulfillment of Desires & Profit", "সর্বার্থসিদ্ধি ও বৃহৎ আর্থিক লাভ", "प्रचुर लाभ व मित्र सहयोग"),
+        12: ("Expenditure, Foreign Realms & Rest", "বিদেশ সংযোগ, আধ্যাত্মিক ব্যয় ও বিশ্রাম", "व्यय, विदेश गमन व मोक्ष"),
+    }
+
+    m_info = house_keywords.get(moon_house_transit, ("General Influence", "সাধারণ প্রভাব", "सामान्य प्रभाव"))
+    l_info = house_keywords.get(lagna_house_transit, ("General Influence", "সাধারণ প্রভাব", "सामान्य प्रभाव"))
+
+    synthesis_en = (
+        f"Your Moon transit through Bhava {moon_house_transit} governs mental perception ({m_info[0]}), "
+        f"while your Lagna transit through Bhava {lagna_house_transit} manifests tangible physical events ({l_info[0]})."
+    )
+    synthesis_bn = (
+        f"চন্দ্র গোচর {moon_house_transit}ম ভাবে মানসিক উপলব্ধি ({m_info[1]}) পরিচালনা করছে, "
+        f"এবং লগ্ন গোচর {lagna_house_transit}ম ভাবে বাস্তব জাগতিক সাফল্য ({l_info[1]}) প্রকাশ ঘটাচ্ছে।"
+    )
+    synthesis_hi = (
+        f"चन्द्र गोचर {moon_house_transit}वें भाव में मानसिक स्थिति ({m_info[2]}) को दर्शाता है, "
+        f"जबकि लग्न गोचर {lagna_house_transit}वें भाव में वास्तविक घटनाओं ({l_info[2]}) को रूप देता है।"
+    )
+
+    harmony_score = 85 if (moon_house_transit in [1, 3, 5, 9, 10, 11] and lagna_house_transit in [1, 3, 5, 9, 10, 11]) else 70
+
+    return DualTransitInsight(
+        moon_transit_house=moon_house_transit,
+        lagna_transit_house=lagna_house_transit,
+        lagna_sign_name=sign_name_en,
+        emotional_outlook=m_info[0],
+        emotional_outlook_bn=m_info[1],
+        emotional_outlook_hi=m_info[2],
+        physical_event_outlook=l_info[0],
+        physical_event_outlook_bn=l_info[1],
+        physical_event_outlook_hi=l_info[2],
+        synthesis_verdict=synthesis_en,
+        synthesis_verdict_bn=synthesis_bn,
+        synthesis_verdict_hi=synthesis_hi,
+        dual_harmony_score=harmony_score,
+    )
+
+
+# -----------------------------------------------------------------------------
+# KP Nakshatra Sub-Lord Precision Calculator
+# -----------------------------------------------------------------------------
+KP_LORDS_ORDER = ["Ketu", "Venus", "Sun", "Moon", "Mars", "Rahu", "Jupiter", "Saturn", "Mercury"]
+KP_DASHA_YEARS = [7, 20, 6, 10, 7, 18, 16, 19, 17]
+
+
+def _calculate_kp_sublord(moon_lon: float, lang: Lang) -> dict[str, Any]:
+    """Computes exact KP Nakshatra Lord, Sub-Lord and sub-arc degrees using Krishnamurti Paddhati rules."""
+    nak_span = 360.0 / 27.0
+    nak_idx = int(moon_lon / nak_span)
+    nak_deg = moon_lon - (nak_idx * nak_span)
+
+    nak_ruler_idx = nak_idx % 9
+    nak_lord = KP_LORDS_ORDER[nak_ruler_idx]
+
+    start_sub_idx = nak_ruler_idx
+    sub_lord = nak_lord
+
+    accumulated_deg = 0.0
+    for step in range(9):
+        curr_sub_idx = (start_sub_idx + step) % 9
+        span_sub = (KP_DASHA_YEARS[curr_sub_idx] / 120.0) * nak_span
+        if accumulated_deg + span_sub >= nak_deg:
+            sub_lord = KP_LORDS_ORDER[curr_sub_idx]
+            break
+        accumulated_deg += span_sub
+
+    return {
+        "nakshatra_lord": nak_lord,
+        "kp_sub_lord": sub_lord,
+        "exact_arc": round(nak_deg, 4),
+    }
+
+
 def _calculate_gochar_vedha(
     moon_sign_idx: int,
     sign_idx: int,
@@ -971,6 +1625,7 @@ def calculate_daily_horoscope(payload: DailyHoroscopeRequest) -> DailyHoroscopeR
 
     moon_sign_idx = int(moon_lon / 30.0) % 12
     sun_sign_idx = int(sun_lon / 30.0) % 12
+    deg_in_sign = moon_lon % 30.0
 
     # Multi-planet positions for Gochar Vedha and Saturn/Jupiter transits
     planets_to_calc = [
@@ -984,10 +1639,12 @@ def calculate_daily_horoscope(payload: DailyHoroscopeRequest) -> DailyHoroscopeR
         ("Rahu", swe.MEAN_NODE),
     ]
     planet_signs: dict[str, int] = {}
+    planet_longitudes: dict[str, float] = {}
     for p_name, p_code in planets_to_calc:
         p_res, _ = swe.calc_ut(jd, p_code, swe.FLG_SIDEREAL | swe.FLG_SPEED)
         p_lon = float(p_res[0]) % 360.0
         planet_signs[p_name] = int(p_lon / 30.0) % 12
+        planet_longitudes[p_name] = p_lon
 
     # Ketu is exactly 180 degrees opposite Rahu
     rahu_lon_deg = float(swe.calc_ut(jd, swe.MEAN_NODE, swe.FLG_SIDEREAL | swe.FLG_SPEED)[0][0]) % 360.0
@@ -1055,6 +1712,18 @@ def calculate_daily_horoscope(payload: DailyHoroscopeRequest) -> DailyHoroscopeR
     disha_shoola_text = disha_info[f"dir_{lang}"] if f"dir_{lang}" in disha_info else disha_info["dir"]
     disha_remedy_text = disha_info[f"remedy_{lang}"] if f"remedy_{lang}" in disha_info else disha_info["remedy"]
 
+    # 16 Vedic Choghadiyas (8 Day + 8 Night)
+    choghadiyas_16 = _calculate_16_choghadiya(sunrise_h, sunset_h, next_sunrise_h, weekday_idx, lang)
+
+    # Vedic Panchak Status (Dhanishta 3rd/4th pada to Revati)
+    panchak_info = _calculate_panchak(moon_lon, weekday_idx, lang)
+
+    # Real-time Planetary Drishtis on Moon
+    drishtis_on_moon = _calculate_planetary_drishti(planet_longitudes, moon_sign_idx, deg_in_sign, lang)
+
+    # KP Sub-Lord
+    kp_info = _calculate_kp_sublord(moon_lon, lang)
+
     # Chandra Bala Favorable Signs (Moon transits houses 1, 3, 6, 7, 10, 11)
     favorable_rashis_indices = [
         (moon_sign_idx - (h - 1)) % 12 for h in [1, 3, 6, 7, 10, 11]
@@ -1080,6 +1749,8 @@ def calculate_daily_horoscope(payload: DailyHoroscopeRequest) -> DailyHoroscopeR
         disha_remedy=disha_remedy_text,
         favorable_chandra_rashis=favorable_rashis_names,
         horas=horas_list,
+        choghadiya=choghadiyas_16,
+        panchak=panchak_info,
     )
 
     # Format Moon degree string
@@ -1285,8 +1956,27 @@ def calculate_daily_horoscope(payload: DailyHoroscopeRequest) -> DailyHoroscopeR
                 beej_mantra=beej_mantra,
                 charity_dana=charity_dana,
                 tara_bala=sign_tara_bala,
+                ashtakavarga=_calculate_ashtakavarga(sign_idx, lang),
+                client_classifications=client_rules.get_sign_profile(sign_idx, lang),
+                nakshatra_pada_shift=kp_info,
+                planetary_drishtis=drishtis_on_moon,
             )
         )
+
+    # 24-Hour Biorhythm Timeline
+    biorhythm_timeline = _calculate_24h_biorhythm(
+        horas_list, choghadiyas_16, ashtakavarga_pts=28, panchak_active=panchak_info.is_panchak
+    )
+
+    # Daily Numerology Synergy
+    num_synergy = _calculate_numerology_synergy(payload.birth_date, weekday_idx, lang)
+
+    # Dual Transit Insight (Moon vs Lagna)
+    dual_insight = None
+    if payload.birth_lagna_index is not None and 0 <= payload.birth_lagna_index < 12:
+        lagna_transit_house = (moon_sign_idx - payload.birth_lagna_index) % 12 + 1
+        m_house = (moon_sign_idx - (payload.birth_rashi_index if payload.birth_rashi_index is not None else moon_sign_idx)) % 12 + 1
+        dual_insight = _calculate_dual_transit(m_house, lagna_transit_house, moon_sign_meta["en"], lang)
 
     return DailyHoroscopeResponse(
         date=target_date.strftime("%Y-%m-%d"),
@@ -1299,6 +1989,9 @@ def calculate_daily_horoscope(payload: DailyHoroscopeRequest) -> DailyHoroscopeR
         panchang=panchang_summary,
         signs=sign_horoscopes,
         personalized_profile=personalized_profile,
+        numerology_synergy=num_synergy,
+        biorhythm_timeline=biorhythm_timeline,
+        dual_transit=dual_insight,
         calculation_meta={
             "engine": "Swiss Ephemeris 2.10 (pyswisseph)",
             "ayanamsha": "Lahiri (Chitra Paksha)",

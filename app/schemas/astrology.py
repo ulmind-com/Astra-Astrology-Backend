@@ -1633,6 +1633,7 @@ class DailyHoroscopeRequest(BaseModel):
     birth_date: str | None = Field(default=None, description="Native birth date YYYY-MM-DD for personalized transit chart")
     birth_time: str | None = Field(default=None, description="Native birth time HH:MM")
     birth_rashi_index: int | None = Field(default=None, ge=0, le=11, description="Native Janma Rashi index 0 to 11")
+    birth_lagna_index: int | None = Field(default=None, ge=0, le=11, description="Native Janma Lagna index 0 to 11")
 
 
 class HoraItem(BaseModel):
@@ -1655,6 +1656,97 @@ class HoraItem(BaseModel):
     best_activities: str
     best_activities_bn: str
     best_activities_hi: str
+
+
+class ChoghadiyaItem(BaseModel):
+    period_index: int  # 1 to 16
+    is_day: bool
+    name: str  # Amrit, Shubh, Labh, Char, Rog, Kaal, Udveg
+    name_bn: str
+    name_hi: str
+    ruler_planet: str
+    start_time: str
+    end_time: str
+    status: str  # auspicious, neutral, inauspicious
+    guidance: str
+    guidance_bn: str
+    guidance_hi: str
+
+
+class PlanetaryDrishtiItem(BaseModel):
+    aspecting_planet: str
+    aspect_type: str
+    yoga_name: str
+    yoga_name_bn: str
+    yoga_name_hi: str
+    is_positive: bool
+    impact: str
+    impact_bn: str
+    impact_hi: str
+    classical_remedy: str
+    classical_remedy_bn: str
+    classical_remedy_hi: str
+
+
+class PanchakStatus(BaseModel):
+    is_panchak: bool = False
+    panchak_type: str = "None"
+    panchak_type_bn: str = "কোনো পঞ্চক নেই"
+    panchak_type_hi: str = "कोई पंचक नहीं"
+    severity: str = "auspicious"  # auspicious, mild, caution, severe
+    description: str = ""
+    description_bn: str = ""
+    description_hi: str = ""
+    prohibited_activities: list[str] = Field(default_factory=list)
+
+
+class AshtakavargaTransitPoints(BaseModel):
+    sign_index: int
+    sarvashtakavarga_points: int = 28
+    moon_bhinnashtakavarga_points: int = 4
+    strength_grade: str = "Medium (Balanced)"
+    strength_grade_bn: str = "মধ্যম (ভারসাম্যপূর্ণ)"
+    strength_grade_hi: str = "मध्यम (संतुलित)"
+    score_multiplier: float = 1.0
+
+
+class NumerologyDailySynergy(BaseModel):
+    mulank: int  # 1 to 9
+    bhagyank: int  # 1 to 9
+    ruling_planet: str
+    day_relationship: str  # Friend, Neutral, Enemy
+    day_relationship_bn: str
+    day_relationship_hi: str
+    synergy_score_pct: int
+    advice: str
+    advice_bn: str
+    advice_hi: str
+
+
+class BiorhythmHour(BaseModel):
+    hour: int  # 0 to 23
+    time_label: str  # "06:00 - 07:00"
+    energy_score: int  # 0 to 100
+    dominant_graha: str
+    status: str
+    status_bn: str
+    status_hi: str
+
+
+class DualTransitInsight(BaseModel):
+    moon_transit_house: int
+    lagna_transit_house: int
+    lagna_sign_name: str
+    emotional_outlook: str
+    emotional_outlook_bn: str
+    emotional_outlook_hi: str
+    physical_event_outlook: str
+    physical_event_outlook_bn: str
+    physical_event_outlook_hi: str
+    synthesis_verdict: str
+    synthesis_verdict_bn: str
+    synthesis_verdict_hi: str
+    dual_harmony_score: int
 
 
 class TaraBalaSummary(BaseModel):
@@ -1718,6 +1810,11 @@ class DailySignHoroscope(BaseModel):
     beej_mantra: str = ""
     charity_dana: str = ""
     tara_bala: TaraBalaSummary | None = None
+    # Advanced 100% precision additions
+    ashtakavarga: AshtakavargaTransitPoints | None = None
+    client_classifications: dict[str, Any] = Field(default_factory=dict)
+    nakshatra_pada_shift: dict[str, Any] = Field(default_factory=dict)
+    planetary_drishtis: list[PlanetaryDrishtiItem] = Field(default_factory=list)
 
 
 class DailyPanchangSummary(BaseModel):
@@ -1736,6 +1833,8 @@ class DailyPanchangSummary(BaseModel):
     disha_remedy: str = ""
     favorable_chandra_rashis: list[str] = Field(default_factory=list)
     horas: list[HoraItem] = Field(default_factory=list)
+    choghadiya: list[ChoghadiyaItem] = Field(default_factory=list)
+    panchak: PanchakStatus = Field(default_factory=PanchakStatus)
 
 
 class DailyHoroscopeResponse(BaseModel):
@@ -1749,6 +1848,9 @@ class DailyHoroscopeResponse(BaseModel):
     panchang: DailyPanchangSummary
     signs: list[DailySignHoroscope]
     personalized_profile: PersonalizedNakshatraProfile | None = None
+    numerology_synergy: NumerologyDailySynergy | None = None
+    biorhythm_timeline: list[BiorhythmHour] = Field(default_factory=list)
+    dual_transit: DualTransitInsight | None = None
     calculation_meta: dict[str, Any] = Field(default_factory=dict)
 
 
