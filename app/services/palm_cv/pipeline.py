@@ -22,9 +22,14 @@ from loguru import logger
 
 from app.services.palm_cv.astrology_insights import (
     assess_active_passive,
+    assess_medical_constitution,
     assess_skin_vitality,
     build_chronological_timeline,
+    classify_temperament_archetype,
+    detect_dermatoglyphic_loops,
+    detect_marriage_patterns,
     detect_sacred_marks,
+    synchronize_palm_with_kundli,
     trace_secondary_lines,
 )
 from app.services.palm_cv.config import DEFAULT_CONFIG, PalmScanConfig
@@ -70,12 +75,17 @@ class PalmScanResult:
     finger_flexibility_3d: dict[str, Any] = field(default_factory=dict)
     finger_inclinations_3d: dict[str, float] = field(default_factory=dict)
 
-    #: Astrological extensions: Secondary lines, Sacred marks, Timeline, Skin vitality
+    #: Astrological extensions: Secondary lines, Sacred marks, Timeline, Skin vitality, Loops, Marriage, Archetype, Medical, Kundli
     secondary_lines: dict[str, Any] = field(default_factory=dict)
     sacred_marks: list[dict[str, Any]] = field(default_factory=list)
     timeline: list[dict[str, Any]] = field(default_factory=list)
     skin_vitality: dict[str, Any] = field(default_factory=dict)
     karmic_summary: dict[str, Any] = field(default_factory=dict)
+    dermatoglyphic_loops: list[dict[str, Any]] = field(default_factory=list)
+    marriage_patterns: list[dict[str, Any]] = field(default_factory=list)
+    temperament_archetype: dict[str, Any] = field(default_factory=dict)
+    medical_constitution: dict[str, Any] = field(default_factory=dict)
+    kundli_palm_sync: dict[str, Any] = field(default_factory=dict)
 
     processing_ms: float = 0.0
     warnings: list[str] = field(default_factory=list)
@@ -112,6 +122,11 @@ class PalmScanResult:
             "timeline": self.timeline,
             "skin_vitality": self.skin_vitality,
             "karmic_summary": self.karmic_summary,
+            "dermatoglyphic_loops": self.dermatoglyphic_loops,
+            "marriage_patterns": self.marriage_patterns,
+            "temperament_archetype": self.temperament_archetype,
+            "medical_constitution": self.medical_constitution,
+            "kundli_palm_sync": self.kundli_palm_sync,
             "overlay_image": self.overlay_image,
             "response_image": self.response_image,
             "processing_ms": round(self.processing_ms, 1),
@@ -125,6 +140,7 @@ def execute_scan(
     raw_image: bytes,
     config: PalmScanConfig = DEFAULT_CONFIG,
     include_images: bool = True,
+    birth_details: dict[str, Any] | None = None,
 ) -> PalmScanResult:
     """Run one palm scan. Never raises; failures come back as a status."""
     started = time.perf_counter()
@@ -238,6 +254,34 @@ def execute_scan(
             result.measurements["skin_vitality_score"] = float(result.skin_vitality.get("vitality_score", 85))
 
             result.karmic_summary = assess_active_passive(detection.handedness)
+
+            # Palmer Dermatoglyphic Loops (Loops.docx)
+            loops = detect_dermatoglyphic_loops(palm, creases, result.measurements)
+            result.dermatoglyphic_loops = loops
+            for lp in loops:
+                result.measurements[f"loop_{lp['id']}"] = 1.0
+
+            # Authentic Marriage Cards (IMG_2718 - IMG_2729)
+            m_patterns = detect_marriage_patterns(palm, creases, sec_lines, result.measurements)
+            result.marriage_patterns = m_patterns
+            for mp in m_patterns:
+                result.measurements[f"marriage_card_{mp['card_id']}"] = 1.0
+
+            # 17 Vedic Temperament Archetypes (Nature through palm.docx)
+            archetype = classify_temperament_archetype(result.hand_type, result.measurements, creases, marks)
+            result.temperament_archetype = archetype
+            result.measurements["temperament_archetype"] = archetype["primary_archetype"]
+            result.measurements["archetype_affinity_pct"] = float(archetype.get("affinity_score_pct", 88))
+
+            # Medical Chirology & Ayurvedic Constitution (Health palmistry.docx)
+            med_const = assess_medical_constitution(palm, result.measurements, result.skin_vitality, creases)
+            result.medical_constitution = med_const
+            result.measurements["pallor_state"] = med_const.get("pallor_diagnosis", {}).get("state", "Radiant Pink")
+
+            # Kundli-Palm Synchronization (9 Grahas mapped to 7 Mounts + Ketu)
+            kundli_sync = synchronize_palm_with_kundli(birth_details, result.mount_elevations_3d, creases, sec_lines)
+            result.kundli_palm_sync = kundli_sync
+            result.measurements["kundli_alignment_pct"] = float(kundli_sync.get("overall_alignment_pct", 90))
         except Exception as err:
             logger.warning(f"astrology insights enrichment failed: {err}")
 

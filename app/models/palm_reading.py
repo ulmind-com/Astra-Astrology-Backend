@@ -51,6 +51,11 @@ class PalmFeature(str, Enum):
     MARS_LINE = "mars_line"
     SACRED_MARKS = "sacred_marks"
     SKIN_VITALITY = "skin_vitality"
+    DERMATOGLYPHIC_LOOPS = "dermatoglyphic_loops"
+    MARRIAGE_RELATIONSHIPS = "marriage_relationships"
+    TEMPERAMENT_ARCHETYPE = "temperament_archetype"
+    MEDICAL_CONSTITUTION = "medical_constitution"
+    KUNDLI_PALM_SYNC = "kundli_palm_sync"
 
 
 #: Human labels, used in the reading and in the admin list.
@@ -79,6 +84,11 @@ FEATURE_LABELS: dict[str, str] = {
     PalmFeature.MARS_LINE: "Mars Line (Guardian Vitality & Sanjeevani Shield)",
     PalmFeature.SACRED_MARKS: "Sacred Marks & Auspicious Yogas (Chihnas)",
     PalmFeature.SKIN_VITALITY: "Ayurvedic Skin Radiance & Prana Flush",
+    PalmFeature.DERMATOGLYPHIC_LOOPS: "Dermatoglyphic Loops (Palmer Energy Flows)",
+    PalmFeature.MARRIAGE_RELATIONSHIPS: "Marriage & Soul Connections (Vivaha Rekha)",
+    PalmFeature.TEMPERAMENT_ARCHETYPE: "Vedic Temperament Archetype (Nature Analysis)",
+    PalmFeature.MEDICAL_CONSTITUTION: "Medical Chirology & Ayurvedic Constitution",
+    PalmFeature.KUNDLI_PALM_SYNC: "Kundli-Palm Planetary Synchronization (Graha-Mount Alignment)",
 }
 
 
@@ -261,6 +271,11 @@ class PalmReading(TimestampedDocument):
     timeline: list[dict] = Field(default_factory=list)
     skin_vitality: dict = Field(default_factory=dict)
     karmic_summary: dict = Field(default_factory=dict)
+    dermatoglyphic_loops: list[dict] = Field(default_factory=list)
+    marriage_patterns: list[dict] = Field(default_factory=list)
+    temperament_archetype: dict = Field(default_factory=dict)
+    medical_constitution: dict = Field(default_factory=dict)
+    kundli_palm_sync: dict = Field(default_factory=dict)
 
     sections: list[ReadingSection] = Field(default_factory=list)
     skipped: list[SkippedFeature] = Field(default_factory=list)
