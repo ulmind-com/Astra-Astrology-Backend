@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from beanie import PydanticObjectId
+from loguru import logger
 
 from app.models.ai_astrologer import (
     AIChatFeedback,
@@ -270,7 +271,83 @@ Finger Elemental Governance:
         await doc.insert()
         seeded += 1
 
-    # 3. Seed 35+ Comprehensive Classical Parashari & Client Custom Rules
+    # 3. Ingest Nakshatra Prediction Techniques from client_nakshatra_rules.py
+    try:
+        from app.services.astrology.client_nakshatra_rules import TECHNIQUES, NAKSHATRA_NAMES
+        nak_grouped: dict[int, list[dict[str, Any]]] = {}
+        for t in TECHNIQUES:
+            nak_idx = t.get("nak", 0)
+            nak_grouped.setdefault(nak_idx, []).append(t)
+
+        for nak_idx, tech_list in nak_grouped.items():
+            nak_name = NAKSHATRA_NAMES[nak_idx] if nak_idx < len(NAKSHATRA_NAMES) else f"Nakshatra {nak_idx}"
+            tech_lines: list[str] = [f"# {nak_name} নক্ষত্র ভবিষ্যৎবাণী কৌশল (Client Saptarishis Vedic Resource)\n"]
+            for tech in tech_list:
+                rule_bn = tech.get("rule", {}).get("bn", "")
+                rule_en = tech.get("rule", {}).get("en", "")
+                theme = tech.get("theme", "জ্যোতিষ সূত্র")
+                source = tech.get("source", "")
+                tech_lines.append(f"### সূত্র {tech.get('no', '')}: {theme} ({source})")
+                tech_lines.append(f"**বাংলা শাস্ত্রীয় ব্যাখ্যা:** {rule_bn}")
+                tech_lines.append(f"**English:** {rule_en}\n")
+
+            content_text = "\n".join(tech_lines)
+            doc = AIKnowledgeDoc(
+                title=f"{nak_name} নক্ষত্র শাস্ত্রীয় ভবিষ্যৎবাণী সূত্রাবলী (Predictive Techniques)",
+                category="nakshatra",
+                content=content_text,
+                tags=["nakshatra", nak_name.lower(), "client_book", "predictive_techniques", "saptarishis"],
+                source_file="client_nakshatra_rules.py",
+                is_active=True,
+            )
+            await doc.insert()
+            seeded += 1
+    except Exception as e:
+        logger.warning("Nakshatra techniques ingestion notice: {}", e)
+
+    # 4. Ingest Face Reading Rules
+    try:
+        from app.models.face_reading import FaceRule
+        face_rules = await FaceRule.find(FaceRule.enabled == True).limit(60).to_list()
+        if face_rules:
+            face_chunks: list[str] = ["# সমুদ্রিক শাস্ত্র মুখমণ্ডল বিচার নির্দেশিকা (Samudrik Shastra Face Reading Rules)\n"]
+            for fr in face_rules:
+                face_chunks.append(f"• **{fr.label} ({fr.feature} - {fr.option}):** {fr.meaning}")
+            doc = AIKnowledgeDoc(
+                title="সমুদ্রিক শাস্ত্র: মুখমণ্ডলের বৈশিষ্ট্য ও ভাগ্য বিচার বিধি",
+                category="face_reading",
+                content="\n\n".join(face_chunks),
+                tags=["face_reading", "samudrik_shastra", "facial_features", "moles", "client_rules"],
+                source_file="Face_Reading_AIFAS.pdf",
+                is_active=True,
+            )
+            await doc.insert()
+            seeded += 1
+    except Exception as e:
+        logger.warning("Face rules ingestion notice: {}", e)
+
+    # 5. Ingest Palm Reading Rules
+    try:
+        from app.models.palm_reading import PalmRule
+        palm_rules = await PalmRule.find(PalmRule.enabled == True).limit(150).to_list()
+        if palm_rules:
+            palm_chunks: list[str] = ["# হস্তরেখা শাস্ত্র ক্লায়েন্ট নির্দেশিকা (Palmistry Master Guidelines)\n"]
+            for pr in palm_rules:
+                palm_chunks.append(f"• **{pr.label} ({pr.feature} - {pr.option}):** {pr.meaning}")
+            doc = AIKnowledgeDoc(
+                title="হস্তরেখা শাস্ত্র: পর্বত, রেখা ও বিশেষ চিহ্নের ফলাফল নির্দেশিকা",
+                category="palmistry",
+                content="\n\n".join(palm_chunks),
+                tags=["palmistry", "mounts", "lines", "client_cards", "hasta_rekha"],
+                source_file="Plam Reading",
+                is_active=True,
+            )
+            await doc.insert()
+            seeded += 1
+    except Exception as e:
+        logger.warning("Palm rules ingestion notice: {}", e)
+
+    # 6. Seed 30+ Comprehensive Classical Parashari & Client Custom Rules
     await _seed_default_custom_rules(force_reseed=force_reseed)
 
     return seeded
@@ -279,7 +356,7 @@ Finger Elemental Governance:
 async def _seed_default_custom_rules(force_reseed: bool = False) -> None:
     """Seeds authoritative classical rules across Kundli, Matchmaking, Numerology, Palmistry, Face, and Vastu."""
     count = await AICustomRule.find(AICustomRule.is_active == True).count()
-    if count >= 30 and not force_reseed:
+    if count >= 25 and not force_reseed:
         return
 
     if force_reseed:
@@ -325,6 +402,46 @@ async def _seed_default_custom_rules(force_reseed: bool = False) -> None:
             response_en="Gajakesari Yoga forms when Jupiter is in a Kendra (1st, 4th, 7th, 10th) from Moon, conferring majesty and intellect.",
             remedy_bn="প্রতি বৃহস্পতিবার হলুদ বস্ত্র পরিধান, ছোলার ডাল ও কলা দান এবং 'ॐ বৃহস্পতয়ে নমঃ' ১০৮ বার জপ শুভ ফল বৃদ্ধি করে।",
             priority=9,
+            is_active=True,
+        ),
+        AICustomRule(
+            rule_title="পঞ্চ মহাপুরুষ যোগ (Pancha Mahapurusha Yogas)",
+            trigger_keywords=["পঞ্চ মহাপুরুষ", "রুচক", "ভদ্র", "হংস", "মালব্য", "শশ যোগ", "mahapurusha"],
+            category="kundli",
+            response_bn="মঙ্গল, বুধ, বৃহস্পতি, শুক্র বা শনি স্বক্ষেত্র বা তুঙ্গী হয়ে কেন্দ্রে (১, ৪, ৭, ১০ম ভাবে) অবস্থান করলে পঞ্চ মহাপুরুষ যোগ গঠিত হয়: মঙ্গল সৃষ্টি করে 'রুচক' যোগ (পরাক্রম ও সেনাপতি), বুধ সৃষ্টি করে 'ভদ্র' যোগ (মেধা ও বাণিজ্য), বৃহস্পতি সৃষ্টি করে 'হংস' যোগ (ধর্ম ও পাণ্ডিত্য), শুক্র সৃষ্টি করে 'মালব্য' যোগ (সৌন্দর্য, কলা ও প্রাচুর্য), এবং শনি সৃষ্টি করে 'শশ' যোগ (জননেতা ও দীর্ঘস্থায়ী স্থায়িত্ব)।",
+            response_en="Pancha Mahapurusha yogas: Ruchaka (Mars), Bhadra (Mercury), Hamsa (Jupiter), Malavya (Venus), Sasa (Saturn) exalted/own sign in Kendras.",
+            remedy_bn="সংশ্লিষ্ট মহাপুরুষ যোগের কারক গ্রহের রত্ন ধারণ ও স্তোত্র পাঠ জাতকের রাজযোগের শক্তি বহুগুণ জাগ্রত করে।",
+            priority=9,
+            is_active=True,
+        ),
+        AICustomRule(
+            rule_title="নীচভঙ্গ রাজযোগ (Neechbhanga Raj Yoga)",
+            trigger_keywords=["নীচভঙ্গ", "নীচ ভঙ্গ", "neechbhanga", "গ্রহ নীচ", "রাজযোগ"],
+            category="kundli",
+            response_bn="কোনো গ্রহ নীচ রাশিতে অবস্থান করা সত্ত্বেও যদি সেই নীচ রাশির অধিপতি অথবা সেই রাশিতে তুঙ্গী হওয়া গ্রহ কেন্দ্রস্থানে অবস্থান করে, তবে নীচভঙ্গ রাজযোগ সৃষ্টি হয়। জীবনের প্রথমার্ধে প্রবল সংগ্রাম আসলেও মধ্যবয়স থেকে ব্যক্তি রাজতুল্য সাফল্য ও অকল্পনীয় খ্যাতি অর্জন করেন।",
+            response_en="Neechbhanga Raj Yoga turns planetary debilitation into royal elevation through dispositor or exaltation-lord Kendra placement.",
+            remedy_bn="সংশ্লিষ্ট নীচ গ্রহের বীজমন্ত্র জপ এবং তার অধিপতি দেবতার আরাধনা দ্রুত সাফল্য নিশ্চিত করে।",
+            priority=9,
+            is_active=True,
+        ),
+        AICustomRule(
+            rule_title="বুধাদিত্য যোগ (Budhaditya Yoga) ও মেধা বিকাশ",
+            trigger_keywords=["বুধাদিত্য", "সূর্য বুধ", "budhaditya", "মেধা যোগ"],
+            category="kundli",
+            response_bn="একই রাশিতে সূর্য ও বুধের যুগল অবস্থানকে বুধাদিত্য যোগ বলা হয়। বুধ সূর্যের অতি সন্নিকটে দগ্ধ (Combust) না হলে ব্যক্তি তীক্ষ্ণ মেধা, চমৎকার যোগাযোগ দক্ষতা, সরকারি সম্মান ও সফল ব্যবসায়ী হিসেবে প্রতিষ্ঠিত হন। বিশেষ করে লগ্ন, ৫ম বা ১০ম ভাবে এই যোগ পরম শুভ।",
+            response_en="Budhaditya Yoga (Sun + Mercury) confers razor-sharp intellect, administrative authority, and oratory brilliance.",
+            remedy_bn="প্রতিদিন সূর্য প্রণাম, গায়ত্রী মন্ত্র জপ এবং বুধবার সবুজ মুগ ডাল দান ও পন্না বা পান্না রত্ন ধারণ অত্যন্ত উপযোগী।",
+            priority=8,
+            is_active=True,
+        ),
+        AICustomRule(
+            rule_title="গুরু চণ্ডাল দোষ (Guru Chandal Dosha) ও রাহু-বৃহস্পতি যোগ",
+            trigger_keywords=["গুরু চণ্ডাল", "guru chandal", "রাহু বৃহস্পতি", "চণ্ডাল যোগ"],
+            category="kundli",
+            response_bn="কুণ্ডলীতে দেবগুরু বৃহস্পতির সাথে ছায়াগ্রহ রাহুর সহাবস্থান বা প্রত্যক্ষ দৃষ্টি থাকলে গুরু চণ্ডাল দোষ গঠিত হয়। এর ফলে গুরুজনদের সাথে মতবিরোধ, ধর্মের প্রতি সন্দেহ ও নীতিভ্রষ্ট সিদ্ধান্ত গ্রহণের ঝুঁকি তৈরি হয়। তবে বৃহস্পতির ডিগ্রি শক্তিশালী হলে ব্যক্তি প্রথাগত চিন্তার বাইরে গিয়ে আধুনিক গবেষণায় বৈপ্লবিক সাফল্য লাভ করেন।",
+            response_en="Guru Chandal Dosha forms when Jupiter is conjunct Rahu, creating philosophical conflicts and unorthodox intellect.",
+            remedy_bn="ভগবান শ্রীবিষ্ণুর সহস্রনাম পাঠ, বৃহস্পতিবার হলুদ ছোলার ডাল দান এবং রাহুর শান্তিকল্পে দুর্গা সপ্তশতী পাঠ মহৌষধ।",
+            priority=8,
             is_active=True,
         ),
         AICustomRule(
@@ -410,6 +527,16 @@ async def _seed_default_custom_rules(force_reseed: bool = False) -> None:
             priority=9,
             is_active=True,
         ),
+        AICustomRule(
+            rule_title="হস্তরেখায় ভাগ্যরেখা ও রবিরেখা (Fate Line & Sun Line)",
+            trigger_keywords=["ভাগ্যরেখা", "রবিরেখা", "fate line", "sun line", "অর্থ রেখা", "খ্যাতি রেখা"],
+            category="palmistry",
+            response_bn="মনিবন্ধ বা চন্দ্র পর্বত থেকে সোজা শনি পর্বতের দিকে উত্থিত রেখাকে ভাগ্যরেখা (Line of Saturn) বলা হয়। অনামিকার মূলস্থিত রবি পর্বতের দিকে ঊর্ধ্বমুখী রেখাকে রবিরেখা বা সূর্যরেখা বলা হয়। রবিরেখা সুস্পষ্ট ও খণ্ডনহীন হলে ব্যক্তি সমাজে বিপুল খ্যাতি, রাষ্ট্রীয় সম্মান ও যশ লাভ করেন।",
+            response_en="Fate line governs career stability towards Saturn; Sun line grants fame and recognition on Apollo mount.",
+            remedy_bn="প্রতি রবিবার সূর্যপ্রণাম এবং বুধবার গণেশ স্তোত্র পাঠ ভাগ্যরেখা ও রবিরেখার শক্তিকে প্রবলভাবে জাগ্রত করে।",
+            priority=9,
+            is_active=True,
+        ),
         # --- FACE READING ---
         AICustomRule(
             rule_title="সমুদ্রিক শাস্ত্র: মুখের ১২টি স্থান ও কপাল রেখা (12 Facial Palaces)",
@@ -429,6 +556,16 @@ async def _seed_default_custom_rules(force_reseed: bool = False) -> None:
             response_bn="মহাবাস্তু মতে বাড়ি ১৬টি অঞ্চলে বিভক্ত। উত্তর-পূর্ব (ঈশান) হলো দৈব ও আধ্যাত্মিক দিক (পূজাঘর/ধ্যান)। দক্ষিণ-পূর্ব (অগ্নি) হলো আর্থিক প্রবাহ ও রন্ধনশালা। দক্ষিণ-পশ্চিম (নৈঋত) হলো স্থায়িত্ব ও সম্পর্কের ক্ষেত্র (মাস্টার বেডরুম)। উত্তর (কুবের) হলো নতুন সুযোগ ও ধনাগম। ক্লায়েন্টের ১৪৮টি মহৌষধির মধ্যে: দক্ষিণ-পূর্বে নীল বা কালো রঙ থাকলে নগদ অর্থের টানাটানি হয় (প্রতিকার: লাল বা গোলাপী আলোর ব্যবহার)। বিবাহে বিলম্ব হলে দক্ষিণ-পশ্চিমে টয়লেট বা কাটা অংশ পরীক্ষা করে সেখানে একজোড়া প্রেমের পাখি স্থাপন করুন।",
             response_en="16 Zones: NE for Mandir, SE for Kitchen, SW for Master Bed, N for Wealth. Blue in SE blocks cash. Love birds in SW cure marriage delay.",
             remedy_bn="ভাঙচুর ছাড়া বাস্তু প্রতিকার: সঠিক রঙের টেপ বা তামার তার দিয়ে অনুচিত জোন কেটে দেওয়া এবং দক্ষিণ-পূর্বে লাল বাল্ব জ্বালানো মহৌষধ।",
+            priority=10,
+            is_active=True,
+        ),
+        AICustomRule(
+            rule_title="রত্ন ও রুদ্রাক্ষ ধারণের শাস্ত্রীয় বিধি (Gemstone & Rudraksha Selection)",
+            trigger_keywords=["রত্ন", "রত্নপাথর", "gemstone", "রুদ্রাক্ষ", "rudraksha", "কোন রত্ন পরব"],
+            category="remedies",
+            response_bn="জ্যোতিষশাস্ত্র মতে কখনোই অশুভ বা মারক গ্রহের রত্ন ধারণ করা উচিত নয়। রত্ন সর্বদা শুভ ত্রিকোণপতি (১ম লগ্নপতি, ৫ম ভাবপতি, ৯ম ভাগ্যপতি) গ্রহের ধারণ করতে হয়। যেমন: বৃশ্চিক লগ্নে মাণিক্য বা প্রবাল অমৃতসম কিন্তু শুক্রের হীরা বিষতুল্য। রুদ্রাক্ষ হলো শিবের পবিত্র অশ্রু—১ মুখী (সূর্য), ২ মুখী (চন্দ্র), ৩ মুখী (মঙ্গল), ৪ মুখী (বুধ), ৫ মুখী (বৃহস্পতি), ৬ মুখী (শুক্র), ৭ মুখী (শনি), ৮ মুখী (রাহু), ৯ মুখী (কেতু)। রুদ্রাক্ষের কোনো পার্শ্বপ্রতিক্রিয়া নেই।",
+            response_en="Gemstones must only be worn for benefic Yogakaraka / Trikona lords (1, 5, 9). Rudrakshas align with planetary lords without adverse effects.",
+            remedy_bn="শুক্লপক্ষের শুভ নক্ষত্র ও গ্রহের হোরায় যথাযথ প্রাণপ্রতিষ্ঠা করে উপযুক্ত ধাতু সহকারে রত্ন ধারণ করা বিধেয়।",
             priority=10,
             is_active=True,
         ),
@@ -517,8 +654,8 @@ async def save_user_feedback(
     user_query: str,
     ai_response: str,
     rating: int,
-    corrected_response: str | None = None,
-    feedback_notes: str | None = None,
+    feedback_reason: str = "",
+    admin_corrected_response: str = "",
 ) -> AIChatFeedback:
     """Saves user satisfaction feedback or expert correction on an AI response."""
     feedback = AIChatFeedback(
@@ -527,36 +664,49 @@ async def save_user_feedback(
         user_query=user_query,
         ai_response=ai_response,
         rating=rating,
-        corrected_response=corrected_response,
-        feedback_notes=feedback_notes,
-        is_approved=False,
+        feedback_reason=feedback_reason,
+        reviewed_by_admin=False,
+        admin_corrected_response=admin_corrected_response,
+        added_to_knowledge=False,
     )
     await feedback.insert()
     return feedback
 
 
-async def approve_feedback_and_learn(feedback_id: str, admin_notes: str | None = None) -> AICustomRule:
+async def approve_feedback_and_learn(
+    feedback_id: str,
+    admin_corrected_response: str,
+    rule_title: str | None = None,
+    keywords: list[str] | None = None,
+    admin_notes: str | None = None,
+) -> AICustomRule:
     """Approves an astrologer-corrected feedback and converts it directly into a high-priority AICustomRule."""
     fb = await AIChatFeedback.get(PydanticObjectId(feedback_id))
     if not fb:
         raise ValueError("Feedback record not found")
 
-    fb.is_approved = True
-    fb.admin_notes = admin_notes
+    fb.reviewed_by_admin = True
+    fb.admin_corrected_response = admin_corrected_response
+    fb.added_to_knowledge = True
     await fb.save()
 
-    # Extract keywords from user query
-    tokens = [t.lower() for t in re.findall(r"[\w\u0980-\u09FF]+", fb.user_query) if len(t) >= 3]
-    unique_keywords = list(dict.fromkeys(tokens))[:6]
+    # Extract keywords from user query if not passed
+    if not keywords:
+        tokens = [t.lower() for t in re.findall(r"[\w\u0980-\u09FF]+", fb.user_query or "") if len(t) >= 3]
+        unique_keywords = list(dict.fromkeys(tokens))[:6]
+    else:
+        unique_keywords = keywords
+
+    final_title = rule_title or f"Astrologer Learned Rule: {(fb.user_query or 'Question')[:35]}"
 
     rule = AICustomRule(
-        rule_title=f"Astrologer Learned Rule: {fb.user_query[:35]}",
-        trigger_keywords=unique_keywords or [fb.user_query[:25]],
+        rule_title=final_title,
+        trigger_keywords=unique_keywords or [(fb.user_query or "vedic")[:25]],
         category="learned",
-        response_bn=fb.corrected_response or fb.ai_response,
-        response_en=fb.feedback_notes or "Astrologer approved response",
+        response_bn=admin_corrected_response,
+        response_en=admin_notes or "",
         remedy_bn="শাস্ত্রীয় বিধান অনুযায়ী সংগৃহীত ও অনুমোদিত সমাধান।",
-        priority=12,
+        priority=15,
         is_active=True,
     )
     await rule.insert()

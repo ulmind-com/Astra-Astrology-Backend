@@ -19,17 +19,30 @@ class BirthDetailsSchema(BaseModel):
     lon: float = 88.3639
 
 
+class AICitationItem(BaseModel):
+    source: str
+    category: str = "shastra"
+    snippet: str = ""
+
+
 class AIChatRequest(BaseModel):
     session_id: str | None = None
-    message: str = Field(..., min_length=1, max_length=2000)
+    message: str = Field(..., min_length=1, max_length=4000)
     birth_details: BirthDetailsSchema | None = None
+    birth_date: str | None = None
+    birth_time: str | None = None
+    birth_place: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    preferred_language: str = "bn"
 
 
 class AIChatResponse(BaseModel):
     session_id: str
     reply: str
+    language: str = "bn"
     tools_called: list[str] = Field(default_factory=list)
-    citations: list[str] = Field(default_factory=list)
+    citations: list[AICitationItem | str] = Field(default_factory=list)
     suggested_followups: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -39,6 +52,8 @@ class AIFeedbackRequest(BaseModel):
     message_index: int = 0
     rating: int = Field(..., ge=-1, le=1)  # 1 for up, -1 for down
     feedback_reason: str = ""
+    user_query: str | None = None
+    ai_response: str | None = None
 
 
 class AICustomRuleCreateRequest(BaseModel):
