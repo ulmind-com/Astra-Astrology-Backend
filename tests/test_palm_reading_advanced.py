@@ -193,3 +193,49 @@ def test_rule_seed_integrity_for_new_features():
     assert counts.get(PalmFeature.TEMPERAMENT_ARCHETYPE.value, 0) >= 5
     assert counts.get(PalmFeature.MEDICAL_CONSTITUTION.value, 0) >= 2
     assert counts.get(PalmFeature.KUNDLI_PALM_SYNC.value, 0) >= 2
+
+
+def test_palm_reading_model_and_scan_response_validation():
+    """Ensure PalmReading and PalmScanResponse Pydantic models validate successfully without float_parsing errors."""
+    from beanie import PydanticObjectId
+    from app.models.palm_reading import PalmReading
+    from app.schemas.palm_reading import PalmScanResponse
+
+    measurements = {
+        "hollow_depth_mm": 5.2,
+        "archetype_affinity_pct": 88.0,
+        "pallor_index": 0.85,
+        "kundli_alignment_pct": 92.0,
+        "temperament_archetype": "The High Intuitive Visionary",
+        "pallor_state": "Radiant Pink (Optimal Ojas)",
+    }
+
+    from unittest.mock import MagicMock
+    saved_settings = getattr(PalmReading, "_document_settings", None)
+    try:
+        PalmReading._document_settings = MagicMock()
+        reading = PalmReading(
+            user_id=PydanticObjectId(),
+            hand="Right",
+            measurements=measurements,
+            temperament_archetype={"primary_archetype": "The High Intuitive Visionary"},
+            medical_constitution={"pallor_diagnosis": {"state": "Radiant Pink (Optimal Ojas)"}},
+            kundli_palm_sync={"overall_alignment_pct": 92},
+        )
+        assert reading.measurements["archetype_affinity_pct"] == 88.0
+        assert reading.measurements["temperament_archetype"] == "The High Intuitive Visionary"
+        assert reading.measurements["pallor_state"] == "Radiant Pink (Optimal Ojas)"
+    finally:
+        PalmReading._document_settings = saved_settings
+
+    scan_resp = PalmScanResponse(
+        scan_id="test_scan_123",
+        status="ok",
+        hand_detected=True,
+        measurements=measurements,
+        temperament_archetype={"primary_archetype": "The High Intuitive Visionary"},
+        medical_constitution={"pallor_diagnosis": {"state": "Radiant Pink (Optimal Ojas)"}},
+        kundli_palm_sync={"overall_alignment_pct": 92},
+    )
+    assert scan_resp.measurements["kundli_alignment_pct"] == 92.0
+

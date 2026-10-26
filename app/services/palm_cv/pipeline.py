@@ -270,13 +270,12 @@ def execute_scan(
             # 17 Vedic Temperament Archetypes (Nature through palm.docx)
             archetype = classify_temperament_archetype(result.hand_type, result.measurements, creases, marks)
             result.temperament_archetype = archetype
-            result.measurements["temperament_archetype"] = archetype["primary_archetype"]
             result.measurements["archetype_affinity_pct"] = float(archetype.get("affinity_score_pct", 88))
 
             # Medical Chirology & Ayurvedic Constitution (Health palmistry.docx)
             med_const = assess_medical_constitution(palm, result.measurements, result.skin_vitality, creases)
             result.medical_constitution = med_const
-            result.measurements["pallor_state"] = med_const.get("pallor_diagnosis", {}).get("state", "Radiant Pink")
+            result.measurements["pallor_index"] = float(med_const.get("pallor_diagnosis", {}).get("pallor_index", 0.8))
 
             # Kundli-Palm Synchronization (9 Grahas mapped to 7 Mounts + Ketu)
             kundli_sync = synchronize_palm_with_kundli(birth_details, result.mount_elevations_3d, creases, sec_lines)
