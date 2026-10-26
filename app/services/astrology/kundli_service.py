@@ -25,6 +25,7 @@ from app.schemas.astrology import (
     KundliPlanetaryInfo,
     KundliChartPlanet,
     KundliTableRow,
+    KundliDashaPratyantar,
     KundliDashaAntar,
     KundliDashaCard,
     KundliYogaItem,
@@ -36,6 +37,11 @@ from app.schemas.astrology import (
     GemstoneItem,
     PersonalRemedies,
     CurrentDashaInfo,
+    AshtakavargaResult,
+    AshtakavargaPlanetPoints,
+    AshtakavargaHouseSummary,
+    KaalPurushaInsight,
+    NakshatraPredictiveInsight,
 )
 from app.services.astrology.doshas import assess_manglik
 from app.services.astrology.timezone_resolver import resolve as resolve_timezone
