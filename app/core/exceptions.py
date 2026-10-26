@@ -82,24 +82,39 @@ def _error_body(message: str, error_code: str, details: Any = None) -> dict[str,
     return body
 
 
+def _cors_headers(request: Request) -> dict[str, str]:
+    headers: dict[str, str] = {}
+    origin = request.headers.get("origin")
+    if origin and (origin in settings.ALLOWED_ORIGINS or "*" in settings.ALLOWED_ORIGINS):
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
+        headers["Access-Control-Allow-Methods"] = "*"
+        headers["Access-Control-Allow-Headers"] = "*"
+    return headers
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
-    async def _app_error_handler(_: Request, exc: AppError) -> JSONResponse:
+    async def _app_error_handler(request: Request, exc: AppError) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
             content=_error_body(exc.message, exc.error_code, exc.details),
+            headers=_cors_headers(request),
         )
 
     @app.exception_handler(StarletteHTTPException)
-    async def _http_error_handler(_: Request, exc: StarletteHTTPException) -> JSONResponse:
+    async def _http_error_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+        headers = _cors_headers(request)
+        if getattr(exc, "headers", None):
+            headers.update(exc.headers)
         return JSONResponse(
             status_code=exc.status_code,
             content=_error_body(str(exc.detail), f"http_{exc.status_code}"),
-            headers=getattr(exc, "headers", None),
+            headers=headers,
         )
 
     @app.exception_handler(RequestValidationError)
-    async def _validation_error_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
+    async def _validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
         details = [
             {
                 "field": ".".join(str(part) for part in err["loc"][1:]) or "body",
@@ -111,6 +126,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content=_error_body("Validation failed.", "validation_error", details),
+            headers=_cors_headers(request),
         )
 
     @app.exception_handler(Exception)
@@ -122,4 +138,5 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content=_error_body(message, "internal_server_error"),
+            headers=_cors_headers(request),
         )

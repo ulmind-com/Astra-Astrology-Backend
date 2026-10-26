@@ -74,7 +74,7 @@ class PalmScanResponse(BaseModel):
     quality_checks: list[QualityCheckOut] = Field(default_factory=list)
 
     hand_type: dict[str, Any] = Field(default_factory=dict)
-    measurements: dict[str, float] = Field(default_factory=dict)
+    measurements: dict[str, Any] = Field(default_factory=dict)
     measurement_details: dict[str, Any] = Field(default_factory=dict)
 
     creases: list[CreaseOut] = Field(default_factory=list)

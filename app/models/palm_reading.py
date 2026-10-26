@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from typing import Any
 
 import pymongo
 from beanie import PydanticObjectId
@@ -253,7 +254,7 @@ class PalmReading(TimestampedDocument):
     user_id: PydanticObjectId
 
     hand: str = Field(default="unknown", max_length=10)  # "Left" | "Right"
-    measurements: dict[str, float] = Field(default_factory=dict)
+    measurements: dict[str, Any] = Field(default_factory=dict)
     hand_type: dict = Field(default_factory=dict)
     creases: dict = Field(default_factory=dict)
     crease_relationships: dict = Field(default_factory=dict)
