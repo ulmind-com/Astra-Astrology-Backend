@@ -739,17 +739,31 @@ class KundliTableRow(BaseModel):
     full_degree_formatted: str  # "141° 35 ' 55\""
 
 
+class KundliDashaPratyantar(BaseModel):
+    lord: str
+    lord_bn: str = ""
+    start_date: str = ""
+    end_date: str = ""
+    is_current: bool = False
+
+
 class KundliDashaAntar(BaseModel):
     lord: str
     duration: str
     end_date: str
+    start_date: str = ""
+    is_current: bool = False
+    pratyantardashas: list[KundliDashaPratyantar] = Field(default_factory=list)
 
 
 class KundliDashaCard(BaseModel):
     title: str  # "Balance Mahadasha: Saturn 6 Y 0 M 6 D" or "Mahadasha: Mercury - 17 Years"
     lord: str
     years: int
-    antardashas: list[KundliDashaAntar]
+    start_date: str = ""
+    end_date: str = ""
+    is_current: bool = False
+    antardashas: list[KundliDashaAntar] = Field(default_factory=list)
 
 
 class KundliYogaItem(BaseModel):
@@ -831,13 +845,73 @@ class DoshaAnalysisItem(BaseModel):
     is_present: bool
     severity: str  # High, Moderate, Mild, Cancelled, None
     severity_bn: str
+    percentage: int = 0  # 0 to 100%
     specific_type: str | None = None
     specific_type_bn: str | None = None
     cancellation_reason: str | None = None
     cancellation_reason_bn: str | None = None
+    cancellation_rules_applied: list[str] = Field(default_factory=list)
+    cancellation_rules_applied_bn: list[str] = Field(default_factory=list)
     remedy: str
     remedy_bn: str
     remedy_hi: str
+
+
+# =============================================================================
+# Ashtakavarga, Kaal Purusha & Nakshatra Deep Predictive Schemas
+# =============================================================================
+
+class AshtakavargaPlanetPoints(BaseModel):
+    planet: str
+    planet_bn: str
+    bindus: list[int]  # 12 houses (1 to 12)
+    total: int
+
+
+class AshtakavargaHouseSummary(BaseModel):
+    house_num: int
+    sign_name: str
+    sign_bn: str
+    sarvashtakavarga_points: int  # SAV points (average is 28)
+    strength: str  # "Very Strong" (>=32), "Strong" (28-31), "Moderate" (25-27), "Weak" (<25)
+    strength_bn: str
+    interpretation: str
+    interpretation_bn: str
+
+
+class AshtakavargaResult(BaseModel):
+    sav: list[int]  # 12 numbers for houses 1 to 12
+    total_sav_bindus: int = 337
+    bav_by_planet: list[AshtakavargaPlanetPoints] = Field(default_factory=list)
+    houses_summary: list[AshtakavargaHouseSummary] = Field(default_factory=list)
+
+
+class KaalPurushaInsight(BaseModel):
+    house_num: int
+    rashi_name: str
+    rashi_bn: str
+    body_part: str
+    body_part_bn: str
+    karmic_signification: str
+    karmic_signification_bn: str
+    planetary_influence: str
+    planetary_influence_bn: str
+    health_guidance: str
+    health_guidance_bn: str
+
+
+class NakshatraPredictiveInsight(BaseModel):
+    planet: str
+    planet_bn: str
+    nakshatra: str
+    nakshatra_bn: str
+    pada: int
+    rule_title: str
+    rule_title_bn: str
+    prediction: str
+    prediction_bn: str
+    remedy: str
+    remedy_bn: str
 
 
 class GemstoneItem(BaseModel):
@@ -903,11 +977,17 @@ class KundliCalculateResponse(BaseModel):
     d1_asc_sign: int  # 1-12
     d9_asc_sign: int  # 1-12
 
-    # Advanced Divisional Charts (D10 Dasamsha for Career, D7 Saptamsha for Progeny)
+    # Advanced Divisional Charts
     d10_planets: list[KundliChartPlanet] = Field(default_factory=list)
     d10_asc_sign: int = 1
     d7_planets: list[KundliChartPlanet] = Field(default_factory=list)
     d7_asc_sign: int = 1
+
+    # Chalit Chart (Bhava Chalit) & Chandra Kundli (Moon Chart)
+    chalit_planets: list[KundliChartPlanet] = Field(default_factory=list)
+    chalit_asc_sign: int = 1
+    moon_chart_planets: list[KundliChartPlanet] = Field(default_factory=list)
+    moon_chart_asc_sign: int = 1
 
     planets_table: list[KundliTableRow]
     houses_table: list[KundliTableRow]
@@ -923,6 +1003,13 @@ class KundliCalculateResponse(BaseModel):
     doshas_analysis: list[DoshaAnalysisItem] = Field(default_factory=list)
     remedies: PersonalRemedies | None = None
     current_dasha: CurrentDashaInfo | None = None
+
+    # Ashtakavarga (SAV & BAV)
+    ashtakavarga: AshtakavargaResult | None = None
+
+    # Kaal Purusha & Nakshatra Deep Predictive Insights
+    kaal_purusha_insights: list[KaalPurushaInsight] = Field(default_factory=list)
+    nakshatra_predictive_insights: list[NakshatraPredictiveInsight] = Field(default_factory=list)
 
     selected_language: str = "en"
     translations: dict[str, Any] = Field(default_factory=dict)
@@ -1025,6 +1112,120 @@ class MarriageLifeForecast(BaseModel):
     remedies_guidance: list[str] = Field(default_factory=list)
 
 
+class AvakahadaAttributeItem(BaseModel):
+    attribute: str
+    male: str
+    female: str
+    description: str = ""
+
+
+class DashakootItem(BaseModel):
+    attribute: str
+    male: str
+    female: str
+    out_of: float
+    received: float
+    description: str = ""
+    status: str = "Favorable"
+
+
+class DashakootResult(BaseModel):
+    items: list[DashakootItem] = Field(default_factory=list)
+    total_received: float = 0.0
+    total_out_of: float = 36.0
+    porutham_count: int = 0
+    is_favorable: bool = True
+    verdict: str = ""
+
+
+class DoshaCancellationInfo(BaseModel):
+    dosha_name: str
+    is_present: bool
+    is_cancelled: bool
+    cancellation_reason: str = ""
+    shastra_citation: str = ""
+    severity: str = "None"
+    remedy: str = ""
+
+
+class RajjuDoshaDetail(BaseModel):
+    is_present: bool
+    rajju_type: str = ""  # "Shiro", "Kantha", "Udara", "Kati", "Pada"
+    body_part: str = ""
+    classical_impact: str = ""
+    male_rajju: str = ""
+    female_rajju: str = ""
+    remedy: str = ""
+
+
+class PapasamyaPlanetDetail(BaseModel):
+    planet: str
+    house_from_lagna: int | None = None
+    house_from_moon: int | None = None
+    house_from_venus: int | None = None
+    points: float = 0.0
+
+
+class PapasamyaPersonScore(BaseModel):
+    total_points: float = 0.0
+    lagna_points: float = 0.0
+    moon_points: float = 0.0
+    venus_points: float = 0.0
+    details: list[PapasamyaPlanetDetail] = Field(default_factory=list)
+
+
+class PapasamyaResult(BaseModel):
+    groom_score: PapasamyaPersonScore
+    bride_score: PapasamyaPersonScore
+    difference: float = 0.0
+    is_balanced: bool = True
+    verdict: str = ""
+    description: str = ""
+
+
+class PersonalityTraitReport(BaseModel):
+    groom_positive_traits: list[str] = Field(default_factory=list)
+    groom_negative_traits: list[str] = Field(default_factory=list)
+    groom_summary: str = ""
+    bride_positive_traits: list[str] = Field(default_factory=list)
+    bride_negative_traits: list[str] = Field(default_factory=list)
+    bride_summary: str = ""
+    compatibility_summary: str = ""
+
+
+class DashaPeriodItem(BaseModel):
+    level: str
+    planet: str
+    start_date: str
+    end_date: str
+
+
+class PersonDashaOverview(BaseModel):
+    current_mahadasha: str = ""
+    current_antardasha: str = ""
+    current_pratyantardasha: str = ""
+    dasha_sequence: list[DashaPeriodItem] = Field(default_factory=list)
+
+
+class DashaComparisonResult(BaseModel):
+    groom_dasha: PersonDashaOverview
+    bride_dasha: PersonDashaOverview
+    dasha_sandhi_present: bool = False
+    dasha_compatibility_verdict: str = ""
+    dasha_compatibility_description: str = ""
+
+
+class ChartPlanetSet(BaseModel):
+    d1_planets: list[KundliChartPlanet] = Field(default_factory=list)
+    d9_planets: list[KundliChartPlanet] = Field(default_factory=list)
+    chalit_planets: list[KundliChartPlanet] = Field(default_factory=list)
+    moon_chart_planets: list[KundliChartPlanet] = Field(default_factory=list)
+    d1_asc_sign: int = 1
+    d9_asc_sign: int = 1
+    chalit_asc_sign: int = 1
+    moon_chart_asc_sign: int = 1
+
+
 class KundliMatchingResponse(BaseModel):
     groom: KundliMatchingPersonProfile
     bride: KundliMatchingPersonProfile
@@ -1037,6 +1238,17 @@ class KundliMatchingResponse(BaseModel):
     selected_language: str = "en"
     translations: dict[str, Any] = Field(default_factory=dict)
     forecast: MarriageLifeForecast | None = None
+    dashakoot: DashakootResult | None = None
+    avakahada_comparison: list[AvakahadaAttributeItem] = Field(default_factory=list)
+    cancellations: list[DoshaCancellationInfo] = Field(default_factory=list)
+    rajju_detail: RajjuDoshaDetail | None = None
+    papasamya: PapasamyaResult | None = None
+    personality: PersonalityTraitReport | None = None
+    dasha_comparison: DashaComparisonResult | None = None
+    groom_charts: ChartPlanetSet | None = None
+    bride_charts: ChartPlanetSet | None = None
+    manglik_detail: dict[str, Any] = Field(default_factory=dict)
+    classical_recommendation: str = ""
 
 
 
