@@ -1,4 +1,5 @@
 import base64
+import json
 from typing import Annotated
 
 from beanie import PydanticObjectId
@@ -15,14 +16,20 @@ from app.schemas.face_reading import (
     FaceReadingOut,
     FaceScanResponse,
     HeadPoseOut,
+    HouseZoneCorrelation,
+    KundliFaceSyncOut,
     MeasurementDetailOut,
+    PanchaMahabhutaOut,
     QualityChecksOut,
     ReadingSectionOut,
     RuleOut,
     RuleUpdate,
     SubmitReadingRequest,
+    TriZoneAnalysisOut,
+    TriZoneEraDetail,
 )
 from app.services import face_reading as service
+from app.services.face_reading_kundli import synchronize_face_with_kundli
 
 router = APIRouter(prefix="/face-reading", tags=["face reading"])
 
@@ -36,6 +43,9 @@ def _out(reading: FaceReading) -> FaceReadingOut:
         coins_charged=reading.coins_charged,
         quality=reading.quality,
         created_at=reading.created_at,
+        tri_zone_analysis=reading.tri_zone_analysis,
+        pancha_mahabhuta=reading.pancha_mahabhuta,
+        kundli_sync=reading.kundli_sync,
     )
 
 
@@ -79,7 +89,10 @@ async def submit(
     is about twenty numbers, each already relative to the subject's own face.
     """
     reading = await service.create(
-        user=user, measurements=payload.measurements, quality=payload.quality
+        user=user,
+        measurements=payload.measurements,
+        quality=payload.quality,
+        birth_details=payload.birth_details,
     )
     return ApiResponse(message="Your reading is ready.", data=_out(reading))
 
@@ -104,6 +117,7 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[FaceScanRespo
 
     content_type = request.headers.get("content-type", "")
     raw_bytes: bytes = b""
+    birth_details: dict[str, Any] | None = None
 
     if "multipart/form-data" in content_type:
         form = await request.form()
@@ -118,6 +132,12 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[FaceScanRespo
                 raw_bytes = base64.b64decode(val)
             except Exception:
                 raise BadRequestError("Invalid base64 payload.", error_code="invalid_base64")
+        bd_raw = form.get("birth_details")
+        if bd_raw and isinstance(bd_raw, str):
+            try:
+                birth_details = json.loads(bd_raw)
+            except Exception:
+                pass
     elif "application/json" in content_type:
         try:
             body = await request.json()
@@ -135,6 +155,7 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[FaceScanRespo
             raw_bytes = base64.b64decode(val)
         except Exception:
             raise BadRequestError("Invalid base64 string.", error_code="invalid_base64")
+        birth_details = body.get("birth_details")
     else:
         raw_bytes = await request.body()
 
@@ -235,12 +256,24 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[FaceScanRespo
             error_code="rules_unavailable",
         )
 
+    kundli_sync_dict = None
+    if birth_details:
+        kundli_sync_dict = synchronize_face_with_kundli(
+            birth_data=birth_details,
+            measurements=cv_result.measurements,
+            tri_zone=cv_result.tri_zone_analysis,
+            mahabhuta=cv_result.pancha_mahabhuta,
+        )
+
     reading = FaceReading(
         user_id=user.id,
         measurements=cv_result.measurements,
         sections=sections,
         coins_charged=platform.face_reading_coins,
         quality=round(cv_result.quality_score, 3),
+        tri_zone_analysis=cv_result.tri_zone_analysis,
+        pancha_mahabhuta=cv_result.pancha_mahabhuta,
+        kundli_sync=kundli_sync_dict,
     )
     await reading.insert()
 
@@ -269,6 +302,10 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[FaceScanRespo
         for k, v in cv_result.measurement_details.items()
     }
 
+    tri_zone_out = TriZoneAnalysisOut(**cv_result.tri_zone_analysis) if cv_result.tri_zone_analysis else None
+    mahabhuta_out = PanchaMahabhutaOut(**cv_result.pancha_mahabhuta) if cv_result.pancha_mahabhuta else None
+    kundli_sync_out = KundliFaceSyncOut(**kundli_sync_dict) if kundli_sync_dict else None
+
     return ApiResponse(
         message="Face scanning complete and reading generated.",
         data=FaceScanResponse(
@@ -288,6 +325,9 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[FaceScanRespo
             forehead_lines_count=cv_result.forehead_lines_count,
             forehead_lines_data=cv_result.forehead_lines_data,
             forehead_lines_shastra=cv_result.forehead_lines_shastra,
+            tri_zone_analysis=tri_zone_out,
+            pancha_mahabhuta=mahabhuta_out,
+            kundli_sync=kundli_sync_out,
             landmark_mapping_version=cv_result.landmark_mapping_version,
             model_version=cv_result.model_version,
             processing_duration_ms=cv_result.processing_duration_ms,

@@ -11,6 +11,8 @@ from app.services.face_cv.forehead_analyzer import analyze_forehead_lines
 from app.services.face_cv.landmarks import LandmarkIndex as P
 from app.services.face_cv.measurements import (
     MeasurementDetail,
+    calculate_pancha_mahabhuta,
+    calculate_tri_zone_analysis,
     canonicalize_landmarks_3d,
     extract_measurements,
 )
@@ -38,6 +40,8 @@ class ScanPipelineResult:
     forehead_lines_count: int = 0
     forehead_lines_data: list[dict[str, Any]] = field(default_factory=list)
     forehead_lines_shastra: dict[str, str] = field(default_factory=dict)
+    tri_zone_analysis: dict[str, Any] = field(default_factory=dict)
+    pancha_mahabhuta: dict[str, Any] = field(default_factory=dict)
     landmark_mapping_version: str = "canonical_478_v1"
     model_version: str = "mediapipe_tasks_vision_1.1.1"
 
@@ -188,6 +192,12 @@ def execute_scan_pipeline(
         forehead_lines=forehead_analysis.lines,
     )
 
+    tri_zone_res = calculate_tri_zone_analysis(
+        landmarks=canonical_3d if len(canonical_3d) >= 468 else detection.landmarks_px,
+        measurements=measurements,
+    )
+    mahabhuta_res = calculate_pancha_mahabhuta(measurements)
+
     duration_ms = round((time.perf_counter() - start_time) * 1000.0, 1)
 
     pose_dict = _format_pose(quality_assessment.checks.head_pose)
@@ -226,6 +236,8 @@ def execute_scan_pipeline(
         forehead_lines_count=forehead_analysis.lines_count,
         forehead_lines_data=lines_data,
         forehead_lines_shastra=forehead_analysis.shastra_interpretation,
+        tri_zone_analysis=tri_zone_res,
+        pancha_mahabhuta=mahabhuta_res,
         landmark_mapping_version=config.landmark_mapping_version,
         model_version=config.model_version,
     )

@@ -16,6 +16,7 @@ class SubmitReadingRequest(BaseModel):
     measurements: dict[str, float]
     # How square-on and well-lit the capture was, 0–1, decided on the device.
     quality: float = Field(ge=0, le=1)
+    birth_details: dict[str, Any] | None = None
 
 
 class ReadingSectionOut(BaseModel):
@@ -29,6 +30,77 @@ class ReadingSectionOut(BaseModel):
     area: str | None = None
 
 
+class TriZoneEraDetail(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    era_name: str
+    era_name_bn: str = ""
+    age_span: str
+    score_pct: float
+    rulers: str
+    deity: str = ""
+    forecast_en: str
+    forecast_bn: str = ""
+
+
+class TriZoneAnalysisOut(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    upper_pct: float = 33.3
+    middle_pct: float = 33.3
+    lower_pct: float = 33.4
+    ratio_str: str = "1.0 : 1.0 : 1.0"
+    status: str = "balanced"
+    title_en: str = ""
+    desc_en: str = ""
+    desc_bn: str = ""
+    desc_hi: str = ""
+    eras: list[TriZoneEraDetail] = Field(default_factory=list)
+
+
+class PanchaMahabhutaOut(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    dominant_element: str
+    element_bn: str = ""
+    element_hi: str = ""
+    mahapurusha: str
+    mahapurusha_bn: str = ""
+    traits_en: str
+    traits_bn: str = ""
+    traits_hi: str = ""
+    scores: dict[str, float] = Field(default_factory=dict)
+
+
+class HouseZoneCorrelation(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    house: int
+    house_name: str
+    house_name_bn: str = ""
+    house_name_hi: str = ""
+    face_part: str
+    face_part_bn: str = ""
+    face_part_hi: str = ""
+    planets_occupying: str = ""
+    significance_en: str = ""
+    significance_bn: str = ""
+    status_note_en: str = ""
+    status_note_bn: str = ""
+
+
+class KundliFaceSyncOut(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    sync_available: bool = False
+    message: str | None = None
+    ascendant_sign: str = ""
+    ascendant_sign_bn: str = ""
+    ascendant_sign_hi: str = ""
+    ascendant_lord: str = ""
+    physiognomy_traits: dict[str, Any] = Field(default_factory=dict)
+    first_house_conjunction: dict[str, Any] | None = None
+    house_correlations: list[HouseZoneCorrelation] = Field(default_factory=list)
+    kalpurush_highlight: dict[str, Any] | None = None
+    til_masaka: list[dict[str, Any]] = Field(default_factory=list)
+    remedies: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class FaceReadingOut(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="ignore")
 
@@ -37,6 +109,9 @@ class FaceReadingOut(BaseModel):
     coins_charged: int
     quality: float
     created_at: datetime
+    tri_zone_analysis: TriZoneAnalysisOut | None = None
+    pancha_mahabhuta: PanchaMahabhutaOut | None = None
+    kundli_sync: KundliFaceSyncOut | None = None
 
 
 class FaceReadingAvailability(BaseModel):
@@ -133,10 +208,14 @@ class FaceScanResponse(BaseModel):
     processing_duration_ms: float = 0.0
     warnings: list[str] = Field(default_factory=list)
     error_message: str | None = None
+    tri_zone_analysis: TriZoneAnalysisOut | None = None
+    pancha_mahabhuta: PanchaMahabhutaOut | None = None
+    kundli_sync: KundliFaceSyncOut | None = None
 
 
 class FaceScanBase64Request(BaseModel):
     image: str = Field(description="Base64 encoded image string (data URL or raw base64)")
+    birth_details: dict[str, Any] | None = None
 
 
 class RuleOut(BaseModel):

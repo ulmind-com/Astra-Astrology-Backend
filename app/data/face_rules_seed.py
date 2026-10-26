@@ -871,6 +871,31 @@ RULES: list[dict] = [
         ),
     },
     {
+        "feature": "cheeks", "option": "dimpled", "label": "Dimpled cheeks",
+        "priority": 22, "area": "standing",
+        "conditions": [{"metric": "cheek_full", "min": 0.922, "max": 0.938}],
+        "meaning": (
+            "Natural dimples or soft indentations on the cheeks are celebrated in "
+            "Samudrika Shastra as marks of innate charm, affectionate warmth, and "
+            "favorable partner fortune (the 10th house being 4th from the 7th). "
+            "People find you disarmingly approachable and forgive small lapses easily. "
+            "The caution is in discernment: your instinctive kindness can attract "
+            "those who lean on you without reciprocating, so choose inner-circle confidants with care."
+        ),
+    },
+    {
+        "feature": "cheeks", "option": "low", "label": "Soft / Low cheekbones",
+        "priority": 18, "area": "standing",
+        "conditions": [{"metric": "cheek_full", "min": 0.910, "max": 0.924}],
+        "meaning": (
+            "Gently contoured, low cheekbones indicate an unassuming, supportive, and "
+            "collaborative nature. You prefer quiet dedication and mutual success over "
+            "ostentatious displays of personal authority. Team environments flourish under "
+            "your presence. The tradition advises speaking up more decisively when your "
+            "work is discussed, so others do not claim credit for your tireless groundwork."
+        ),
+    },
+    {
         "feature": "cheeks", "option": "balanced", "label": "Even cheeks", "is_default": True,
         "priority": 0, "area": "standing",
         "conditions": [],
@@ -881,6 +906,177 @@ RULES: list[dict] = [
             "associates this with being judged on what you do, and with "
             "reputation that accumulates quietly and holds. It is the settled "
             "form, and carries no particular warning."
+        ),
+    },
+
+    # ======================================================== ADDITIONAL CHIN & JAW
+    {
+        "feature": "chin", "option": "cleft", "label": "Cleft chin",
+        "priority": 28, "area": "resolve",
+        "conditions": [{"metric": "chin_h", "min": 0.205, "max": 0.228}, {"metric": "jaw_cheek", "min": 0.825}],
+        "meaning": (
+            "A distinct cleft or vertical furrow at the chin center is celebrated in "
+            "Vedic physiognomy as the signature of magnetic individualism and creative "
+            "vitality. It bestows an unyielding desire for distinction, artistic flair, "
+            "and natural stage presence. In partnerships, you require appreciation for your "
+            "uniqueness; your challenge is keeping your artistic self-expression grounded in daily patience."
+        ),
+    },
+    {
+        "feature": "chin", "option": "double", "label": "Full / Double chin",
+        "priority": 22, "area": "resolve",
+        "conditions": [{"metric": "chin_h", "min": 0.235}],
+        "meaning": (
+            "A fleshy, full lower chin contour is regarded in classical Samudrika Shastra as "
+            "an auspicious indicator of accumulated wealth, physical comfort, and a peaceful, "
+            "generous retirement. It signifies abundant nourishment, domestic stability, and "
+            "the accumulation of real-estate and family goodwill. Its counsel is active physical "
+            "moderation so that comfort does not turn into sluggish inertia."
+        ),
+    },
+    {
+        "feature": "chin", "option": "protruding", "label": "Protruding chin",
+        "priority": 26, "area": "resolve",
+        "conditions": [{"metric": "jaw_cheek", "min": 0.850}, {"metric": "chin_h", "min": 0.218}],
+        "meaning": (
+            "A chin that projects boldly forward signifies unyielding willpower, commanding "
+            "assertiveness, and absolute confidence in your convictions. In Samudrika Shastra, "
+            "this feature marks individuals who conquer resistance and establish their own laws. "
+            "The caution is authoritarian inflexibility: you are advised to listen to counsel before "
+            "charging forward into battle."
+        ),
+    },
+
+    # ======================================================== ADDITIONAL NOSE
+    {
+        "feature": "nose", "option": "hooked", "label": "Hooked / Aquiline nose",
+        "priority": 28, "area": "wealth",
+        "conditions": [{"metric": "nose_len", "min": 0.355}, {"metric": "nose_w", "max": 0.285}],
+        "meaning": (
+            "An aquiline or eagle-shaped nose (Garuda Nasika) is one of the premier classical "
+            "signatures of commercial acumen, strategic negotiation, and shrewd financial vision. "
+            "You assess value instantly, identify lucrative opportunities ahead of others, and "
+            "guard resources tenaciously. The shastra advises blending your formidable business drive "
+            "with charitable generosity to safeguard long-term dharmic wealth."
+        ),
+    },
+    {
+        "feature": "nose", "option": "prominent_bridge", "label": "Prominent bridge / Roman nose",
+        "priority": 26, "area": "wealth",
+        "conditions": [{"metric": "nose_len", "min": 0.345}, {"metric": "bridge_w", "min": 0.34}],
+        "meaning": (
+            "A high, prominent nasal bridge represents royal pride, noble ambition, and an "
+            "innate instinct for leadership. People instinctively recognize your self-respect and "
+            "hesitate to compromise with you. You achieve high rank through sheer merit and uncompromising "
+            "principles. The counsel is humility: do not let justified pride turn into aloof distance."
+        ),
+    },
+    {
+        "feature": "nose", "option": "flat", "label": "Broad flat nose",
+        "priority": 22, "area": "wealth",
+        "conditions": [{"metric": "nose_len", "max": 0.315}, {"metric": "nose_w", "min": 0.295}],
+        "meaning": (
+            "A nose that sits closer to the facial contour with a wide base signifies unpretentious "
+            "humility, grounded practicality, and an easygoing social temperament. You connect effortlessly "
+            "with people from all walks of life. The tradition's advice is to nurture higher personal ambition, "
+            "as your innate modesty may lead you to accept lesser rewards than your hard work truly deserves."
+        ),
+    },
+
+    # ======================================================== ADDITIONAL EYES
+    {
+        "feature": "eyes", "option": "deep_set", "label": "Deep-set thoughtful eyes",
+        "priority": 26, "area": "perception",
+        "conditions": [{"metric": "eye_open", "min": 0.35, "max": 0.44}, {"metric": "eye_size", "min": 0.22, "max": 0.27}],
+        "meaning": (
+            "Eyes nestled deeply beneath the brow ridge reflect a profoundly analytical, cautious, and "
+            "observant mind (Saturnian contemplation). You absorb everything quietly, discern hidden "
+            "motives with uncanny accuracy, and never reveal your hand prematurely. The shastra encourages "
+            "you to express your feelings aloud, as your quiet intensity can be mistaken for coolness."
+        ),
+    },
+    {
+        "feature": "eyes", "option": "droopy", "label": "Droopy / Relaxed eyelids",
+        "priority": 24, "area": "perception",
+        "conditions": [{"metric": "eye_tilt", "max": 0.015}, {"metric": "eye_open", "max": 0.36}],
+        "meaning": (
+            "Gently descending or relaxed eyelid contours signify an unhurried, patient, and philosophical "
+            "nature. You remain remarkably calm when others panic, viewing crises through a wide lens of time. "
+            "Your challenge is proactive initiative: beware of allowing a relaxed outlook to delay necessary "
+            "timely action."
+        ),
+    },
+    {
+        "feature": "eyes", "option": "bright", "label": "Bright luminous eyes",
+        "priority": 27, "area": "perception",
+        "conditions": [{"metric": "eye_open", "min": 0.435}, {"metric": "eye_size", "min": 0.26}],
+        "meaning": (
+            "Luminous, sparkling eyes with clear sclera (Netra Tejas) signify Solar vitality, honest "
+            "moral transparency, and keen mental alertness. You inspire optimism in demoralized groups and "
+            "possess an infectious zest for life. The tradition commends your honesty while advising you to "
+            "protect your energetic boundaries from draining environments."
+        ),
+    },
+
+    # ============================================================ EARS (কর্ণ লক্ষণ)
+    {
+        "feature": "ears", "option": "large", "label": "Large ears",
+        "priority": 25, "area": "vitality",
+        "conditions": [],
+        "meaning": (
+            "Large ears (Maha Karna) are one of the most auspicious marks of longevity, deep listening, "
+            "and expansive intellectual absorption in Samudrika Shastra. Ruled by the 3rd and 11th houses, "
+            "they indicate a mind that digests complex knowledge calmly, seeks wisdom, and enjoys lasting societal respect."
+        ),
+    },
+    {
+        "feature": "ears", "option": "long_lobe", "label": "Long earlobes (Buddha Karna)",
+        "priority": 28, "area": "wealth",
+        "conditions": [],
+        "meaning": (
+            "Long, fleshy, detached earlobes represent high spiritual merit, benevolent leadership, and "
+            "abundant financial fortune. Similar to representations of sages and noble monarchs, this trait "
+            "blesses you with generosity, good counsel, and wealth that endures into elderhood."
+        ),
+    },
+    {
+        "feature": "ears", "option": "small", "label": "Small compact ears",
+        "priority": 20, "area": "vitality",
+        "conditions": [],
+        "meaning": (
+            "Small, finely proportioned ears indicate rapid instinctive perception, quick reflexes, and an "
+            "impatience with prolonged hesitation. You grasp points quickly and act immediately. The shastra "
+            "advises cultivating deeper patience when listening to detailed plans."
+        ),
+    },
+    {
+        "feature": "ears", "option": "protruding", "label": "Protruding ears",
+        "priority": 22, "area": "vitality",
+        "conditions": [],
+        "meaning": (
+            "Ears that extend outwards from the head signify intense curiosity, independent thinking, and a "
+            "rebellious creative spark. You dislike rigid orthodoxy and forge your own unconventional methodologies. "
+            "You are inventive, articulate, and alert to changes in your environment."
+        ),
+    },
+    {
+        "feature": "ears", "option": "close_to_head", "label": "Ears close to head",
+        "priority": 22, "area": "vitality",
+        "conditions": [],
+        "meaning": (
+            "Ears set closely against the skull indicate disciplined discretion, methodical caution, and "
+            "prudent financial management. You keep confidences securely and execute long-term strategies "
+            "without fanfare. You excel in confidential and high-trust positions."
+        ),
+    },
+    {
+        "feature": "ears", "option": "balanced", "label": "Harmonious ears", "is_default": True,
+        "priority": 0, "area": "vitality",
+        "conditions": [],
+        "meaning": (
+            "Ears in balanced proportion to the head signify steady working capacity, wholesome relations with "
+            "colleagues and siblings (3rd and 11th house harmony), and balanced receptivity. It is the settled, "
+            "fortunate form carrying no adverse omens."
         ),
     },
 ]
