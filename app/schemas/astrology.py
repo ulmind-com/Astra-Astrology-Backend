@@ -165,6 +165,54 @@ class CalculationMeta(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class AvakahadaChakra(BaseModel):
+    gana: str  # Deva (দেব), Manushya (মনুষ্য), Rakshasa (রাক্ষস)
+    yoni: str  # e.g. Horse, Elephant, Serpent, Lion, etc.
+    yoni_animal: str  # Male / Female animal classification
+    nadi: str  # Aadi (আদি), Madhya (মধ্য), Antya (অন্ত্য)
+    varna: str  # Brahmin, Kshatriya, Vaishya, Shudra
+    vashya: str  # Chatuspada, Dwipada/Nara, Jalachara, Keeta, Vanachara
+    tatva: str  # Prithvi, Jala, Agni, Vayu, Akasha
+    paya: str  # Gold (স্বর্ণ), Silver (রৌপ্য), Copper (তাম্র), Iron (লৌহ)
+
+
+class RashiPlanetaryDignity(BaseModel):
+    """Planetary exaltation, debilitation, and natural friendship matrix from client's Basics of Kundali Reading Explained."""
+
+    exalted_planets: list[str] = Field(default_factory=list)
+    debilitated_planets: list[str] = Field(default_factory=list)
+    own_lord: str = ""
+    moolatrikona: str = ""
+    ruler_friends: list[str] = Field(default_factory=list)
+    ruler_enemies: list[str] = Field(default_factory=list)
+    ruler_neutrals: list[str] = Field(default_factory=list)
+
+
+class ChandraBalaInfo(BaseModel):
+    """Classical Lunar strength in real-time transit relative to Janma Rashi."""
+
+    current_moon_sign_index: int
+    current_moon_sign_name: str
+    house_from_natal_moon: int
+    is_auspicious: bool
+    status_label: str
+    description: str
+
+
+class SadeSatiStatus(BaseModel):
+    """Saturn Sade Sati & Dhaiya real-time transit status relative to Janma Rashi."""
+
+    is_active: bool
+    phase_code: str  # "rising", "peak", "setting", "kantaka", "ashtama", "none"
+    phase_title: str
+    saturn_sign_index: int
+    saturn_sign_name: str
+    saturn_house_from_moon: int
+    impact_level: str  # "high", "medium", "favorable"
+    description: str
+    remedy_summary: str
+
+
 class RashiCalculateResponse(BaseModel):
     name: str
     gender: str
@@ -217,6 +265,19 @@ class RashiCalculateResponse(BaseModel):
     client_rules: ClientSignProfile | None = None
     ascendant_client_rules: ClientSignProfile | None = None
     kp_reference: dict[str, Any] = Field(default_factory=dict)
+
+    # Extended Classical Precision Fields (Avakahada, Navamsha, Chandra Lagna, Chandra Bala, Sade Sati)
+    avakahada_chakra: AvakahadaChakra | None = None
+    namakshar: str = ""
+    navamsha_rashi_index: int = 0
+    navamsha_rashi_name_en: str = ""
+    navamsha_rashi_name_bn: str = ""
+    navamsha_rashi_name_hi: str = ""
+    is_vargottama: bool = False
+    planetary_dignity: RashiPlanetaryDignity | None = None
+    chandra_lagna_planets: list[PlanetPosition] = Field(default_factory=list)
+    chandra_bala: ChandraBalaInfo | None = None
+    sade_sati_status: SadeSatiStatus | None = None
 
     # Transparency: how the offset was derived, the real cusps, and engine details
     timezone_resolution: TimezoneResolution | None = None
@@ -274,15 +335,6 @@ class NakshatraCalculateRequest(BaseModel):
     )
 
 
-class AvakahadaChakra(BaseModel):
-    gana: str  # Deva (দেব), Manushya (মনুষ্য), Rakshasa (রাক্ষস)
-    yoni: str  # e.g. Horse, Elephant, Serpent, Lion, etc.
-    yoni_animal: str  # Male / Female animal classification
-    nadi: str  # Aadi (আদি), Madhya (মধ্য), Antya (অন্ত্য)
-    varna: str  # Brahmin, Kshatriya, Vaishya, Shudra
-    vashya: str  # Chatuspada, Dwipada/Nara, Jalachara, Keeta, Vanachara
-    tatva: str  # Prithvi, Jala, Agni, Vayu, Akasha
-    paya: str  # Gold (স্বর্ণ), Silver (রৌপ্য), Copper (তাম্র), Iron (লৌহ)
 
 
 class NakshatraPadaDetail(BaseModel):
