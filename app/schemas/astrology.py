@@ -528,6 +528,9 @@ class KPCalculateRequest(BaseModel):
     language: Literal["en", "bn", "hi"] = Field(
         default="en", description="Output language (en, bn, hi)"
     )
+    horary_number: int | None = Field(
+        default=None, ge=1, le=249, description="Optional KP Horary Seed Number between 1 and 249"
+    )
 
 
 class KPPanchang(BaseModel):
@@ -564,6 +567,10 @@ class KPRulingPlanets(BaseModel):
     day_lord: str
     date_formatted: str
     time_formatted: str
+    is_lagna_star_retrograde: bool = False
+    is_moon_star_retrograde: bool = False
+    discarded_planets: list[str] = Field(default_factory=list)
+    fruitful_planets: list[str] = Field(default_factory=list)
 
 
 class KPCuspDetail(BaseModel):
@@ -575,6 +582,7 @@ class KPCuspDetail(BaseModel):
     sign_lord: str
     star_lord: str
     sub_lord: str
+    sub_sub_lord: str = ""
 
 
 class KPPlanetDetail(BaseModel):
@@ -591,9 +599,11 @@ class KPPlanetDetail(BaseModel):
     sign_lord: str
     star_lord: str
     sub_lord: str
+    sub_sub_lord: str = ""
     rashi_house: int  # 1 to 12 in Rashi chart
     bhav_house: int  # 1 to 12 in Nirayana Bhava Chalit chart
     is_retrograde: bool = False
+    is_untenanted: bool = False
 
 
 class KPDashaInsight(BaseModel):
@@ -620,6 +630,87 @@ class KPDashaPeriod(BaseModel):
     sub_periods: list["KPDashaPeriod"] = Field(default_factory=list)
 
 
+# -----------------------------------------------------------------------------
+# Advanced KP Models (Significators, CSL Life Events, Horary, Aspects, Badhaka)
+# -----------------------------------------------------------------------------
+
+class KPPlanetSignificator(BaseModel):
+    planet: str
+    level_a: list[int] = Field(default_factory=list)  # Houses occupied by star lord (strongest)
+    level_b: list[int] = Field(default_factory=list)  # House occupied by the planet
+    level_c: list[int] = Field(default_factory=list)  # Houses owned by star lord
+    level_d: list[int] = Field(default_factory=list)  # Houses owned by the planet
+    all_signified_houses: list[int] = Field(default_factory=list)
+
+
+class KPHouseSignificator(BaseModel):
+    house: int
+    level_a: list[str] = Field(default_factory=list)  # Planets in star of planets in this house
+    level_b: list[str] = Field(default_factory=list)  # Planets occupying this house
+    level_c: list[str] = Field(default_factory=list)  # Planets in star of house lord
+    level_d: list[str] = Field(default_factory=list)  # House lord itself
+
+
+class KPEventAnalysisItem(BaseModel):
+    category: str  # "career", "marriage", "wealth", "property", "health", "foreign"
+    title: str
+    primary_cusp: int
+    cuspal_sub_lord: str
+    csl_star_lord: str
+    csl_sub_lord: str
+    favorable_houses: list[int] = Field(default_factory=list)
+    unfavorable_houses: list[int] = Field(default_factory=list)
+    signified_houses: list[int] = Field(default_factory=list)
+    promise_score: int = 50  # 0 to 100
+    verdict: str = ""
+    description: str = ""
+    timing_hint: str = ""
+
+
+class KPAspectItem(BaseModel):
+    planet_1: str
+    planet_2: str
+    aspect_name: str  # Conjunction, Sextile, Square, Trine, Opposition
+    aspect_symbol: str
+    angle_degrees: float
+    orb_degrees: float
+    nature: str  # Harmonious, Challenging, Neutral
+    significance: str
+
+
+class KPBadhakaMarakaInfo(BaseModel):
+    ascendant_type: str  # Movable, Fixed, Dual
+    badhaka_house: int  # 11 for Movable, 9 for Fixed, 7 for Dual
+    badhaka_sign: str
+    badhaka_lord: str
+    maraka_houses: list[int] = Field(default_factory=lambda: [2, 7])
+    maraka_lords: list[str] = Field(default_factory=list)
+    badhaka_planets: list[str] = Field(default_factory=list)
+    maraka_planets: list[str] = Field(default_factory=list)
+    notes: str = ""
+
+
+class KPHoraryInfo(BaseModel):
+    horary_number: int  # 1 to 249
+    sub_start_degree: float
+    sub_end_degree: float
+    sub_span_formatted: str
+    sign: str
+    sign_lord: str
+    star_lord: str
+    sub_lord: str
+    sub_sub_lord: str
+
+
+class KPRemedyItem(BaseModel):
+    planet: str
+    house_involved: int
+    problem: str
+    lal_kitab_upaya: str
+    vedic_mantra: str
+    charity_recommendation: str
+
+
 class KPCalculateResponse(BaseModel):
     name: str
     gender: str
@@ -637,6 +728,16 @@ class KPCalculateResponse(BaseModel):
     cusps: list[KPCuspDetail]
     planets: list[KPPlanetDetail]
     dashas: list[KPDashaPeriod]
+
+    # Advanced KP Capabilities
+    untenanted_planets: list[str] = Field(default_factory=list)
+    planet_significators: list[KPPlanetSignificator] = Field(default_factory=list)
+    house_significators: list[KPHouseSignificator] = Field(default_factory=list)
+    life_events: list[KPEventAnalysisItem] = Field(default_factory=list)
+    aspects: list[KPAspectItem] = Field(default_factory=list)
+    badhaka_maraka: KPBadhakaMarakaInfo | None = None
+    horary_details: KPHoraryInfo | None = None
+    remedies: list[KPRemedyItem] = Field(default_factory=list)
 
     selected_language: str = "en"
     translations: dict[str, Any] = Field(default_factory=dict)
