@@ -518,6 +518,14 @@ def test_conditions_reference_metrics_the_scan_actually_produces():
         "mars_found", "mars_contrast", "mars_length",
         "mark_mystic_cross", "mark_trishula_fate", "mark_matsya_ketu", "mark_raksha_kavach",
         "skin_vitality_score",
+        # Real scan metrics from Loops, Marriage Cards, Archetypes, Medical Chirology, Kundli Sync
+        "loop_loop_leisure", "loop_loop_industry", "loop_loop_raja", "loop_loop_sensitivity",
+        "loop_loop_memory", "loop_loop_inspiration", "loop_loop_courage", "loop_loop_nature_outer",
+        "loop_loop_mystery",
+        "marriage_card_1", "marriage_card_6", "marriage_card_7", "marriage_card_8",
+        "marriage_card_11", "marriage_card_12",
+        "archetype_affinity_pct", "archetype_name",
+        "saturn_sun_tilt_deg", "pallor_state", "kundli_alignment_pct",
     }
     for entry in PALM_RULES_SEED:
         for condition in entry.get("conditions", []):

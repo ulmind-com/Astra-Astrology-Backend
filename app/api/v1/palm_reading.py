@@ -62,6 +62,11 @@ def _reading_out(reading: PalmReading) -> PalmReadingOut:
         timeline=getattr(reading, "timeline", []),
         skin_vitality=getattr(reading, "skin_vitality", {}),
         karmic_summary=getattr(reading, "karmic_summary", {}),
+        dermatoglyphic_loops=getattr(reading, "dermatoglyphic_loops", []),
+        marriage_patterns=getattr(reading, "marriage_patterns", []),
+        temperament_archetype=getattr(reading, "temperament_archetype", {}),
+        medical_constitution=getattr(reading, "medical_constitution", {}),
+        kundli_palm_sync=getattr(reading, "kundli_palm_sync", {}),
         overlay_image=reading.overlay_image,
         coins_charged=reading.coins_charged,
         quality_score=reading.quality_score,
@@ -70,19 +75,29 @@ def _reading_out(reading: PalmReading) -> PalmReadingOut:
     )
 
 
-async def _read_image_bytes(request: Request) -> bytes:
-    """Accept the image as multipart, JSON base64, or a raw body."""
+async def _read_image_payload(request: Request) -> tuple[bytes, dict | None]:
+    """Accept the image and optional birth details as multipart, JSON base64, or raw body."""
     content_type = request.headers.get("content-type", "")
+    birth_details: dict | None = None
 
     if "multipart/form-data" in content_type:
         form = await request.form()
         field = form.get("file") or form.get("image")
+        if form.get("birth_date"):
+            birth_details = {
+                "birth_date": str(form.get("birth_date")),
+                "birth_time": str(form.get("birth_time") or "12:00"),
+                "latitude": float(form.get("latitude") or 22.5726),
+                "longitude": float(form.get("longitude") or 88.3639),
+                "timezone_offset": float(form.get("timezone_offset") or 5.5),
+            }
         if field is not None and hasattr(field, "read"):
-            return await field.read()  # type: ignore[union-attr]
+            data = await field.read()  # type: ignore[union-attr]
+            return data, birth_details
         if isinstance(field, str):
             value = field.split(",", 1)[1] if "," in field else field
             try:
-                return base64.b64decode(value)
+                return base64.b64decode(value), birth_details
             except Exception:
                 raise BadRequestError("That image could not be decoded.", error_code="invalid_base64")
         raise BadRequestError("No image was included.", error_code="missing_image")
@@ -93,6 +108,16 @@ async def _read_image_bytes(request: Request) -> bytes:
         except Exception:
             raise BadRequestError("The request body was not valid JSON.", error_code="invalid_json")
         value = body.get("image") or body.get("image_base64")
+        if body.get("birth_details") and isinstance(body.get("birth_details"), dict):
+            birth_details = body.get("birth_details")
+        elif body.get("birth_date"):
+            birth_details = {
+                "birth_date": str(body.get("birth_date")),
+                "birth_time": str(body.get("birth_time", "12:00")),
+                "latitude": float(body.get("latitude", 22.5726)),
+                "longitude": float(body.get("longitude", 88.3639)),
+                "timezone_offset": float(body.get("timezone_offset", 5.5)),
+            }
         if not isinstance(value, str) or not value:
             raise BadRequestError(
                 "Send the photo as 'image' in the JSON body.", error_code="missing_image"
@@ -100,11 +125,12 @@ async def _read_image_bytes(request: Request) -> bytes:
         if "," in value:
             value = value.split(",", 1)[1]
         try:
-            return base64.b64decode(value)
+            return base64.b64decode(value), birth_details
         except Exception:
             raise BadRequestError("That image could not be decoded.", error_code="invalid_base64")
 
-    return await request.body()
+    raw = await request.body()
+    return raw, None
 
 
 @router.get(
@@ -146,7 +172,7 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[PalmScanRespo
     from app.services import settings as settings_service
     from app.services import wallet as wallet_service
 
-    raw = await _read_image_bytes(request)
+    raw, birth_details = await _read_image_payload(request)
     if not raw:
         raise BadRequestError("No photo was received.", error_code="empty_image")
 
@@ -173,7 +199,7 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[PalmScanRespo
             error_code="cv_dependencies_missing",
         ) from exc
 
-    result = execute_scan(raw)
+    result = execute_scan(raw, birth_details=birth_details)
 
     # A rejected photo is a normal outcome, not an error, and it is free.
     if result.status != "ok":
@@ -254,6 +280,11 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[PalmScanRespo
         timeline=result.timeline,
         skin_vitality=result.skin_vitality,
         karmic_summary=result.karmic_summary,
+        dermatoglyphic_loops=result.dermatoglyphic_loops,
+        marriage_patterns=result.marriage_patterns,
+        temperament_archetype=result.temperament_archetype,
+        medical_constitution=result.medical_constitution,
+        kundli_palm_sync=result.kundli_palm_sync,
         sections=sections,
         skipped=skipped,
         overlay_image=result.overlay_image,
@@ -291,6 +322,11 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[PalmScanRespo
             timeline=result.timeline,
             skin_vitality=result.skin_vitality,
             karmic_summary=result.karmic_summary,
+            dermatoglyphic_loops=result.dermatoglyphic_loops,
+            marriage_patterns=result.marriage_patterns,
+            temperament_archetype=result.temperament_archetype,
+            medical_constitution=result.medical_constitution,
+            kundli_palm_sync=result.kundli_palm_sync,
             overlay_image=result.overlay_image,
             response_image=result.response_image,
             coins_charged=charged,

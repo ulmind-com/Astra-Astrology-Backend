@@ -1054,6 +1054,267 @@ PALM_RULES_SEED: list[dict[str, Any]] = [
             "Palm flush reflects steady, well-regulated circulation and serene nervous energy, supporting continuous long-term vitality."
         ),
     },
+
+    # ======================================================================
+    # 24. Palmer Dermatoglyphic Loops [Loops.docx]
+    # ======================================================================
+    {
+        "feature": PalmFeature.DERMATOGLYPHIC_LOOPS.value, "option": "loop_leisure_active",
+        "label": "Loop of Leisure (Wit, Levity & Early Retirement)",
+        "conditions": [{"metric": "loop_loop_leisure", "min": 0.5}],
+        "requires": GEOMETRY, "area": "Temperament", "source": "Loops.docx", "priority": 12,
+        "meaning": (
+            "Located between Mercury and Sun digits. Mercury (Air) injects ideas into Sun (Fire), yielding a delightful sense of levity, "
+            "humor, and social brilliance. The client's text notes you tend to make your hobby your career, dislike monotonous bureaucracy, "
+            "and aspire toward early freedom and celebratory living."
+        ),
+    },
+    {
+        "feature": PalmFeature.DERMATOGLYPHIC_LOOPS.value, "option": "loop_industry_active",
+        "label": "Loop of Industry (Creative Enterprise & Tangible Harvest)",
+        "conditions": [{"metric": "loop_loop_industry", "min": 0.5}],
+        "requires": GEOMETRY, "area": "Career", "source": "Loops.docx", "priority": 12,
+        "meaning": (
+            "Located under the Saturn digit. Fuses Fire and Earth energies: work itself is experienced as pleasure. "
+            "You inject relentless creativity into your profession and pursue material achievement with unflagging discipline."
+        ),
+    },
+    {
+        "feature": PalmFeature.DERMATOGLYPHIC_LOOPS.value, "option": "loop_raja_active",
+        "label": "Raja Loop (Natural Executive Leadership & Sovereign Stature)",
+        "conditions": [{"metric": "loop_loop_raja", "min": 0.5}],
+        "requires": GEOMETRY, "area": "Destiny", "source": "Loops.docx", "priority": 14,
+        "meaning": (
+            "Located under the Jupiter digit. Binds Water and Earth energies to grant spontaneous organizational command. "
+            "You naturally acquire status within any collective, providing calm strategic governance."
+        ),
+    },
+    {
+        "feature": PalmFeature.DERMATOGLYPHIC_LOOPS.value, "option": "loop_sensitivity_active",
+        "label": "Loop of Sensitivity (Extrasensory Perception & Déjà Vu)",
+        "conditions": [{"metric": "loop_loop_sensitivity", "min": 0.5}],
+        "requires": GEOMETRY, "area": "Spirituality", "source": "Loops.docx", "priority": 11,
+        "meaning": (
+            "An inside loop on the Lunar mount where the Air (Head) line terminates. Bestows extrasensory perception, intuitive hunches, "
+            "and frequent Déjà vu experiences. Registers unspoken psychological atmospheres with high fidelity."
+        ),
+    },
+    {
+        "feature": PalmFeature.DERMATOGLYPHIC_LOOPS.value, "option": "loop_memory_active",
+        "label": "Loop of Memory (The 'Yaad Rakhunga' Retentive Recall)",
+        "conditions": [{"metric": "loop_loop_memory", "min": 0.5}],
+        "requires": GEOMETRY, "area": "Intellect", "source": "Loops.docx", "priority": 11,
+        "meaning": (
+            "Located on Upper Mars where the Head line straightens. Classic 'Yaad Rakhunga' marker conferring photographic recall, "
+            "encyclopedic retention, and an unshakeable memory that preserves past deeds and commitments."
+        ),
+    },
+    {
+        "feature": PalmFeature.DERMATOGLYPHIC_LOOPS.value, "option": "loop_inspiration_active",
+        "label": "Loop of Inspiration (Subconscious Visionary Flow)",
+        "conditions": [{"metric": "loop_loop_inspiration", "min": 0.5}],
+        "requires": GEOMETRY, "area": "Spirituality", "source": "Loops.docx", "priority": 11,
+        "meaning": (
+            "Located on inner Venus descending towards Ketu. Channels direct visionary inspiration from the subconscious into waking art, "
+            "music, and spiritual awareness. Typical of dreamers and profound mystics."
+        ),
+    },
+    {
+        "feature": PalmFeature.DERMATOGLYPHIC_LOOPS.value, "option": "loop_courage_active",
+        "label": "Loop of Courage (Martial Audacity & Battlefield Stamina)",
+        "conditions": [{"metric": "loop_loop_courage", "min": 0.5}],
+        "requires": GEOMETRY, "area": "Vitality", "source": "Loops.docx", "priority": 12,
+        "meaning": (
+            "Located on Lower Mars. Bestows fearless crisis management, high physical pain tolerance, and natural heroic grit "
+            "worthy of martial arts, sports champions, or high-stakes defense."
+        ),
+    },
+    {
+        "feature": PalmFeature.DERMATOGLYPHIC_LOOPS.value, "option": "loop_balanced_default",
+        "label": "Integrated Palmer Dermatoglyphic Flow",
+        "requires": GEOMETRY, "is_default": True, "area": "Temperament", "source": "Loops.docx",
+        "meaning": (
+            "Skin ridges circulate symmetrically across interdigital quadrants, providing balanced emotional resilience and steady career drive."
+        ),
+    },
+
+    # ======================================================================
+    # 25. Authentic Marriage Cards & Soul Bonds [IMG_2718 - IMG_2729]
+    # ======================================================================
+    {
+        "feature": PalmFeature.MARRIAGE_RELATIONSHIPS.value, "option": "marriage_card_6_active",
+        "label": "Bhagya Vardhini Vivaha (Elevating Marital Alliance) [Card 6]",
+        "conditions": [{"metric": "marriage_card_6", "min": 0.5}],
+        "requires": GEOMETRY, "area": "Relationships", "source": "IMG_2723.jpg (Card 6)", "priority": 14,
+        "meaning": (
+            "A line rising from Mount Moon smoothly merges with the Fate Line. The client's card documents that marriage triggers an immediate "
+            "escalation in career stature, wealth, and community reputation. The partner proves to be an auspicious catalyst for your destiny."
+        ),
+    },
+    {
+        "feature": PalmFeature.MARRIAGE_RELATIONSHIPS.value, "option": "marriage_card_7_active",
+        "label": "Raksha Sangam (Enduring Marital Guardian Support) [Card 7]",
+        "conditions": [{"metric": "marriage_card_7", "min": 0.5}],
+        "requires": GEOMETRY, "area": "Relationships", "source": "IMG_2722.jpg (Card 7)", "priority": 13,
+        "meaning": (
+            "A parallel sister support line guards the Life line while the emotional flow is deeply anchored. "
+            "Signifies profound marital fidelity and a partner who serves as an unshakeable guardian shield through every worldly trial."
+        ),
+    },
+    {
+        "feature": PalmFeature.MARRIAGE_RELATIONSHIPS.value, "option": "marriage_card_8_active",
+        "label": "Guru Sparsha Vivaha (Auspicious Noble Union) [Card 8]",
+        "conditions": [{"metric": "marriage_card_8", "min": 0.5}],
+        "requires": GEOMETRY, "area": "Relationships", "source": "IMG_2721.jpg (Card 8)", "priority": 13,
+        "meaning": (
+            "An upward branch rises from the Earth line towards Mount Jupiter. Points to marriage into a family of high honor, "
+            "bringing noble ancestry, dignified character, and societal respect."
+        ),
+    },
+    {
+        "feature": PalmFeature.MARRIAGE_RELATIONSHIPS.value, "option": "marriage_card_1_active",
+        "label": "Bahu Prema Rekha (Preliminary Attachments before Union) [Card 1]",
+        "conditions": [{"metric": "marriage_card_1", "min": 0.5}],
+        "requires": GEOMETRY, "area": "Relationships", "source": "IMG_2728.jpg (Card 1)", "priority": 11,
+        "meaning": (
+            "Multiple fine parallel lines under Mercury indicate early emotional experiences and flirtations "
+            "that serve as necessary maturity steps before committing to a permanent life partner."
+        ),
+    },
+    {
+        "feature": PalmFeature.MARRIAGE_RELATIONSHIPS.value, "option": "marriage_card_11_active",
+        "label": "Dwi-Sambandha (Dual Significant Partnerships) [Card 11]",
+        "conditions": [{"metric": "marriage_card_11", "min": 0.5}],
+        "requires": GEOMETRY, "area": "Relationships", "source": "IMG_2718.jpg (Card 11)", "priority": 12,
+        "meaning": (
+            "Two distinct, deep parallel marriage lines under Mercury indicate two profound soul partnerships "
+            "in the lifetime, each carrying substantial karmic significance and emotional transformation."
+        ),
+    },
+    {
+        "feature": PalmFeature.MARRIAGE_RELATIONSHIPS.value, "option": "marriage_card_12_active",
+        "label": "Ekapatni / Ekapati Vrata (Single Devoted Lifelong Union) [Card 12]",
+        "conditions": [{"metric": "marriage_card_12", "min": 0.5}],
+        "requires": GEOMETRY, "area": "Relationships", "source": "IMG_2729.jpg (Card 12)", "priority": 12,
+        "meaning": (
+            "A clean, deep unbroken single horizontal marriage line signifies pure lifelong devotion, marital stability, "
+            "and deep mutual alignment between spouses."
+        ),
+    },
+    {
+        "feature": PalmFeature.MARRIAGE_RELATIONSHIPS.value, "option": "marriage_standard_default",
+        "label": "Harmonious Marital Flow & Emotional Stability",
+        "requires": GEOMETRY, "is_default": True, "area": "Relationships", "source": "IMG_2718 - IMG_2729",
+        "meaning": (
+            "The marriage lines reflect a balanced emotional partnership with steady mutual commitment and reciprocal respect."
+        ),
+    },
+
+    # ======================================================================
+    # 26. 17 Authentic Vedic Temperament Archetypes [Nature through palm.docx]
+    # ======================================================================
+    {
+        "feature": PalmFeature.TEMPERAMENT_ARCHETYPE.value, "option": "archetype_fire_pioneer",
+        "label": "The Restless Pioneer (Dynamic Trailblazer)",
+        "conditions": [{"metric": "hand_type", "equals": "Fire"}, {"metric": "dorsiflexion_deg", "min": 182.0}],
+        "requires": GEOMETRY, "area": "Temperament", "source": "Nature through palm.docx #1", "priority": 15,
+        "meaning": (
+            "Restless, dynamic, and intensely driven. Possesses immense initiative and impatient vitality. "
+            "Thrives under high stakes, hates stagnation, and pioneers new territories where others hesitate."
+        ),
+    },
+    {
+        "feature": PalmFeature.TEMPERAMENT_ARCHETYPE.value, "option": "archetype_bon_vivant",
+        "label": "The Fun-Loving Bon Vivant (Joyous Optimist)",
+        "conditions": [{"metric": "finger_palm_ratio", "max": 0.78}],
+        "requires": GEOMETRY, "area": "Temperament", "source": "Nature through palm.docx #2", "priority": 12,
+        "meaning": (
+            "Large basal phalanges with quick levity and magnetic social warmth. Transforms daily labor into an enjoyable endeavor "
+            "and spreads effortless optimism."
+        ),
+    },
+    {
+        "feature": PalmFeature.TEMPERAMENT_ARCHETYPE.value, "option": "archetype_water_visionary",
+        "label": "The High Intuitive Visionary (Prophetic Perception)",
+        "conditions": [{"metric": "hand_type", "equals": "Water"}],
+        "requires": GEOMETRY, "area": "Temperament", "source": "Nature through palm.docx #3", "priority": 12,
+        "meaning": (
+            "A delicate, deep palm with rich lunar receptivity. Guided by prophetic gut instincts, vivid dreams, "
+            "and instantaneous sizing up of people's motives before a word is spoken."
+        ),
+    },
+    {
+        "feature": PalmFeature.TEMPERAMENT_ARCHETYPE.value, "option": "archetype_earth_builder",
+        "label": "The Materialistic Builder (Architect of Generational Wealth)",
+        "conditions": [{"metric": "hand_type", "equals": "Earth"}],
+        "requires": GEOMETRY, "area": "Temperament", "source": "Nature through palm.docx #9", "priority": 12,
+        "meaning": (
+            "Dense palm and pragmatic tenacity. Evaluates endeavors by concrete returns and tangible assets, "
+            "building enduring generational wealth stone by stone."
+        ),
+    },
+    {
+        "feature": PalmFeature.TEMPERAMENT_ARCHETYPE.value, "option": "archetype_flexible_chameleon",
+        "label": "The Flexible Chameleon (Adaptable Strategist)",
+        "conditions": [{"metric": "is_spontaneous_flexible", "min": 0.5}],
+        "requires": GEOMETRY, "area": "Temperament", "source": "Nature through palm.docx #10", "priority": 14,
+        "meaning": (
+            "Remarkable situational agility and supple joint flexibility. Thrives in changing circumstances, "
+            "effortlessly switches strategies, and turns crises into creative opportunities."
+        ),
+    },
+    {
+        "feature": PalmFeature.TEMPERAMENT_ARCHETYPE.value, "option": "archetype_balanced_default",
+        "label": "Integrated Classical Vedic Temperament",
+        "requires": GEOMETRY, "is_default": True, "area": "Temperament", "source": "Nature through palm.docx",
+        "meaning": (
+            "An integrated balance of elemental energies, allowing smooth adaptation between contemplation, action, and commercial acumen."
+        ),
+    },
+
+    # ======================================================================
+    # 27. Medical Chirology & Ayurvedic Constitution [Health palmistry.docx]
+    # ======================================================================
+    {
+        "feature": PalmFeature.MEDICAL_CONSTITUTION.value, "option": "med_serotonin_resilient",
+        "label": "Stable Serotonin Secretion & Grounded Fortitude",
+        "conditions": [{"metric": "saturn_sun_tilt_deg", "max": 5.0}],
+        "requires": GEOMETRY, "area": "Constitution", "source": "Health palmistry.docx", "priority": 12,
+        "meaning": (
+            "The upright Saturn digit reflects balanced serotonin production, sound circadian rhythm, "
+            "and resilient mental composure under isolation or stress."
+        ),
+    },
+    {
+        "feature": PalmFeature.MEDICAL_CONSTITUTION.value, "option": "med_optimal_ojas",
+        "label": "Optimal Ojas & Constitutional Health Balance",
+        "requires": GEOMETRY, "is_default": True, "area": "Constitution", "source": "Health palmistry.docx",
+        "meaning": (
+            "Harmonious circulation, balanced Agni (metabolic fire), and stable Tridoshic equilibrium, supporting long-term vitality."
+        ),
+    },
+
+    # ======================================================================
+    # 28. Kundli-Palm Planetary Synchronization (Graha-Mount Synthesis)
+    # ======================================================================
+    {
+        "feature": PalmFeature.KUNDLI_PALM_SYNC.value, "option": "kundli_sync_high",
+        "label": "High Astral-Physical Concordance (Kundli-Mount Harmony)",
+        "conditions": [{"metric": "kundli_alignment_pct", "min": 85.0}],
+        "requires": GEOMETRY, "area": "Destiny", "source": "Vedic Hasta Samudrika & Jyotish", "priority": 10,
+        "meaning": (
+            "Strong 90%+ correlation between the 9 Grahas in your Vedic Kundli and the 7 physical Mount elevations in your palm. "
+            "Your physical palm lines faithfully execute the planetary strengths ordained in your natal birth chart."
+        ),
+    },
+    {
+        "feature": PalmFeature.KUNDLI_PALM_SYNC.value, "option": "kundli_sync_default",
+        "label": "Planetary Resonance & Karmic Alignment",
+        "requires": GEOMETRY, "is_default": True, "area": "Destiny", "source": "Vedic Hasta Samudrika & Jyotish",
+        "meaning": (
+            "Planetary energies maintain active resonance between your natal astrological chart and physical palm topography."
+        ),
+    },
 ]
 
 

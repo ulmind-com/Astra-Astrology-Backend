@@ -55,6 +55,21 @@ def flatten_scan_values(scan: dict[str, Any]) -> dict[str, Any]:
         if crease.get("termination_zone"):
             values[f"{prefix}.termination_zone"] = crease["termination_zone"]
 
+    # Flatten temperament archetype & medical constitution keys
+    arch = scan.get("temperament_archetype") or {}
+    if arch.get("primary_archetype"):
+        values["archetype_name"] = arch["primary_archetype"]
+        values["archetype_affinity"] = arch.get("affinity_score_pct", 88)
+
+    med = scan.get("medical_constitution") or {}
+    pallor = med.get("pallor_diagnosis") or {}
+    if pallor.get("state"):
+        values["pallor_state"] = pallor["state"]
+
+    kundli = scan.get("kundli_palm_sync") or {}
+    if kundli.get("overall_alignment_pct"):
+        values["kundli_alignment_pct"] = kundli["overall_alignment_pct"]
+
     return values
 
 

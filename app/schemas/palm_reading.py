@@ -93,12 +93,17 @@ class PalmScanResponse(BaseModel):
     finger_flexibility_3d: dict[str, Any] = Field(default_factory=dict)
     finger_inclinations_3d: dict[str, float] = Field(default_factory=dict)
 
-    #: Astrological extensions: Secondary lines, Sacred marks, Timeline, Skin vitality
+    #: Astrological extensions: Secondary lines, Sacred marks, Timeline, Skin vitality, Loops, Marriage, Archetype, Medical, Kundli Sync
     secondary_lines: dict[str, Any] = Field(default_factory=dict)
     sacred_marks: list[dict[str, Any]] = Field(default_factory=list)
     timeline: list[dict[str, Any]] = Field(default_factory=list)
     skin_vitality: dict[str, Any] = Field(default_factory=dict)
     karmic_summary: dict[str, Any] = Field(default_factory=dict)
+    dermatoglyphic_loops: list[dict[str, Any]] = Field(default_factory=list)
+    marriage_patterns: list[dict[str, Any]] = Field(default_factory=list)
+    temperament_archetype: dict[str, Any] = Field(default_factory=dict)
+    medical_constitution: dict[str, Any] = Field(default_factory=dict)
+    kundli_palm_sync: dict[str, Any] = Field(default_factory=dict)
 
     #: The traced overlay, so the reading can be checked against what was read.
     overlay_image: str | None = None
@@ -131,6 +136,11 @@ class PalmReadingOut(BaseModel):
     timeline: list[dict[str, Any]] = Field(default_factory=list)
     skin_vitality: dict[str, Any] = Field(default_factory=dict)
     karmic_summary: dict[str, Any] = Field(default_factory=dict)
+    dermatoglyphic_loops: list[dict[str, Any]] = Field(default_factory=list)
+    marriage_patterns: list[dict[str, Any]] = Field(default_factory=list)
+    temperament_archetype: dict[str, Any] = Field(default_factory=dict)
+    medical_constitution: dict[str, Any] = Field(default_factory=dict)
+    kundli_palm_sync: dict[str, Any] = Field(default_factory=dict)
 
     overlay_image: str | None = None
     coins_charged: int = 0
