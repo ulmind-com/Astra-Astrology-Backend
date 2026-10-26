@@ -449,6 +449,92 @@ class ClientNakshatraRules(BaseModel):
     unavailable_note: str | None = None
 
 
+class GandantaInfo(BaseModel):
+    is_gandanta: bool = False
+    gandanta_type: str | None = None
+    junction_name_en: str | None = None
+    junction_name_bn: str | None = None
+    junction_name_hi: str | None = None
+    severity: str | None = None
+    description_en: str | None = None
+    description_bn: str | None = None
+    description_hi: str | None = None
+    remedies_en: list[str] = Field(default_factory=list)
+    remedies_bn: list[str] = Field(default_factory=list)
+    remedies_hi: list[str] = Field(default_factory=list)
+
+
+class PushkaraInfo(BaseModel):
+    is_pushkara_navamsha: bool = False
+    is_pushkara_bhaga: bool = False
+    navamsha_sign_en: str = ""
+    navamsha_sign_bn: str = ""
+    navamsha_sign_hi: str = ""
+    pada_number: int = 1
+    degree_in_sign: float = 0.0
+    degree_in_sign_formatted: str = ""
+    significance_en: str = ""
+    significance_bn: str = ""
+    significance_hi: str = ""
+
+
+class DashaBalanceAtBirth(BaseModel):
+    dasha_lord_en: str = ""
+    dasha_lord_bn: str = ""
+    dasha_lord_hi: str = ""
+    total_cycle_years: int = 0
+    balance_years: int = 0
+    balance_months: int = 0
+    balance_days: int = 0
+    balance_formatted_en: str = ""
+    balance_formatted_bn: str = ""
+    balance_formatted_hi: str = ""
+    elapsed_percentage: float = 0.0
+    remaining_percentage: float = 0.0
+
+
+class DailyTaraBalaInfo(BaseModel):
+    current_moon_nakshatra_index: int = 0
+    current_moon_nakshatra_name_en: str = ""
+    current_moon_nakshatra_name_bn: str = ""
+    current_moon_nakshatra_name_hi: str = ""
+    tara_step: int = 1
+    tara_name_en: str = ""
+    tara_name_bn: str = ""
+    tara_name_hi: str = ""
+    is_auspicious: bool = True
+    status_label_en: str = ""
+    status_label_bn: str = ""
+    status_label_hi: str = ""
+    guidance_en: str = ""
+    guidance_bn: str = ""
+    guidance_hi: str = ""
+
+
+class NakshatraDispositionInfo(BaseModel):
+    disposition_en: str = ""
+    disposition_bn: str = ""
+    disposition_hi: str = ""
+    gunas_en: str = ""
+    gunas_bn: str = ""
+    gunas_hi: str = ""
+    caste_varna_en: str = ""
+    caste_varna_bn: str = ""
+    caste_varna_hi: str = ""
+    gender_en: str = ""
+    gender_bn: str = ""
+    gender_hi: str = ""
+    direction_en: str = ""
+    direction_bn: str = ""
+    direction_hi: str = ""
+    sacred_bird_en: str = ""
+    sacred_bird_bn: str = ""
+    sacred_bird_hi: str = ""
+    suitable_activities_en: list[str] = Field(default_factory=list)
+    suitable_activities_bn: list[str] = Field(default_factory=list)
+    suitable_activities_hi: list[str] = Field(default_factory=list)
+
+
 class NakshatraCalculateResponse(BaseModel):
     name: str
     gender: str
@@ -518,6 +604,13 @@ class NakshatraCalculateResponse(BaseModel):
 
     # Classifications for the Moon's rashi, from the client's 01.pdf
     rashi_client_rules: ClientSignProfile | None = None
+
+    # Classical Advancements: Gandanta, Pushkara, Dasha Balance, Daily Live Tara Bala, Disposition
+    gandanta: GandantaInfo = Field(default_factory=GandantaInfo)
+    pushkara: PushkaraInfo = Field(default_factory=PushkaraInfo)
+    dasha_balance: DashaBalanceAtBirth = Field(default_factory=DashaBalanceAtBirth)
+    daily_tara_bala: DailyTaraBalaInfo = Field(default_factory=DailyTaraBalaInfo)
+    disposition: NakshatraDispositionInfo = Field(default_factory=NakshatraDispositionInfo)
 
     # Transparency: how the offset was derived and what engine produced the chart
     timezone_resolution: TimezoneResolution | None = None

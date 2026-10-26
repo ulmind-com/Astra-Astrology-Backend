@@ -3164,3 +3164,845 @@ def calculate_paya(moon_house_from_lagna: int) -> dict[str, str]:
             "bn": "লৌহ পায়া (Iron) - কঠোর তপস্যা ও সংযম; বাধা অতিক্রম করে জীবনের দ্বিতীয়ার্ধে সুদৃঢ় প্রতিষ্ঠা",
             "hi": "लौह पाया (Iron) - कर्मठता व अनुशासन; संघर्षों के बाद जीवन में सुदृढ़ आधार",
         }
+
+
+# =============================================================================
+# Classical Gandanta Rules & Dosha Detection
+# =============================================================================
+
+def calculate_gandanta(moon_lon: float, nak_idx: int, pada: int) -> dict[str, Any]:
+    """Detects classical Gandanta (Junction of Water & Fire Signs).
+    Covers the 3 critical Sandhi junctions:
+    1. Ashlesha Pada 4 (Cancer end) & Magha Pada 1 (Leo start)
+    2. Jyeshtha Pada 4 (Scorpio end) & Mula Pada 1 (Sagittarius start - Abhukta Mula)
+    3. Revati Pada 4 (Pisces end) & Ashwini Pada 1 (Aries start)
+    """
+    gandanta_stars = {0, 8, 9, 17, 18, 26}
+    if nak_idx not in gandanta_stars:
+        return {
+            "is_gandanta": False,
+            "gandanta_type": "None",
+            "junction_name_en": "No Gandanta (Safe)",
+            "junction_name_bn": "গণ্ডান্ত মুক্ত (নিরাপদ)",
+            "junction_name_hi": "गंडान्त मुक्त (सुरक्षित)",
+            "severity": "None",
+            "description_en": "Birth nakshatra does not fall on the delicate water-fire elemental junction.",
+            "description_bn": "জন্ম নক্ষত্র কোনো জল ও অগ্নির সংযোগস্থল (গণ্ডান্ত)-এ অবস্থান করছে না।",
+            "description_hi": "जन्म नक्षत्र किसी जल और अग्नि के संवेदनशील मिलन स्थल (गंडान्त) पर नहीं है।",
+            "remedies_en": [],
+            "remedies_bn": [],
+            "remedies_hi": [],
+        }
+
+    # Abhukta Mula / Vrishchika-Dhanu Gandanta (Jyeshtha 4 & Mula 1)
+    if (nak_idx == 17 and pada == 4) or (nak_idx == 18 and pada == 1):
+        is_mula = (nak_idx == 18)
+        return {
+            "is_gandanta": True,
+            "gandanta_type": "Abhukta Mula (Scorpio-Sagittarius Sandhi)",
+            "junction_name_en": "Vrishchika-Dhanu Junction (Abhukta Mula)",
+            "junction_name_bn": "বৃশ্চিক-ধনু সন্ধি (অভুক্ত মূলা গণ্ডান্ত)",
+            "junction_name_hi": "वृश्चिक-धनु संधि (अभुक्त मूल गंडान्त)",
+            "severity": "Extreme (Abhukta Mula)",
+            "description_en": (
+                f"Born in {('Mula Pada 1' if is_mula else 'Jyeshtha Pada 4')}, the most sensitive junction in Vedic astrology. "
+                "Represents a profound spiritual transformation and karmic transition between Scorpio (Water) and Sagittarius (Fire)."
+            ),
+            "description_bn": (
+                f"জাতক {('মূলা নক্ষত্রের ১ম পদে' if is_mula else 'জ্যেষ্ঠা নক্ষত্রের ৪র্থ পদে')} জন্মগ্রহণ করেছেন, যা শাস্ত্র মতে সর্বোচ্চ সংবেদনশীল 'অভুক্ত মূলা গণ্ডান্ত'। "
+                "এটি গভীর আধ্যাত্মিক উত্তরণ ও ভাগ্যোন্নতির ইঙ্গিত দেয়, তবে শৈশবে স্বাস্থ্য ও পারিবারিক শান্তির জন্য বিশেষ শান্তির বিধান আবশ্যক।"
+            ),
+            "description_hi": (
+                f"जातक का जन्म {('मूल नक्षत्र के प्रथम चरण' if is_mula else 'ज्येष्ठा नक्षत्र के चतुर्थ चरण')} में हुआ है, जो वैदिक ज्योतिष में 'अभुक्त मूल गंडान्त' कहलाता है। "
+                "यह अत्यधिक संवेदनशील आध्यात्मिक परिवर्तन का सूचक है तथा इसकी शांति पूजा आवश्यक मानी जाती है।"
+            ),
+            "remedies_en": [
+                "Perform Mula Shanti / Gandanta Shanti Puja exactly on the 27th day after birth when the Moon returns to the birth star.",
+                "Donate a bronze vessel (Kamsa Patra) filled with pure cow ghee and gold/silver after seeing reflection.",
+                "Worship Lord Ganesha regularly and recite Ketu Beej Mantra (Om Kem Ketave Namah) or Maha Mrityunjaya Mantra.",
+                "Feed cows with green fodder on Wednesdays and Thursdays.",
+            ],
+            "remedies_bn": [
+                "জন্মের ২৭তম দিনে চন্দ্র যখন পুনরায় এই নক্ষত্রে আসে তখন মূল শান্তি / গণ্ডান্ত শান্তি পূজা সম্পন্ন করুন।",
+                "কাঁসার পাত্রে ঘৃত ঢেলে নিজের মুখ দেখে তা বস্ত্র ও দক্ষিণা সহ দান করা পরম কল্যাণকর।",
+                "শ্রী গণেশের আরাধনা ও মহামৃত্যুঞ্জয় মন্ত্র নিয়মিত জপ করুন।",
+                "বুধবার ও বৃহস্পতিবার গোমাতাকে কাঁচা ঘাস ও গুড় খাওয়ান।",
+            ],
+            "remedies_hi": [
+                "जन्म के २७वें दिन जब चंद्रमा पुनः इसी नक्षत्र में आए तब मूल शांति/गंडान्त शांति पूजा करवाएं।",
+                "कांस्य पात्र में शुद्ध घी भरकर उसमें छाया देखकर वस्त्र व दक्षिणा सहित दान करें।",
+                "भगवान गणेश की आराधना एवं महामृत्युंजय मंत्र का नियमित पाठ करें।",
+                "बुधवार और गुरुवार को गाय को हरा चारा व गुड़ खिलाएं।",
+            ],
+        }
+
+    # Karka-Simha Gandanta (Ashlesha 4 & Magha 1)
+    if (nak_idx == 8 and pada == 4) or (nak_idx == 9 and pada == 1):
+        is_magha = (nak_idx == 9)
+        return {
+            "is_gandanta": True,
+            "gandanta_type": "Karka-Simha Sandhi Gandanta",
+            "junction_name_en": "Cancer-Leo Junction (Ashlesha-Magha Sandhi)",
+            "junction_name_bn": "কর্কট-সিংহ সন্ধি (অশ্লেষা-মঘা গণ্ডান্ত)",
+            "junction_name_hi": "कर्क-सिंह संधि (आश्लेषा-मघा गंडान्त)",
+            "severity": "High",
+            "description_en": (
+                f"Born in {('Magha Pada 1' if is_magha else 'Ashlesha Pada 4')}, marking the intense psychic transition from Cancer (Water) to Leo (Fire). "
+                "Bestows extraordinary spiritual depth and leadership qualities once balanced through Vedic rituals."
+            ),
+            "description_bn": (
+                f"জাতক {('মঘা নক্ষত্রের ১ম পদে' if is_magha else 'অশ্লেষা নক্ষত্রের ৪র্থ পদে')} জন্মগ্রহণ করেছেন, যা কর্কট (জল) ও সিংহ (অগ্নি)-র গুরুত্বপূর্ণ গণ্ডান্ত সন্ধি। "
+                "এটি গভীর মনস্তাত্ত্বিক উপলব্ধি ও নেতৃত্বক্ষমতা প্রদান করে, তবে আত্মনিয়ন্ত্রণ ও শান্তির বিধান অত্যন্ত শুভদায়ক।"
+            ),
+            "description_hi": (
+                f"जातक का जन्म {('मघा नक्षत्र के प्रथम चरण' if is_magha else 'आश्लेषा नक्षत्र के चतुर्थ चरण')} में हुआ है, जो कर्क (जल) और सिंह (अग्नि) का गंडान्त मिलन है। "
+                "यह जातक को असाधारण नेतृत्व व आध्यात्मिक क्षमता देता है।"
+            ),
+            "remedies_en": [
+                "Perform Ashlesha/Magha Shanti Puja with Abhishek to Lord Shiva and Navagraha homa.",
+                "Offer milk to Nagas / Shiva Lingam on Mondays and avoid gossiping or speaking ill of others.",
+                "Donate black sesame seeds, copper vessel, or blankets to the needy.",
+            ],
+            "remedies_bn": [
+                "ভগবান শিবের রুদ্রাভিষেক এবং অশ্লেষা/মঘা গণ্ডান্ত শান্তি পূজা সম্পন্ন করুন।",
+                "প্রতি সোমবার শিবলিঙ্গে কাঁচা দুধ ও গঙ্গাজল অর্পণ করুন এবং পরনিন্দা বর্জন করুন।",
+                "কালো তিল, তামার পাত্র অথবা কম্বল দুস্থদের দান করুন।",
+            ],
+            "remedies_hi": [
+                "भगवान शिव का रुद्राभिषेक एवं गंडान्त शांति पूजा करवाएं।",
+                "सोमवार को शिवलिंग पर कच्चा दूध व जल चढ़ाएं और परनिंदा से बचें।",
+                "काले तिल, तांबे का पात्र या कंबल जरूरतमंदों को दान करें।",
+            ],
+        }
+
+    # Meena-Mesha Gandanta (Revati 4 & Ashwini 1)
+    if (nak_idx == 26 and pada == 4) or (nak_idx == 0 and pada == 1):
+        is_ashw = (nak_idx == 0)
+        return {
+            "is_gandanta": True,
+            "gandanta_type": "Meena-Mesha Sandhi Gandanta",
+            "junction_name_en": "Pisces-Aries Junction (Revati-Ashwini Sandhi)",
+            "junction_name_bn": "মীন-মেষ সন্ধি (রেবতী-অশ্বিনী গণ্ডান্ত)",
+            "junction_name_hi": "मीन-मेष संधि (रेवती-अश्विनी गंडान्त)",
+            "severity": "Moderate to High",
+            "description_en": (
+                f"Born in {('Ashwini Pada 1' if is_ashw else 'Revati Pada 4')}, marking the end of the 12th sign Pisces and the fresh dawn in Aries. "
+                "Signifies a powerful rebirth, quick vitality, and extraordinary pioneering energy."
+            ),
+            "description_bn": (
+                f"জাতক {('অশ্বিনী নক্ষত্রের ১ম পদে' if is_ashw else 'রেবতী নক্ষত্রের ৪র্থ পদে')} জন্মগ্রহণ করেছেন, যা রাশিচক্রের সমাপনী মীন (জল) ও সূচনাকারী মেষ (অগ্নি)-র গণ্ডান্ত সংযোগ। "
+                "এটি জাতককে নতুন পথের দিশারী ও অতুলনীয় জীবনীশক্তি দেয়।"
+            ),
+            "description_hi": (
+                f"जातक का जन्म {('अश्विनी नक्षत्र के प्रथम चरण' if is_ashw else 'रेवती नक्षत्र के चतुर्थ चरण')} में हुआ है, जो मीन (जल) और मेष (अग्नि) का संधि स्थल है। "
+                "यह पुनर्जन्म व तेजस्विता का प्रतीक है।"
+            ),
+            "remedies_en": [
+                "Perform Revati/Ashwini Nakshatra Shanti on the next arrival of the birth star.",
+                "Feed green fodder or gram to horses or visit cowsheds on Tuesdays and Wednesdays.",
+                "Chant Vishnu Sahasranama or Gayatri Mantra 108 times daily.",
+            ],
+            "remedies_bn": [
+                "জন্ম নক্ষত্রের পুনরাগমনে রেবতী/অশ্বিনী শান্তি পূজা অনুষ্ঠান করুন।",
+                "বুধবার ও মঙ্গলবার সবুজ ঘাস অথবা ছোলা অশ্ব বা গোমাতাকে খাওয়ান।",
+                "প্রতিদিন ১০৮ বার গায়ত্রী মন্ত্র অথবা বিষ্ণু সহস্রনাম পাঠ করুন।",
+            ],
+            "remedies_hi": [
+                "नक्षत्र की शांति पूजा संपन्न करवाएं।",
+                "बुधवार और मंगलवार को घोड़ों या गायों को हरा चारा व चने खिलाएं।",
+                "प्रतिदिन १०८ बार गायत्री मंत्र अथवा विष्णु सहस्रनाम का जप करें।",
+            ],
+        }
+
+    # Born in a Gandanta Nakshatra but not in Sandhi Pada (e.g. Mula Pada 2, 3, 4)
+    star_names = {0: "Ashwini", 8: "Ashlesha", 9: "Magha", 17: "Jyeshtha", 18: "Mula", 26: "Revati"}
+    name = star_names.get(nak_idx, "Gandanta Star")
+    return {
+        "is_gandanta": False,
+        "gandanta_type": "Mridu Gandanta Star (Safe from Sandhi Dosha)",
+        "junction_name_en": f"{name} (Pada {pada} - Non-Sandhi Safe Zone)",
+        "junction_name_bn": f"{name} ({pada} নং পদ - সন্ধি দোষ মুক্ত নিরাপদ অংশ)",
+        "junction_name_hi": f"{name} (चरण {pada} - संधि दोष मुक्त सुरक्षित भाग)",
+        "severity": "Low / Safe",
+        "description_en": f"Born in {name} star, but safely placed in Pada {pada} away from the hazardous water-fire cusp.",
+        "description_bn": f"জাতক {name} নক্ষত্রের {pada} নং পদে জন্মগ্রহণ করেছেন, যা সন্ধিদোষের বিপজ্জনক প্রান্ত থেকে সুরক্ষিত ও মুক্ত।",
+        "description_hi": f"जातक {name} के चरण {pada} में है, जो संधि के अनिष्टकारी प्रभाव से सुरक्षित है।",
+        "remedies_en": ["Regular devotion to the ruling deity of the star brings auspicious stability."],
+        "remedies_bn": ["নক্ষত্র দেবতার নিয়মিত উপাসনা জাতকের জীবনে পরম স্থায়িত্ব ও সৌভাগ্য বয়ে আনে।"],
+        "remedies_hi": ["नक्षत्र देवता की नियमित उपासना से जीवन में सुख-समृद्धि बनी रहती है।"],
+    }
+
+
+# =============================================================================
+# Classical Pushkara Navamsha & Pushkara Bhaga Calculation
+# =============================================================================
+
+# Pushkara Bhaga degree points in each of the 12 signs
+PUSHKARA_BHAGA_DEGREES = [21.0, 14.0, 18.0, 8.0, 19.0, 9.0, 24.0, 11.0, 23.0, 14.0, 19.0, 9.0]
+
+def calculate_pushkara(rashi_idx: int, degree_in_sign: float, navamsha_sign: str, pada: int) -> dict[str, Any]:
+    """Calculates whether the Moon is in Pushkara Navamsha (24 sacred zones)
+    or Pushkara Bhaga (exact royal conferring degree).
+    """
+    is_pn = False
+    is_pb = False
+
+    # Check Pushkara Navamsha based on elemental triplicity
+    if rashi_idx in (0, 4, 8):  # Fire: 7th (20°00'-23°20') and 9th (26°40'-30°00')
+        if (20.0 <= degree_in_sign < 23.33333333) or (26.66666667 <= degree_in_sign <= 30.0):
+            is_pn = True
+    elif rashi_idx in (1, 5, 9):  # Earth: 3rd (6°40'-10°00') and 5th (13°20'-16°40')
+        if (6.66666667 <= degree_in_sign < 10.0) or (13.33333333 <= degree_in_sign < 16.66666667):
+            is_pn = True
+    elif rashi_idx in (2, 6, 10):  # Air: 6th (16°40'-20°00') and 8th (23°20'-26°40')
+        if (16.66666667 <= degree_in_sign < 20.0) or (23.33333333 <= degree_in_sign < 26.66666667):
+            is_pn = True
+    elif rashi_idx in (3, 7, 11):  # Water: 1st (0°00'-3°20') and 3rd (6°40'-10°00')
+        if (0.0 <= degree_in_sign < 3.33333333) or (6.66666667 <= degree_in_sign < 10.0):
+            is_pn = True
+
+    # Check Pushkara Bhaga (within 1 degree of exact point)
+    pb_target = PUSHKARA_BHAGA_DEGREES[rashi_idx]
+    if abs(degree_in_sign - pb_target) <= 1.0:
+        is_pb = True
+
+    deg_d = int(degree_in_sign)
+    deg_m = int(round((degree_in_sign - deg_d) * 60.0))
+    deg_str = f"{deg_d}° {deg_m:02d}'"
+
+    return {
+        "is_pushkara_navamsha": is_pn,
+        "is_pushkara_bhaga": is_pb,
+        "navamsha_sign_en": navamsha_sign,
+        "navamsha_sign_bn": navamsha_sign,
+        "navamsha_sign_hi": navamsha_sign,
+        "pada_number": pada,
+        "degree_in_sign": round(degree_in_sign, 4),
+        "degree_in_sign_formatted": deg_str,
+        "significance_en": (
+            "Sacred Pushkara Placement — Nourishes mental tranquility, heals planetary afflictions, and confers extraordinary spiritual merit."
+            if (is_pn or is_pb) else "Standard Navamsha Placement."
+        ),
+        "significance_bn": (
+            "পরম শুভ পুষ্কর নবাংশ স্থিতি — মানসিক প্রশান্তি, কোষ্ঠীর বহু অমঙ্গল নাশ এবং ভাগ্যোন্নতির স্বর্গীয় সঞ্জীবনী শক্তি প্রদান করে।"
+            if (is_pn or is_pb) else "সাধারণ নবাংশ স্থিতি।"
+        ),
+        "significance_hi": (
+            "परम शुभ पुष्कर नवांश स्थिति — मानसिक शांति, अरिष्टों का शमन एवं सौभाग्य की वृद्धि करने वाली दैवीय स्थिति।"
+            if (is_pn or is_pb) else "सामान्य नवांश स्थिति।"
+        ),
+    }
+
+
+# =============================================================================
+# Vimshottari Dasha Balance at Birth
+# =============================================================================
+
+VIMSHOTTARI_YEARS: dict[str, int] = {
+    "Ketu": 7,
+    "Venus": 20,
+    "Sun": 6,
+    "Moon": 10,
+    "Mars": 7,
+    "Rahu": 18,
+    "Jupiter": 16,
+    "Saturn": 19,
+    "Mercury": 17,
+}
+
+VIMSHOTTARI_NAMES_BN: dict[str, str] = {
+    "Ketu": "কেতু",
+    "Venus": "শুক্র",
+    "Sun": "রবি / সূর্য",
+    "Moon": "চন্দ্র",
+    "Mars": "মঙ্গল",
+    "Rahu": "রাহু",
+    "Jupiter": "বৃহস্পতি",
+    "Saturn": "শনি",
+    "Mercury": "বুধ",
+}
+
+VIMSHOTTARI_NAMES_HI: dict[str, str] = {
+    "Ketu": "केतु",
+    "Venus": "शुक्र",
+    "Sun": "सूर्य",
+    "Moon": "चंद्र",
+    "Mars": "मंगल",
+    "Rahu": "राहु",
+    "Jupiter": "गुरु / बृहस्पति",
+    "Saturn": "शनि",
+    "Mercury": "बुध",
+}
+
+def calculate_dasha_balance(star_lord: str, deg_in_nak: float) -> dict[str, Any]:
+    """Calculates exact Vimshottari Mahadasha balance remaining at the birth instant."""
+    total_cycle = VIMSHOTTARI_YEARS.get(star_lord, 7)
+    nak_span = 360.0 / 27.0  # 13.33333333... degrees
+    elapsed_frac = max(0.0, min(1.0, deg_in_nak / nak_span))
+    remain_frac = max(0.0, min(1.0, 1.0 - elapsed_frac))
+
+    total_remain_years = remain_frac * total_cycle
+    b_years = int(total_remain_years)
+    rem_months = (total_remain_years - b_years) * 12.0
+    b_months = int(rem_months)
+    b_days = int(round((rem_months - b_months) * 30.0))
+
+    if b_days >= 30:
+        b_days -= 30
+        b_months += 1
+    if b_months >= 12:
+        b_months -= 12
+        b_years += 1
+
+    lord_en = star_lord
+    lord_bn = VIMSHOTTARI_NAMES_BN.get(star_lord, star_lord)
+    lord_hi = VIMSHOTTARI_NAMES_HI.get(star_lord, star_lord)
+
+    fmt_en = f"{lord_en} Mahadasha: {b_years} Years, {b_months} Months, {b_days} Days remaining"
+    fmt_bn = f"{lord_bn}-র মহাদশা ভোগ বাকি: {b_years} বছর, {b_months} মাস, {b_days} দিন"
+    fmt_hi = f"{lord_hi} महादशा शेष: {b_years} वर्ष, {b_months} माह, {b_days} दिन"
+
+    return {
+        "dasha_lord_en": lord_en,
+        "dasha_lord_bn": lord_bn,
+        "dasha_lord_hi": lord_hi,
+        "total_cycle_years": total_cycle,
+        "balance_years": b_years,
+        "balance_months": b_months,
+        "balance_days": b_days,
+        "balance_formatted_en": fmt_en,
+        "balance_formatted_bn": fmt_bn,
+        "balance_formatted_hi": fmt_hi,
+        "elapsed_percentage": round(elapsed_frac * 100.0, 2),
+        "remaining_percentage": round(remain_frac * 100.0, 2),
+    }
+
+
+# =============================================================================
+# Real-Time Daily Transit Tara Bala (Ephemeris Transit)
+# =============================================================================
+
+TARA_NAMES = [
+    {
+        "step": 1,
+        "name_en": "Janma Tara", "name_bn": "জন্ম তারা", "name_hi": "जन्म तारा",
+        "is_auspicious": False,
+        "status_en": "Caution / Body & Health Care",
+        "status_bn": "সতর্কতা / স্বাস্থ্য ও মানসিক চাপ",
+        "status_hi": "सावधानी / स्वास्थ्य व मानसिक सतर्कता",
+        "guidance_en": "Today Moon activates your birth star. Avoid starting risky new projects; focus on routine tasks and self-care.",
+        "guidance_bn": "আজ গোচর চন্দ্র আপনার জন্ম তারায় অবস্থান করছে। ঝুঁকিপূর্ণ নতুন চুক্তি বা ভ্রমণ এড়িয়ে চলুন; শান্তভাবে রুটিন কাজ করুন।",
+        "guidance_hi": "आज गोचर चंद्र आपकी जन्म तारा पर है। जोखिम भरे नए कार्य टालें, स्वास्थ्य का ध्यान रखें।",
+    },
+    {
+        "step": 2,
+        "name_en": "Sampat Tara", "name_bn": "সম্পদ তারা", "name_hi": "संपत तारा",
+        "is_auspicious": True,
+        "status_en": "Highly Auspicious / Wealth & Gains",
+        "status_bn": "পরম শুভ / অর্থলাভ ও উন্নতি",
+        "status_hi": "अत्यंत शुभ / धन लाभ व प्रगति",
+        "guidance_en": "Exceptional day for financial transactions, investments, career negotiations, and entering prosperous new partnerships.",
+        "guidance_bn": "আর্থিক লেনদেন, ব্যবসায়িক নতুন চুক্তি, ইন্টারভিউ ও সম্পদ বৃদ্ধির জন্য অত্যন্ত শুভ ও ফলপ্রসূ দিন।",
+        "guidance_hi": "आर्थिक लेन-देन, नए सौदे और धन वृद्धि के लिए अत्यंत अनुकूल व फलदायी दिन।",
+    },
+    {
+        "step": 3,
+        "name_en": "Vipat Tara", "name_bn": "বিপদ তারা", "name_hi": "विपत तारा",
+        "is_auspicious": False,
+        "status_en": "Inauspicious / Hurdles & Delays",
+        "status_bn": "প্রতিকূল / বিঘ্ন ও বাধার আশঙ্কা",
+        "status_hi": "अशुभ / विघ्न व बाधा की आशंका",
+        "guidance_en": "Prone to sudden obstacles, disputes, or losses. Avoid major financial commitments, arguments, and rash travel.",
+        "guidance_bn": "হঠাৎ বাধা, মতবিরোধ ও ক্ষতির আশঙ্কা রয়েছে। বিতর্ক এড়িয়ে চলুন এবং কোনো গুরুত্বপূর্ণ নতুন কাজে হাত দেবেন না।",
+        "guidance_hi": "अचानक बाधाओं और विवादों की आशंका। बड़े निर्णयों और नई शुरुआतों से बचें।",
+    },
+    {
+        "step": 4,
+        "name_en": "Kshema Tara", "name_bn": "ক্ষেম তারা", "name_hi": "क्षेम तारा",
+        "is_auspicious": True,
+        "status_en": "Auspicious / Well-being & Prosperity",
+        "status_bn": "অত্যন্ত শুভ / কল্যাণ ও সমৃদ্ধি",
+        "status_hi": "शुभ / कल्याण व सुरक्षा",
+        "guidance_en": "Brings comfort, protection, safe travel, and harmonious family life. Excellent for healing, buying property, and creative tasks.",
+        "guidance_bn": "পারিবারিক আনন্দ, নিরাপদ যাত্রা, দীর্ঘমেয়াদী পরিকল্পনা ও শুভ উদ্যোগ সফল হওয়ার অনুকূল দিন।",
+        "guidance_hi": "सुरक्षा, पारिवारिक सुख, मंगलमय यात्रा और नए रचनात्मक कार्यों के लिए उत्तम दिन।",
+    },
+    {
+        "step": 5,
+        "name_en": "Pratyak Tara", "name_bn": "প্রত্যরি তারা", "name_hi": "प्रत्यरि तारा",
+        "is_auspicious": False,
+        "status_en": "Inauspicious / Enmity & Friction",
+        "status_bn": "প্রতিকূল / শত্রুতা ও বিরোধিতা",
+        "status_hi": "अशुभ / शत्रुता व विरोध",
+        "guidance_en": "Risk of misunderstandings, friction with rivals, and legal or administrative hurdles. Keep calm and avoid confrontation.",
+        "guidance_bn": "শত্রুপক্ষের সক্রিয়তা বা কর্মক্ষেত্রে ভুল বোঝাবুঝির আশঙ্কা। শান্ত থাকুন এবং সংঘাত এড়িয়ে চলুন।",
+        "guidance_hi": "विरोधियों की सक्रियता और मतभेद की आशंका। वाद-विवाद से बचें और संयम रखें।",
+    },
+    {
+        "step": 6,
+        "name_en": "Sadhana Tara", "name_bn": "সাধনা তারা", "name_hi": "साधना तारा",
+        "is_auspicious": True,
+        "status_en": "Extremely Auspicious / Accomplishment & Success",
+        "status_bn": "সিদ্ধিদায়ক শুভ / অভীষ্ট সিদ্ধি ও জয়",
+        "status_hi": "अत्यंत शुभ / कार्य सिद्धि व सफलता",
+        "guidance_en": "Superb for focused study, difficult tasks, spiritual practices, competitive exams, and achieving goals through dedicated effort.",
+        "guidance_bn": "কঠিন লক্ষ্য পূরণ, পড়াশোনা, আধ্যাত্মিক সাধনা এবং প্রতিযোগিতায় বিজয়ের জন্য অত্যন্ত শক্তিশালী ও শুভ দিন।",
+        "guidance_hi": "कठिन लक्ष्यों की प्राप्ति, अध्ययन, साधना और परीक्षा-प्रतियोगिता में विजय के लिए श्रेष्ठ दिन।",
+    },
+    {
+        "step": 7,
+        "name_en": "Naidhana / Vadha Tara", "name_bn": "নিধন / বধ তারা", "name_hi": "निधन / वध तारा",
+        "is_auspicious": False,
+        "status_en": "High Caution Alert / Severe Danger & Peril",
+        "status_bn": "লাল সতর্কতা / পরম অশুভ ও হানি",
+        "status_hi": "गंभीर चेतावनी / परम अशुभ व हानि",
+        "guidance_en": "Most hazardous Tara. Strictly avoid surgery, aggressive driving, risky financial speculations, and vital agreements today.",
+        "guidance_bn": "সর্বাধিক সতর্কতার দিন। নতুন চুক্তি, অস্ত্রোপচার, ঝুঁকিপূর্ণ বিনিয়োগ ও ভ্রমণ কঠোরভাবে বর্জন করুন। মহামৃত্যুঞ্জয় জপ করুন।",
+        "guidance_hi": "सर्वाधिक जोखिम भरा दिन। नए अनुबंध, शल्य चिकित्सा, जोखिम भरे निवेश और यात्रा से बचें।",
+    },
+    {
+        "step": 8,
+        "name_en": "Mitra Tara", "name_bn": "মিত্র তারা", "name_hi": "मित्र तारा",
+        "is_auspicious": True,
+        "status_en": "Auspicious / Friendship & Joy",
+        "status_bn": "পরম শুভ / সৌহার্দ্য ও সুখবর",
+        "status_hi": "शुभ / मित्रता व सहयोग",
+        "guidance_en": "Fosters warm relationships, social gatherings, fruitful collaborations, and joyful meetings with mentors or allies.",
+        "guidance_bn": "বন্ধুত্ব, সামাজিক মিলনমেলা, উচ্চপদস্থ ব্যক্তির সহায়তা ও পারস্পরিক সমঝোতার জন্য আনন্দময় শুভ দিন।",
+        "guidance_hi": "मित्रों व वरिष्ठों से सहयोग, सुखद यात्रा और नए सामाजिक संबंधों के लिए अनुकूल दिन।",
+    },
+    {
+        "step": 9,
+        "name_en": "Ati-Mitra / Parama Mitra Tara", "name_bn": "পরম মিত্র তারা", "name_hi": "अति-मित्र तारा",
+        "is_auspicious": True,
+        "status_en": "Supreme Auspiciousness / Triumph & Highest Gains",
+        "status_bn": "সর্বশ্রেষ্ঠ শুভ / চূড়ান্ত সাফল্য ও সৌভাগ্য",
+        "status_hi": "परम शुभ / विजय व सर्वतोमुखी लाभ",
+        "guidance_en": "Golden day. Blesses every sincere initiative with victory, honor, and long-lasting prosperity. Ideal for signing contracts.",
+        "guidance_bn": "সুবর্ণ দিন। যেকোনো গুরুত্বপূর্ণ কাজ, শুভ চুক্তি স্বাক্ষর, গৃহপ্রবেশ বা বড় পদক্ষেপে বিজয় ও স্থায়ী সাফল্য নিশ্চিত করে।",
+        "guidance_hi": "स्वर्ण दिवस। महत्वपूर्ण समझौतों, गृहप्रवेश और बड़े उपक्रमों में विजय व सफलता दिलाने वाला दिन।",
+    },
+]
+
+def calculate_daily_tara_bala(swe_module, jd_now: float, birth_nak_idx: int) -> dict[str, Any]:
+    """Calculates live real-time Tara Bala transit from the current Swiss Ephemeris Moon position."""
+    swe_module.set_sid_mode(swe_module.SIDM_LAHIRI)
+    calc_flags = swe_module.FLG_SIDEREAL | swe_module.FLG_SPEED
+    moon_res, _ = swe_module.calc_ut(jd_now, swe_module.MOON, calc_flags)
+    curr_moon_lon = moon_res[0] % 360.0
+
+    nak_span = 360.0 / 27.0
+    curr_nak_idx = int(curr_moon_lon / nak_span) % 27
+    curr_meta = NAKSHATRAS_MASTER[curr_nak_idx]
+
+    step = ((curr_nak_idx - birth_nak_idx) % 9) + 1  # 1 to 9
+    tara_info = TARA_NAMES[step - 1]
+
+    return {
+        "current_moon_nakshatra_index": curr_nak_idx,
+        "current_moon_nakshatra_name_en": curr_meta["name_en"],
+        "current_moon_nakshatra_name_bn": curr_meta["name_bn"],
+        "current_moon_nakshatra_name_hi": curr_meta["name_hi"],
+        "tara_step": step,
+        "tara_name_en": tara_info["name_en"],
+        "tara_name_bn": tara_info["name_bn"],
+        "tara_name_hi": tara_info["name_hi"],
+        "is_auspicious": tara_info["is_auspicious"],
+        "status_label_en": tara_info["status_en"],
+        "status_label_bn": tara_info["status_bn"],
+        "status_label_hi": tara_info["status_hi"],
+        "guidance_en": tara_info["guidance_en"],
+        "guidance_bn": tara_info["guidance_bn"],
+        "guidance_hi": tara_info["guidance_hi"],
+    }
+
+
+# =============================================================================
+# 7 Classical Nakshatra Dispositions & Totem Matrix
+# =============================================================================
+
+DISPOSITIONS_MASTER: list[dict[str, Any]] = [
+    # 0: Ashwini
+    {
+        "disposition_en": "Kshipra / Laghu (Swift & Light)",
+        "disposition_bn": "ক্ষিপ্র / লঘু (দ্রুত ও ক্ষিপ্র গতিশীল)",
+        "disposition_hi": "क्षिप्र / लघु (तीव्र व फुर्तीला)",
+        "gunas_en": "Rajas - Tamas - Rajas", "gunas_bn": "রজঃ - তমঃ - রজঃ", "gunas_hi": "रजस - तमस - रजस",
+        "caste_varna_en": "Vaishya (Merchant)", "caste_varna_bn": "বৈশ্য", "caste_varna_hi": "वैश्य",
+        "gender_en": "Male", "gender_bn": "পুরুষ", "gender_hi": "पुरुष",
+        "direction_en": "South", "direction_bn": "দক্ষিণ", "direction_hi": "दक्षिण",
+        "sacred_bird_en": "Wild Eagle / Falcon", "sacred_bird_bn": "বন ঈগল / বাজপাখি", "sacred_bird_hi": "जंगली चील / बाज",
+        "suitable_activities_en": ["Medical treatments", "Taking medicines", "Starting journeys", "Sports & athletics", "Beginning trade transactions"],
+        "suitable_activities_bn": ["চিকিৎসা গ্রহণ ও ঔষধ সেবন", "নতুন যাত্রা শুরু", "খেলাধুলা ও শরীরচর্চা", "বাণিজ্যিক লেনদেন শুরু"],
+        "suitable_activities_hi": ["चिकित्सा आरंभ व औषधि सेवन", "यात्रा प्रारंभ", "खेलकूद", "व्यापारिक लेन-देन की शुरुआत"],
+    },
+    # 1: Bharani
+    {
+        "disposition_en": "Ugra / Krura (Fierce & Aggressive)",
+        "disposition_bn": "উগ্র / ক্রূর (তীব্র ও আক্রমণাত্মক)",
+        "disposition_hi": "उग्र / क्रूर (कठोर व उग्र)",
+        "gunas_en": "Rajas - Rajas - Tamas", "gunas_bn": "রজঃ - রজঃ - তমঃ", "gunas_hi": "रजस - रजस - तमस",
+        "caste_varna_en": "Mleccha (Outcaste)", "caste_varna_bn": "ম্লেচ্ছ", "caste_varna_hi": "म्लेच्छ",
+        "gender_en": "Female", "gender_bn": "স্ত্রী", "gender_hi": "स्त्री",
+        "direction_en": "West", "direction_bn": "পশ্চিম", "direction_hi": "पश्चिम",
+        "sacred_bird_en": "Crow", "sacred_bird_bn": "কাক", "sacred_bird_hi": "कौआ",
+        "suitable_activities_en": ["Demolition", "Filing lawsuits", "Confronting adversaries", "Surgical procedures", "Research into hidden things"],
+        "suitable_activities_bn": ["পুরোনো ভাঙা বা অপসারণ", "মামলা দায়ের", "শত্রুদমন", "অস্ত্রোপচার", "গভীর গোপনীয় অনুসন্ধান"],
+        "suitable_activities_hi": ["पुराने निर्माण का निष्कासन", "मुकदमा दायर करना", "शत्रु दमन", "शल्य चिकित्सा", "गूढ़ शोध"],
+    },
+    # 2: Krittika
+    {
+        "disposition_en": "Mishra / Sadharana (Mixed / Dual)",
+        "disposition_bn": "মিশ্র / সাধারণ (উগ্র ও সৌম্যের মিশ্রণ)",
+        "disposition_hi": "मिश्र / साधारण (उग्र व सौम्य का मेल)",
+        "gunas_en": "Rajas - Rajas - Sattva", "gunas_bn": "রজঃ - রজঃ - সত্ত্ব", "gunas_hi": "रजस - रजस - सत्त्व",
+        "caste_varna_en": "Brahmin", "caste_varna_bn": "ব্রাহ্মণ", "caste_varna_hi": "ब्राह्मण",
+        "gender_en": "Female", "gender_bn": "স্ত্রী", "gender_hi": "स्त्री",
+        "direction_en": "North", "direction_bn": "উত্তর", "direction_hi": "उत्तर",
+        "sacred_bird_en": "Peacock", "sacred_bird_bn": "ময়ূর", "sacred_bird_hi": "मोर",
+        "suitable_activities_en": ["Fire rituals (Homa)", "Metalwork & cooking", "Taking bold oaths", "Cutting ties with negative habits"],
+        "suitable_activities_bn": ["অগ্নিহোত্র ও হোমযজ্ঞ", "ধাতুশিল্প ও রন্ধনকার্য", "কঠোর সংকল্প গ্রহণ", "বদভ্যাস ত্যাগের শুভ সূচনা"],
+        "suitable_activities_hi": ["अग्निहोत्र व हवन", "धातु कार्य", "दृढ़ संकल्प", "बुरी आदतों का त्याग"],
+    },
+    # 3: Rohini
+    {
+        "disposition_en": "Dhruva / Sthira (Fixed & Permanent)",
+        "disposition_bn": "ধ্রুব / স্থির (স্থায়ী ও চিরন্তন ভিত্তি)",
+        "disposition_hi": "ध्रुव / स्थिर (स्थायी व सुदृढ़ नींव)",
+        "gunas_en": "Rajas - Tamas - Rajas", "gunas_bn": "রজঃ - তমঃ - রজঃ", "gunas_hi": "रजस - तमस - रजस",
+        "caste_varna_en": "Shudra", "caste_varna_bn": "শূদ্র", "caste_varna_hi": "शूद्र",
+        "gender_en": "Female", "gender_bn": "স্ত্রী", "gender_hi": "स्त्री",
+        "direction_en": "East", "direction_bn": "পূর্ব", "direction_hi": "पूर्व",
+        "sacred_bird_en": "Owl", "sacred_bird_bn": "পেঁচা", "sacred_bird_hi": "उल्लू",
+        "suitable_activities_en": ["Coronations & ceremonies", "Housewarming (Griha Pravesha)", "Laying foundation stones", "Marriage ceremonies", "Planting trees"],
+        "suitable_activities_bn": ["গৃহপ্রবেশ ও নতুন গৃহনির্মাণ", "ভিত্তিপ্রস্তর স্থাপন", "বিবাহ অনুষ্ঠান", "বৃক্ষরোপণ ও স্থায়ী বিনিয়োগ"],
+        "suitable_activities_hi": ["गृहप्रवेश", "नींव रखना", "विवाह संस्कार", "वृक्षारोपण व दीर्घकालिक निवेश"],
+    },
+    # 4: Mrigashira
+    {
+        "disposition_en": "Mridu / Maitra (Soft, Gentle & Tender)",
+        "disposition_bn": "মৃদু / মৈত্রী (কোমল, শান্ত ও প্রণয়ময়)",
+        "disposition_hi": "मृदु / मैत्र (कोमल व सौम्य)",
+        "gunas_en": "Rajas - Tamas - Tamas", "gunas_bn": "রজঃ - তমঃ - রজঃ", "gunas_hi": "रजस - तमस - तमस",
+        "caste_varna_en": "Servant / Shudra", "caste_varna_bn": "শূদ্র", "caste_varna_hi": "शूद्र",
+        "gender_en": "Neuter", "gender_bn": "নপুংসক", "gender_hi": "नपुंसक",
+        "direction_en": "South", "direction_bn": "দক্ষিণ", "direction_hi": "दक्षिण",
+        "sacred_bird_en": "Hen / Partridge", "sacred_bird_bn": "বনমোরগ / তিতির", "sacred_bird_hi": "मुर्गी / तीतर",
+        "suitable_activities_en": ["Romance & courtship", "Wearing fine jewelry & apparel", "Singing, arts & music", "Entering friendships", "Short pleasure trips"],
+        "suitable_activities_bn": ["প্রণয় ও বিবাহ প্রস্তাব", "নতুন অলঙ্কার ও বস্ত্র পরিধান", "সঙ্গীত ও ললিতকলা চর্চা", "নতুন বন্ধুত্ব স্থাপন ও ভ্রমণ"],
+        "suitable_activities_hi": ["प्रणय निवेदन", "आभूषण व वस्त्र धारण", "संगीत व कला", "मैत्री संबंध व आनंद यात्रा"],
+    },
+    # 5: Ardra
+    {
+        "disposition_en": "Teekshna / Daruna (Dreadful & Sharp)",
+        "disposition_bn": "তীক্ষ্ণ / দারুণ (কঠোর, তীব্র ও রূপান্তরমূলক)",
+        "disposition_hi": "तीक्ष्ण / दारुण (कठोर व संहारक)",
+        "gunas_en": "Rajas - Sattva - Tamas", "gunas_bn": "রজঃ - সত্ত্ব - তমঃ", "gunas_hi": "रजस - सत्त्व - तमस",
+        "caste_varna_en": "Butcher / Hunter", "caste_varna_bn": "ব্যাধ", "caste_varna_hi": "व्याध",
+        "gender_en": "Female", "gender_bn": "স্ত্রী", "gender_hi": "स्त्री",
+        "direction_en": "West", "direction_bn": "পশ্চিম", "direction_hi": "पश्चिम",
+        "sacred_bird_en": "Heron / Black Raven", "sacred_bird_bn": "বক / দাঁড়কাক", "sacred_bird_hi": "बगुला / कौआ",
+        "suitable_activities_en": ["Deep research & demolition", "Dispelling evil energies", "Confronting hard truths", "Tantric spiritual disciplines"],
+        "suitable_activities_bn": ["গবেষণা ও গোপন তথ্য উন্মোচন", "অশুভ শক্তি বিনাশ", "কঠোর সিদ্ধান্ত কার্যকর করা", "তন্ত্র সাধনা ও প্রতিকার"],
+        "suitable_activities_hi": ["गहन शोध कार्य", "अशुभ ऊर्जा का निवारण", "कठोर निर्णय लेना", "तांत्रिक साधना"],
+    },
+    # 6: Punarvasu
+    {
+        "disposition_en": "Chara / Chala (Movable & Dynamic)",
+        "disposition_bn": "চর / চল (গতিশীল ও পরিবর্তনশীল)",
+        "disposition_hi": "चर / चल (गतिशील व परिवर्तनकारी)",
+        "gunas_en": "Rajas - Sattva - Rajas", "gunas_bn": "রজঃ - সত্ত্ব - রজঃ", "gunas_hi": "रजस - सत्त्व - रजस",
+        "caste_varna_en": "Vaishya", "caste_varna_bn": "বৈশ্য", "caste_varna_hi": "वैश्य",
+        "gender_en": "Male", "gender_bn": "পুরুষ", "gender_hi": "पुरुष",
+        "direction_en": "North", "direction_bn": "উত্তর", "direction_hi": "उत्तर",
+        "sacred_bird_en": "Swan", "sacred_bird_bn": "রাজহংস", "sacred_bird_hi": "हंस",
+        "suitable_activities_en": ["Travel & relocations", "Buying vehicles", "Rebuilding projects", "Renewing friendships", "Starting recovery programs"],
+        "suitable_activities_bn": ["ভ্রমণ ও বাসস্থান পরিবর্তন", "যানবাহন ক্রয়", "পুনর্বাসন ও সংস্কার কাজ", "পুরোনো সম্পর্ক জোড়া লাগানো"],
+        "suitable_activities_hi": ["यात्रा व स्थानांतरण", "वाहन क्रय", "पुनर्निर्माण", "टूटे संबंधों का सुधार"],
+    },
+    # 7: Pushya
+    {
+        "disposition_en": "Kshipra / Laghu (Swift & Nourishing)",
+        "disposition_bn": "ক্ষিপ্র / লঘু (শুভ, পুষ্টিকর ও দ্রুত ফলদায়ক)",
+        "disposition_hi": "क्षिप्र / लघु (कल्याणकारी व शुभफलदायक)",
+        "gunas_en": "Rajas - Tamas - Sattva", "gunas_bn": "রজঃ - তমঃ - সত্ত্ব", "gunas_hi": "रजस - तमस - सत्त्व",
+        "caste_varna_en": "Kshatriya", "caste_varna_bn": "ক্ষত্রিয়", "caste_varna_hi": "क्षत्रिय",
+        "gender_en": "Male", "gender_bn": "পুরুষ", "gender_hi": "पुरुष",
+        "direction_en": "East", "direction_bn": "পূর্ব", "direction_hi": "पूर्व",
+        "sacred_bird_en": "Snipe / Sea Crow", "sacred_bird_bn": "পানকৌড়ি / গাঙচিল", "sacred_bird_hi": "जलमुर्गी / पपीहा",
+        "suitable_activities_en": ["All auspicious beginnings (except marriage)", "Financial investments", "Taking high office", "Spiritual initiations", "Purchasing gold"],
+        "suitable_activities_bn": ["বিবাহ ব্যতীত সমস্ত শুভ আরম্ভ", "স্বর্ণ ও রত্ন ক্রয়", "ব্যাংকিং ও বিনিয়োগ", "দীক্ষা গ্রহণ ও গুরুপূজা"],
+        "suitable_activities_hi": ["विवाह छोड़कर सभी शुभ कार्य", "स्वर्ण क्रय", "वित्तीय निवेश", "दीक्षा ग्रहण"],
+    },
+    # 8: Ashlesha
+    {
+        "disposition_en": "Teekshna / Daruna (Dreadful & Mystic)",
+        "disposition_bn": "তীক্ষ্ণ / দারুণ (রহস্যময়, তীব্র ও ভেদনশীল)",
+        "disposition_hi": "तीक्ष्ण / दारुण (रहस्यमयी व भेदनकारी)",
+        "gunas_en": "Rajas - Sattva - Tamas", "gunas_bn": "রজঃ - সত্ত্ব - তমঃ", "gunas_hi": "रजस - सत्त्व - तमस",
+        "caste_varna_en": "Outcaste", "caste_varna_bn": "ম্লেচ্ছ", "caste_varna_hi": "म्लेच्छ",
+        "gender_en": "Female", "gender_bn": "স্ত্রী", "gender_hi": "स्त्री",
+        "direction_en": "South", "direction_bn": "দক্ষিণ", "direction_hi": "दक्षिण",
+        "sacred_bird_en": "Sparrow", "sacred_bird_bn": "চড়ুই", "sacred_bird_hi": "गौरैया",
+        "suitable_activities_en": ["Occult & serpent worship", "Psychological warfare", "Administering antidotes", "Competitive litigation"],
+        "suitable_activities_bn": ["গুপ্তবিদ্যা ও নাগপূজা", "কূটনৈতিক চাল ও কৌশল", "প্রতিযোগিতামূলক মামলা", "বিষহর চিকিৎসা"],
+        "suitable_activities_hi": ["गुप्त विद्या व सर्प पूजन", "रणनीति निर्माण", "विवाद निपटाना", "औषधि शोध"],
+    },
+    # 9: Magha
+    {
+        "disposition_en": "Ugra / Krura (Fierce, Royal & Ancestral)",
+        "disposition_bn": "উগ্র / ক্রূর (রাজকীয়, তেজস্বী ও পিতৃপুরুষ-সম্পৃক্ত)",
+        "disposition_hi": "उग्र / क्रूर (प्रतापी व राजसी)",
+        "gunas_en": "Tamas - Rajas - Rajas", "gunas_bn": "তমঃ - রজঃ - রজঃ", "gunas_hi": "तमस - रजस - रजस",
+        "caste_varna_en": "Shudra", "caste_varna_bn": "শূদ্র", "caste_varna_hi": "शूद्र",
+        "gender_en": "Female", "gender_bn": "স্ত্রী", "gender_hi": "स्त्री",
+        "direction_en": "West", "direction_bn": "পশ্চিম", "direction_hi": "पश्चिम",
+        "sacred_bird_en": "Male Eagle", "sacred_bird_bn": "পুরুষ ঈগল", "sacred_bird_hi": "नर चील",
+        "suitable_activities_en": ["Ancestral rites (Shraddha)", "Assuming leadership roles", "Historical research", "Military actions", "Confronting authorities"],
+        "suitable_activities_bn": ["পিতৃতর্পণ ও শ্রাদ্ধকর্ম", "উচ্চপদের দায়িত্ব গ্রহণ", "ঐতিহাসিক গবেষণা", "সাহসিক অভিযান"],
+        "suitable_activities_hi": ["पितृ तर्पण व श्राद्ध", "उच्च पद का कार्यभार", "ऐतिहासिक शोध", "साहसिक कार्य"],
+    },
+    # 10: Purva Phalguni
+    {
+        "disposition_en": "Ugra / Krura (Passionate & Fierce)",
+        "disposition_bn": "উগ্র / ক্রূর (প্রণয়োদ্দীপক ও প্রবল তেজসম্পন্ন)",
+        "disposition_hi": "उग्र / क्रूर (तेजस्वी व विलासी)",
+        "gunas_en": "Tamas - Rajas - Tamas", "gunas_bn": "তমঃ - রজঃ - তমঃ", "gunas_hi": "तमस - रजस - तमस",
+        "caste_varna_en": "Brahmin", "caste_varna_bn": "ব্রাহ্মণ", "caste_varna_hi": "ब्राह्मण",
+        "gender_en": "Female", "gender_bn": "স্ত্রী", "gender_hi": "स्त्री",
+        "direction_en": "North", "direction_bn": "উত্তর", "direction_hi": "उत्तर",
+        "sacred_bird_en": "Female Eagle", "sacred_bird_bn": "স্ত্রী ঈগল", "sacred_bird_hi": "मादा चील",
+        "suitable_activities_en": ["Artistic creations", "Entertainment & leisure", "Social negotiations", "Romance", "Resolving disputes through charm"],
+        "suitable_activities_bn": ["ললিতকলা ও নাটক", "বিনোদন ও অবকাশ যাপন", "প্রণয় ও সামাজিক আলাপচারিতা", "আকর্ষণের মাধ্যমে সমস্যার সমাধান"],
+        "suitable_activities_hi": ["कला व मनोरंजन", "विश्राम व आमोद-प्रमोद", "प्रणय संबंध", "पारस्परिक समझौते"],
+    },
+    # 11: Uttara Phalguni
+    {
+        "disposition_en": "Dhruva / Sthira (Fixed & Generous)",
+        "disposition_bn": "ধ্রুব / স্থির (স্থায়ী, উদার ও পৃষ্ঠপোষক)",
+        "disposition_hi": "ध्रुव / स्थिर (स्थायी व उदार)",
+        "gunas_en": "Tamas - Rajas - Sattva", "gunas_bn": "তমঃ - রজঃ - সত্ত্ব", "gunas_hi": "तमस - रजस - सत्त्व",
+        "caste_varna_en": "Kshatriya", "caste_varna_bn": "ক্ষত্রিয়", "caste_varna_hi": "क्षत्रिय",
+        "gender_en": "Female", "gender_bn": "স্ত্রী", "gender_hi": "स्त्री",
+        "direction_en": "East", "direction_bn": "পূর্ব", "direction_hi": "पूर्व",
+        "sacred_bird_en": "Blue Jay / Beetle", "sacred_bird_bn": "নীলকণ্ঠ পাখি", "sacred_bird_hi": "नीलकंठ",
+        "suitable_activities_en": ["Marriage ceremonies", "Entering contracts", "Foundations of institutions", "Charitable foundations", "Long-term agreements"],
+        "suitable_activities_bn": ["বিবাহ অনুষ্ঠান", "দীর্ঘমেয়াদী চুক্তি সম্পাদন", "জনকল্যাণমূলক কাজের সূচনা", "গৃহনির্মাণ ও ভিত্তিপ্রস্তর স্থাপন"],
+        "suitable_activities_hi": ["विवाह संस्कार", "दीर्घकालिक अनुबंध", "संस्थानों की नींव", "परोपकारी कार्य"],
+    },
+    # 12: Hasta
+    {
+        "disposition_en": "Kshipra / Laghu (Swift & Dexterous)",
+        "disposition_bn": "ক্ষিপ্র / লঘু (দক্ষ, চটপটে ও দ্রুত ফলদায়ক)",
+        "disposition_hi": "क्षिप्र / लघु (कुशल व त्वरित)",
+        "gunas_en": "Tamas - Tamas - Rajas", "gunas_bn": "তমঃ - তমঃ - রজঃ", "gunas_hi": "तमस - तमस - रजस",
+        "caste_varna_en": "Vaishya", "caste_varna_bn": "বৈশ্য", "caste_varna_hi": "वैश्य",
+        "gender_en": "Male", "gender_bn": "পুরুষ", "gender_hi": "पुरुष",
+        "direction_en": "South", "direction_bn": "দক্ষিণ", "direction_hi": "दक्षिण",
+        "sacred_bird_en": "Vulture / Kite", "sacred_bird_bn": "শকুনি / চিল", "sacred_bird_hi": "गिद्ध / चील",
+        "suitable_activities_en": ["Handicrafts & surgery", "Commercial trade", "Magic & sleight of hand", "Starting journeys", "Astrological counseling"],
+        "suitable_activities_bn": ["হস্তশিল্প ও কারিগরি বিদ্যা", "চিকিৎসা ও অস্ত্রোপচার", "বাণিজ্যিক লেনদেন", "জ্যোতিষ পরামর্শ ও নতুন শিক্ষা"],
+        "suitable_activities_hi": ["हस्तशिल्प व कारीगरी", "व्यापारिक सौदे", "चिकित्सा कार्य", "ज्योतिष परामर्श"],
+    },
+    # 13: Chitra
+    {
+        "disposition_en": "Mridu / Maitra (Soft, Artistic & Sparkling)",
+        "disposition_bn": "মৃদু / মৈত্রী (নান্দনিক, উজ্জ্বল ও শিল্পমণ্ডিত)",
+        "disposition_hi": "मृदु / मैत्र (कलात्मक व चमत्कारी)",
+        "gunas_en": "Tamas - Tamas - Tamas", "gunas_bn": "তমঃ - তমঃ - তমঃ", "gunas_hi": "तमस - तमस - तमस",
+        "caste_varna_en": "Servant / Shudra", "caste_varna_bn": "শূদ্র", "caste_varna_hi": "शूद्र",
+        "gender_en": "Female", "gender_bn": "স্ত্রী", "gender_hi": "स्त्री",
+        "direction_en": "West", "direction_bn": "পশ্চিম", "direction_hi": "पश्चिम",
+        "sacred_bird_en": "Woodpecker", "sacred_bird_bn": "কাঠঠোকরা", "sacred_bird_hi": "कठफोड़वा",
+        "suitable_activities_en": ["Architectural design", "Fashion & fine jewelry", "Photography & interior decorating", "Fine arts & sculpting"],
+        "suitable_activities_bn": ["স্থাপত্য নকশা ও ইন্টেরিয়র", "ফ্যাশন ও রত্নালঙ্কার তৈরি", "ফটোগ্রাফি ও চিত্রাঙ্কন", "মূর্তি ও ভাস্কর্য নির্মাণ"],
+        "suitable_activities_hi": ["वास्तु व इंटीरियर डिजाइन", "फैशन व आभूषण निर्माण", "चित्रकला व मूर्तिकला"],
+    },
+    # 14: Swati
+    {
+        "disposition_en": "Chara / Chala (Movable, Free & Flexible)",
+        "disposition_bn": "চর / চল (স্বাধীন, গতিশীল ও নমনীয়)",
+        "disposition_hi": "चर / चल (स्वतंत्र व गतिशील)",
+        "gunas_en": "Tamas - Tamas - Sattva", "gunas_bn": "তমঃ - তমঃ - সত্ত্ব", "gunas_hi": "तमस - तमस - सत्त्व",
+        "caste_varna_en": "Outcaste", "caste_varna_bn": "ম্লেচ্ছ", "caste_varna_hi": "म्लेच्छ",
+        "gender_en": "Female", "gender_bn": "স্ত্রী", "gender_hi": "स्त्री",
+        "direction_en": "North", "direction_bn": "উত্তর", "direction_hi": "उत्तर",
+        "sacred_bird_en": "Pigeon / Honey Buzzard", "sacred_bird_bn": "পায়রা", "sacred_bird_hi": "कबूतर",
+        "suitable_activities_en": ["Air travel & long journeys", "Business expansion", "Learning music", "Planting crops", "Starting dynamic ventures"],
+        "suitable_activities_bn": ["বিমানযাত্রা ও দূর ভ্রমণ", "ব্যবসা সম্প্রসারণ", "সঙ্গীত চর্চা", "কৃষিকাজ ও গতিশীল উদ্যোগ"],
+        "suitable_activities_hi": ["हवाई यात्रा व दूरगमन", "व्यापार विस्तार", "संगीत साधना", "गतिशील उपक्रम"],
+    },
+    # 15: Vishakha
+    {
+        "disposition_en": "Mishra / Sadharana (Mixed / Dual Goal)",
+        "disposition_bn": "মিশ্র / সাধারণ (লক্ষ্যভেদী ও দ্বৈত স্বভাব)",
+        "disposition_hi": "मिश्र / साधारण (लक्ष्योन्मुखी व द्विविध)",
+        "gunas_en": "Tamas - Sattva - Rajas", "gunas_bn": "তমঃ - সত্ত্ব - রজঃ", "gunas_hi": "तमस - सत्त्व - रजस",
+        "caste_varna_en": "Outcaste", "caste_varna_bn": "ম্লেচ্ছ", "caste_varna_hi": "म्लेच्छ",
+        "gender_en": "Female", "gender_bn": "স্ত্রী", "gender_hi": "स्त्री",
+        "direction_en": "East", "direction_bn": "পূর্ব", "direction_hi": "पूर्व",
+        "sacred_bird_en": "Red-tailed Falcon", "sacred_bird_bn": "লাল লেজযুক্ত বাজপাখি", "sacred_bird_hi": "लाल पूंछ वाला बाज",
+        "suitable_activities_en": ["Ambitious achievements", "Competitive challenges", "Entering celebrations", "Ceremonies honoring deities", "Determined focus"],
+        "suitable_activities_bn": ["উচ্চাকাঙ্ক্ষী লক্ষ্য পূরণ", "কঠোর প্রতিযোগিতামূলক কাজ", "উৎসব ও পূজা উদযাপন", "স্থির সংকল্প নিয়ে কাজ শুরু"],
+        "suitable_activities_hi": ["महत्वाकांक्षी लक्ष्य साधना", "प्रतियोगिता", "उत्सव व पूजन", "दृढ़ निश्चय के कार्य"],
+    },
+    # 16: Anuradha
+    {
+        "disposition_en": "Mridu / Maitra (Soft, Devotional & Friendly)",
+        "disposition_bn": "মৃদু / মৈত্রী (ভক্তিপূর্ণ, কোমল ও মৈত্রীপরায়ণ)",
+        "disposition_hi": "मृदु / मैत्र (भक्तिपूर्ण व सौम्य)",
+        "gunas_en": "Tamas - Sattva - Tamas", "gunas_bn": "তমঃ - সত্ত্ব - তমঃ", "gunas_hi": "तमस - सत्त्व - तमस",
+        "caste_varna_en": "Shudra", "caste_varna_bn": "শূদ্র", "caste_varna_hi": "शूद्र",
+        "gender_en": "Male", "gender_bn": "পুরুষ", "gender_hi": "पुरुष",
+        "direction_en": "South", "direction_bn": "দক্ষিণ", "direction_hi": "दक्षिण",
+        "sacred_bird_en": "Nightingale / Peacock", "sacred_bird_bn": "কোকিল / ময়ূর", "sacred_bird_hi": "कोयल / मोर",
+        "suitable_activities_en": ["Deep friendships & partnerships", "Spiritual retreats & yoga", "Foreign travel", "Secret research", "Healing and wellness"],
+        "suitable_activities_bn": ["আন্তরিক বন্ধুত্ব ও অংশীদারি", "যোগাভ্যাস ও আধ্যাত্মিক সাধনা", "বিদেশ যাত্রা", "গুপ্ত গবেষণা ও আরোগ্য লাভ"],
+        "suitable_activities_hi": ["मैत्री संबंध व साझेदारी", "योग व साधना", "विदेश यात्रा", "गुप्त शोध"],
+    },
+    # 17: Jyeshtha
+    {
+        "disposition_en": "Teekshna / Daruna (Dreadful, Senior & Protective)",
+        "disposition_bn": "তীক্ষ্ণ / দারুণ (জ্যেষ্ঠ, প্রখর ও কর্তৃত্বপূর্ণ)",
+        "disposition_hi": "तीक्ष्ण / दारुण (ज्येष्ठ व प्रखर)",
+        "gunas_en": "Tamas - Sattva - Sattva", "gunas_bn": "তমঃ - সত্ত্ব - সত্ত্ব", "gunas_hi": "तमस - सत्त्व - सत्त्व",
+        "caste_varna_en": "Farmer / Shudra", "caste_varna_bn": "শূদ্র", "caste_varna_hi": "शूद्र",
+        "gender_en": "Female", "gender_bn": "স্ত্রী", "gender_hi": "स्त्री",
+        "direction_en": "West", "direction_bn": "পশ্চিম", "direction_hi": "पश्चिम",
+        "sacred_bird_en": "Brahminy Duck / Chakravaka", "sacred_bird_bn": "চক্রবাক পাখি", "sacred_bird_hi": "चकवा",
+        "suitable_activities_en": ["Assuming authority & command", "Dispelling conspiracies", "Family administration", "Severe protective disciplines"],
+        "suitable_activities_bn": ["কর্তৃত্ব ও নেতৃত্বের দায়িত্ব গ্রহণ", "ষড়যন্ত্র দমন", "পারিবারিক প্রধানের সিদ্ধান্ত", "কঠোর সুরক্ষা ব্যবস্থা গ্রহণ"],
+        "suitable_activities_hi": ["नेतृत्व व अधिकार ग्रहण", "षड्यंत्रों का निवारण", "संरक्षण व प्रबंधन"],
+    },
+    # 18: Mula
+    {
+        "disposition_en": "Teekshna / Daruna (Root, Piercing & Radical)",
+        "disposition_bn": "তীক্ষ্ণ / দারুণ (মৌলিক, ভেদনশীল ও আমূল পরিবর্তনকারী)",
+        "disposition_hi": "तीक्ष्ण / दारुण (मूलगामी व रूपांतरकारी)",
+        "gunas_en": "Sattva - Rajas - Rajas", "gunas_bn": "সত্ত্ব - রজঃ - রজঃ", "gunas_hi": "सत्त्व - रजस - रजस",
+        "caste_varna_en": "Butcher / Hunter", "caste_varna_bn": "ব্যাধ", "caste_varna_hi": "व्याध",
+        "gender_en": "Neuter", "gender_bn": "নপুংসক", "gender_hi": "नपुंसक",
+        "direction_en": "North", "direction_bn": "উত্তর", "direction_hi": "उत्तर",
+        "sacred_bird_en": "Red-crested Vulture / Cock", "sacred_bird_bn": "বনমোরগ / রক্তচূড়া শকুন", "sacred_bird_hi": "जंगली मुर्गा / गिद्ध",
+        "suitable_activities_en": ["Root-cause investigation", "Herbal remedies & medicine extraction", "Agriculture & planting roots", "Tearing down old structures"],
+        "suitable_activities_bn": ["মূল কারণ অনুসন্ধান", "ভেষজ ঔষধ নিষ্কাশন", "শিকড়যুক্ত গাছ রোপণ", "পুরোনো জরাজীর্ণ ব্যবস্থা ভেঙে ফেলা"],
+        "suitable_activities_hi": ["मूल कारणों की खोज", "औषधि निर्माण", "कृषि कार्य", "पुरातन का विध्वंस"],
+    },
+    # 19: Purva Ashadha
+    {
+        "disposition_en": "Ugra / Krura (Invincible & Fierce)",
+        "disposition_bn": "উগ্র / ক্রূর (অপরাজেয়, তেজস্বী ও জয়ী)",
+        "disposition_hi": "उग्र / क्रूर (अपराजेय व प्रतापी)",
+        "gunas_en": "Sattva - Rajas - Tamas", "gunas_bn": "সত্ত্ব - রজঃ - তমঃ", "gunas_hi": "सत्त्व - रजस - तमस",
+        "caste_varna_en": "Brahmin", "caste_varna_bn": "ব্রাহ্মণ", "caste_varna_hi": "ब्राह्मण",
+        "gender_en": "Female", "gender_bn": "স্ত্রী", "gender_hi": "स्त्री",
+        "direction_en": "East", "direction_bn": "পূর্ব", "direction_hi": "पूर्व",
+        "sacred_bird_en": "Francolin / Partridge", "sacred_bird_bn": "তিতির পাখি", "sacred_bird_hi": "तीतर",
+        "suitable_activities_en": ["Overcoming obstacles", "Water purification & marine ventures", "Inspiring mass movements", "Debating adversaries"],
+        "suitable_activities_bn": ["কঠিন বাধা অতিক্রম", "জলসম্পদ ও নৌ-বাণিজ্য", "জনগণকে উদ্বুদ্ধকরণ", "তর্কযুদ্ধে বিজয়"],
+        "suitable_activities_hi": ["बाधाओं पर विजय", "जल संसाधन व नौकायन", "जनता को प्रेरित करना", "वाद-विवाद"],
+    },
+    # 20: Uttara Ashadha
+    {
+        "disposition_en": "Dhruva / Sthira (Fixed, Regal & Victorious)",
+        "disposition_bn": "ধ্রুব / স্থির (স্থায়ী, বিশ্বজনীন ও চূড়ান্ত বিজয়ী)",
+        "disposition_hi": "ध्रुव / स्थिर (स्थायी व अंतिम विजयी)",
+        "gunas_en": "Sattva - Rajas - Sattva", "gunas_bn": "সত্ত্ব - রজঃ - সত্ত্ব", "gunas_hi": "सत्त्व - रजस - सत्त्व",
+        "caste_varna_en": "Kshatriya", "caste_varna_bn": "ক্ষত্রিয়", "caste_varna_hi": "क्षत्रिय",
+        "gender_en": "Female", "gender_bn": "স্ত্রী", "gender_hi": "स्त्री",
+        "direction_en": "South", "direction_bn": "দক্ষিণ", "direction_hi": "दक्षिण",
+        "sacred_bird_en": "Stork", "sacred_bird_bn": "সারস পাখি", "sacred_bird_hi": "सारस",
+        "suitable_activities_en": ["Laying permanent foundations", "Signing solemn pledges", "Coronations and appointments", "Founding organizations"],
+        "suitable_activities_bn": ["স্থায়ী ভিত্তিপ্রস্তর স্থাপন", "গুরুত্বপূর্ণ চুক্তি সম্পাদন", "নতুন পদে দায়িত্ব গ্রহণ", "দীর্ঘস্থায়ী সংগঠন প্রতিষ্ঠা"],
+        "suitable_activities_hi": ["स्थायी नींव रखना", "शपथ ग्रहण", "नई संस्थाओं की स्थापना", "दीर्घकालिक अनुबंध"],
+    },
+    # 21: Shravana
+    {
+        "disposition_en": "Chara / Chala (Movable, Receptive & Learning)",
+        "disposition_bn": "চর / চল (শ্রবণশীল, গতিশীল ও জ্ঞানময়)",
+        "disposition_hi": "चर / चल (श्रवणशील व ज्ञानवान)",
+        "gunas_en": "Sattva - Tamas - Rajas", "gunas_bn": "সত্ত্ব - তমঃ - রজঃ", "gunas_hi": "सत्त्व - तमस - रजस",
+        "caste_varna_en": "Outcaste", "caste_varna_bn": "ম্লেচ্ছ", "caste_varna_hi": "म्लेच्छ",
+        "gender_en": "Female", "gender_bn": "স্ত্রী", "gender_hi": "स्त्री",
+        "direction_en": "West", "direction_bn": "পশ্চিম", "direction_hi": "पश्चिम",
+        "sacred_bird_en": "Curlew / Francolin", "sacred_bird_bn": "কাদাখোঁচা পাখি", "sacred_bird_hi": "कुररी / जलपक्षी",
+        "suitable_activities_en": ["Listening to wisdom & discourses", "Studying languages", "University admissions", "Counseling & public speaking"],
+        "suitable_activities_bn": ["জ্ঞানগর্ভ উপদেশ শ্রবণ", "ভাষা শিক্ষা ও উচ্চশিক্ষা", "বিশ্ববিদ্যালয়ে ভর্তি", "কাউন্সেলিং ও বক্তব্য প্রদান"],
+        "suitable_activities_hi": ["ज्ञानोपदेश श्रवण", "उच्च शिक्षा व भाषा ज्ञान", "परामर्श व व्याख्यान"],
+    },
+    # 22: Dhanishta
+    {
+        "disposition_en": "Chara / Chala (Movable, Musical & Wealthy)",
+        "disposition_bn": "চর / চল (সঙ্গীতময়, সুরসমৃদ্ধ ও ধনশালী)",
+        "disposition_hi": "चर / चल (संगीतमय व धनवान)",
+        "gunas_en": "Sattva - Tamas - Tamas", "gunas_bn": "সত্ত্ব - তমঃ - তমঃ", "gunas_hi": "सत्त्व - तमस - तमस",
+        "caste_varna_en": "Servant / Shudra", "caste_varna_bn": "শূদ্র", "caste_varna_hi": "शूद्र",
+        "gender_en": "Female", "gender_bn": "স্ত্রী", "gender_hi": "स्त्री",
+        "direction_en": "North", "direction_bn": "উত্তর", "direction_hi": "उत्तर",
+        "sacred_bird_en": "Golden Bee / Peacock", "sacred_bird_bn": "স্বর্ণালী মৌমাছি / ময়ূর", "sacred_bird_hi": "स्वर्ण मधुमक्खी / मोर",
+        "suitable_activities_en": ["Musical performances", "Buying real estate & gems", "Team building & celebrations", "Martial leadership"],
+        "suitable_activities_bn": ["সঙ্গীত ও নৃত্যকলা অনুষ্ঠান", "রিয়েল এস্টেট ও রত্ন ক্রয়", "দলগত নেতৃত্ব ও উৎসব উদযাপন", "বীরত্বপূর্ণ কর্ম"],
+        "suitable_activities_hi": ["संगीत व वाद्य यंत्र", "संपत्ति व आभूषण क्रय", "सामूहिक आयोजन व उत्सव"],
+    },
+    # 23: Shatabhisha
+    {
+        "disposition_en": "Chara / Chala (Movable, Healing & Hundred Stars)",
+        "disposition_bn": "চর / চল (নিরাময়কারী, গোপন ও শতভিষক)",
+        "disposition_hi": "चर / चल (आरोग्यकारी व रहस्यमयी)",
+        "gunas_en": "Sattva - Tamas - Sattva", "gunas_bn": "সত্ত্ব - তমঃ - সত্ত্ব", "gunas_hi": "सत्त्व - तमस - सत्त्व",
+        "caste_varna_en": "Butcher / Hunter", "caste_varna_bn": "ব্যাধ", "caste_varna_hi": "व्याध",
+        "gender_en": "Neuter", "gender_bn": "নপুংসক", "gender_hi": "नपुंसक",
+        "direction_en": "South", "direction_bn": "দক্ষিণ", "direction_hi": "दक्षिण",
+        "sacred_bird_en": "Black Raven", "sacred_bird_bn": "দাঁড়কাক", "sacred_bird_hi": "काला कौआ",
+        "suitable_activities_en": ["Administering medicines & therapy", "Meditation in solitude", "Scientific research", "Astronomy & space science"],
+        "suitable_activities_bn": ["জটিল রোগের চিকিৎসা ও থেরাপি", "নিভৃত ধ্যান", "বৈজ্ঞানিক গবেষণা", "জ্যোতির্বিজ্ঞান ও প্রযুক্তি"],
+        "suitable_activities_hi": ["चिकित्सा व प्राकृतिक उपचार", "एकांत ध्यान", "वैज्ञानिक शोध"],
+    },
+    # 24: Purva Bhadrapada
+    {
+        "disposition_en": "Ugra / Krura (Fierce, Transformative & Ascetic)",
+        "disposition_bn": "উগ্র / ক্রূর (তীব্র, রূপান্তরমূলক ও তপস্বী)",
+        "disposition_hi": "उग्र / क्रूर (तपस्वी व रूपांतरकारी)",
+        "gunas_en": "Sattva - Sattva - Rajas", "gunas_bn": "সত্ত্ব - সত্ত্ব - রজঃ", "gunas_hi": "সत्त्व - सत्त्व - रजस",
+        "caste_varna_en": "Brahmin", "caste_varna_bn": "ব্রাহ্মণ", "caste_varna_hi": "ब्राह्मण",
+        "gender_en": "Male", "gender_bn": "পুরুষ", "gender_hi": "पुरुष",
+        "direction_en": "West", "direction_bn": "পশ্চিম", "direction_hi": "पश्चिम",
+        "sacred_bird_en": "Pelican", "sacred_bird_bn": "গগনভেড়ী পাখি", "sacred_bird_hi": "हवासील / पेलिकन",
+        "suitable_activities_en": ["Tantric disciplines", "Renunciation and intense study", "Confronting darkness", "Spiritual austerities"],
+        "suitable_activities_bn": ["তপস্যা ও গভীর ধ্যান", "ত্যাগ ও শাস্ত্রীয় গভীর গবেষণা", "কঠিন পরিস্থিতি মোকাবেলা", "আত্মসমর্পণ"],
+        "suitable_activities_hi": ["तपस्या व ध्यान", "गहन अध्ययन", "अंधकार पर विजय", "आध्यात्मिक वैराग्य"],
+    },
+    # 25: Uttara Bhadrapada
+    {
+        "disposition_en": "Dhruva / Sthira (Fixed, Wise & Deep Oceanic)",
+        "disposition_bn": "ধ্রুব / স্থির (স্থায়ী, প্রাজ্ঞ ও অতল সমুদ্রবৎ গম্ভীর)",
+        "disposition_hi": "ध्रुव / स्थिर (गंभीर व प्रज्ञावान)",
+        "gunas_en": "Sattva - Sattva - Tamas", "gunas_bn": "সত্ত্ব - সত্ত্ব - তমঃ", "gunas_hi": "সत्त्व - सत्त्व - तमस",
+        "caste_varna_en": "Kshatriya", "caste_varna_bn": "ক্ষত্রিয়", "caste_varna_hi": "क्षत्रिय",
+        "gender_en": "Male", "gender_bn": "পুরুষ", "gender_hi": "पुरुष",
+        "direction_en": "North", "direction_bn": "উত্তর", "direction_hi": "उत्तर",
+        "sacred_bird_en": "Kotwal / King Crow", "sacred_bird_bn": "ফিঙে পাখি", "sacred_bird_hi": "कोतवाल / भुजंग",
+        "suitable_activities_en": ["Deep contemplation", "Founding spiritual institutions", "Long-term investments", "Charity and water conservation"],
+        "suitable_activities_bn": ["গভীর আত্মানুসন্ধান", "আধ্যাত্মিক আশ্রম বা প্রতিষ্ঠান স্থাপন", "দীর্ঘমেয়াদী নিরাপদ সঞ্চয়", "জল ও পরিবেশ সংরক্ষণ"],
+        "suitable_activities_hi": ["गहन चिंतन", "आध्यात्मिक संस्थापन", "दीर्घकालिक निवेश", "परोपकार"],
+    },
+    # 26: Revati
+    {
+        "disposition_en": "Mridu / Maitra (Soft, Nourishing & Compassionate)",
+        "disposition_bn": "মৃদু / মৈত্রী (কোমল, পুষ্টিকর, দয়ালু ও রক্ষক)",
+        "disposition_hi": "मृदु / मैत्र (कोमल व दयालु)",
+        "gunas_en": "Sattva - Sattva - Sattva", "gunas_bn": "সত্ত্ব - সত্ত্ব - সত্ত্ব", "gunas_hi": "সत्त्व - सत्त्व - सत्त्व",
+        "caste_varna_en": "Shudra", "caste_varna_bn": "শূদ্র", "caste_varna_hi": "शूद्र",
+        "gender_en": "Female", "gender_bn": "স্ত্রী", "gender_hi": "स्त्री",
+        "direction_en": "East", "direction_bn": "পূর্ব", "direction_hi": "पूर्व",
+        "sacred_bird_en": "Kestrel / Indian Robin", "sacred_bird_bn": "দোয়েল পাখি", "sacred_bird_hi": "कस्तूरी / दयाल पक्षी",
+        "suitable_activities_en": ["Travel and sea voyages", "Adoption and child protection", "Fine arts & music", "Gemstone purchase", "Spiritual devotion"],
+        "suitable_activities_bn": ["নিরাপদ ভ্রমণ ও নৌযাত্রা", "সন্তান দত্তক গ্রহণ ও শিশুদের সাহায্য", "সঙ্গীত ও সুকুমার শিল্প চর্চা", "রত্নপাথর ধারণ"],
+        "suitable_activities_hi": ["सुखद यात्रा व जलयात्रा", "बाल कल्याण", "ललित कला व संगीत", "रत्न धारण"],
+    },
+]
+
+def get_nakshatra_disposition(nak_idx: int) -> dict[str, Any]:
+    """Returns classical disposition, gunas, bird, direction, and suitable activities for the nakshatra."""
+    return DISPOSITIONS_MASTER[nak_idx % 27]
+

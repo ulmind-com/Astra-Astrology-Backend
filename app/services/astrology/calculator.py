@@ -7,13 +7,18 @@ from app.schemas.astrology import (
     CalculationMeta,
     ChandraBalaInfo,
     ClientNakshatraRules,
+    DailyTaraBalaInfo,
+    DashaBalanceAtBirth,
     DisputedValue,
+    GandantaInfo,
     HouseCusp,
     NakshatraCalculateRequest,
     NakshatraCalculateResponse,
+    NakshatraDispositionInfo,
     NakshatraPadaDetail,
     NakshatraTraits,
     PlanetPosition,
+    PushkaraInfo,
     RashiCalculateRequest,
     RashiCalculateResponse,
     RashiPlanetaryDignity,
@@ -29,8 +34,13 @@ from app.services.astrology.nakshatra_rules import (
     RASHI_TATVA,
     RASHI_VARNA,
     RASHI_VASHYA,
+    calculate_daily_tara_bala,
+    calculate_dasha_balance,
+    calculate_gandanta,
     calculate_paya,
+    calculate_pushkara,
     calculate_tarabala_table,
+    get_nakshatra_disposition,
 )
 from app.services.astrology.rashi_rules import (
     NAKSHATRAS_DATA,
@@ -781,6 +791,28 @@ def calculate_nakshatra(payload: NakshatraCalculateRequest) -> NakshatraCalculat
         + ")"
     )
 
+    # 9. Classical Advancements: Gandanta, Pushkara, Dasha Balance, Live Daily Tara Bala, Disposition
+    gandanta_data = calculate_gandanta(moon_lon, nak_idx, pada)
+    gandanta_obj = GandantaInfo(**gandanta_data)
+
+    navamsha_sign = nak_meta["padas"][pada - 1]["navamsha"]
+    pushkara_data = calculate_pushkara(rashi_idx, moon_lon % 30.0, navamsha_sign, pada)
+    pushkara_obj = PushkaraInfo(**pushkara_data)
+
+    dasha_bal_data = calculate_dasha_balance(star_lord, offset_in_nak)
+    dasha_bal_obj = DashaBalanceAtBirth(**dasha_bal_data)
+
+    now_dt = datetime.now(UTC)
+    jd_now = swe.julday(
+        now_dt.year, now_dt.month, now_dt.day,
+        now_dt.hour + now_dt.minute / 60.0 + now_dt.second / 3600.0,
+    )
+    daily_tb_data = calculate_daily_tara_bala(swe, jd_now, nak_idx)
+    daily_tb_obj = DailyTaraBalaInfo(**daily_tb_data)
+
+    disp_data = get_nakshatra_disposition(nak_idx)
+    disp_obj = NakshatraDispositionInfo(**disp_data)
+
     return NakshatraCalculateResponse(
         name=payload.name.strip() or "Seeker",
         gender=payload.gender.capitalize(),
@@ -825,6 +857,11 @@ def calculate_nakshatra(payload: NakshatraCalculateRequest) -> NakshatraCalculat
         paya=paya,
         client_rules=ClientNakshatraRules(**technique_result),
         rashi_client_rules=client_rules.get_sign_profile(rashi_idx, lang_pref),
+        gandanta=gandanta_obj,
+        pushkara=pushkara_obj,
+        dasha_balance=dasha_bal_obj,
+        daily_tara_bala=daily_tb_obj,
+        disposition=disp_obj,
         timezone_resolution=tz_info,
         planets=chart_planets,
         ascendant_longitude=round(asc_lon, 4),
