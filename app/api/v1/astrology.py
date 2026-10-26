@@ -33,6 +33,7 @@ from app.services.astrology.timezone_resolver import (
 )
 from app.services.astrology.daily_horoscope import calculate_daily_horoscope
 from app.services.astrology.kp_calculator import calculate_kp
+from app.services.astrology.dasha_calculator import calculate_advanced_dasha
 from app.services.astrology.kundli_service import calculate_kundli
 from app.services.astrology.kundli_matching_service import calculate_kundli_matching
 from app.services.astrology.nakshatra_rules import NAKSHATRAS_MASTER
@@ -291,7 +292,7 @@ async def get_dasha(
 ) -> ApiResponse[KPCalculateResponse]:
     """Calculates Vimshottari Dasha planetary periods."""
     charged, balance = await _charge_feature("dasha_calculator", "Dasha Calculator", user)
-    result = _guard(calculate_kp, payload, "dasha")
+    result = _guard(calculate_advanced_dasha, payload, "dasha")
     msg = f"Calculated Vimshottari Dasha for {result.name}"
     if charged > 0:
         msg += f" · {charged} coins deducted (Balance: {balance})"

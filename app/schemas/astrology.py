@@ -621,11 +621,13 @@ class KPDashaInsight(BaseModel):
 
 class KPDashaPeriod(BaseModel):
     lord: str
-    level: int  # 1: Mahadasha, 2: Antardasha, 3: Pratyantardasha
+    level: int  # 1: Mahadasha, 2: Antardasha, 3: Pratyantardasha, 4: Sookshma, 5: Pran
     start_date: str
     end_date: str
     duration: str
     is_current: bool = False
+    start_time: str = ""
+    end_time: str = ""
     insight: KPDashaInsight | None = None
     sub_periods: list["KPDashaPeriod"] = Field(default_factory=list)
 
@@ -711,6 +713,116 @@ class KPRemedyItem(BaseModel):
     charity_recommendation: str
 
 
+class CurrentRunningDashaInfo(BaseModel):
+    mahadasha: str
+    antardasha: str
+    pratyantardasha: str
+    sookshma_dasha: str = ""
+    pran_dasha: str = ""
+    active_path: str = ""
+    md_start: str = ""
+    md_end: str = ""
+    ad_start: str = ""
+    ad_end: str = ""
+    pd_start: str = ""
+    pd_end: str = ""
+    sd_start: str = ""
+    sd_end: str = ""
+    pran_start: str = ""
+    pran_end: str = ""
+    remaining_days_ad: int = 0
+    remaining_days_md: int = 0
+    percentage_completed_ad: float = 0.0
+    percentage_completed_md: float = 0.0
+    sookshma_periods: list[KPDashaPeriod] = Field(default_factory=list)
+    pran_periods: list[KPDashaPeriod] = Field(default_factory=list)
+
+
+class DashaSandhiChidraInfo(BaseModel):
+    is_in_chidra_dasha: bool = False
+    is_in_dasha_sandhi: bool = False
+    chidra_message: str = ""
+    sandhi_message: str = ""
+    current_md_lord: str = ""
+    next_md_lord: str = ""
+    transition_date: str = ""
+    days_to_transition: int = 0
+    alert_severity: str = "none"  # "none", "warning", "critical"
+    precautions: list[str] = Field(default_factory=list)
+    remedial_measures: list[str] = Field(default_factory=list)
+
+
+class PersonalizedDashaPhalaItem(BaseModel):
+    planet: str
+    lagna: str
+    functional_nature: str  # "Yogakaraka", "Functional Benefic", "Functional Malefic", "Maraka", "Neutral"
+    houses_owned: list[int] = Field(default_factory=list)
+    house_placed: int = 1
+    sign_placed: str = ""
+    dignity: str = ""  # "Exalted", "Moolatrikona", "Own Sign", "Friendly", "Neutral", "Enemy", "Debilitated"
+    is_retrograde: bool = False
+    favorability_score: int = 50  # 0 to 100
+    overall_impact: str = ""
+    career_impact: str = ""
+    wealth_impact: str = ""
+    relationship_impact: str = ""
+    health_impact: str = ""
+    gemstone_warning: str = ""
+    recommended_remedy: str = ""
+
+
+class YoginiPeriodItem(BaseModel):
+    name: str
+    ruler_planet: str
+    duration_years: int
+    start_date: str
+    end_date: str
+    is_current: bool = False
+    nature: str = ""  # "Benefic", "Malefic", "Neutral"
+    significance: str = ""
+    sub_periods: list["YoginiPeriodItem"] = Field(default_factory=list)
+
+
+class YoginiDashaSystem(BaseModel):
+    birth_nakshatra: str = ""
+    starting_yogini: str = ""
+    balance_str: str = ""
+    current_yogini: str = ""
+    current_sub_yogini: str = ""
+    current_cycle_number: int = 1
+    periods: list[YoginiPeriodItem] = Field(default_factory=list)
+    verdict: str = ""
+
+
+class DashaTransitSynergy(BaseModel):
+    md_lord: str = ""
+    md_transit_sign: str = ""
+    md_transit_house_from_moon: int = 1
+    md_transit_nature: str = ""
+    ad_lord: str = ""
+    ad_transit_sign: str = ""
+    ad_transit_house_from_moon: int = 1
+    ad_transit_nature: str = ""
+    sade_sati_active: bool = False
+    sade_sati_phase: str = "None"
+    sade_sati_description: str = ""
+    synergy_verdict: str = ""
+    synergy_score: int = 50
+
+
+class DashaTimelineSegment(BaseModel):
+    lord: str
+    start_date: str
+    end_date: str
+    age_start: int
+    age_end: int
+    duration_years: float
+    nature: str = "neutral"  # "favorable", "neutral", "challenging"
+    favorability_score: int = 50
+    theme: str = ""
+    is_current: bool = False
+
+
 class KPCalculateResponse(BaseModel):
     name: str
     gender: str
@@ -738,6 +850,14 @@ class KPCalculateResponse(BaseModel):
     badhaka_maraka: KPBadhakaMarakaInfo | None = None
     horary_details: KPHoraryInfo | None = None
     remedies: list[KPRemedyItem] = Field(default_factory=list)
+
+    # Advanced Dasha Capabilities
+    current_running_dasha: CurrentRunningDashaInfo | None = None
+    dasha_sandhi_chidra: DashaSandhiChidraInfo | None = None
+    personalized_dasha_phala: list[PersonalizedDashaPhalaItem] = Field(default_factory=list)
+    yogini_dasha: YoginiDashaSystem | None = None
+    dasha_transit_synergy: DashaTransitSynergy | None = None
+    dasha_life_timeline: list[DashaTimelineSegment] = Field(default_factory=list)
 
     selected_language: str = "en"
     translations: dict[str, Any] = Field(default_factory=dict)
