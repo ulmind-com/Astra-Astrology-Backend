@@ -101,3 +101,91 @@ def test_lo_shu_grid_and_dasha():
     assert any("MD" in lvl for lvl in levels)
     assert any("AD" in lvl for lvl in levels)
     assert any("PD" in lvl for lvl in levels)
+
+
+def test_name_correction_engine():
+    from app.services.astrology.numerology_engine import correct_name_spelling
+
+    res = correct_name_spelling("Amit", mulank=1, bhagyank=1)
+    assert res.original_name == "Amit"
+    assert res.original_compound > 0
+    assert len(res.suggestions) > 0
+    # Every suggestion must have auspicious compound and positive single digit
+    for s in res.suggestions:
+        assert s.new_compound in (10, 14, 15, 19, 21, 23, 24, 27, 32, 33, 37, 41, 42, 45, 46, 50, 51, 55, 59, 60, 64, 73)
+        assert s.new_single_digit in (1, 2, 3, 5, 6, 7, 9)
+
+
+def test_mobile_compare_engine():
+    from app.services.astrology.numerology_engine import compare_mobile_numbers
+
+    numbers = ["9876543210", "9812356789", "9900112233"]
+    res = compare_mobile_numbers(numbers, mulank=1, bhagyank=5, profession="it")
+    assert len(res.items) == 3
+    assert res.best_number in numbers
+    assert res.items[0].compatibility_score >= res.items[-1].compatibility_score
+    for item in res.items:
+        assert item.compatibility_score >= 10
+        assert item.grade != ""
+
+
+def test_business_numerology_engine():
+    from app.services.astrology.numerology_engine import evaluate_business_numerology
+
+    # Favorable brand: "Astra Tech" -> Chaldean: Astra(11) + Tech(17) = 28 -> 2+8 = 10 -> 1 (Sun)
+    # Sun (1) is best friend with Mulank 1 (Sun) and Bhagyank 5 (Mercury)
+    res = evaluate_business_numerology("Astra Tech", industry="technology", owner_mulank=1, owner_bhagyank=5)
+    assert res.chaldean_compound == 28
+    assert res.single_digit == 1
+    assert res.industry_fit_score >= 80
+    assert res.owner_harmony_score >= 80
+    assert len(res.actionable_recommendations) >= 3
+
+    # Conflicting brand: "Astra Technologies" -> 62 -> 8 (Saturn), enemy to Mulank 1
+    res_enemy = evaluate_business_numerology("Astra Technologies", industry="technology", owner_mulank=1, owner_bhagyank=5)
+    assert res_enemy.single_digit == 8
+    assert res_enemy.owner_harmony_score < 50  # Strictly penalizes enemy number under 18 Oct Table
+
+
+
+def test_vehicle_bank_audit_engine():
+    from app.services.astrology.numerology_engine import audit_vehicle_bank_numerology
+
+    # Vehicle Plate
+    v_res = audit_vehicle_bank_numerology("WB 02 AK 1234", audit_type="vehicle", mulank=1, bhagyank=5)
+    assert v_res.audit_type == "vehicle"
+    assert v_res.total_sum > 0
+    assert 1 <= v_res.single_digit <= 9
+    assert v_res.safety_rating != ""
+
+    # Bank Account
+    b_res = audit_vehicle_bank_numerology("123456789012", audit_type="bank", mulank=5, bhagyank=6)
+    assert b_res.audit_type == "bank"
+    assert b_res.total_sum > 0
+    assert 1 <= b_res.single_digit <= 9
+    assert b_res.remedy_bn != ""
+
+
+def test_api_endpoints_numerology(client):
+    # 1. Name Correct Endpoint
+    resp = client.post("/api/v1/numerology/name/correct", json={"name": "Rahul", "mulank": 1, "bhagyank": 5})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is True
+    assert "suggestions" in data["data"]
+
+    # 2. Mobile Compare Endpoint
+    resp = client.post("/api/v1/numerology/mobile/compare", json={"numbers": ["9830123456", "9810654321"], "mulank": 1, "bhagyank": 5})
+    assert resp.status_code == 200
+    assert resp.json()["data"]["best_number"] != ""
+
+    # 3. Business Endpoint
+    resp = client.post("/api/v1/numerology/business", json={"brand_name": "Zenith AI", "industry": "technology", "owner_mulank": 1, "owner_bhagyank": 5})
+    assert resp.status_code == 200
+    assert resp.json()["data"]["industry_fit_score"] > 0
+
+    # 4. Vehicle/Bank Endpoint
+    resp = client.post("/api/v1/numerology/vehicle-bank", json={"input_string": "DL 01 AB 9999", "audit_type": "vehicle", "mulank": 1, "bhagyank": 5})
+    assert resp.status_code == 200
+    assert resp.json()["data"]["safety_rating"] != ""
+

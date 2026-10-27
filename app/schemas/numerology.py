@@ -185,3 +185,114 @@ class NumerologyCalculateResponse(BaseModel):
     dasha_timeline: list[NumerologyDashaPeriod]
     name_analysis: NameAnalysisResponse
     mobile_analysis: MobileAnalysisResponse | None = None
+
+
+# ---------------------------------------------------------------------------
+# Name Correction & Spelling Harmonizer Schemas
+# ---------------------------------------------------------------------------
+
+class NameCorrectionRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    mulank: int = Field(default=1, ge=1, le=9)
+    bhagyank: int = Field(default=1, ge=1, le=9)
+    target_compound: int | None = Field(default=None, description="Optional target compound like 19, 23, 37, 46, 55")
+
+
+class NameCorrectionSuggestion(BaseModel):
+    suggested_spelling: str
+    added_letters: list[str]
+    new_compound: int
+    new_single_digit: int
+    compound_title: str
+    compound_quality: str
+    sound_harmony: str
+    why_auspicious: str
+
+
+class NameCorrectionResponse(BaseModel):
+    original_name: str
+    original_compound: int
+    original_quality: str
+    negative_syllables: list[str]
+    suggestions: list[NameCorrectionSuggestion]
+    general_guidance: str
+
+
+# ---------------------------------------------------------------------------
+# Mobile Sim Comparison Suite Schemas
+# ---------------------------------------------------------------------------
+
+class MobileCompareRequest(BaseModel):
+    numbers: list[str] = Field(..., min_length=1, max_length=6, description="List of mobile numbers to compare")
+    mulank: int = Field(default=1, ge=1, le=9)
+    bhagyank: int = Field(default=1, ge=1, le=9)
+    profession: str | None = Field(default=None, description="Native's profession e.g. 'it', 'business', 'medicine'")
+    birth_date: str | None = Field(default=None, description="Optional DOB YYYY-MM-DD")
+
+
+class MobileComparisonItem(BaseModel):
+    mobile_number: str
+    single_digit: int
+    compound_number: int
+    compound_quality: str
+    compatibility_score: int
+    grade: str
+    positive_pairs: list[str]
+    negative_pairs: list[str]
+    profession_match: bool
+    verdict_bn: str
+
+
+class MobileCompareResponse(BaseModel):
+    best_number: str
+    items: list[MobileComparisonItem]
+    recommendations_bn: list[str]
+
+
+# ---------------------------------------------------------------------------
+# Business, Brand & Company Name Evaluator Schemas
+# ---------------------------------------------------------------------------
+
+class BusinessNumerologyRequest(BaseModel):
+    brand_name: str = Field(..., min_length=1, max_length=100)
+    industry: str = Field(..., description="e.g. 'technology', 'real_estate', 'finance', 'luxury_fashion', 'health', 'food'")
+    owner_mulank: int | None = Field(default=None, ge=1, le=9)
+    owner_bhagyank: int | None = Field(default=None, ge=1, le=9)
+
+
+class BusinessNumerologyResponse(BaseModel):
+    brand_name: str
+    industry: str
+    chaldean_compound: int
+    single_digit: int
+    compound_meaning: str
+    industry_suitability: str
+    industry_fit_score: int
+    owner_harmony_score: int
+    favorable_business_numbers: list[int]
+    actionable_recommendations: list[str]
+
+
+# ---------------------------------------------------------------------------
+# Vehicle Plate & Bank Account Numerology Audit Schemas
+# ---------------------------------------------------------------------------
+
+class VehicleBankAuditRequest(BaseModel):
+    audit_type: str = Field(default="vehicle", pattern=r"^(vehicle|bank)$")
+    input_string: str = Field(..., min_length=3, max_length=50)
+    mulank: int = Field(default=1, ge=1, le=9)
+    bhagyank: int = Field(default=1, ge=1, le=9)
+
+
+class VehicleBankAuditResponse(BaseModel):
+    input_string: str
+    audit_type: str
+    extracted_digits: str
+    total_sum: int
+    single_digit: int
+    compound_number: int
+    compound_quality: str
+    safety_rating: str
+    risk_alert: str | None = None
+    remedy_bn: str
+

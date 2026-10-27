@@ -5,17 +5,29 @@ from pydantic import BaseModel, Field
 
 from app.schemas.common import ApiResponse
 from app.schemas.numerology import (
+    BusinessNumerologyRequest,
+    BusinessNumerologyResponse,
     MobileAnalysisResponse,
+    MobileCompareRequest,
+    MobileCompareResponse,
     MulankProfile,
     NameAnalysisResponse,
+    NameCorrectionRequest,
+    NameCorrectionResponse,
     NumerologyCalculateRequest,
     NumerologyCalculateResponse,
+    VehicleBankAuditRequest,
+    VehicleBankAuditResponse,
 )
 from app.services.astrology.numerology_engine import (
     MULANK_MASTER,
+    audit_vehicle_bank_numerology,
     calculate_full_numerology,
     calculate_mobile_numerology,
     calculate_name_numerology,
+    compare_mobile_numbers,
+    correct_name_spelling,
+    evaluate_business_numerology,
 )
 
 router = APIRouter(prefix="/numerology", tags=["Numerology"])
@@ -122,3 +134,72 @@ def get_mulank_profile_endpoint(number: int) -> ApiResponse[MulankProfile]:
         profession=raw["profession"],
     )
     return ApiResponse(success=True, data=profile, message="Profile retrieved successfully.")
+
+
+@router.post(
+    "/name/correct",
+    response_model=ApiResponse[NameCorrectionResponse],
+    summary="Harmonize and correct name spelling to royal Chaldean compounds (19, 23, 37, 41, 46, 55)",
+)
+def correct_name_endpoint(payload: NameCorrectionRequest) -> ApiResponse[NameCorrectionResponse]:
+    """Generates 1-click auspicious spelling alternatives and filters negative syllables."""
+    try:
+        data = correct_name_spelling(payload.name, payload.mulank, payload.bhagyank, payload.target_compound)
+        return ApiResponse(success=True, data=data, message="Name spelling harmonized successfully.")
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Name correction failed: {str(exc)}",
+        ) from exc
+
+
+@router.post(
+    "/mobile/compare",
+    response_model=ApiResponse[MobileCompareResponse],
+    summary="Compare 2 to 6 mobile SIM numbers under 60%/40% dominance pair evaluation",
+)
+def compare_mobile_endpoint(payload: MobileCompareRequest) -> ApiResponse[MobileCompareResponse]:
+    """Audits multiple mobile numbers, identifies best number and assigns grades (A+, A, B, C, D)."""
+    try:
+        data = compare_mobile_numbers(payload.numbers, payload.mulank, payload.bhagyank, payload.profession, payload.birth_date)
+        return ApiResponse(success=True, data=data, message="Mobile numbers compared successfully.")
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Mobile comparison failed: {str(exc)}",
+        ) from exc
+
+
+@router.post(
+    "/business",
+    response_model=ApiResponse[BusinessNumerologyResponse],
+    summary="Evaluate Business / Brand Name Numerology (Industry suitability score & Founder harmony)",
+)
+def evaluate_business_endpoint(payload: BusinessNumerologyRequest) -> ApiResponse[BusinessNumerologyResponse]:
+    """Evaluates business brand name Chaldean compound, industry fit, and founder birth harmony."""
+    try:
+        data = evaluate_business_numerology(payload.brand_name, payload.industry, payload.owner_mulank, payload.owner_bhagyank)
+        return ApiResponse(success=True, data=data, message="Business numerology evaluated successfully.")
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Business evaluation failed: {str(exc)}",
+        ) from exc
+
+
+@router.post(
+    "/vehicle-bank",
+    response_model=ApiResponse[VehicleBankAuditResponse],
+    summary="Audit Vehicle License Plate or Bank Account Numerology for safety and wealth retention",
+)
+def audit_vehicle_bank_endpoint(payload: VehicleBankAuditRequest) -> ApiResponse[VehicleBankAuditResponse]:
+    """Performs accident risk and wealth retention audit on vehicle plate or bank account digits."""
+    try:
+        data = audit_vehicle_bank_numerology(payload.input_string, payload.audit_type, payload.mulank, payload.bhagyank)
+        return ApiResponse(success=True, data=data, message=f"{payload.audit_type.title()} audited successfully.")
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Vehicle/Bank audit failed: {str(exc)}",
+        ) from exc
+
