@@ -87,3 +87,33 @@ def test_full_vastu_audit_critical_defects():
     # Check that metal strip blocking is provided for toilet in NE
     toilet_eval = [e for e in res.evaluations if e.category_id == "toilet"][0]
     assert toilet_eval.metal_strip_blocking is not None
+
+
+def test_ayadi_shadvarga_calculation():
+    from app.services.astrology.vastu_engine import calculate_ayadi_shadvarga
+    # Test a plot of 40ft x 30ft = 1200 sqft
+    res = calculate_ayadi_shadvarga(length=40.0, width=30.0, unit="feet")
+    assert res.area_sqft == 1200.0
+    assert 1 <= res.aaya_number <= 8
+    assert res.aaya_name is not None
+    assert res.structure_longevity_years > 0
+    assert res.building_nakshatra_number >= 1
+
+
+def test_medical_vastu_catalog():
+    from app.services.astrology.vastu_engine import get_medical_vastu_catalog
+    catalog = get_medical_vastu_catalog()
+    assert len(catalog) >= 10
+    depression = [c for c in catalog if c.ailment_id == "depression_sorrow"][0]
+    assert depression.affected_zone == "WNW"
+    assert "Space/Metal" in depression.affected_element
+
+
+def test_astrovastu_rules():
+    from app.services.astrology.vastu_engine import get_astrovastu_rules
+    rules = get_astrovastu_rules()
+    assert len(rules) == 9
+    rahu = [r for r in rules if r.planet_id == "rahu"][0]
+    assert "SW" in rahu.governing_direction
+    assert len(rahu.critical_dos_bn) > 0
+

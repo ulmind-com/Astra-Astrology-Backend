@@ -4,6 +4,10 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from app.schemas.common import ApiResponse
 from app.schemas.vastu import (
+    AstroVastuRule,
+    AyadiCalculationRequest,
+    AyadiCalculationResponse,
+    MedicalVastuItem,
     PadaInfo,
     VastuAuditRequest,
     VastuAuditResponse,
@@ -14,11 +18,15 @@ from app.services.astrology.vastu_engine import (
     PADA_DEFINITIONS,
     VASTU_REMEDIES_CATALOG,
     ZONE_METADATA,
+    calculate_ayadi_shadvarga,
+    get_astrovastu_rules,
+    get_medical_vastu_catalog,
     perform_vastu_audit,
     resolve_entrance_pada,
 )
 
 router = APIRouter(prefix="/vastu", tags=["Vastu Shastra"])
+
 
 
 @router.post(
@@ -133,3 +141,39 @@ def get_vastu_remedies_endpoint(
         for r in items
     ]
     return ApiResponse(success=True, data=remedies, message="Remedies retrieved successfully.")
+
+
+@router.post(
+    "/ayadi",
+    response_model=ApiResponse[AyadiCalculationResponse],
+    summary="Calculate Classical Ayadi Shadvarga parameters (Aaya, Dhana, Rina, Longevity, Nakshatra)",
+)
+def calculate_ayadi_endpoint(payload: AyadiCalculationRequest) -> ApiResponse[AyadiCalculationResponse]:
+    """Computes Vedic Aaya, income-to-debt ratio, and structure longevity based on plot dimensions."""
+    data = calculate_ayadi_shadvarga(length=payload.length, width=payload.width, unit=payload.unit)
+    return ApiResponse(success=True, data=data, message="Ayadi calculation completed successfully.")
+
+
+@router.get(
+    "/medical",
+    response_model=ApiResponse[list[MedicalVastuItem]],
+    summary="Get Medical Vastu and pathology diagnostics catalog",
+)
+def get_medical_vastu_endpoint() -> ApiResponse[list[MedicalVastuItem]]:
+    """Returns organ, disease, and elemental imbalance associations from client's 115-page medical Vastu manual."""
+    data = get_medical_vastu_catalog()
+    return ApiResponse(success=True, data=data, message="Medical Vastu catalog retrieved successfully.")
+
+
+@router.get(
+    "/astrovastu",
+    response_model=ApiResponse[list[AstroVastuRule]],
+    summary="Get Astro-Vastu planetary activation rules and directional guidelines",
+)
+def get_astrovastu_endpoint(
+    planet_id: str | None = Query(default=None, description="Optional planet filter (e.g. 'sun', 'jupiter', 'rahu')")
+) -> ApiResponse[list[AstroVastuRule]]:
+    """Returns Astro-Vastu rules linking personal birth chart dasha to property directions."""
+    data = get_astrovastu_rules(planet_id=planet_id)
+    return ApiResponse(success=True, data=data, message="Astro-Vastu guidelines retrieved successfully.")
+
