@@ -2,6 +2,8 @@
 
 from fastapi import APIRouter, HTTPException, Query, status
 
+from app.api.dependencies import OptionalUser
+from app.api.v1.astrology import charge_feature
 from app.schemas.common import ApiResponse
 from app.schemas.vastu import (
     AstroVastuRule,
@@ -34,15 +36,24 @@ router = APIRouter(prefix="/vastu", tags=["Vastu Shastra"])
     response_model=ApiResponse[VastuAuditResponse],
     summary="Perform complete 360° Vastu Audit (32-Pada Entrance + 20+ Room Placements)",
 )
-def audit_vastu_endpoint(payload: VastuAuditRequest) -> ApiResponse[VastuAuditResponse]:
+async def audit_vastu_endpoint(
+    payload: VastuAuditRequest,
+    user: OptionalUser = None,
+) -> ApiResponse[VastuAuditResponse]:
     """Audits property entrance and room placements based strictly on 374-page Rahul Pandat Vastu documents."""
+    charged, balance = await charge_feature("vastu", "Vastu Audit", user)
     try:
         data = perform_vastu_audit(
             main_entrance_degree=payload.main_entrance_degree,
             placements=payload.placements,
             property_type=payload.property_type,
         )
-        return ApiResponse(success=True, data=data, message="Vastu audit executed successfully.")
+        msg = "Vastu audit executed successfully."
+        if charged > 0:
+            msg += f" · {charged} coins deducted (Balance: {balance})"
+        return ApiResponse(success=True, data=data, message=msg)
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

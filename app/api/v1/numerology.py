@@ -3,6 +3,8 @@
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
+from app.api.dependencies import OptionalUser
+from app.api.v1.astrology import charge_feature
 from app.schemas.common import ApiResponse
 from app.schemas.numerology import (
     BusinessNumerologyRequest,
@@ -51,8 +53,12 @@ class MobileOnlyRequest(BaseModel):
     response_model=ApiResponse[NumerologyCalculateResponse],
     summary="Calculate complete Vedic & Chaldean Numerology (Lo Shu Grid, Dasha, Name, Mobile)",
 )
-def calculate_numerology_endpoint(payload: NumerologyCalculateRequest) -> ApiResponse[NumerologyCalculateResponse]:
+async def calculate_numerology_endpoint(
+    payload: NumerologyCalculateRequest,
+    user: OptionalUser = None,
+) -> ApiResponse[NumerologyCalculateResponse]:
     """Calculates end-to-end Numerology report based strictly on client's authoritative resource documents."""
+    charged, balance = await charge_feature("numerology", "Numerology", user)
     try:
         data = calculate_full_numerology(
             full_name=payload.full_name,
@@ -61,7 +67,12 @@ def calculate_numerology_endpoint(payload: NumerologyCalculateRequest) -> ApiRes
             mobile_number=payload.mobile_number,
             prediction_year=payload.prediction_year,
         )
-        return ApiResponse(success=True, data=data, message="Numerology analysis generated successfully.")
+        msg = "Numerology analysis generated successfully."
+        if charged > 0:
+            msg += f" · {charged} coins deducted (Balance: {balance})"
+        return ApiResponse(success=True, data=data, message=msg)
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

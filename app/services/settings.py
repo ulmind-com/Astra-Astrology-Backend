@@ -10,12 +10,27 @@ from app.core.exceptions import BadRequestError
 from app.models.settings import SETTINGS_KEY, CoinRateChange, PlatformSettings
 
 
+_in_memory_settings: PlatformSettings | None = None
+
+
+def _default_platform_settings() -> PlatformSettings:
+    defaults = {
+        k: v.get_default(call_default_factory=True)
+        for k, v in PlatformSettings.model_fields.items()
+    }
+    return PlatformSettings.model_construct(**defaults)
+
+
 async def get_settings() -> PlatformSettings:
     """Returns the singleton, creating it with defaults the first time."""
     from app.db.mongodb import is_ready
 
+    global _in_memory_settings
+
     if not is_ready():
-        return PlatformSettings.model_construct()
+        if _in_memory_settings is None:
+            _in_memory_settings = _default_platform_settings()
+        return _in_memory_settings
 
     try:
         existing = await PlatformSettings.find_one(PlatformSettings.key == SETTINGS_KEY)
@@ -37,7 +52,9 @@ async def get_settings() -> PlatformSettings:
             "Could not read platform settings from MongoDB ({}); using in-memory defaults.",
             exc,
         )
-        return PlatformSettings.model_construct()
+        if _in_memory_settings is None:
+            _in_memory_settings = _default_platform_settings()
+        return _in_memory_settings
 
 
 async def _publish(doc: PlatformSettings, *, reprice: bool) -> None:
@@ -188,9 +205,10 @@ async def set_feature_pricing(
     doc.updated_by = admin_id
     if is_ready():
         await doc.save()
-        from app.services import realtime
-        await realtime.publish_feature_pricing(doc)
-        await _publish(doc, reprice=False)
+
+    from app.services import realtime
+    await realtime.publish_feature_pricing(doc)
+    await _publish(doc, reprice=False)
 
     logger.info("Feature pricing updated by {}: {}", admin_id, changes)
     return doc

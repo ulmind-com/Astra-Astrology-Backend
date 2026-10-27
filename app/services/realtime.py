@@ -237,6 +237,22 @@ def build_feature_pricing_payload(platform: Any) -> dict[str, dict[str, Any]]:
             "enabled": getattr(platform, "face_reading_enabled", True),
             "description": "Facial Morphology & Vedic Samudrika Shastra",
         },
+        "numerology": {
+            "feature_id": "numerology",
+            "name": "Numerology",
+            "coins": getattr(platform, "numerology_coins", 20),
+            "is_free": getattr(platform, "numerology_coins", 20) == 0,
+            "enabled": getattr(platform, "numerology_enabled", True),
+            "description": "Vedic & Chaldean Numerology, Lo Shu Grid, Dasha & Mobile Audit",
+        },
+        "vastu": {
+            "feature_id": "vastu",
+            "name": "Vastu Shastra",
+            "coins": getattr(platform, "vastu_coins", 25),
+            "is_free": getattr(platform, "vastu_coins", 25) == 0,
+            "enabled": getattr(platform, "vastu_enabled", True),
+            "description": "16-Zone & 32-Pada Vastu Compass, Ayadi Shadvarga & Remedies",
+        },
     }
 
 
