@@ -15,19 +15,25 @@ from typing import Any
 
 from app.schemas.numerology import (
     BhagyankProfile,
+    BusinessNumerologyResponse,
     DigitRepetitionItem,
     LetterSoundProfile,
     LoShuGridCell,
     LoShuPlane,
     MissingNumberRemedy,
     MobileAnalysisResponse,
+    MobileCompareResponse,
+    MobileComparisonItem,
     MobileConjunctionPair,
     MobileLShape,
     MulankProfile,
     NameAnalysisResponse,
+    NameCorrectionResponse,
+    NameCorrectionSuggestion,
     NumerologyCalculateResponse,
     NumerologyDashaPeriod,
     RajYogaItem,
+    VehicleBankAuditResponse,
 )
 
 # ---------------------------------------------------------------------------
@@ -1283,3 +1289,515 @@ def calculate_full_numerology(
         name_analysis=name_analysis,
         mobile_analysis=mobile_analysis,
     )
+
+
+# ---------------------------------------------------------------------------
+# Name Correction & Spelling Harmonizer Engine
+# ---------------------------------------------------------------------------
+
+def correct_name_spelling(
+    name: str,
+    mulank: int,
+    bhagyank: int,
+    target_compound: int | None = None,
+) -> NameCorrectionResponse:
+    """Harmonizes name spelling to auspicious Chaldean royal compounds (19, 23, 37, 41, 46, 55)."""
+    clean_name = re.sub(r"[^A-Za-z]", "", name).upper()
+    orig_compound = sum(CHALDEAN_MAP.get(ch, 0) for ch in clean_name)
+    orig_info = COMPOUND_NAMES.get(orig_compound, {
+        "name": f"Compound {orig_compound}",
+        "quality": "Neutral",
+        "meaning": "Standard numerical vibration."
+    })
+
+    neg_syllables_found = [syl for syl in NEGATIVE_SYLLABLES if syl in clean_name]
+
+    # Auspicious Royal Compound pool strictly from `Name Numerology/01.pdf` (193 pp)
+    ROYAL_TARGETS = {10, 14, 15, 19, 21, 23, 24, 27, 32, 33, 37, 41, 42, 45, 46, 50, 51, 55, 59, 60, 64, 73}
+
+    m_friends = set(FRIENDSHIP_TABLE.get(mulank, {}).get("friends", []))
+    b_friends = set(FRIENDSHIP_TABLE.get(bhagyank, {}).get("friends", []))
+    m_enemies = set(FRIENDSHIP_TABLE.get(mulank, {}).get("enemies", []))
+    b_enemies = set(FRIENDSHIP_TABLE.get(bhagyank, {}).get("enemies", []))
+
+    suggestions: list[NameCorrectionSuggestion] = []
+    seen_spellings: set[str] = {clean_name}
+
+    # If original name is already auspicious and not enemy, include as first option
+    orig_single = reduce_to_single_digit(orig_compound)
+    if orig_compound in ROYAL_TARGETS and orig_single not in m_enemies and orig_single not in b_enemies and not neg_syllables_found:
+        suggestions.append(NameCorrectionSuggestion(
+            suggested_spelling=name.title(),
+            added_letters=[],
+            new_compound=orig_compound,
+            new_single_digit=orig_single,
+            compound_title=orig_info.get("name", f"Compound {orig_compound}"),
+            compound_quality=orig_info.get("quality", "Extremely Favorable"),
+            sound_harmony="বর্তমান নামটি ইতোমধ্যে একটি অত্যন্ত শুভ ও কার্যকর কম্পাউন্ডে রয়েছে।",
+            why_auspicious=f"কম্পাউন্ড {orig_compound} (মূল {orig_single}): {orig_info.get('meaning', '')}"
+        ))
+
+    # Candidate variations generator
+    candidates: list[tuple[str, list[str], str]] = []
+
+    # 1. Single letter doubling
+    for i, ch in enumerate(clean_name):
+        var = clean_name[:i+1] + ch + clean_name[i+1:]
+        candidates.append((var, [ch], f"'{ch}' অক্ষরের সুষম বিস্তার"))
+
+    # 2. Aspirated consonant conversions (T->TH, D->DH, K->KH, S->SH)
+    for src, dst in [("T", "TH"), ("D", "DH"), ("K", "KH"), ("S", "SH")]:
+        if src in clean_name:
+            var = clean_name.replace(src, dst, 1)
+            candidates.append((var, ["H"], f"'{src}' কে '{dst}'-এ রূপান্তর"))
+
+    # 3. Auspicious suffixes
+    SUFFIXES = [
+        ("A", ["A"], "রবি ও বৃহস্পতির শুভ বৃদ্ধি"),
+        ("I", ["I"], "সূর্য ও বুধের মেধা সংযোগ"),
+        ("H", ["H"], "বুধের বাণিজ্যিক স্থিতিশীলতা"),
+        ("N", ["N"], "যোগাযোগ দক্ষতা বৃদ্ধি"),
+        ("S", ["S"], "বৃহস্পতির সামাজিক সম্মান"),
+        ("R", ["R"], "অগ্নিতত্ত্ব ও কাজের গতি"),
+        ("K", ["K"], "স্থায়িত্ব ও চারিত্রিক সুরক্ষা"),
+        ("TH", ["T", "H"], "জ্ঞান ও সংকল্পের সমন্বয়"),
+        ("SH", ["S", "H"], "নেতৃত্ব ও আধ্যাত্মিক শক্তি"),
+        ("EE", ["E", "E"], "ঐশ্বর্য ও আকর্ষণ শক্তি"),
+        ("AN", ["A", "N"], "খ্যাতি ও সৌভাগ্য বিস্তার"),
+        ("IN", ["I", "N"], "বুদ্ধিমত্তা ও দ্রুত সিদ্ধান্ত"),
+        ("RA", ["R", "A"], "শৌর্য ও তেজস্বী ব্যক্তিত্ব"),
+        ("ESH", ["E", "S", "H"], "রাজকীয় নেতৃত্ব ও আধিপত্য"),
+    ]
+    for sfx, letters, exp in SUFFIXES:
+        candidates.append((clean_name + sfx, letters, exp))
+
+    # 4. Double letter + Suffix combinations
+    for i, ch in enumerate(clean_name[:3]):
+        doubled = clean_name[:i+1] + ch + clean_name[i+1:]
+        for sfx, letters, exp in [("A", ["A"], "A"), ("H", ["H"], "H"), ("I", ["I"], "I"), ("S", ["S"], "S")]:
+            candidates.append((doubled + sfx, [ch] + letters, f"'{ch}' দ্বিত্ব ও অন্তে '{sfx}' সংযোজন"))
+
+    # Score and filter candidates
+    scored_candidates = []
+    for cand_str, added_lets, exp in candidates:
+        if cand_str in seen_spellings:
+            continue
+        if any(neg in cand_str for neg in NEGATIVE_SYLLABLES):
+            continue
+
+        comp = sum(CHALDEAN_MAP.get(c, 0) for c in cand_str)
+        s_digit = reduce_to_single_digit(comp)
+
+        if comp not in ROYAL_TARGETS:
+            continue
+        if s_digit in m_enemies or s_digit in b_enemies:
+            continue
+
+        priority = 0
+        if target_compound and comp == target_compound:
+            priority += 50
+        if comp in (19, 23, 37, 41, 46, 55):
+            priority += 30
+        if s_digit in m_friends:
+            priority += 15
+        if s_digit in b_friends:
+            priority += 10
+        # Prefer reasonable length diffs
+        priority -= len(added_lets) * 2
+
+        scored_candidates.append((priority, comp, s_digit, cand_str, added_lets, exp))
+
+    scored_candidates.sort(key=lambda x: x[0], reverse=True)
+
+    for _, comp, s_digit, cand_str, added_lets, exp in scored_candidates:
+        if cand_str in seen_spellings:
+            continue
+        seen_spellings.add(cand_str)
+        c_info = COMPOUND_NAMES.get(comp, {})
+        suggestions.append(NameCorrectionSuggestion(
+            suggested_spelling=cand_str.title(),
+            added_letters=added_lets,
+            new_compound=comp,
+            new_single_digit=s_digit,
+            compound_title=c_info.get("name", f"Royal Compound {comp}"),
+            compound_quality=c_info.get("quality", "Extremely Favorable"),
+            sound_harmony=exp,
+            why_auspicious=f"কম্পাউন্ড {comp} (মূল {s_digit}) জাতকের মূলাঙ্ক {mulank} ও ভাগ্যাঙ্ক {bhagyank}-এর সাথে পরম মিত্র সম্বন্ধযুক্ত। {c_info.get('meaning', '')}"
+        ))
+        if len(suggestions) >= 5:
+            break
+
+    guidance = (
+        "ক্যালডিয়ান নিউমারোলজি নিয়ম অনুযায়ী নতুন নামের বানানটি প্রতিদিন সকালে সাদা কাগজে লাল কালিতে ২১ বার করে "
+        "টানা ৪৩ দিন লিখলে শুভ স্পন্দন অবচেতন মনে সুদৃঢ়ভাবে সক্রিয় হয়। অফিসিয়াল ডকুমেন্টে অবিলম্বে বদল না করলেও "
+        "ভিজিটিং কার্ড, ইমেইল সিগনেচার ও সোশ্যাল মিডিয়া প্রোফাইলে এই বানান ব্যবহার করা যায়।"
+    )
+
+    return NameCorrectionResponse(
+        original_name=name,
+        original_compound=orig_compound,
+        original_quality=orig_info.get("quality", "Neutral"),
+        negative_syllables=neg_syllables_found,
+        suggestions=suggestions,
+        general_guidance=guidance,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Mobile Sim Comparison Suite Engine
+# ---------------------------------------------------------------------------
+
+def compare_mobile_numbers(
+    numbers: list[str],
+    mulank: int,
+    bhagyank: int,
+    profession: str | None = None,
+    birth_date: str | None = None,
+) -> MobileCompareResponse:
+    """Evaluates and ranks multiple mobile SIM numbers strictly under the 60%/40% pair dominance law."""
+    king_lucky = {
+        1: [1, 2, 3, 5, 9], 2: [1, 3, 5], 3: [1, 2, 3, 5, 7],
+        4: [1, 6, 7], 5: [1, 2, 3, 5, 6], 6: [4, 5, 6, 7],
+        7: [1, 4, 5, 6], 8: [3, 5, 6], 9: [1, 3, 5]
+    }
+    king_enemy = {
+        1: [8], 2: [4, 8, 9], 3: [6],
+        4: [2, 4, 8, 9], 5: [], 6: [3],
+        7: [], 8: [1, 2, 4, 8], 9: [2, 4]
+    }
+
+    PROFESSION_DIGITS = {
+        "it": [1, 5, 7],
+        "tech": [1, 5, 7],
+        "business": [1, 5, 6],
+        "finance": [1, 5, 6],
+        "medicine": [1, 2, 7],
+        "health": [1, 2, 7],
+        "luxury": [3, 6],
+        "creative": [3, 6],
+        "real_estate": [8, 4, 1],
+        "education": [3, 7, 1],
+    }
+
+    req_digits = PROFESSION_DIGITS.get(profession.lower() if profession else "", [])
+    items: list[MobileComparisonItem] = []
+
+    for num in numbers:
+        clean_mob = re.sub(r"[^0-9]", "", num)
+        if len(clean_mob) < 10:
+            clean_mob = clean_mob.ljust(10, "0")
+        elif len(clean_mob) > 10:
+            clean_mob = clean_mob[-10:]
+
+        digits = [int(ch) for ch in clean_mob]
+        total_sum = sum(digits)
+        compound_num = total_sum
+        single_num = reduce_to_single_digit(total_sum)
+
+        score = 60
+
+        if single_num in king_lucky.get(mulank, []):
+            score += 15
+        elif single_num in king_enemy.get(mulank, []):
+            score -= 20
+
+        if single_num in king_lucky.get(bhagyank, []):
+            score += 10
+        elif single_num in king_enemy.get(bhagyank, []):
+            score -= 15
+
+        if single_num == 1 and compound_num in (46, 64, 37, 55):
+            score += 8
+        elif single_num == 5 and compound_num in (41, 32, 50, 59, 23):
+            score += 8
+        elif single_num == 6 and compound_num in (42, 24, 33, 60):
+            score += 8
+        elif compound_num in (28, 48, 16, 18, 44):
+            score -= 25
+
+        pos_pairs: list[str] = []
+        neg_pairs: list[str] = []
+
+        for i in range(len(clean_mob) - 1):
+            pair_str = clean_mob[i:i+2]
+            if pair_str in ("15", "51", "13", "31", "56", "65", "37", "73", "25", "52", "29", "92", "47", "74", "38", "83", "75", "57", "69", "96", "78", "87"):
+                pos_pairs.append(pair_str)
+                score += 3
+            elif pair_str in ("18", "81", "16", "61", "14", "41", "28", "82", "48", "84", "45", "54", "46", "64", "67", "76", "23", "26", "62", "27", "72", "34", "43", "68", "86", "89", "98"):
+                neg_pairs.append(pair_str)
+                score -= 6
+
+        zero_c = digits.count(0)
+        if zero_c >= 2:
+            score -= 12
+
+        if digits.count(4) >= 3 or digits.count(8) >= 3:
+            score -= 10
+
+        prof_match = False
+        if req_digits:
+            matched_count = sum(1 for d in req_digits if d in digits)
+            if matched_count >= 2:
+                score += 7
+                prof_match = True
+        else:
+            prof_match = True
+
+        score = max(10, min(99, score))
+
+        if score >= 85:
+            grade = "A+ (অত্যন্ত শুভ ও বরকতময়)"
+        elif score >= 75:
+            grade = "A (শুভ ও ফলপ্রসূ)"
+        elif score >= 60:
+            grade = "B (মধ্যম মানের)"
+        elif score >= 45:
+            grade = "C (মিশ্র ও সতর্কতামূলক)"
+        else:
+            grade = "D (প্রতিকূল ও পরিহার্য)"
+
+        compound_qual = "শুভ রয়্যাল কম্পাউন্ড" if compound_num in (19, 23, 24, 32, 33, 37, 41, 42, 46, 50, 51, 55, 60, 64) else ("অশুভ কম্পাউন্ড (২৮/৪৮/১৬/১৮)" if compound_num in (28, 48, 16, 18, 44) else f"কম্পাউন্ড {compound_num}")
+
+        verdict = f"টোটাল {single_num} ({compound_num})। {len(pos_pairs)}টি শুভ জোড়া এবং {len(neg_pairs)}টি প্রতিকূল জোড়া রয়েছে।"
+        if neg_pairs:
+            verdict += f" বিশেষ সতর্কবার্তা: {', '.join(neg_pairs[:3])} জোড়া বিদ্যমান।"
+
+        items.append(MobileComparisonItem(
+            mobile_number=num,
+            single_digit=single_num,
+            compound_number=compound_num,
+            compound_quality=compound_qual,
+            compatibility_score=score,
+            grade=grade,
+            positive_pairs=pos_pairs,
+            negative_pairs=neg_pairs,
+            profession_match=prof_match,
+            verdict_bn=verdict,
+        ))
+
+    items.sort(key=lambda x: x.compatibility_score, reverse=True)
+    best_num = items[0].mobile_number if items else ""
+
+    recs = [
+        f"সর্বোত্তম বিকল্প: {best_num} (কম্প্যাটিবিলিটি স্কোর: {items[0].compatibility_score}/১০০, গ্রেড: {items[0].grade})।",
+        "মোবাইল নম্বরের শেষ দুটি অঙ্ক কখনোই শত্রু সংখ্যা (যেমন ১৮, ৮১, ২৮, ৮২ বা ৪) হওয়া উচিত নয়; শেষ অঙ্ক ১, ৫ বা ৬ হলে সবচেয়ে বেশি অর্থ ও সম্মান অর্জিত হয়।",
+        "প্রতিদিনের কল ও লেনদেনের জন্য উচ্চ স্কোরের সিমটি প্রাইমারি ও হোয়াটসঅ্যাপ নম্বর হিসেবে ব্যবহার করুন।"
+    ]
+
+    return MobileCompareResponse(
+        best_number=best_num,
+        items=items,
+        recommendations_bn=recs,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Business, Brand & Company Name Evaluator Engine
+# ---------------------------------------------------------------------------
+
+def evaluate_business_numerology(
+    brand_name: str,
+    industry: str,
+    owner_mulank: int | None = None,
+    owner_bhagyank: int | None = None,
+) -> BusinessNumerologyResponse:
+    """Evaluates business brand name Chaldean vibration, industry affinity & founder compatibility."""
+    clean_brand = re.sub(r"[^A-Za-z]", "", brand_name).upper()
+    compound_num = sum(CHALDEAN_MAP.get(ch, 0) for ch in clean_brand)
+    single_num = reduce_to_single_digit(compound_num)
+
+    INDUSTRY_FAVORITES: dict[str, dict[str, Any]] = {
+        "technology": {
+            "roots": [1, 5],
+            "compounds": [19, 23, 37, 41, 50, 55],
+            "desc": "প্রযুক্তি, সফটওয়্যার ও কৃত্রিম বুদ্ধিমত্তা ক্ষেত্রে বুধ (৫) ও সূর্যের (১) উদ্ভাবনী তেজ এবং নেতৃত্ব অতি প্রয়োজনীয়।"
+        },
+        "finance": {
+            "roots": [1, 5, 6],
+            "compounds": [19, 37, 41, 51, 55],
+            "desc": "ব্যাংকিং, বিনিয়োগ ও আর্থিক লেনদেনের ক্ষেত্রে বুধ (৫-বাণিজ্য) ও শুক্র (৬-অর্থ/সম্পদ) সর্বাধিক স্থিতিশীলতা প্রদান করে।"
+        },
+        "luxury_fashion": {
+            "roots": [6, 3],
+            "compounds": [24, 33, 42, 51, 60],
+            "desc": "ফ্যাশন, রূপচর্চা, লাক্সারি ব্র্যান্ড ও মিডিয়াতে শুক্র (৬) ও বৃহস্পতির (৩) রাজকীয় আভিজাত্য সাফল্য নিশ্চিত করে।"
+        },
+        "real_estate": {
+            "roots": [8, 1, 5],
+            "compounds": [37, 46, 53, 55],
+            "desc": "জমিজমা, আবাসন ও অবকাঠামো নির্মাণে শনি (৮-ভূমি) ও সূর্যের (১-কর্তৃত্ব) স্থায়িত্ব অত্যন্ত অনুকূল।"
+        },
+        "health": {
+            "roots": [1, 7, 2],
+            "compounds": [19, 25, 43, 46, 52],
+            "desc": "চিকিৎসা, ওষুধ ও স্বাস্থ্যসেবা খাতে সূর্যের জীবনীশক্তি (১) এবং কেতুর গবেষণা ও রোগ নিরাময় ক্ষমতা (৭) শ্রেষ্ঠ ফলদায়ক।"
+        },
+        "food": {
+            "roots": [2, 3, 6],
+            "compounds": [24, 33, 51],
+            "desc": "খাদ্যদ্রব্য, রেস্তোরাঁ ও ক্যাফে ব্যবসায় চন্দ্রের পুষ্টিগুণ (২) এবং শুক্রের রসাস্বাদন (৬) গ্রাহকপ্রিয়তা সৃষ্টি করে।"
+        },
+        "education": {
+            "roots": [3, 5, 7],
+            "compounds": [21, 23, 37, 41],
+            "desc": "শিক্ষা, একাডেমি ও প্রশিক্ষণ খাতে দেবগুরু বৃহস্পতি (৩) ও বুধের (৫) বাণী ও প্রজ্ঞার প্রভাব অদ্বিতীয়।"
+        },
+    }
+
+    ind_key = "technology"
+    ind_input = industry.lower()
+    for k in INDUSTRY_FAVORITES:
+        if k in ind_input or ind_input in k:
+            ind_key = k
+            break
+
+    ind_data = INDUSTRY_FAVORITES[ind_key]
+    fav_roots = ind_data["roots"]
+    fav_compounds = ind_data["compounds"]
+
+    if single_num in fav_roots and compound_num in fav_compounds:
+        ind_score = 95
+        ind_suit = f"অসাধারণ সামঞ্জস্যপূর্ণ! {ind_data['desc']}"
+    elif single_num in fav_roots:
+        ind_score = 85
+        ind_suit = f"উচ্চমাত্রায় উপযুক্ত। একক সংখ্যা {single_num} এই শিল্পের মূল কারক গ্রহের সাথে মিলছে।"
+    elif single_num in (4, 8) and ind_key in ("luxury_fashion", "food"):
+        ind_score = 35
+        ind_suit = f"প্রতিকূল সংঘাত! {ind_key} শিল্পের সাথে রাহু/শনির শক্তি গ্রাহক আকর্ষণে বাধা তৈরি করতে পারে।"
+    else:
+        ind_score = 65
+        ind_suit = f"মধ্যম মানের সামঞ্জস্য। কিছুটা ব্র্যান্ডিং ও সাব-ট্যাগলাইনে শুভ সংখ্যার সংযোগ প্রয়োজন।"
+
+    owner_score = 75
+    if owner_mulank is not None:
+        m_friends = FRIENDSHIP_TABLE.get(owner_mulank, {}).get("friends", [])
+        m_enemies = FRIENDSHIP_TABLE.get(owner_mulank, {}).get("enemies", [])
+        if single_num in m_friends:
+            owner_score += 15
+        elif single_num in m_enemies:
+            owner_score -= 30
+
+    if owner_bhagyank is not None:
+        b_friends = FRIENDSHIP_TABLE.get(owner_bhagyank, {}).get("friends", [])
+        b_enemies = FRIENDSHIP_TABLE.get(owner_bhagyank, {}).get("enemies", [])
+        if single_num in b_friends:
+            owner_score += 10
+        elif single_num in b_enemies:
+            owner_score -= 20
+
+    owner_score = max(20, min(100, owner_score))
+
+    c_info = COMPOUND_NAMES.get(compound_num, {
+        "name": f"Compound {compound_num}",
+        "meaning": f"মূল সংখ্যা {single_num}-এর অধীনে পরিচালিত একটি ব্যবসায়িক নাম।"
+    })
+
+    recs = [
+        f"ব্র্যান্ডের লোগো ও ভিজিটিং কার্ডে মূল সংখ্যা {single_num}-এর অনুকূল শুভ রং ব্যবহার করুন।",
+        f"কোম্পানির ইনভয়েস ও ব্যাংকিং ক্ষেত্রে একক সংখ্যা {single_num} বা {fav_roots[0]} অঙ্কের সমন্বয় সৌভাগ্য বৃদ্ধি করবে।",
+        "কোম্পানি প্রতিষ্ঠার উদ্বোধনী দিন বা পণ্যের ফার্স্ট লঞ্চিং জাতকের মূলাঙ্ক অথবা ব্র্যান্ড সংখ্যার দিনে সম্পাদন করুন।"
+    ]
+
+    return BusinessNumerologyResponse(
+        brand_name=brand_name,
+        industry=industry,
+        chaldean_compound=compound_num,
+        single_digit=single_num,
+        compound_meaning=c_info.get("meaning", ""),
+        industry_suitability=ind_suit,
+        industry_fit_score=ind_score,
+        owner_harmony_score=owner_score,
+        favorable_business_numbers=fav_compounds,
+        actionable_recommendations=recs,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Vehicle Plate & Bank Account Numerology Audit Engine
+# ---------------------------------------------------------------------------
+
+def audit_vehicle_bank_numerology(
+    input_string: str,
+    audit_type: str = "vehicle",
+    mulank: int = 1,
+    bhagyank: int = 1,
+) -> VehicleBankAuditResponse:
+    """Audits Vehicle license plate or Bank account number for safety, accidents, and financial retention."""
+    if audit_type == "vehicle":
+        clean_str = re.sub(r"[^A-Za-z0-9]", "", input_string).upper()
+        total_sum = 0
+        extracted_digits_list = []
+        for ch in clean_str:
+            if ch.isalpha():
+                v = CHALDEAN_MAP.get(ch, 0)
+                total_sum += v
+                extracted_digits_list.append(f"{ch}({v})")
+            elif ch.isdigit():
+                v = int(ch)
+                total_sum += v
+                extracted_digits_list.append(ch)
+
+        compound_num = total_sum
+        single_num = reduce_to_single_digit(compound_num)
+        digits_summary = " ".join(extracted_digits_list)
+
+        c_info = COMPOUND_NAMES.get(compound_num, {"quality": "Neutral"})
+        quality = c_info.get("quality", "Neutral")
+
+        risk_alert = None
+        if single_num in (4, 8) or compound_num in (16, 18, 28, 44, 48):
+            safety = "ঝুঁকিপূর্ণ ও সতর্কতামূলক (High Risk / Vulnerable)"
+            risk_alert = (
+                f"গাড়ির নম্বরের টোটাল {single_num} (কম্পাউন্ড {compound_num}) রাহু বা শনির তীব্র কারকতা প্রদর্শন করে। "
+                "আকস্মিক যান্ত্রিক ত্রুটি, ট্রাফিক জরিমানা বা পথদুর্ঘটনার প্রবণতা তৈরি হতে পারে।"
+            )
+            remedy = (
+                "প্রতিকার: গাড়ির সামনের ড্যাশবোর্ডে পিতলের পঞ্চমুখী হনুমানজি বা গণেশজি স্থাপন করুন। "
+                "গাড়ির ভেতরে একটি প্রাকৃতিক কর্পূরের পুঁটলি রাখুন এবং প্রতি শনিবার টায়ারে সামান্য কর্পূরের জল ছেটান।"
+            )
+        elif single_num in (1, 3, 5, 6):
+            safety = "চমৎকার নিরাপদ ও সৌভাগ্যজনক (Safe & Auspicious)"
+            remedy = "গাড়িটি শুভ তরঙ্গে পরিচালিত। প্রতি পূর্ণিমায় বা অমাবস্যায় একবার পরিচ্ছন্ন রাখাই যথেষ্ট।"
+        else:
+            safety = "মধ্যম নিরাপদ (Moderately Safe)"
+            remedy = "গাড়ির গতি নিয়ন্ত্রণে রাখুন এবং ড্যাশবোর্ডে একটি রৌপ্য নির্মিত ময়ূরপালক বা শ্রীযন্ত্র রাখুন।"
+
+    else:
+        digits_only = re.sub(r"[^0-9]", "", input_string)
+        total_sum = sum(int(ch) for ch in digits_only) if digits_only else 0
+        compound_num = total_sum
+        single_num = reduce_to_single_digit(compound_num)
+        digits_summary = digits_only
+
+        c_info = COMPOUND_NAMES.get(compound_num, {"quality": "Neutral"})
+        quality = c_info.get("quality", "Neutral")
+
+        risk_alert = None
+        if single_num in (5, 6, 1):
+            safety = "অত্যন্ত শুভ ও প্রাচুর্যবর্ধক (High Wealth Retention)"
+            remedy = "অ্যাকাউন্টে নিয়মিত আর্থিক প্রবাহ বজায় থাকবে। প্রতি শুক্রবার শুভ লেনদেন সম্পন্ন করুন।"
+        elif single_num == 4:
+            safety = "অস্থির ও অপ্রত্যাশিত ব্যয়ের ফাঁদ (Unstable Outflows)"
+            risk_alert = "রাহুর প্রভাবে অপ্রত্যাশিত খরচ ও টাকা আটকে যাওয়ার আশঙ্কা থাকে।"
+            remedy = "পাসবই বা ব্যাংক লকারে সামান্য চন্দন ও কেশরের তিলক লাগান এবং সবুজ কাপড়ে মোড়ানো একটি রূপোর কয়েন রাখুন।"
+        elif single_num == 8:
+            safety = "বিলম্বিত বৃদ্ধি ও কঠোর সঞ্চয় (Slow Accumulation)"
+            risk_alert = "শনির প্রভাবে সঞ্চয় অত্যন্ত ধীরগতিতে অগ্রসর হয়।"
+            remedy = "অ্যাকাউন্টের সাথে ৫ বা ৬ যোগফলের মোবাইল নম্বর লিঙ্ক করুন এবং দান কার্যে সামান্য অর্থ বিনিয়োগ করুন।"
+        else:
+            safety = "স্বাভাবিক ও ভারসাম্যপূর্ণ (Moderate Balance)"
+            remedy = "ব্যবসায়িক লেনদেনের ক্ষেত্রে শুভ দিনে বড় অংকের লেনদেন করুন।"
+
+    return VehicleBankAuditResponse(
+        input_string=input_string,
+        audit_type=audit_type,
+        extracted_digits=digits_summary,
+        total_sum=total_sum,
+        single_digit=single_num,
+        compound_number=compound_num,
+        compound_quality=quality,
+        safety_rating=safety,
+        risk_alert=risk_alert,
+        remedy_bn=remedy,
+    )
+
