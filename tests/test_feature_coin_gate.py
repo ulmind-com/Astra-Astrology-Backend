@@ -31,6 +31,8 @@ def test_public_feature_pricing_endpoint():
         "nakshatra_calculator",
         "palm_reading",
         "face_reading",
+        "numerology",
+        "vastu",
     ]
     for key in expected_keys:
         assert key in features
@@ -53,6 +55,8 @@ async def test_feature_pricing_update_and_enforcement():
             "kundli_coins": 20,
             "daily_horoscope_coins": 0,
             "nakshatra_calculator_coins": 10,
+            "numerology_coins": 15,
+            "vastu_coins": 0,
         },
         admin_id=None,
     )
@@ -61,6 +65,8 @@ async def test_feature_pricing_update_and_enforcement():
     assert settings.kundli_coins == 20
     assert settings.daily_horoscope_coins == 0
     assert settings.nakshatra_calculator_coins == 10
+    assert settings.numerology_coins == 15
+    assert settings.vastu_coins == 0
 
 
 @pytest.mark.asyncio
@@ -76,6 +82,10 @@ async def test_realtime_feature_pricing_broadcast():
     assert payload["kundli"]["enabled"] == platform.kundli_enabled
     assert "daily_horoscope" in payload
     assert "palm_reading" in payload
+    assert "numerology" in payload
+    assert payload["numerology"]["coins"] == platform.numerology_coins
+    assert "vastu" in payload
+    assert payload["vastu"]["coins"] == platform.vastu_coins
 
     # Test dummy connection queueing
     class DummyWs:

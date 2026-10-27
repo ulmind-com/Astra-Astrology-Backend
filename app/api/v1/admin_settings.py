@@ -58,6 +58,10 @@ def _out(doc) -> PlatformSettingsOut:
         rashi_calculator_enabled=getattr(doc, "rashi_calculator_enabled", True),
         nakshatra_calculator_coins=getattr(doc, "nakshatra_calculator_coins", 10),
         nakshatra_calculator_enabled=getattr(doc, "nakshatra_calculator_enabled", True),
+        numerology_coins=getattr(doc, "numerology_coins", 20),
+        numerology_enabled=getattr(doc, "numerology_enabled", True),
+        vastu_coins=getattr(doc, "vastu_coins", 25),
+        vastu_enabled=getattr(doc, "vastu_enabled", True),
         updated_at=doc.updated_at,
     )
 

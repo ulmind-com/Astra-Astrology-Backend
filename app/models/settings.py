@@ -96,6 +96,12 @@ class PlatformSettings(TimestampedDocument):
     face_reading_coins: int = Field(default=25, ge=0, le=1_000_000)
     face_reading_enabled: bool = True
 
+    numerology_coins: int = Field(default=20, ge=0, le=1_000_000)
+    numerology_enabled: bool = True
+
+    vastu_coins: int = Field(default=25, ge=0, le=1_000_000)
+    vastu_enabled: bool = True
+
     updated_by: PydanticObjectId | None = None
 
     class Settings:

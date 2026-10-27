@@ -211,6 +211,12 @@ class PlatformSettingsOut(BaseModel):
     nakshatra_calculator_coins: int = 10
     nakshatra_calculator_enabled: bool = True
 
+    numerology_coins: int = 20
+    numerology_enabled: bool = True
+
+    vastu_coins: int = 25
+    vastu_enabled: bool = True
+
     updated_at: datetime
 
 
@@ -256,6 +262,12 @@ class FeaturePricingUpdate(BaseModel):
 
     face_reading_coins: int | None = Field(default=None, ge=0, le=1_000_000)
     face_reading_enabled: bool | None = None
+
+    numerology_coins: int | None = Field(default=None, ge=0, le=1_000_000)
+    numerology_enabled: bool | None = None
+
+    vastu_coins: int | None = Field(default=None, ge=0, le=1_000_000)
+    vastu_enabled: bool | None = None
 
 
 class ConsultationDefaultsUpdate(BaseModel):
