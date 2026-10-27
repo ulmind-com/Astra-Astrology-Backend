@@ -1,0 +1,705 @@
+"""16-Zone, 32-Pada Vastu Shastra Calculation and Audit Engine.
+
+Derived directly from Client's Resource Documents:
+- Rahul Pandat PDFs / Vastu Rules / 8d3ab98adef23b71.pdf (Deepak Rajput Advanced Vastu, 55 pp)
+- Rahul Pandat PDFs / Vastu Rules / 6ab2d85272f5ea7e.pdf (120 Vastu Tips & Miraculous Remedies)
+- Rahul Pandat PDFs / Vastu Rules / 606123a3cc7abcd8.pdf (Essentials of Vastu, 34 pp)
+- Rahul Pandat PDFs / Vastu Rules / a0df3a72402320df.pdf (16 Zones, Organs, Pathologies, 115 pp)
+- Rahul Pandat PDFs / Vastu Rules / fdceabd8c2a79bfd.pdf (Energy Fields & Grids, 130 pp)
+"""
+
+from typing import Any
+from app.schemas.vastu import (
+    PadaInfo,
+    PlacementEvaluationItem,
+    VastuAuditResponse,
+    VastuRemedyItem,
+    VastuZoneInfo,
+)
+
+# ---------------------------------------------------------------------------
+# 32 Padas Definition (11.25° each, N5 centered at 0.0° True North)
+# ---------------------------------------------------------------------------
+# N5 spans 354.375° to 5.625°
+# Quadrant structure: North (N1-N8), East (E1-E8), South (S1-S8), West (W1-W8)
+
+PADA_DEFINITIONS: list[dict[str, Any]] = [
+    # North Quadrant
+    {"pada_id": "N1", "quadrant": "North", "deity": "Roga (রোগ)", "center": 309.375, "auspicious": False, "effects": "দীর্ঘস্থায়ী অসুস্থতা, ঈর্ষা ও শত্রুভীতি বৃদ্ধি পায়।", "challenge": "অসুস্থতা ও দুর্বল জীবনীশক্তি"},
+    {"pada_id": "N2", "quadrant": "North", "deity": "Naga (নাগ)", "center": 320.625, "auspicious": False, "effects": "উদ্বেগ, আত্মীয়দের সাথে বৈরিতা ও মানসিক অস্থিরতা।", "challenge": "মানসিক ক্লেশ ও সম্পর্কের টানাপোড়েন"},
+    {"pada_id": "N3", "quadrant": "North", "deity": "Mukhya (মুখ্য)", "center": 331.875, "auspicious": True, "effects": "বিশাল ধনলাভ, বাণিজ্যিক সমৃদ্ধি ও নতুন অর্থপ্রবাহের পথ উন্মোচন।", "challenge": "অতি-উচ্চাকাঙ্ক্ষা নিয়ন্ত্রণ"},
+    {"pada_id": "N4", "quadrant": "North", "deity": "Bhallat (ভল্লাট)", "center": 343.125, "auspicious": True, "effects": "পূর্বপুরুষের সম্পত্তি লাভ, প্রচুর সঞ্চয় ও অক্ষয় ঐশ্বর্য।", "challenge": "সম্পদের সদ্ব্যবহার"},
+    {"pada_id": "N5", "quadrant": "North", "deity": "Soma (সোম / কুবের)", "center": 354.375, "auspicious": False, "effects": "পারিবারিক টানাপোড়েন, সন্তানহীনতার চিন্তা ও আবেগীয় সংকট।", "challenge": "আবেগীয় বিচ্ছিন্নতা"},
+    {"pada_id": "N6", "quadrant": "North", "deity": "Bhujanga (ভুজঙ্গ)", "center": 5.625, "auspicious": False, "effects": "পুত্রসন্তানের সাথে মনোমালিন্য, অহংকার ও আত্মঘাতী সিদ্ধান্ত।", "challenge": "পারিবারিক অসহযোগিতা"},
+    {"pada_id": "N7", "quadrant": "North", "deity": "Aditi (অদিতি)", "center": 16.875, "auspicious": False, "effects": "গৃহের নারীদের মধ্যে অস্থিরতা ও অতিরিক্ত দুশ্চিন্তা।", "challenge": "নারীদের মানসিক চাপ"},
+    {"pada_id": "N8", "quadrant": "North", "deity": "Diti (দিতি)", "center": 28.125, "auspicious": False, "effects": "অতিরিক্ত ব্যয়, ঋণগ্রস্ততা ও আয়ের তুলনায় খরচের আধিক্য।", "challenge": "অর্থ অপচয়"},
+
+    # East Quadrant
+    {"pada_id": "E1", "quadrant": "East", "deity": "Shikhi (শিখী / অগ্নি)", "center": 39.375, "auspicious": False, "effects": "অগ্নিকাণ্ড বা বৈদ্যুতিক বিপদের ঝুঁকি, আর্থিক ক্ষতি।", "challenge": "আকস্মিক দুর্যোগ"},
+    {"pada_id": "E2", "quadrant": "East", "deity": "Parjanya (পর্জন্য)", "center": 50.625, "auspicious": False, "effects": "কন্যা সন্তানের স্বাস্থ্য সমস্যা ও আর্থিক অনটন।", "challenge": "পারিবারিক ব্যয়বৃদ্ধি"},
+    {"pada_id": "E3", "quadrant": "East", "deity": "Jayanta (জয়ন্ত)", "center": 61.875, "auspicious": True, "effects": "বিজয়, রাজকীয় সম্মান, সামাজিক গ্রহণযোগ্যতা ও সৌভাগ্য।", "challenge": "সততা বজায় রাখা"},
+    {"pada_id": "E4", "quadrant": "East", "deity": "Indra (ইন্দ্র)", "center": 73.125, "auspicious": True, "effects": "সরকারি সহযোগিতা, উচ্চপদস্থ কর্মকর্তাদের কৃপা ও প্রভাবশালী খ্যাতি।", "challenge": "অহংকার পরিহার"},
+    {"pada_id": "E5", "quadrant": "East", "deity": "Surya (সূর্য)", "center": 84.375, "auspicious": False, "effects": "অতিরিক্ত আত্মম্ভরিতা, ক্রোধ ও পরিবারের সদস্যদের মধ্যে বিরোধ।", "challenge": "উগ্র মনোভাব"},
+    {"pada_id": "E6", "quadrant": "East", "deity": "Satya (সত্য)", "center": 95.625, "auspicious": False, "effects": "বিশ্বাসভঙ্গ, প্রতিশ্রুতি পালনে ব্যর্থতা ও আইনি জটিলতা।", "challenge": "মিথ্যা অপবাদ"},
+    {"pada_id": "E7", "quadrant": "East", "deity": "Bhrisha (ভৃশ)", "center": 106.875, "auspicious": False, "effects": "ক্রোধোন্মাদনা, উগ্র আচরণ ও আত্মীয়দের সাথে বিচ্ছেদ।", "challenge": "হঠকারিতা"},
+    {"pada_id": "E8", "quadrant": "East", "deity": "Antariksha (অন্তরীক্ষ)", "center": 118.125, "auspicious": False, "effects": "চুরি, প্রতারণা ও আকস্মিক আর্থিক ডাকাতি।", "challenge": "প্রতারণা ঝুঁকি"},
+
+    # South Quadrant
+    {"pada_id": "S1", "quadrant": "South", "deity": "Anila (অনিল / বায়ু)", "center": 129.375, "auspicious": False, "effects": "সন্তান প্রসবের জটিলতা, ব্যবসায় মন্দা ও তীব্র হতাশা।", "challenge": "উদ্যমহীনতা"},
+    {"pada_id": "S2", "quadrant": "South", "deity": "Pusna (পূষা)", "center": 140.625, "auspicious": False, "effects": "পরাধীনতা, দাসত্বতুল্য চাকরি ও কর্মক্ষেত্রে অবমূল্যায়ন।", "challenge": "স্বাধীনতার অভাব"},
+    {"pada_id": "S3", "quadrant": "South", "deity": "Vitatha (বিতথ)", "center": 151.875, "auspicious": True, "effects": "উদ্যোক্তা হিসেবে বিপুল লাভ, নির্ভীক কর্মশক্তি ও প্রতিপত্তি।", "challenge": "অসাধু পথ পরিহার"},
+    {"pada_id": "S4", "quadrant": "South", "deity": "Gruhakshat (গৃহক্ষত)", "center": 163.125, "auspicious": True, "effects": "সন্তানদের সার্বিক সমৃদ্ধি, পারিবারিক আনন্দ ও সামাজিক মর্যাদা।", "challenge": "পারিবারিক দায়িত্ব"},
+    {"pada_id": "S5", "quadrant": "South", "deity": "Yama (যম)", "center": 174.375, "auspicious": False, "effects": "চরম সংকট — অকাল মৃত্যুভীতি, দীর্ঘস্থায়ী রোগ ও পুলিশি ঝামেলা।", "challenge": "মরণসম সংকট"},
+    {"pada_id": "S6", "quadrant": "South", "deity": "Gandharva (গন্ধর্ব)", "center": 185.625, "auspicious": False, "effects": "অপমান, আর্থিক দেউলিয়াত্ব ও সামাজিক অপযশ।", "challenge": "সম্মানহানি"},
+    {"pada_id": "S7", "quadrant": "South", "deity": "Bhrangaraj (ভৃঙ্গরাজ)", "center": 196.875, "auspicious": False, "effects": "কঠোর শ্রমেও চরম ব্যর্থতা, সঞ্চিত অর্থ নাশ।", "challenge": "শ্রমে ব্যর্থতা"},
+    {"pada_id": "S8", "quadrant": "South", "deity": "Mriga (মৃগ)", "center": 208.125, "auspicious": False, "effects": "পুত্রসন্তানের রোগ, পরিবারের শক্তির অবক্ষয় ও দুর্বল প্রতিরোধ।", "challenge": "শক্তিহীনতা"},
+
+    # West Quadrant
+    {"pada_id": "W1", "quadrant": "West", "deity": "Pitri (পিতৃ / নৈঋত)", "center": 219.375, "auspicious": False, "effects": "পিতৃপুরুষের অসন্তোষ, দারিদ্র্য ও দীর্ঘস্থায়ী পারিবারিক সংকট।", "challenge": "পিতৃ দোষ"},
+    {"pada_id": "W2", "quadrant": "West", "deity": "Dauvarika (দৌবারিক)", "center": 230.625, "auspicious": False, "effects": "সম্পর্কের অস্থিতিশীলতা, অতিরিক্ত সন্দেহ ও দাম্পত্য দূরত্ব।", "challenge": "অবিশ্বাস"},
+    {"pada_id": "W3", "quadrant": "West", "deity": "Sugriva (সুগ্রীব)", "center": 241.875, "auspicious": True, "effects": "দ্রুত বস্তুগত সমৃদ্ধি, ব্যবসায়িক সম্প্রসারণ ও নির্ভরযোগ্য মিত্রলাভ।", "challenge": "বিনয়ী থাকা"},
+    {"pada_id": "W4", "quadrant": "West", "deity": "Pushpadanta (পুষ্পদন্ত)", "center": 253.125, "auspicious": True, "effects": "অটল ধনসম্পদ, সামাজিক প্রতিপত্তি ও কন্যা সন্তানের সৌভাগ্য।", "challenge": "ধনের অহংকার"},
+    {"pada_id": "W5", "quadrant": "West", "deity": "Varuna (বরুণ)", "center": 264.375, "auspicious": False, "effects": "অতিরিক্ত প্রত্যাশা, হতাশা ও মাদকাসক্তির ঝুঁকি।", "challenge": "আকাঙ্ক্ষার অপূর্ণতা"},
+    {"pada_id": "W6", "quadrant": "West", "deity": "Asura (অসুর)", "center": 275.625, "auspicious": False, "effects": "আইনি নোটিস, ট্যাক্স জটিলতা ও সরকারি দণ্ডাদেশ।", "challenge": "রাজদণ্ড"},
+    {"pada_id": "W7", "quadrant": "West", "deity": "Shesha (শোষ)", "center": 286.875, "auspicious": False, "effects": "শারীরিক দুর্বলতা, বিষণ্নতা ও জীবনীশক্তির অবক্ষয়।", "challenge": "হতাশা ও ক্লান্তি"},
+    {"pada_id": "W8", "quadrant": "West", "deity": "Papadayakshma (পাপযক্ষ্মা)", "center": 298.125, "auspicious": False, "effects": "অনৈতিক কাজে লিপ্ত হওয়া, গুপ্ত রোগ ও সামাজিক কলঙ্ক।", "challenge": "অসৎ প্রবৃত্তি"},
+]
+
+
+# ---------------------------------------------------------------------------
+# 16 Directional Zones Definitions
+# ---------------------------------------------------------------------------
+
+ZONE_METADATA: dict[str, dict[str, Any]] = {
+    "N": {
+        "name": "North (উত্তর)", "name_bn": "উত্তর দিক (কুবের স্থান)", "center": 0.0,
+        "element": "Water", "element_bn": "জল তত্ত্ব",
+        "organs": "কিডনি, মূত্রাশয় ও কান", "dosha": "Kapha (কফ)",
+        "life_aspect": "নতুন সুযোগ, অর্থ উপার্জন ও কর্মসংস্থান",
+        "ideal": ["প্রবেশদ্বার (N3, N4)", "আন্ডারগ্রাউন্ড ওয়াটার", "মানিব্যাগ/লকার", "লিভিং রুম"],
+        "prohibited": ["রান্নাঘর (অগ্নি)", "টয়লেট", "ওভারহেড ভারী ট্যাঙ্ক", "লাল/গোলাপি রঙ"],
+        "self_colors": ["Blue", "Light Blue", "Black"],
+        "enhancing": ["White", "Silver", "Grey"],
+        "destructive": ["Yellow", "Red", "Orange"],
+    },
+    "NNE": {
+        "name": "North-North-East (উত্তর-উত্তর-পূর্ব)", "name_bn": "স্বাস্থ্য ও আরোগ্য জোন", "center": 22.5,
+        "element": "Water", "element_bn": "জল তত্ত্ব",
+        "organs": "রোগ প্রতিরোধ ক্ষমতা ও শারীরিক জীবনীশক্তি", "dosha": "Kapha",
+        "life_aspect": "সুস্বাস্থ্য, নিরাময় ও প্রতিরোধ ক্ষমতা",
+        "ideal": ["ওষুধ সংরক্ষণ", "ধ্যান কক্ষ", "জলপ্রবাহ"],
+        "prohibited": ["টয়লেট", "রান্নাঘর", "ভারী আবর্জনা"],
+        "self_colors": ["Blue", "Off-White"],
+        "enhancing": ["White", "Silver"],
+        "destructive": ["Red", "Dark Yellow"],
+    },
+    "NE": {
+        "name": "North-East (উত্তর-পূর্ব / ঈশান)", "name_bn": "ঈশান কোণ (ঈশ্বর স্থান)", "center": 45.0,
+        "element": "Water/Ether", "element_bn": "জল ও আকাশ তত্ত্ব",
+        "organs": "মস্তিষ্ক, স্নায়ুতন্ত্র ও চক্ষু", "dosha": "Vata-Kapha",
+        "life_aspect": "মানসিক স্পষ্টতা, প্রজ্ঞা ও আধ্যাত্মিক সংযোগ",
+        "ideal": ["পূজা ঘর / মন্দির", "ধ্যান কেন্দ্র", "খোলা বারান্দা", "টিউবওয়েল"],
+        "prohibited": ["টয়লেট (চরম অশুভ)", "রান্নাঘর (চরম অশুভ)", "সিঁড়ি", "মাস্টার বেডরুম"],
+        "self_colors": ["White", "Off-White", "Sky Blue"],
+        "enhancing": ["Silver", "Light Cream"],
+        "destructive": ["Red", "Pink", "Dark Yellow", "Black"],
+    },
+    "ENE": {
+        "name": "East-North-East (পূর্ব-উত্তর-পূর্ব)", "name_bn": "আনন্দ ও বিনোদন জোন", "center": 67.5,
+        "element": "Air/Wood", "element_bn": "বায়ু / বৃক্ষ তত্ত্ব",
+        "organs": "যকৃৎ (লিভার) ও কাঁধ", "dosha": "Pitta-Vata",
+        "life_aspect": "আনন্দ, পারিবারিক বিনোদন ও মানসিক সতেজতা",
+        "ideal": ["ড্রয়িং রুম", "টিভি / বিনোদন কেন্দ্র", "বাচ্চাদের খেলাধুলার স্থান"],
+        "prohibited": ["টয়লেট", "অতিরিক্ত ভারী স্টোরেজ"],
+        "self_colors": ["Green", "Light Green"],
+        "enhancing": ["Blue", "Light Blue"],
+        "destructive": ["White", "Silver", "Grey"],
+    },
+    "E": {
+        "name": "East (পূর্ব)", "name_bn": "পূর্ব দিক (সূর্য স্থান)", "center": 90.0,
+        "element": "Air/Wood", "element_bn": "বায়ু / বৃক্ষ তত্ত্ব",
+        "organs": "যকৃৎ, পিত্তথলি ও স্নায়ু", "dosha": "Pitta",
+        "life_aspect": "সামাজিক যোগাযোগ, সরকারি পৃষ্ঠপোষকতা ও প্রতিপত্তি",
+        "ideal": ["প্রধান ফটক (E3, E4)", "লিভিং রুম", "ব্রাস সূর্য স্থাপন", "খোলা জানালা"],
+        "prohibited": ["টয়লেট", "রান্নাঘর", "ভারী বন্ধ দেওয়াল"],
+        "self_colors": ["Green", "Brown"],
+        "enhancing": ["Blue", "Black"],
+        "destructive": ["White", "Silver", "Metallic"],
+    },
+    "ESE": {
+        "name": "East-South-East (পূর্ব-দক্ষিণ-পূর্ব)", "name_bn": "মন্থন ও চিন্তন জোন", "center": 112.5,
+        "element": "Air/Wood", "element_bn": "বায়ু / বৃক্ষ তত্ত্ব",
+        "organs": "অগ্ন্যাশয় (প্যানক্রিয়াস) ও অন্ত্র", "dosha": "Pitta",
+        "life_aspect": "গভীর বিশ্লেষণ, পরিকল্পনা ও মন্থন",
+        "ideal": ["টয়লেট (উপযুক্ত)", "কনফারেন্স কক্ষ", "চিন্তাশীল কাজের ডেস্ক"],
+        "prohibited": ["মাস্টার বেডরুম (অবিরাম তর্ক)", "পূজা ঘর"],
+        "self_colors": ["Light Green", "Cream"],
+        "enhancing": ["Light Blue"],
+        "destructive": ["Red", "Bright Yellow"],
+    },
+    "SE": {
+        "name": "South-East (দক্ষিণ-পূর্ব / অগ্নি)", "name_bn": "অগ্নি কোণ (ধনাগমন জোন)", "center": 135.0,
+        "element": "Fire", "element_bn": "অগ্নি তত্ত্ব",
+        "organs": "জরায়ু, রক্তপ্রবাহ ও হজমশক্তি", "dosha": "Pitta",
+        "life_aspect": "তরল অর্থপ্রবাহ (Liquid Cash), উদ্দীপনা ও ভোগবিলাস",
+        "ideal": ["রান্নাঘর / গ্যাসের চুলা", "বৈদ্যুতিক মিটার", "রেড বাল্ব স্থাপন"],
+        "prohibited": ["আন্ডারগ্রাউন্ড ওয়াটার ট্যাঙ্ক", "টয়লেট", "নীল/কালো রঙ"],
+        "self_colors": ["Red", "Orange", "Crimson"],
+        "enhancing": ["Green", "Light Brown"],
+        "destructive": ["Blue", "Black", "Dark Grey"],
+    },
+    "SSE": {
+        "name": "South-South-East (দক্ষিণ-দক্ষিণ-পূর্ব)", "name_bn": "শক্তি ও আত্মবিশ্বাস জোন", "center": 157.5,
+        "element": "Fire", "element_bn": "অগ্নি তত্ত্ব",
+        "organs": "পেশিশক্তি ও শারীরিক সহনশীলতা", "dosha": "Pitta",
+        "life_aspect": "আত্মবিশ্বাস, নির্ভীক মানসিকতা ও শারীরিক পরাক্রম",
+        "ideal": ["ব্যায়ামাগার (Gym)", "দ্বিতীয় রান্নাঘর", "নিরাপত্তা কক্ষ"],
+        "prohibited": ["টয়লেট", "জলাশয়", "নীল রঙ"],
+        "self_colors": ["Red", "Orange"],
+        "enhancing": ["Green"],
+        "destructive": ["Blue", "Black"],
+    },
+    "S": {
+        "name": "South (দক্ষিণ / যম স্থান)", "name_bn": "খ্যাতি ও বিশ্রাম জোন", "center": 180.0,
+        "element": "Fire", "element_bn": "অগ্নি তত্ত্ব",
+        "organs": "হৃদপিণ্ড ও রক্ত সঞ্চালন", "dosha": "Pitta",
+        "life_aspect": "সামাজিক খ্যাতি, নাম, সুখ্যাতি ও প্রশান্ত ঘুম",
+        "ideal": ["শোবার ঘর (দক্ষিণে মাথা)", "১২টি লাল ঘোড়া স্থাপন", "ভারী আসবাব"],
+        "prohibited": ["জলধারা", "প্রধান ফটক (অশুভ পদ)", "নীল বা ধূসর রঙ"],
+        "self_colors": ["Red", "Maroon"],
+        "enhancing": ["Green", "Light Yellow"],
+        "destructive": ["Blue", "Water Tones"],
+    },
+    "SSW": {
+        "name": "South-South-West (দক্ষিণ-দক্ষিণ-পশ্চিম)", "name_bn": "বিসর্জন জোন (Disposal Zone)", "center": 202.5,
+        "element": "Earth", "element_bn": "পৃথিবী তত্ত্ব",
+        "organs": "রেচনতন্ত্র ও বর্জ্য নিষ্কাশন", "dosha": "Vata",
+        "life_aspect": "অপ্রয়োজনীয় বর্জ্য, ক্লান্তি ও নেতিবাচকতা বিসর্জন",
+        "ideal": ["টয়লেট / কমোড (আদর্শ)", "ডাস্টবিন", "স্যুয়ারেজ ড্রেন"],
+        "prohibited": ["শোবার ঘর (প্রাণশক্তি ক্ষয়)", "পূজা ঘর", "স্টাডি রুম"],
+        "self_colors": ["Yellow", "Beige", "Earth"],
+        "enhancing": ["Red", "Pink"],
+        "destructive": ["Green", "Blue"],
+    },
+    "SW": {
+        "name": "South-West (দক্ষিণ-পশ্চিম / নৈঋত)", "name_bn": "নৈঋত কোণ (স্থায়িত্ব ও পিতৃ কৃপা)", "center": 225.0,
+        "element": "Earth", "element_bn": "পৃথিবী তত্ত্ব",
+        "organs": "প্রজনন অঙ্গ, পা ও অস্থি সন্ধি", "dosha": "Kapha",
+        "life_aspect": "দাম্পত্য সম্পর্ক, কর্মদক্ষতা ও পিতৃপুরুষের আশীর্বাদ",
+        "ideal": ["প্রধান কর্তা/কর্ত্রীর মাস্টার বেডরুম", "ভারী সিন্দুক", "পারিবারিক ছবি"],
+        "prohibited": ["টয়লেট (চরম অশুভ)", "রান্নাঘর (দাম্পত্য নাশ)", "আন্ডারগ্রাউন্ড ট্যাঙ্ক"],
+        "self_colors": ["Yellow", "Mustard", "Gold"],
+        "enhancing": ["Red", "Pink", "Orange"],
+        "destructive": ["Green", "Blue", "Black"],
+    },
+    "WSW": {
+        "name": "West-South-West (পশ্চিম-দক্ষিণ-পশ্চিম)", "name_bn": "বিদ্যা ও সঞ্চয় জোন", "center": 247.5,
+        "element": "Space/Metal", "element_bn": "আকাশ / ধাতু তত্ত্ব",
+        "organs": "কণ্ঠনালী ও স্বরযন্ত্র", "dosha": "Vata",
+        "life_aspect": "লেখাপড়া, জ্ঞান সংরক্ষণ ও টেকসই সঞ্চয়",
+        "ideal": ["স্টাডি রুম / পড়ার টেবিল", "বইয়ের আলমারি", "সঞ্চয়পত্র"],
+        "prohibited": ["টয়লেট", "রান্নাঘর", "সবুজ গাছপালা"],
+        "self_colors": ["White", "Cream", "Silver"],
+        "enhancing": ["Yellow", "Earth"],
+        "destructive": ["Red", "Green"],
+    },
+    "W": {
+        "name": "West (পশ্চিম / বরুণ স্থান)", "name_bn": "লাভ ও প্রাপ্তি জোন (Gains & Profits)", "center": 270.0,
+        "element": "Space/Metal", "element_bn": "আকাশ / ধাতু তত্ত্ব",
+        "organs": "ফুসফুস ও শ্বাসযন্ত্র", "dosha": "Vata",
+        "life_aspect": "বাণিজ্যিক লাভ, ইচ্ছাপূরণ ও বৈষয়িক প্রাপ্তি",
+        "ideal": ["ডাইনিং রুম", "জুয়েলারি বক্স", "ওভারহেড ওয়াটার ট্যাঙ্ক", "সিন্দুক"],
+        "prohibited": ["রান্নাঘর", "সবুজ গাছপালা (লাভ ব্যাহত করে)", "লাল রঙ"],
+        "self_colors": ["White", "Silver", "Grey"],
+        "enhancing": ["Yellow", "Ochre"],
+        "destructive": ["Red", "Green"],
+    },
+    "WNW": {
+        "name": "West-North-West (পশ্চিম-উত্তর-পশ্চিম)", "name_bn": "মানসিক বিষাদমুক্তি জোন", "center": 292.5,
+        "element": "Space/Metal", "element_bn": "আকাশ / ধাতু তত্ত্ব",
+        "organs": "থাইরয়েড ও অনাল গ্রন্থি", "dosha": "Vata",
+        "life_aspect": "মানসিক চাপ মুক্তি, বিষাদ দূরীকরণ ও ডিটক্সিফিকেশন",
+        "ideal": ["টয়লেট (আদর্শ)", "ওয়াশিং মেশিন", "কাউন্সেলিং রুম"],
+        "prohibited": ["পূজা ঘর", "মাস্টার বেডরুম (বিষাদ বৃদ্ধি পায়)"],
+        "self_colors": ["White", "Off-White"],
+        "enhancing": ["Yellow"],
+        "destructive": ["Red", "Green"],
+    },
+    "NW": {
+        "name": "North-West (উত্তর-পশ্চিম / বায়ু)", "name_bn": "বায়ু কোণ (সহায়তা ও ব্যাংকিং)", "center": 315.0,
+        "element": "Space/Metal", "element_bn": "আকাশ / ধাতু তত্ত্ব",
+        "organs": "হাত ও কাঁধ", "dosha": "Vata",
+        "life_aspect": "ব্যাংকিং সুবিধা, সহায়তা দানকারী বন্ধু ও সরকারি সাপোর্ট",
+        "ideal": ["অতিথি কক্ষ (Guest Room)", "রেডি পণ্য স্টোরেজ", "সাদা ঘোড়া প্রতিকৃতি"],
+        "prohibited": ["রান্নাঘর", "অতিরিক্ত ভারী স্থাবর লকার"],
+        "self_colors": ["White", "Metallic", "Cream"],
+        "enhancing": ["Yellow", "Earth"],
+        "destructive": ["Red", "Fire Tones"],
+    },
+    "NNW": {
+        "name": "North-North-West (উত্তর-উত্তর-পশ্চিম)", "name_bn": "আকর্ষণ ও যৌনসুখ জোন", "center": 337.5,
+        "element": "Water", "element_bn": "জল তত্ত্ব",
+        "organs": "যৌনাঙ্গ ও হরমোন ব্যালান্স", "dosha": "Kapha",
+        "life_aspect": "পারস্পরিক আকর্ষণ, দাম্পত্য রসায়ন ও যৌনসুখ",
+        "ideal": ["নবদম্পতির শোবার ঘর", "ড্রেসিং রুম", "সুগন্ধি সামগ্রী"],
+        "prohibited": ["টয়লেট", "রান্নাঘর", "অগ্নিযন্ত্র"],
+        "self_colors": ["Blue", "White"],
+        "enhancing": ["Silver"],
+        "destructive": ["Red", "Yellow"],
+    },
+}
+
+
+# ---------------------------------------------------------------------------
+# 120 Miraculous Remedies Catalog from `6ab2d85272f5ea7e.pdf`
+# ---------------------------------------------------------------------------
+VASTU_REMEDIES_CATALOG: list[dict[str, Any]] = [
+    {
+        "id": 1,
+        "category": "Financial Growth",
+        "title_bn": "আটকে থাকা টাকা উদ্ধার ও ক্যাশ ফ্লো বৃদ্ধি",
+        "action_bn": "সাউথ-ইস্ট (SE) অগ্নি জোনে একটি ১৫ ওয়াটের লাল বাল্ব (Red Bulb) ২৪ ঘণ্টা জ্বালিয়ে রাখুন।",
+        "target_zone": "SE",
+        "item_required": "লাল বৈদ্যুতিক বাল্ব (Red Bulb)",
+    },
+    {
+        "id": 2,
+        "category": "Financial Growth",
+        "title_bn": "কুবের দেবতার আশীর্বাদে বিপুল ধনলাভ",
+        "action_bn": "নর্থ (North) কুবের জোনে একটি পিতলের কুবের মূর্তি (Brass Kuber) উত্তরমুখী করে স্থাপন করুন।",
+        "target_zone": "N",
+        "item_required": "পিতলের কুবের মূর্তি",
+    },
+    {
+        "id": 3,
+        "category": "Brand & Fame",
+        "title_bn": "প্রতিষ্ঠানের ব্র্যান্ড ভ্যালু ও সামাজিক খ্যাতি",
+        "action_bn": "সাউথ (South) খ্যাতি জোনে উত্তর দিকে ধাবমান ১২টি লাল রঙের ঘোড়ার মূর্তি বা চিত্র স্থাপন করুন।",
+        "target_zone": "S",
+        "item_required": "১২টি লাল ঘোড়ার চিত্র / ভাস্কর্য",
+    },
+    {
+        "id": 4,
+        "category": "Opportunities",
+        "title_bn": "নতুন চাকরি ও ব্যবসায়িক সুযোগ আকর্ষণ",
+        "action_bn": "উত্তর (North) দেওয়ালে একটি সবুজ পাহাড়ি ল্যান্ডস্কেপ বা মানিপ্ল্যান্ট নীল বোতলে রাখুন।",
+        "target_zone": "N",
+        "item_required": "নীল কাচের বোতলে মানিপ্ল্যান্ট",
+    },
+    {
+        "id": 5,
+        "category": "Social Ties",
+        "title_bn": "প্রভাবশালী ব্যক্তিদের সাথে যোগাযোগ ও ভালো ভাড়াটিয়া লাভ",
+        "action_bn": "ইস্ট (East) সূর্য জোনে একটি খাঁটি পিতলের সূর্যমণ্ডল (Brass Sun) দেওয়ালে স্থাপন করুন।",
+        "target_zone": "E",
+        "item_required": "পিতলের সূর্যমণ্ডল (Brass Sun)",
+    },
+    {
+        "id": 6,
+        "category": "Financial Growth",
+        "title_bn": "মুনাফা বৃদ্ধি ও ব্যবসায়িক সাফল্য",
+        "action_bn": "ওয়েস্ট (West) লাভ জোনে মূল্যবান গহনার বাক্স রাখুন এবং সমস্ত সবুজ গাছপালা অবিলম্বে সরিয়ে ফেলুন।",
+        "target_zone": "W",
+        "item_required": "ধাতব জুয়েলারি বক্স",
+    },
+    {
+        "id": 7,
+        "category": "Health & Vitality",
+        "title_bn": "মানসিক বিভ্রান্তি দূরীকরণ ও আত্মিক শান্তি",
+        "action_bn": "নর্থ-ইস্ট (NE) ঈশান কোণে স্ফটিকের শ্রীযন্ত্র বা খাঁটি রূপার পাত্রে গঙ্গাজল স্থাপন করুন।",
+        "target_zone": "NE",
+        "item_required": "স্ফটিক শ্রীযন্ত্র / রূপার পাত্র",
+    },
+    {
+        "id": 8,
+        "category": "Family Harmony",
+        "title_bn": "দাম্পত্য কলহ নিবারণ ও পারিবারিক ঐক্য",
+        "action_bn": "সাউথ-ওয়েস্ট (SW) জোনে একটি সোনালী ফ্রেমে বাঁধানো যৌথ পারিবারিক ছবি স্থাপন করুন।",
+        "target_zone": "SW",
+        "item_required": "সোনালী ফ্রেমে বাঁধানো ছবি",
+    },
+    {
+        "id": 9,
+        "category": "Non-Demolition Blocking",
+        "title_bn": "টয়লেট দোষ নিবারণে মেটাল স্ট্রিপ থেরাপি",
+        "action_bn": "ভুল জোনে অবস্থিত কমোডের চারপাশে মেঝেতে ৩-৪ মিমি চওড়া ধাতব স্ট্রিপ (পিতল/কপার/অ্যালুমিনিয়াম) সিল করে দিন।",
+        "target_zone": "SW/SE/NW",
+        "item_required": "ধাতব স্ট্রিপ (Brass / Copper / Aluminum Strip)",
+    },
+    {
+        "id": 10,
+        "category": "Academic Success",
+        "title_bn": "স্মৃতিশক্তি ও পরীক্ষায় একাগ্রতা বৃদ্ধি",
+        "action_bn": "ওয়েস্ট-সাউথ-ওয়েস্ট (WSW) জোনে হলুদ রঙের কলমদানি ও সরস্বতী যন্ত্র স্থাপন করুন।",
+        "target_zone": "WSW",
+        "item_required": "হলুদ কলমদানি ও সরস্বতী যন্ত্র",
+    },
+]
+
+
+# ---------------------------------------------------------------------------
+# Trigonometric Pada Finder
+# ---------------------------------------------------------------------------
+
+def resolve_entrance_pada(degree: float) -> PadaInfo:
+    """Finds the exact Pada (1-32) for any angle 0.0 - 359.99° with N5 centered at 0°."""
+    # Normalize degree to [0, 360)
+    deg = degree % 360.0
+
+    # Each pada is 11.25°.
+    # N5 center is 0.0° (or 360.0°). Range: [354.375°, 360.0) U [0.0°, 5.625°)
+    for p in PADA_DEFINITIONS:
+        c = p["center"]
+        start = (c - 5.625) % 360.0
+        end = (c + 5.625) % 360.0
+
+        if start > end:  # Spans across 0°
+            if deg >= start or deg < end:
+                return PadaInfo(
+                    pada_id=p["pada_id"],
+                    quadrant=p["quadrant"],
+                    deity=p["deity"],
+                    start_degree=round(start, 2),
+                    center_degree=round(c, 2),
+                    end_degree=round(end, 2),
+                    is_auspicious=p["auspicious"],
+                    life_effects=p["effects"],
+                    challenge=p["challenge"],
+                )
+        else:
+            if start <= deg < end:
+                return PadaInfo(
+                    pada_id=p["pada_id"],
+                    quadrant=p["quadrant"],
+                    deity=p["deity"],
+                    start_degree=round(start, 2),
+                    center_degree=round(c, 2),
+                    end_degree=round(end, 2),
+                    is_auspicious=p["auspicious"],
+                    life_effects=p["effects"],
+                    challenge=p["challenge"],
+                )
+
+    # Fallback to N5
+    p5 = PADA_DEFINITIONS[4]
+    return PadaInfo(
+        pada_id=p5["pada_id"],
+        quadrant=p5["quadrant"],
+        deity=p5["deity"],
+        start_degree=354.38,
+        center_degree=0.0,
+        end_degree=5.62,
+        is_auspicious=p5["auspicious"],
+        life_effects=p5["effects"],
+        challenge=p5["challenge"],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Room Placement Evaluation Engine
+# ---------------------------------------------------------------------------
+
+ROOM_EVALUATION_RULES: dict[str, dict[str, Any]] = {
+    "kitchen": {
+        "name": "রান্নাঘর (Kitchen / Fire Element)",
+        "scores": {
+            "SE": 100, "SSE": 90, "S": 80,
+            "E": 70, "W": 55, "NW": 50,
+            "SSW": 40, "WSW": 40, "ESE": 35,
+            "N": 15, "NNW": 15, "WNW": 20,
+            "NE": 0, "NNE": 5, "SW": 0
+        },
+        "impacts": {
+            "SE": "আদর্শ অগ্নিকোণ — তরল অর্থের অবিরাম আগমন, গৃহকর্ত্রীর সুস্বাস্থ্য ও বংশবৃদ্ধি।",
+            "SSE": "চমৎকার স্থান — শক্তি ও আত্মবিশ্বাস বজায় থাকে।",
+            "NE": "মারাত্মক বাস্তু দোষ — মাথার রোগ, স্নায়বিক ক্ষতি, আকস্মিক দেউলিয়াত্ব ও চরম চিকিৎসা ব্যয়।",
+            "SW": "চরম বাস্তু দোষ — দাম্পত্য জীবনে অশান্তি, বিবাহবিচ্ছেদের ঝুঁকি ও পরিবারের সম্পর্কের চরম অবনতি।",
+            "N": "জল ও অগ্নির সরাসরি সংঘাত — উপার্জনের পথ বন্ধ হওয়া ও ক্যারিয়ারে তীব্র স্থবিরতা।",
+        },
+        "remedies": {
+            "NE": "কোনো ভাঙচুর ছাড়া সমাধান: গ্যাসের চুলার নিচে একটি সবুজ বরোদা মার্বেল (Green Baroda Marble) স্থাপন করুন।",
+            "SW": "চুলার নিচে একটি হলুদ জাইসলমের পাথর (Yellow Jaisalmer Stone) প্রতিস্থাপন করুন।",
+            "N": "চুলার নিচে একটি সবুজ পাথর স্থাপন করুন এবং দেওয়ালে একটি ছোট তামার তারের ফ্রেম দিন।",
+            "default": "চুলা ও সিঙ্কের মাঝে একটি কাঠের বিভাজন বা সবুজ মার্বেল স্ল্যাব রাখুন।"
+        },
+        "metal_strip": "কপার স্ট্রিপ (Copper Strip)",
+    },
+    "master_bed": {
+        "name": "মাস্টার বেডরুম (Master Bedroom)",
+        "scores": {
+            "SW": 100, "S": 90, "SSW": 30,
+            "W": 85, "WSW": 75, "NW": 60,
+            "SE": 35, "ESE": 25, "N": 50,
+            "NE": 15, "NNE": 20, "E": 65
+        },
+        "impacts": {
+            "SW": "আদর্শ নৈঋত কোণ — গৃহকর্তার সম্পূর্ণ কর্তৃত্ব, মানসিক স্থায়িত্ব ও চমৎকার দাম্পত্য বন্ধন।",
+            "S": "উচ্চ খ্যাতি, শারীরিক বিশ্রাম ও দীর্ঘায়ু।",
+            "NE": "অবিরাম মাথাব্যথা, অনিদ্রা, অতিরিক্ত আধ্যাত্মিক বৈরাগ্য ও সাংসারিক দায়িত্বে অবহেলা।",
+            "SSW": "জীবনীশক্তি ক্ষয়, ক্লান্তি ও অলসতা বৃদ্ধি পায়।",
+            "ESE": "স্বামী-স্ত্রীর মধ্যে তুচ্ছ বিষয় নিয়ে অন্তহীন বাদানুবাদ ও মন্থন।",
+        },
+        "remedies": {
+            "NE": "খাটের নিচে পিতলের বাটিতে সৈন্ধব লবণ রাখুন এবং উত্তর-পূর্ব কোণে হালকা ওজনের আসবাব ব্যবহার করুন।",
+            "ESE": "শোবার ঘরের পর্দা ও চাদরে হালকা পেস্টাল বা ক্রিম রঙ ব্যবহার করুন।",
+            "default": "মাথা সর্বদা দক্ষিণ বা পূর্ব দিকে রেখে ঘুমানোর ব্যবস্থা করুন।"
+        },
+        "metal_strip": "ব্রাস স্ট্রিপ (Brass Strip)",
+    },
+    "toilet": {
+        "name": "টয়লেট / কমোড (Toilet / Commode)",
+        "scores": {
+            "SSW": 100, "WNW": 95, "ESE": 85,
+            "NW": 60, "S": 45, "W": 50,
+            "E": 25, "SE": 20, "SW": 0,
+            "N": 10, "NNE": 5, "NE": 0
+        },
+        "impacts": {
+            "SSW": "আদর্শ বিসর্জন জোন — ঘরের সমস্ত নেতিবাচক শক্তি ও বিষাদ স্বাভাবিকভাবে নিষ্কাশিত হয়।",
+            "WNW": "মানসিক চাপ ও অপ্রয়োজনীয় আবেগীয় বোঝা দূর হয়।",
+            "NE": "চরম মারাত্মক দোষ — স্মৃতিভ্রম, পক্ষাঘাত, ক্যানসারের ঝুঁকি ও পরিবারের অগ্রগতি চিরতরে রুদ্ধ।",
+            "SW": "সম্পর্কের মৃত্যু — স্বামী-স্ত্রীর সম্পর্ক ছিন্ন হওয়া এবং পিতৃপুরুষের কৃপা বিলুপ্ত হওয়া।",
+            "N": "নতুন উপার্জনের সুযোগ নর্দমায় পতিত হওয়া, তীব্র অর্থকষ্ট।",
+        },
+        "remedies": {
+            "NE": "জরুরি প্রতিকার: কমোডের চারপাশের মেঝে কেটে একটি ৩ মিমি অ্যালুমিনিয়াম বা রূপার তারের স্ট্রিপ দিয়ে সম্পূর্ণ ব্লক করুন।",
+            "SW": "কমোডের চারপাশে পিতলের স্ট্রিপ (Brass Strip) ফ্লোরিংয়ে স্থাপন করে এনার্জি কাট অফ করুন।",
+            "N": "নীল রঙের বা অ্যালুমিনিয়াম স্ট্রিপ দিয়ে কমোডের চারপাশ আবদ্ধ করুন।",
+            "default": "টয়লেটের ঢাকনা সর্বদা বন্ধ রাখুন এবং একটি কাচের বাটিতে সামুদ্রিক লবণ রাখুন।"
+        },
+        "metal_strip": "পিতল বা অ্যালুমিনিয়াম স্ট্রিপ",
+    },
+    "puja_room": {
+        "name": "পূজা ঘর / মন্দির (Puja Room / Mandir)",
+        "scores": {
+            "NE": 100, "E": 90, "N": 85,
+            "ENE": 80, "NNE": 80, "W": 60,
+            "NW": 50, "SE": 25, "S": 15,
+            "SW": 0, "SSW": 0, "WNW": 10
+        },
+        "impacts": {
+            "NE": "ঈশান কোণ — পরম ঈশ্বরের বাসস্থান। অনন্ত শান্তি, আধ্যাত্মিক শক্তি ও পারিবারিক মঙ্গল।",
+            "E": "সূর্যের প্রত্যক্ষ শক্তি — সমাজে সুনাম ও মর্যাদা।",
+            "SW": "নৈঋত কোণ — দেবতা ও পিতৃপুরুষের শক্তি সংঘাত, সংসারে বিপর্যয়।",
+            "SSW": "প্রার্থনার সুফল বিসর্জনে চলে যায়, কোনো পুণ্য ফলিত হয় না।",
+        },
+        "remedies": {
+            "SW": "মন্দির অবিলম্বে ঈশান বা পূর্ব দিকে স্থানান্তর করুন, অথবা একটি রূপার ওম প্রতীক ঈশানে স্থাপন করুন।",
+            "default": "মন্দিরে স্নিগ্ধ আলো রাখুন এবং মৃত পূর্বপুরুষের ছবি ঠাকুর ঘরে রাখবেন না।"
+        },
+        "metal_strip": None,
+    },
+    "underground_water": {
+        "name": "আন্ডারগ্রাউন্ড ওয়াটার ট্যাঙ্ক / বোরওয়েল",
+        "scores": {
+            "N": 100, "NE": 95, "NNE": 90,
+            "E": 80, "ENE": 75, "NW": 50,
+            "W": 30, "SE": 0, "SSE": 0,
+            "S": 0, "SW": 0, "SSW": 0
+        },
+        "impacts": {
+            "N": "কুবেরের আশীর্বাদে বিপুল ধনবৃদ্ধি ও অর্থনৈতিক নিরাপত্তা।",
+            "NE": "অপরিমেয় সৌভাগ্য ও আধ্যাত্মিক উন্নতি।",
+            "SE": "অগ্নি-জলের চরম যুদ্ধ — রক্তপাত, অগ্নিকাণ্ড, অর্থনাশ ও গৃহকর্ত্রীর অকাল পীড়া।",
+            "SW": "নৈঋতে গর্ত — গৃহকর্তার মারাত্মক পতন, আকস্মিক বিপর্যয় ও বংশনাশ।",
+        },
+        "remedies": {
+            "SE": "ট্যাঙ্কের চারপাশে তামার পাত বা কপার তারের গ্রিড বসিয়ে এনার্জি নিউট্রালাইজ করুন।",
+            "SW": "ট্যাঙ্কের চারপাশে পিতলের পাত স্থাপন করুন এবং ভারী পাথর বসান।",
+            "default": "জলাধারের মুখ সর্বদা পরিষ্কার ও ঢাকা রাখুন।"
+        },
+        "metal_strip": "কপার বা ব্রাস স্ট্রিপ",
+    },
+    "overhead_tank": {
+        "name": "ওভারহেড ওয়াটার ট্যাঙ্ক (Overhead Water Tank)",
+        "scores": {
+            "W": 100, "SW": 90, "S": 80,
+            "NW": 70, "WSW": 75, "SE": 40,
+            "N": 15, "NE": 0, "ENE": 20
+        },
+        "impacts": {
+            "W": "পশ্চিম দিকে ভারী জলাধার বরুণের শক্তির স্থায়িত্ব ও স্থায়ী ধন দেয়।",
+            "SW": "উচ্চতা ও ওজন স্থিতিশীলতা বৃদ্ধি করে।",
+            "NE": "ঈশান কোণে ভারী ওজন স্থাপন মানে ঈশ্বরের মাথায় পাথর চাপা দেওয়া — চরম দুর্ভোগ।",
+        },
+        "remedies": {
+            "NE": "ট্যাঙ্কটি অবিলম্বে সরিয়ে পশ্চিমে নিন, অথবা ট্যাঙ্কের নিচে পিরামিড এনার্জি প্লেট রাখুন।",
+            "default": "ট্যাঙ্কের রঙ গাঢ় নীল বা কালো না রেখে সাদা বা হলুদ রাখুন।"
+        },
+        "metal_strip": None,
+    },
+    "locker": {
+        "name": "টাকার সিন্দুক / ক্যাশ লকার (Cash Locker / Safe)",
+        "scores": {
+            "N": 100, "W": 90, "SW": 85,
+            "E": 70, "NE": 60, "NW": 45,
+            "SE": 35, "SSW": 0, "WNW": 10
+        },
+        "impacts": {
+            "N": "উত্তরমুখী হয়ে খোলে — কুবেরের দৃষ্টিতে সর্বদা সম্পদে পরিপূর্ণ থাকে।",
+            "W": "স্থায়ী মুনাফা ও সঞ্চয় বৃদ্ধি পায়।",
+            "SSW": "টাকা বিসর্জন জোনে — সঞ্চিত অর্থ চিকিৎসা ও অপ্রয়োজনীয় দণ্ডে দ্রুত বিনষ্ট হয়।",
+            "SE": "টাকা দ্রুত পুড়ে যায়, খরচের লাগাম থাকে না।",
+        },
+        "remedies": {
+            "SSW": "লকারটি অবিলম্বে উত্তর বা পশ্চিম দেওয়ালে স্থানান্তর করুন।",
+            "SE": "লকারের ভেতরে রূপার কয়েন ও একটি লাল কাপড়ে মোড়ানো এলাচ রাখুন।",
+            "default": "লকারের দরজা যেন সর্বদা উত্তর বা পূর্ব দিকে খোলে।"
+        },
+        "metal_strip": "ব্রাস স্ট্রিপ",
+    },
+    "staircase": {
+        "name": "সিঁড়ি (Staircase)",
+        "scores": {
+            "S": 100, "SW": 95, "W": 90,
+            "NW": 70, "SE": 60, "SSW": 80,
+            "E": 40, "N": 20, "NE": 0
+        },
+        "impacts": {
+            "S / SW / W": "দক্ষিণ বা পশ্চিমে ভারী সিঁড়ি বাস্তু শক্তিকে সুদৃঢ় করে।",
+            "NE": "ঈশানে সিঁড়ি — পারিবারিক অগ্রগতি ও বুদ্ধিবৃত্তিক বিকাশ চিরতরে পিষ্ট হয়ে যায়।",
+        },
+        "remedies": {
+            "NE": "সিঁড়ির প্রথম ধাপে তামার তারের গ্রিড এবং দেয়ালে পঞ্চমুখী হনুমান যন্ত্র স্থাপন করুন।",
+            "default": "সিঁড়ি যেন সর্বদা ঘড়ির কাঁটার দিকে (Clockwise) ওপরের দিকে ওঠে।"
+        },
+        "metal_strip": "কপার স্ট্রিপ",
+    },
+}
+
+
+# ---------------------------------------------------------------------------
+# Master Vastu Audit Evaluation Function
+# ---------------------------------------------------------------------------
+
+def perform_vastu_audit(
+    main_entrance_degree: float,
+    placements: dict[str, str],
+    property_type: str = "residential"
+) -> VastuAuditResponse:
+    """Executes a 360° scientific Vastu Audit evaluating Entrance Pada and Room Placements."""
+    # 1. Resolve Main Entrance Pada
+    entrance_pada = resolve_entrance_pada(main_entrance_degree)
+    entrance_verdict = (
+        f"অত্যন্ত শুভ ও বরকতময় প্রবেশদ্বার ({entrance_pada.pada_id} - {entrance_pada.deity})। "
+        if entrance_pada.is_auspicious
+        else f"প্রতিকূল প্রবেশদ্বার ({entrance_pada.pada_id} - {entrance_pada.deity})। দোষ নিবারক প্রতিকার আবশ্যক।"
+    )
+
+    evaluations: list[PlacementEvaluationItem] = []
+    total_score = 0
+    max_score = 0
+    critical_warnings: list[str] = []
+
+    # If entrance is malefic, add critical warning
+    if not entrance_pada.is_auspicious:
+        critical_warnings.append(f"মূল প্রবেশদ্বার {entrance_pada.pada_id} ({entrance_pada.deity}) শুভ নয়। চ্যালেঞ্জ: {entrance_pada.challenge}।")
+
+    # Evaluate each room placement
+    for cat_id, zone_code in placements.items():
+        z_clean = zone_code.strip().upper()
+        rule = ROOM_EVALUATION_RULES.get(cat_id)
+        if not rule:
+            continue
+
+        scores_map = rule.get("scores", {})
+        impacts_map = rule.get("impacts", {})
+        remedies_map = rule.get("remedies", {})
+
+        score = scores_map.get(z_clean, 50)
+        total_score += score
+        max_score += 100
+
+        # Rating label
+        if score >= 90:
+            rating = "Excellent"
+        elif score >= 75:
+            rating = "Good"
+        elif score >= 50:
+            rating = "Acceptable"
+        elif score > 20:
+            rating = "Fault"
+        else:
+            rating = "Critical Negative"
+
+        # Impact and Remedy text
+        impact = impacts_map.get(z_clean, f"{z_clean} জোনে {rule['name']} সাধারণ মানের ফলপ্রসূ।")
+        remedy = remedies_map.get(z_clean, remedies_map.get("default", "কোনো বিশেষ প্রতিকারের প্রয়োজন নেই।"))
+
+        if score <= 20:
+            critical_warnings.append(f"{rule['name']} {z_clean} জোনে মারাত্মক বাস্তু দোষ সৃষ্টি করছে: {impact}")
+
+        evaluations.append(PlacementEvaluationItem(
+            category_id=cat_id,
+            category_name=rule["name"],
+            placed_zone=z_clean,
+            rating=rating,
+            score=score,
+            impact_bn=impact,
+            remedy_bn=remedy,
+            metal_strip_blocking=rule.get("metal_strip") if score < 60 else None,
+            object_remedy="রেমেডি ক্যাটালগ অনুযায়ী প্রতিষেধক প্রয়োগ করুন।" if score < 60 else None,
+        ))
+
+    # Overall percentage
+    final_score = int((total_score / max(max_score, 1)) * 100) if max_score > 0 else 75
+    # Factor entrance
+    if not entrance_pada.is_auspicious:
+        final_score = max(final_score - 15, 20)
+    else:
+        final_score = min(final_score + 5, 100)
+
+    if final_score >= 85:
+        grade = "A+ (অত্যন্ত চমৎকার ও সমৃদ্ধিপ্রদ বাস্তু)"
+        summary = "ভবনটির বাস্তু বিন্যাস অত্যন্ত বিজ্ঞানসম্মত এবং ইতিবাচক শক্তি প্রবাহে পরিপূর্ণ। সামান্য কিছু সাধারণ সুরভী ও রুটিন পরিচ্ছন্নতা বজায় রাখলেই সর্বোচ্চ বরকত বজায় থাকবে।"
+    elif final_score >= 65:
+        grade = "B (মধ্যম মানের বাস্তু - কিছু সংশোধন প্রয়োজন)"
+        summary = "ভবনটিতে কয়েকটি গুরুত্বপূর্ণ শুভ সংযোগ থাকলেও কিছু জোনে উপাদানগত সংঘাত রয়েছে। উল্লেখিত অহিংস মেটাল স্ট্রিপ ও প্রতিকার সামগ্রী ব্যবহার করলে স্কোর ৮৫+ এ উন্নীত হবে।"
+    else:
+        grade = "C (মারাত্মক বাস্তু দোষ যুক্ত - তাৎক্ষণিক অহিংস প্রতিকার আবশ্যক)"
+        summary = "ভবনটিতে প্রধান শক্তি জোনে (যেমন ঈশান, অগ্নি বা নৈঋতে) উপাদানগত চরম সংঘাত বা দোষ রয়েছে। কোনো ভাঙচুর ছাড়াই অবিলম্বে নির্দেশিত পিরামিড, মেটাল স্ট্রিপ ও প্রতিকার ব্যবস্থা সম্পন্ন করুন।"
+
+    # Elemental Balance calculation
+    element_counts = {"Water": 0, "Air/Wood": 0, "Fire": 0, "Earth": 0, "Space/Metal": 0}
+    for ev in evaluations:
+        zone_info = ZONE_METADATA.get(ev.placed_zone)
+        if zone_info:
+            elem = zone_info["element"]
+            if "Water" in elem:
+                element_counts["Water"] += ev.score
+            elif "Air" in elem or "Wood" in elem:
+                element_counts["Air/Wood"] += ev.score
+            elif "Fire" in elem:
+                element_counts["Fire"] += ev.score
+            elif "Earth" in elem:
+                element_counts["Earth"] += ev.score
+            else:
+                element_counts["Space/Metal"] += ev.score
+
+    tot_elem = max(sum(element_counts.values()), 1)
+    elemental_balance = {k: int((v / tot_elem) * 100) for k, v in element_counts.items()}
+
+    # Selected key remedies from catalog
+    key_remedies = [
+        VastuRemedyItem(
+            remedy_id=r["id"],
+            category=r["category"],
+            title_bn=r["title_bn"],
+            action_bn=r["action_bn"],
+            target_zone=r["target_zone"],
+            item_required=r["item_required"],
+        )
+        for r in VASTU_REMEDIES_CATALOG[:5]
+    ]
+
+    return VastuAuditResponse(
+        overall_score=final_score,
+        grade=grade,
+        summary_bn=summary,
+        main_entrance_pada=entrance_pada,
+        entrance_verdict=entrance_verdict,
+        evaluations=evaluations,
+        elemental_balance=elemental_balance,
+        key_remedies=key_remedies,
+        warnings_critical=critical_warnings,
+    )
