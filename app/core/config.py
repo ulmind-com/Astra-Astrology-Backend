@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     )
 
     # ---------------------------------------------------------------- app
-    APP_NAME: str = "Astra Astrology"
+    APP_NAME: str = "DivinLink"
     APP_ENV: Literal["development", "staging", "production"] = "development"
     DEBUG: bool = True
     API_V1_PREFIX: str = "/api/v1"
@@ -75,7 +75,7 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------- resend
     RESEND_API_KEY: str = ""
     RESEND_FROM_EMAIL: str = "no-reply@example.com"
-    RESEND_FROM_NAME: str = "Astra Astrology"
+    RESEND_FROM_NAME: str = "DivinLink"
     SUPPORT_EMAIL: str = "support@example.com"
 
     # ---------------------------------------------------------- cloudinary

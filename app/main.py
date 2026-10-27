@@ -16,7 +16,7 @@ from app.services.firebase import init_firebase
 from app.services.storage import configure_cloudinary
 
 DESCRIPTION = """
-Backend for the **Astra Astrology** platform — astrology, numerology and
+Backend for the **DivinLink** platform — astrology, numerology and
 astrologer consultations.
 
 * `auth` — registration via email+password (OTP verified) and Google sign-in,
