@@ -21,6 +21,8 @@ from app.api.v1 import (
     wallet,
     ws,
     ai_astrologer,
+    numerology,
+    vastu,
 )
 
 api_router = APIRouter()
@@ -52,3 +54,5 @@ api_router.include_router(reviews.admin_router)
 api_router.include_router(earnings.router)
 api_router.include_router(earnings.admin_router)
 api_router.include_router(wallet.webhook_router)
+api_router.include_router(numerology.router)
+api_router.include_router(vastu.router)
