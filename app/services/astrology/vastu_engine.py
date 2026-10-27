@@ -10,6 +10,9 @@ Derived directly from Client's Resource Documents:
 
 from typing import Any
 from app.schemas.vastu import (
+    AstroVastuRule,
+    AyadiCalculationResponse,
+    MedicalVastuItem,
     PadaInfo,
     PlacementEvaluationItem,
     VastuAuditResponse,
@@ -703,3 +706,307 @@ def perform_vastu_audit(
         key_remedies=key_remedies,
         warnings_critical=critical_warnings,
     )
+
+
+# ---------------------------------------------------------------------------
+# Classical Ayadi Shadvarga Vedic Engine (Aaya Prakarana)
+# ---------------------------------------------------------------------------
+NAKSHATRA_NAMES = [
+    "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashirsha", "Ardra",
+    "Punarvasu", "Pushya", "Ashlesha", "Magha", "Purva Phalguni", "Uttara Phalguni",
+    "Hasta", "Chitra", "Swati", "Vishakha", "Anuradha", "Jyeshtha",
+    "Mula", "Purva Ashadha", "Uttara Ashadha", "Shravana", "Dhanishta",
+    "Shatabhisha", "Purva Bhadrapada", "Uttara Bhadrapada", "Revati",
+]
+
+AAYA_DATA = {
+    1: {"name": "Dhwaja Aaya", "name_bn": "ধ্বজ আয় (১)", "auspicious": True, "significance": "ধ্বজ আয় — অপার অর্থপ্রাপ্তি, প্রতিষ্ঠা, রাজকীয় সম্মান ও দীর্ঘস্থায়ী ঐশ্বর্য নির্দেশ করে।", "directions": ["পূর্ব (East)", "উত্তর (North)"]},
+    2: {"name": "Dhuma Aaya", "name_bn": "ধূম্র আয় (২)", "auspicious": False, "significance": "ধূম্র আয় — অতিরিক্ত মানসিক উদ্বেগ, অগ্নিভয় ও আর্থিক অনিশ্চয়তা সৃষ্টি করে।", "directions": ["প্রতিকার প্রয়োজন"]},
+    3: {"name": "Simha Aaya", "name_bn": "সিংহ আয় (৩)", "auspicious": True, "significance": "সিংহ আয় — বিজয়, অতুলনীয় কর্তৃত্ব, সামাজিক খ্যাতি ও সর্বকাজে সাফল্য দেয়।", "directions": ["দক্ষিণ (South)", "পূর্ব (East)"]},
+    4: {"name": "Shwana Aaya", "name_bn": "শ্বান আয় (৪)", "auspicious": False, "significance": "শ্বান আয় — অপযশ, কলহ ও পরিবারের মধ্যে আত্মিক দূরত্বের কারণ হয়।", "directions": ["প্রতিকার প্রয়োজন"]},
+    5: {"name": "Vrisha Aaya", "name_bn": "বৃষভ আয় (৫)", "auspicious": True, "significance": "বৃষভ আয় — স্থাবর সম্পত্তি, বংশবৃদ্ধি, মানসিক স্থিরতা ও দীর্ঘমেয়াদী সমৃদ্ধি আনে।", "directions": ["পশ্চিম (West)", "উত্তর (North)"]},
+    6: {"name": "Khara Aaya", "name_bn": "খর আয় (৬)", "auspicious": False, "significance": "খর আয় — অতিরিক্ত শ্রম সত্ত্বেও অপ্রতুল প্রতিদান ও পরাধীনতার সৃষ্টি করে।", "directions": ["প্রতিকার প্রয়োজন"]},
+    7: {"name": "Gaja Aaya", "name_bn": "গজ আয় (৭)", "auspicious": True, "significance": "গজ আয় — রাজকীয় ঐশ্বর্য, সৌভাগ্য, মিত্রলাভ ও ব্যবসা-বাণিজ্যে অটল স্থায়িত্ব দেয়।", "directions": ["উত্তর (North)", "পূর্ব (East)"]},
+    8: {"name": "Kaka Aaya", "name_bn": "কাক আয় (৮)", "auspicious": False, "significance": "কাক আয় — অর্থনাশ, শোক ও পরিবারের অগ্রগতিতে অনাকাঙ্ক্ষিত বাধা তৈরি করে।", "directions": ["প্রতিকার প্রয়োজন"]},
+}
+
+
+def calculate_ayadi_shadvarga(length: float, width: float, unit: str = "feet") -> AyadiCalculationResponse:
+    """Calculates classical Ayadi Shadvarga parameters from client's Essentials of Vastu."""
+    length_ft = length if unit == "feet" else length * 3.28084
+    width_ft = width if unit == "feet" else width * 3.28084
+    area_sqft = round(length_ft * width_ft, 2)
+    int_area = max(int(round(area_sqft)), 1)
+
+    # 1. Aaya (Area * 8) % 8
+    aaya_rem = (int_area * 8) % 8
+    aaya_num = 8 if aaya_rem == 0 else aaya_rem
+    aaya_info = AAYA_DATA[aaya_num]
+
+    # 2. Dhana (Income) & Rina (Expenditure)
+    dhana = ((int_area * 8) % 12) or 12
+    rina = ((int_area * 3) % 8) or 8
+    is_dhana_dominant = dhana >= rina
+
+    # 3. Structure Longevity (Aayu in years)
+    aayu_years = ((int_area * 27) % 100) or 100
+
+    # 4. Building Nakshatra
+    nakshatra_idx = ((int_area * 8) % 27)
+    nakshatra_name = NAKSHATRA_NAMES[nakshatra_idx]
+
+    return AyadiCalculationResponse(
+        length=round(length, 2),
+        width=round(width, 2),
+        area_sqft=area_sqft,
+        aaya_number=aaya_num,
+        aaya_name=aaya_info["name"],
+        aaya_name_bn=aaya_info["name_bn"],
+        is_auspicious=aaya_info["auspicious"],
+        aaya_significance_bn=aaya_info["significance"],
+        dhana_score=dhana,
+        rina_score=rina,
+        is_dhana_dominant=is_dhana_dominant,
+        structure_longevity_years=aayu_years,
+        building_nakshatra_number=nakshatra_idx + 1,
+        building_nakshatra_name=nakshatra_name,
+        best_facing_directions_bn=aaya_info["directions"],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Medical & Organ Vastu Diagnostics Catalog
+# ---------------------------------------------------------------------------
+MEDICAL_VASTU_CATALOG: list[MedicalVastuItem] = [
+    MedicalVastuItem(
+        ailment_id="depression_sorrow",
+        name_bn="বিষণ্নতা, মানসিক অবসাদ ও একাকীত্ব",
+        name_en="Depression, Anxiety & Emotional Grief",
+        affected_zone="WNW",
+        affected_element="Space/Metal (আকাশ ও ধাতু)",
+        body_organ_bn="থাইরয়েড ও গ্ল্যান্ডুলার নিঃসরণ",
+        dosha="Vata (বায়ু)",
+        root_cause_bn="WNW (পশ্চিম-উত্তর-পশ্চিম) জোনে টয়লেট, ডাস্টবিন, ভারী জিনিস বা লাল রঙের অ্যান্টি-কালার উপস্থিতি।",
+        remedy_bn="WNW কোণে হালকা হলুদ বা অফ-হোয়াইট রঙ ব্যবহার করুন। টয়লেট থাকলে ব্রাস বা অ্যালুমিনিয়াম স্ট্রিপ মেঝের খাঁজে বসিয়ে লক করুন।"
+    ),
+    MedicalVastuItem(
+        ailment_id="insomnia_overthinking",
+        name_bn="অনিদ্রা, অতিরিক্ত চিন্তা ও অস্থিরতা",
+        name_en="Insomnia, Restlessness & Overthinking",
+        affected_zone="NE / ESE",
+        affected_element="Water & Air (জল ও বায়ু)",
+        body_organ_bn="মস্তিষ্ক, স্নায়ুতন্ত্র ও পিনিয়াল গ্ল্যান্ড",
+        dosha="Vata-Kapha",
+        root_cause_bn="ঈশান কোণে (NE) রান্নাঘর (অগ্নি), লাল/গোলাপী রঙ অথবা ESE জোনে বেডরুম স্থাপন।",
+        remedy_bn="ঈশানে নীল রঙের গ্লাস বা স্ফটিক বল ঝুলিয়ে রাখুন এবং রান্নাঘরের বার্নারের নিচে সবুজ মার্বেল স্ল্যাব স্থাপন করুন।"
+    ),
+    MedicalVastuItem(
+        ailment_id="heart_high_bp",
+        name_bn="হৃদরোগ, বুক ধড়ফড় ও উচ্চ রক্তচাপ",
+        name_en="Heart Palpitations & High Blood Pressure",
+        affected_zone="South / SSW",
+        affected_element="Fire & Earth (অগ্নি ও পৃথিবী)",
+        body_organ_bn="হৃদযন্ত্র ও রক্ত সংবহনতন্ত্র",
+        dosha="Pitta (পিত্ত)",
+        root_cause_bn="দক্ষিণ বা দক্ষিণ-দক্ষিণ-পশ্চিমে (SSW) জলের উপস্থিতি, বোরওয়েল, নীল রঙ অথবা কাটা কোণ।",
+        remedy_bn="দক্ষিণে লাল/গোলাপী রঙ রাখুন ও ৯টি লাল মোমবাতি বা লাল জিরো বাল্ব ব্যবহার করুন। টয়লেটে কপার স্ট্রিপ ব্যবহার করুন।"
+    ),
+    MedicalVastuItem(
+        ailment_id="liver_jaundice_digestion",
+        name_bn="ফ্যাটি লিভার, জন্ডিস ও হজমের সমস্যা",
+        name_en="Fatty Liver, Jaundice & Indigestion",
+        affected_zone="East / ESE",
+        affected_element="Air/Wood (বায়ু ও কাঠ)",
+        body_organ_bn="যকৃৎ (Liver) ও পিত্তথলি (Gall Bladder)",
+        dosha="Pitta",
+        root_cause_bn="পূর্ব দিকে টয়লেট, বাথরুম বা বন্ধ অন্ধকার পরিবেশ যা সূর্যের প্রাণশক্তিকে ব্লক করে।",
+        remedy_bn="পূর্বে সবুজ সতেজ গাছপালা রাখুন এবং দেওয়ালের পূর্ব দিকে ১২ ইঞ্চি পিতলের সূর্যমূর্তি স্থাপন করুন।"
+    ),
+    MedicalVastuItem(
+        ailment_id="kidney_urinary",
+        name_bn="কিডনির সমস্যা ও মূত্রনালীর ইনফেকশন",
+        name_en="Kidney Stones & Urinary Incontinence",
+        affected_zone="North / NNW",
+        affected_element="Water (জল)",
+        body_organ_bn="বৃক্ক (Kidneys) ও মূত্রাশয় (Bladder)",
+        dosha="Kapha (কফ)",
+        root_cause_bn="উত্তরে আগুনের উপস্থিতি (রান্নাঘর), অতিরিক্ত লাল রঙ অথবা উত্তর দিক ব্লক থাকা।",
+        remedy_bn="উত্তর দিকে নীল পাপোশ, মানিপ্ল্যান্ট ও পিতলের কুবের মূর্তি রাখুন। রান্নার ওভেনের নিচে সবুজ স্ল্যাব দিন।"
+    ),
+    MedicalVastuItem(
+        ailment_id="infertility_reproductive",
+        name_bn="প্রজনন সমস্যা ও সন্তানধারণে বিলম্ব",
+        name_en="Infertility & Reproductive Health",
+        affected_zone="SW / SE",
+        affected_element="Earth & Fire (পৃথিবী ও অগ্নি)",
+        body_organ_bn="জরায়ু ও প্রজননতন্ত্র",
+        dosha="Kapha-Pitta",
+        root_cause_bn="দক্ষিণ-পশ্চিমে (SW) টয়লেট, আন্ডারগ্রাউন্ড ওয়াটার বা দক্ষিণ-পূর্বে (SE) রান্নাঘরের অনুপস্থিতি।",
+        remedy_bn="SW-তে হলুদ পাথর, পিতলের স্বস্তিক ও ৪ মিমি ব্রাস স্ট্রিপ সিল করুন। SE-তে ১৫ ওয়াট লাল বাল্ব জ্বালান।"
+    ),
+    MedicalVastuItem(
+        ailment_id="diabetes_pancreas",
+        name_bn="ডায়াবেটিস ও অগ্ন্যাশয়ের সমস্যা",
+        name_en="Diabetes & Pancreas Complications",
+        affected_zone="ESE",
+        affected_element="Air/Wood (বায়ু)",
+        body_organ_bn="অগ্ন্যাশয় (Pancreas)",
+        dosha="Pitta",
+        root_cause_bn="ESE জোনে জলতত্ত্ব বা অতিরিক্ত বিশৃঙ্খলা, যা মানসিক মন্থন ও হরমোন নিঃসরণে বিশৃঙ্খলা আনে।",
+        remedy_bn="ESE জোন পরিষ্কার পরিচ্ছন্ন রাখুন এবং স্টেইনলেস স্টিল স্ট্রিপ ও হালকা বাদামী রঙ ব্যবহার করুন।"
+    ),
+    MedicalVastuItem(
+        ailment_id="lungs_asthma",
+        name_bn="শ্বাসকষ্ট, হাঁপানি ও ফুসফুসের রোগ",
+        name_en="Asthma, Bronchitis & Respiratory Disorders",
+        affected_zone="West / WSW",
+        affected_element="Space/Metal (আকাশ)",
+        body_organ_bn="ফুসফুস (Lungs) ও শ্বাসতন্ত্র",
+        dosha="Vata",
+        root_cause_bn="পশ্চিম দিকে অতিরিক্ত সবুজ রঙ বা অগ্নির উপস্থিতি, যা মেটাল এলিমেন্টকে দহন করে।",
+        remedy_bn="পশ্চিমে সাদা বা রূপালী রঙ করুন এবং গোলাকার সাদা ধাতব ফ্রেমের ছবি ও ধাতব উইন্ডচাইম স্থাপন করুন।"
+    ),
+    MedicalVastuItem(
+        ailment_id="low_immunity_fatigue",
+        name_bn="রোগ প্রতিরোধ ক্ষমতা হ্রাস ও দীর্ঘস্থায়ী ক্লান্তি",
+        name_en="Low Immunity & Chronic Fatigue",
+        affected_zone="NNE",
+        affected_element="Water (জল)",
+        body_organ_bn="ইমিউন সিস্টেম ও লিম্ফ্যাটিক গ্ল্যান্ডস",
+        dosha="Kapha",
+        root_cause_bn="NNE (উত্তর-উত্তর-পূর্ব) জোনে টয়লেট, ইনভার্টার, ডাস্টবিন বা অতিরিক্ত আবর্জনা।",
+        remedy_bn="NNE জোনে পরিবারের যাবতীয় নিত্যদিনের ওষুধ সংরক্ষণ করুন এবং খাঁটি তুলসী পাতা ও জলের পাত্র রাখুন।"
+    ),
+    MedicalVastuItem(
+        ailment_id="financial_drain_debts",
+        name_bn="আটকে থাকা টাকা, দেনা ও আকস্মিক আর্থিক ক্ষতি",
+        name_en="Severe Cashflow Blockage & Growing Debts",
+        affected_zone="SE / SSW",
+        affected_element="Fire & Earth (অগ্নি ও অপচয়)",
+        body_organ_bn="অর্থের তারল্য ও শক্তি সঞ্চয়",
+        dosha="Pitta",
+        root_cause_bn="দক্ষিণ-পূর্বে (SE) টয়লেট বা আন্ডারগ্রাউন্ড ওয়াটার থাকা, যা নগদ টাকার প্রবাহ ভস্মীভূত করে।",
+        remedy_bn="SE জোনে একটি ১৫ ওয়াটের জিরো লাল বাল্ব ২৪ ঘণ্টা জ্বালিয়ে রাখুন ও তামার স্ট্রিপ দিয়ে কমোড বিচ্ছিন্ন করুন।"
+    ),
+    MedicalVastuItem(
+        ailment_id="marital_conflict",
+        name_bn="দাম্পত্য কলহ ও বিবাহ বিচ্ছেদের আশঙ্কা",
+        name_en="Marital Conflict & Relational Discord",
+        affected_zone="SW / ESE",
+        affected_element="Earth & Air (স্থায়িত্ব ও মন্থন)",
+        body_organ_bn="পারিবারিক বন্ধন ও আবেগীয় সমতা",
+        dosha="Kapha-Pitta",
+        root_cause_bn="দক্ষিণ-পশ্চিমে (SW) আয়না, ওয়াশিং মেশিন বা কাটা কোণ থাকা।",
+        remedy_bn="SW বেডরুমে হলুদ চাদর ব্যবহার করুন এবং একজোড়া লাভ বার্ডসের মূর্তি বা গোলাপী কোয়ার্টজ ক্রিস্টাল স্থাপন করুন।"
+    ),
+]
+
+
+def get_medical_vastu_catalog() -> list[MedicalVastuItem]:
+    """Returns the comprehensive Medical Vastu diagnostic catalog."""
+    return MEDICAL_VASTU_CATALOG
+
+
+# ---------------------------------------------------------------------------
+# Astro-Vastu Synergy Engine
+# ---------------------------------------------------------------------------
+ASTROVASTU_RULES: list[AstroVastuRule] = [
+    AstroVastuRule(
+        planet_id="sun",
+        planet_name_bn="রবি (Sun)",
+        governing_direction="East (পূর্ব দিক)",
+        element="Fire/Air (অগ্নি ও বায়ু)",
+        importance_during_dasha_bn="সূর্যের মহাদশায় পদোন্নতি, সরকারি সাহায্য, আত্মমর্যাদা ও পিতা-পুত্রের সম্পর্ক বজায় রাখতে পূর্ব দিক সক্রিয় রাখা বাধ্যতামূলক।",
+        critical_dos_bn=["পূর্ব দেওয়ালে ১২ ইঞ্চি পিতলের সূর্য টাঙান", "পূর্ব দিক সবসময় খোলা ও আলোকময় রাখুন", "সকালে সূর্য প্রণাম করুন"],
+        critical_donts_bn=["পূর্বে কোনো ভারী স্টোররুম বা আবর্জনা রাখবেন না", "পূর্বে টয়লেট বা অন্ধকার রাখবেন না"],
+        talismanic_remedy_bn="পূর্ব দেওয়ালে ৫ ফুট উচ্চতায় খাঁটি ব্রাস বা তামার সূর্যের প্রতিকৃতি স্থাপন করুন।"
+    ),
+    AstroVastuRule(
+        planet_id="moon",
+        planet_name_bn="চন্দ্র (Moon)",
+        governing_direction="NW (উত্তর-পশ্চিম দিক)",
+        element="Air/Water (বায়ু ও জল)",
+        importance_during_dasha_bn="চন্দ্রের মহাদশায় মানসিক শান্তি, বিদেশযাত্রা, তরল অর্থ ও মাতার স্বাস্থ্য রক্ষায় উত্তর-পশ্চিম জোন ভারসাম্যপূর্ণ হওয়া আবশ্যক।",
+        critical_dos_bn=["উত্তর-পশ্চিমে সিলভার উইন্ডচাইম বা পারদ শিবলিঙ্গ রাখুন", "সাদা ফুল বা রূপার স্বস্তিক লাগান"],
+        critical_donts_bn=["উত্তর-পশ্চিমে অগ্নিতত্ত্ব বা গ্যাস ওভেন রাখবেন না", "অতিরিক্ত ভারী আলমারি রাখবেন না"],
+        talismanic_remedy_bn="উত্তর-পশ্চিম কোণে কাচের পাত্রে খাঁটি কর্পূর ও রূপার চাঁদের প্রতীক স্থাপন করুন।"
+    ),
+    AstroVastuRule(
+        planet_id="mars",
+        planet_name_bn="মঙ্গল (Mars)",
+        governing_direction="South (দক্ষিণ দিক)",
+        element="Fire (অগ্নি)",
+        importance_during_dasha_bn="মঙ্গলের মহাদশায় সাহস, জমি-সম্পত্তি, ভ্রাতৃসুখ ও রক্ত সংবহনের সুস্থতায় দক্ষিণ দিক ও অগ্নিকোণ সক্রিয় রাখা প্রয়োজন।",
+        critical_dos_bn=["দক্ষিণ দেওয়ালে লাল রঙ বা লাল ঘোড়ার ছবি রাখুন", "অগ্নিকোণ পরিষ্কার রাখুন"],
+        critical_donts_bn=["দক্ষিণে আন্ডারগ্রাউন্ড ওয়াটার বা নীল রঙ রাখবেন না", "দক্ষিণ খোলা রেখে উত্তর বন্ধ করবেন না"],
+        talismanic_remedy_bn="দক্ষিণ দেওয়ালে উত্তরমূখী ১২টি তেজস্বী লাল ঘোড়ার প্রতিকৃতি স্থাপন করুন।"
+    ),
+    AstroVastuRule(
+        planet_id="mercury",
+        planet_name_bn="বুধ (Mercury)",
+        governing_direction="North (উত্তর দিক)",
+        element="Water/Earth (জল ও বুধ)",
+        importance_during_dasha_bn="বুধের মহাদশায় ব্যবসা, বুদ্ধিদীপ্ত সিদ্ধান্ত, নতুন ক্লায়েন্ট ও তারল্য বৃদ্ধিতে উত্তর দিক সক্রিয় রাখা সর্বোত্তম।",
+        critical_dos_bn=["উত্তরে সবুজ মানিপ্ল্যান্ট ও পিতলের কুবের মূর্তি রাখুন", "উত্তর দিক খোলামেলা ও পরিষ্কার রাখুন"],
+        critical_donts_bn=["উত্তরে লাল/কমলা রঙ বা রান্নাঘরের বার্নার রাখবেন না", "উত্তরে ভারী লোহালক্কড় রাখবেন না"],
+        talismanic_remedy_bn="উত্তর দেওয়ালে একটি সমৃদ্ধ সবুজ বনের দৃশ্য বা পিতলের কুবের যন্ত্র স্থাপন করুন।"
+    ),
+    AstroVastuRule(
+        planet_id="jupiter",
+        planet_name_bn="বৃহস্পতি (Jupiter)",
+        governing_direction="NE (উত্তর-পূর্ব / ঈশান)",
+        element="Water/Ether (জল ও আকাশ)",
+        importance_during_dasha_bn="বৃহস্পতির মহাদশায় উচ্চশিক্ষা, আধ্যাত্মিক জ্ঞান, সুসন্তান ও দীর্ঘস্থায়ী ভাগ্যোন্নয়নে ঈশান কোণ ১০০% পবিত্র থাকতে হবে।",
+        critical_dos_bn=["ঈশানে পূজা ঘর ও স্ফটিক মালা রাখুন", "হালকা হলুদ বা অফ-হোয়াইট রঙ রাখুন"],
+        critical_donts_bn=["ঈশানে জুতো, ডাস্টবিন, ভারী সিঁড়ি বা টয়লেট রাখবেন না", "ঈশানে রান্নাঘর রাখবেন না"],
+        talismanic_remedy_bn="ঈশান কোণে পিতলের পাত্রে পবিত্র গঙ্গাজল ও একটি কাঁচা হলুদ রাখুন।"
+    ),
+    AstroVastuRule(
+        planet_id="venus",
+        planet_name_bn="শুক্র (Venus)",
+        governing_direction="SE (দক্ষিণ-পূর্ব / অগ্নিকোণ)",
+        element="Fire (অগ্নি)",
+        importance_during_dasha_bn="শুক্রের মহাদশায় বৈবাহিক সৌভাগ্য, লাক্সারি, নারী সঙ্গ ও নগদ অর্থের প্রাচুর্য পেতে দক্ষিণ-পূর্ব কোণ প্রজ্বলিত থাকা দরকার।",
+        critical_dos_bn=["দক্ষিণ-পূর্বে রান্নাঘর রাখুন এবং ১৫ ওয়াট লাল বাল্ব জ্বালান", "রুপোর পাত্রে চন্দন রাখুন"],
+        critical_donts_bn=["দক্ষিণ-পূর্বে জলের ট্যাপ, ওয়াশ বেসিন বা নীল রঙ রাখবেন না"],
+        talismanic_remedy_bn="দক্ষিণ-পূর্ব দেওয়ালে একটি জ্বলন্ত প্রদীপের চিত্র বা গোলাপী কোয়ার্টজ ক্রিস্টাল রাখুন।"
+    ),
+    AstroVastuRule(
+        planet_id="saturn",
+        planet_name_bn="শনি (Saturn)",
+        governing_direction="West (পশ্চিম দিক)",
+        element="Space/Air (আকাশ ও বায়ু)",
+        importance_during_dasha_bn="শনির মহাদশায় কর্মক্ষেত্রে দীর্ঘস্থায়ী লাভ, ধৈর্য ও স্থায়িত্ব অর্জনের জন্য পশ্চিম দিক সুশৃঙ্খল থাকা আবশ্যক।",
+        critical_dos_bn=["পশ্চিমে ডাইনিং রুম বা অধ্যয়নের স্থান রাখুন", "ধাতব বা রূপালী আসবাব রাখুন"],
+        critical_donts_bn=["পশ্চিমে আবর্জনা বা লাল রঙের ছটা রাখবেন না", "পশ্চিম দিক নিচু করবেন না"],
+        talismanic_remedy_bn="পশ্চিম দিকে কালো ঘোড়ার নাল বা স্টেইনলেস স্টিল চক্র স্থাপন করুন।"
+    ),
+    AstroVastuRule(
+        planet_id="rahu",
+        planet_name_bn="রাহু (Rahu)",
+        governing_direction="SW (দক্ষিণ-পশ্চিম / নৈঋত)",
+        element="Earth (পৃথিবী)",
+        importance_during_dasha_bn="রাহুর মহাদশায় আকস্মিক দুর্ঘটনা, আইনি ঝামেলা ও পারিবারিক সংকট এড়াতে দক্ষিণ-পশ্চিম কোণ সুরক্ষিত রাখা জীবনরক্ষাকারী।",
+        critical_dos_bn=["দক্ষিণ-পশ্চিম সবচেয়ে উঁচু ও ভারী রাখুন", "হলুদ বা মাটির রঙ ব্যবহার করুন", "মাস্টার বেডরুম এখানে রাখুন"],
+        critical_donts_bn=["নৈঋতে টয়লেট বা আন্ডারগ্রাউন্ড ওয়াটার চরম বিপর্যয় ডেকে আনে", "SW-তে কাটা কোণ রাখবেন না"],
+        talismanic_remedy_bn="দক্ষিণ-পশ্চিমের মেঝের খাঁজে ৪ মিমি ব্রাস ও লেড স্ট্রিপ বসিয়ে সিল করুন এবং ভারী পিতলের হাতি রাখুন।"
+    ),
+    AstroVastuRule(
+        planet_id="ketu",
+        planet_name_bn="কেতু (Ketu)",
+        governing_direction="NE / Brahmasthan (কেন্দ্র ও ঈশান)",
+        element="Ether (আকাশ)",
+        importance_during_dasha_bn="কেতুর মহাদশায় মোক্ষ, গুপ্তবিদ্যা ও আত্মিক জাগরণে ব্রহ্মস্থান সম্পূর্ণ ফাঁকা ও আলোকিত রাখা উচিত।",
+        critical_dos_bn=["ঘরের কেন্দ্র সম্পূর্ণ ভারমুক্ত ও পরিচ্ছন্ন রাখুন", "ঈশানে রূপার স্বস্তিক প্রতীক রাখুন"],
+        critical_donts_bn=["ব্রহ্মস্থানে পিলার, ভারী দেওয়াল বা সেপটিক ট্যাংক রাখবেন না"],
+        talismanic_remedy_bn="ব্রহ্মস্থানে একটি অষ্টকোণী পিতলের সূর্য বা শ্রীযন্ত্র স্থাপন করুন।"
+    ),
+]
+
+
+def get_astrovastu_rules(planet_id: str | None = None) -> list[AstroVastuRule]:
+    """Returns AstroVastu planetary directions and guidelines."""
+    if planet_id:
+        return [r for r in ASTROVASTU_RULES if r.planet_id == planet_id.lower()]
+    return ASTROVASTU_RULES
+

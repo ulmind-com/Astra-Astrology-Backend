@@ -72,3 +72,51 @@ class VastuAuditResponse(BaseModel):
     elemental_balance: dict[str, int]  # percentage of balance per element
     key_remedies: list[VastuRemedyItem]
     warnings_critical: list[str]
+
+
+class AyadiCalculationRequest(BaseModel):
+    length: float = Field(..., gt=0.0, description="Length of plot or building in feet")
+    width: float = Field(..., gt=0.0, description="Width of plot or building in feet")
+    unit: str = Field(default="feet", description="Measurement unit ('feet' or 'meter')")
+
+
+class AyadiCalculationResponse(BaseModel):
+    length: float
+    width: float
+    area_sqft: float
+    aaya_number: int  # 1 to 8
+    aaya_name: str
+    aaya_name_bn: str
+    is_auspicious: bool
+    aaya_significance_bn: str
+    dhana_score: int
+    rina_score: int
+    is_dhana_dominant: bool
+    structure_longevity_years: int
+    building_nakshatra_number: int
+    building_nakshatra_name: str
+    best_facing_directions_bn: list[str]
+
+
+class MedicalVastuItem(BaseModel):
+    ailment_id: str
+    name_bn: str
+    name_en: str
+    affected_zone: str
+    affected_element: str
+    body_organ_bn: str
+    dosha: str
+    root_cause_bn: str
+    remedy_bn: str
+
+
+class AstroVastuRule(BaseModel):
+    planet_id: str
+    planet_name_bn: str
+    governing_direction: str
+    element: str
+    importance_during_dasha_bn: str
+    critical_dos_bn: list[str]
+    critical_donts_bn: list[str]
+    talismanic_remedy_bn: str
+
