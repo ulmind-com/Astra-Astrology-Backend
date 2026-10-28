@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import setup_logging
 from app.core.middleware import register_middleware
+from app.core.sentry import init_sentry
 from app.db.mongodb import close_mongo_connection, connect_to_mongo
 from app.services.firebase import init_firebase
 from app.services.storage import configure_cloudinary
@@ -88,6 +89,12 @@ def _check_config() -> None:
                 "recharge whose browser callback is lost (common on UPI) never credits."
             )
 
+        if settings.is_production:
+            if not settings.sentry_configured:
+                warnings.append("SENTRY_DSN is not set — error tracking is inactive.")
+            if not settings.loki_configured:
+                warnings.append("GRAFANA_LOKI_* is not set — logs will not reach Grafana Cloud.")
+
     if not settings.resend_configured:
         warnings.append("RESEND_API_KEY is not set — emails will not be delivered.")
     if not settings.cloudinary_configured:
@@ -112,6 +119,7 @@ def _check_config() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     setup_logging()
+    init_sentry()
     logger.info("Starting {} ({})", settings.APP_NAME, settings.APP_ENV)
     _check_config()
 
@@ -122,6 +130,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # Pre-warm MediaPipe Face Landmarker in background so first user scan is fast
     try:
         import asyncio
+
         from app.services.face_cv.detector import get_landmarker
         asyncio.get_running_loop().run_in_executor(None, get_landmarker)
     except Exception as e:
@@ -159,6 +168,11 @@ def create_app() -> FastAPI:
             "docs": "/docs",
             "health": f"{settings.API_V1_PREFIX}/health",
         }
+
+    @app.get("/sentry-debug", include_in_schema=False)
+    async def trigger_sentry_error() -> None:
+        """Trigger an intentional error to verify Sentry integration."""
+        _ = 1 / 0
 
     return app
 

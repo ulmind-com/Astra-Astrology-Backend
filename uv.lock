@@ -124,10 +124,12 @@ dependencies = [
     { name = "pyjwt", extra = ["crypto"] },
     { name = "pymongo" },
     { name = "pyswisseph" },
+    { name = "python-logging-loki" },
     { name = "python-multipart" },
     { name = "python-slugify" },
     { name = "razorpay" },
     { name = "resend" },
+    { name = "sentry-sdk", extra = ["fastapi"] },
     { name = "timezonefinder" },
     { name = "tzdata" },
     { name = "uvicorn", extra = ["standard"] },
@@ -166,11 +168,13 @@ requires-dist = [
     { name = "pyswisseph", specifier = ">=2.10.3.2" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },
+    { name = "python-logging-loki", specifier = ">=0.3.1" },
     { name = "python-multipart", specifier = ">=0.0.12" },
     { name = "python-slugify", specifier = ">=8.0.4" },
     { name = "razorpay", specifier = ">=2.0.1" },
     { name = "resend", specifier = ">=2.4.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.7.0" },
+    { name = "sentry-sdk", extras = ["fastapi"], specifier = ">=2.17.0" },
     { name = "timezonefinder", specifier = ">=6.5.0" },
     { name = "tzdata", specifier = ">=2024.1" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
@@ -1511,6 +1515,19 @@ wheels = [
 ]
 
 [[package]]
+name = "python-logging-loki"
+version = "0.3.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+    { name = "rfc3339" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/39/e2/b1ca91524530e5c7d73e70c4a2df952e5b7f1519977c7c51b3966b0332a8/python-logging-loki-0.3.1.tar.gz", hash = "sha256:b83610c8a3adc99fbab072493b91dfb25ced69be4874fefe3ab457b391adbf60", size = 5214, upload-time = "2019-11-28T22:34:38.273Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e9/ca/1f5660fbda815ed04839d657cab77605337e32c224c03c780cd383c7bcd6/python_logging_loki-0.3.1-py3-none-any.whl", hash = "sha256:8a9131db037fbea3d390089c4c32dbe7ed233944905079615a9fb6f669b0f4e6", size = 7004, upload-time = "2019-11-28T22:34:36.635Z" },
+]
+
+[[package]]
 name = "python-multipart"
 version = "0.0.32"
 source = { registry = "https://pypi.org/simple" }
@@ -1600,6 +1617,15 @@ wheels = [
 ]
 
 [[package]]
+name = "rfc3339"
+version = "6.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/91/fb/2835a62f2de226796fce76411daec6b9831eaf6d2fd04994ac1de055dc13/rfc3339-6.2.tar.gz", hash = "sha256:d53c3b5eefaef892b7240ba2a91fef012e86faa4d0a0ca782359c490e00ad4d0", size = 4144, upload-time = "2019-09-24T16:46:18.176Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0f/2e/48d6cf57dec789c90a7b1cb59a21c3cad509f0ec1284632152f33bb1d88d/rfc3339-6.2-py3-none-any.whl", hash = "sha256:f44316b21b21db90a625cde04ebb0d46268f153e6093021fa5893e92a96f58a3", size = 5515, upload-time = "2019-09-24T16:46:16.63Z" },
+]
+
+[[package]]
 name = "ruff"
 version = "0.17.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1622,6 +1648,24 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/ae/bf/024e01e1f6aec87768696725e648ed5b438941341eea8f8100beb681961f/ruff-0.17.0-py3-none-win32.whl", hash = "sha256:5e50aa5b84decd9fe5b0bb0e6f71c3b592f1767ed09faa4b7207d933961e35cd", size = 9904112, upload-time = "2026-10-09T19:47:19.75Z" },
     { url = "https://files.pythonhosted.org/packages/cc/77/1ee73df41dcc8d1cdb686ee4bc46ea29704ea175feb6b95c78420f631ab8/ruff-0.17.0-py3-none-win_amd64.whl", hash = "sha256:8ab76bcda86dfd28e13776cb5de3c7bcdcf1ae3d37ed761113d1a5a415dc134c", size = 10115585, upload-time = "2026-10-09T19:47:22.698Z" },
     { url = "https://files.pythonhosted.org/packages/fd/71/eb4f0ccc844aece56963e8578df9c95d4c00f580547d52329d4035d3af18/ruff-0.17.0-py3-none-win_arm64.whl", hash = "sha256:c154c73ff43f9854395e24cac507af13078962e53d2b511605058d22af1fdb88", size = 9872035, upload-time = "2026-10-09T19:47:26.306Z" },
+]
+
+[[package]]
+name = "sentry-sdk"
+version = "2.73.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "certifi" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c5/3b/1e47acf2456781c26e12007379ecc154bf310b8f64d40390d78b791d55c3/sentry_sdk-2.73.0.tar.gz", hash = "sha256:4a2ab97b16e4693c325ab361c7bbbb346dbc7d0bc0150922d795a25bac8d5280", size = 1079078, upload-time = "2026-10-22T09:08:49.63Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b2/88/cabf98d017d7b940720e514e5f8ee02e3e6f7495caf93c30735a38387ec4/sentry_sdk-2.73.0-py3-none-any.whl", hash = "sha256:0bcfa6928ea5adbb89591858b514d27adac27c7a3cccc31b20ed10e0b09eda9e", size = 549011, upload-time = "2026-10-22T09:08:47.88Z" },
+]
+
+[package.optional-dependencies]
+fastapi = [
+    { name = "fastapi" },
 ]
 
 [[package]]

@@ -46,3 +46,27 @@ def setup_logging() -> None:
         std_logger = logging.getLogger(name)
         std_logger.handlers = [_InterceptHandler()]
         std_logger.propagate = False
+
+    if settings.loki_configured:
+        try:
+            from logging_loki import LokiHandler
+
+            loki_handler = LokiHandler(
+                url=settings.GRAFANA_LOKI_URL,
+                tags={
+                    "app": settings.APP_NAME.lower(),
+                    "environment": settings.APP_ENV,
+                },
+                auth=(settings.GRAFANA_LOKI_USER, settings.GRAFANA_LOKI_TOKEN),
+                version="1",
+            )
+            logger.add(
+                loki_handler.emit,
+                level=settings.LOG_LEVEL.upper(),
+                enqueue=True,
+                serialize=True,
+            )
+            logger.info("Grafana Cloud Loki logging enabled.")
+        except Exception as exc:
+            logger.warning("Failed to configure Grafana Loki handler: {}", exc)
+
