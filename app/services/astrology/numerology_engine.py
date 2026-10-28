@@ -8,10 +8,9 @@ Strictly derived from Client Resource Documents:
 - mobile number (1).docx & Mobile Number Numerology/01.pdf, 02.pdf, 03.pdf (King number table, 60%/40% pair dominance, 3x3 Sepharial mobile grid, 16 L-shapes, compound preferences, avoid list, remedial injections)
 """
 
-from datetime import date, datetime, timedelta
-from functools import lru_cache
 import math
 import re
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from app.schemas.numerology import (
@@ -644,7 +643,6 @@ def calculate_year_prediction(birth_date_str: str, target_year: int | None = Non
 # Name Numerology Calculation
 # ---------------------------------------------------------------------------
 
-@lru_cache(maxsize=2048)
 def calculate_name_numerology(name: str, mulank: int, bhagyank: int) -> NameAnalysisResponse:
     """Calculates complete Chaldean Name Numerology with syllable and compound analysis."""
     clean_name = re.sub(r"[^A-Za-z]", "", name).upper()
@@ -742,7 +740,6 @@ def calculate_name_numerology(name: str, mulank: int, bhagyank: int) -> NameAnal
 # Mobile Numerology Engine
 # ---------------------------------------------------------------------------
 
-@lru_cache(maxsize=2048)
 def calculate_mobile_numerology(mobile_str: str, mulank: int, bhagyank: int, birth_date_str: str = "") -> MobileAnalysisResponse:
     """Calculates complete Mobile Numerology with 60%/40% dominance law, Sepharial grid & 16 L-shapes."""
     clean_mob = re.sub(r"[^0-9]", "", mobile_str)
@@ -1209,7 +1206,6 @@ def calculate_numerology_dasha(birth_date_str: str, mulank: int, bhagyank: int) 
 # Master Numerology Execution Function
 # ---------------------------------------------------------------------------
 
-@lru_cache(maxsize=1024)
 def calculate_full_numerology(
     full_name: str,
     birth_date_str: str,
@@ -1299,7 +1295,6 @@ def calculate_full_numerology(
 # Name Correction & Spelling Harmonizer Engine
 # ---------------------------------------------------------------------------
 
-@lru_cache(maxsize=1024)
 def correct_name_spelling(
     name: str,
     mulank: int,
@@ -1600,7 +1595,6 @@ def compare_mobile_numbers(
 # Business, Brand & Company Name Evaluator Engine
 # ---------------------------------------------------------------------------
 
-@lru_cache(maxsize=1024)
 def evaluate_business_numerology(
     brand_name: str,
     industry: str,
@@ -1722,7 +1716,6 @@ def evaluate_business_numerology(
 # Vehicle Plate & Bank Account Numerology Audit Engine
 # ---------------------------------------------------------------------------
 
-@lru_cache(maxsize=1024)
 def audit_vehicle_bank_numerology(
     input_string: str,
     audit_type: str = "vehicle",
