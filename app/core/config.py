@@ -17,6 +17,7 @@ class Settings(BaseSettings):
 
     # ---------------------------------------------------------------- app
     APP_NAME: str = "DivinLink"
+    FRONTEND_URL: str = "https://astra-astrology-web.vercel.app"
     APP_ENV: Literal["development", "staging", "production"] = "development"
     DEBUG: bool = True
     API_V1_PREFIX: str = "/api/v1"
