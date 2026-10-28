@@ -17,6 +17,8 @@ class Settings(BaseSettings):
 
     # ---------------------------------------------------------------- app
     APP_NAME: str = "DivinLink"
+    APP_VERSION: str = "0.1.0"
+    FRONTEND_URL: str = "https://astra-astrology-web.vercel.app"
     APP_ENV: Literal["development", "staging", "production"] = "development"
     DEBUG: bool = True
     API_V1_PREFIX: str = "/api/v1"
@@ -148,6 +150,23 @@ class Settings(BaseSettings):
     def groq_configured(self) -> bool:
         return bool(self.GROQ_API_KEY)
 
+    # ---------------------------------------------------------- monitoring
+    # Sentry error tracking & APM performance
+    SENTRY_DSN: str = ""
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.2
+    SENTRY_PROFILES_SAMPLE_RATE: float = 0.0
+
+    # Grafana Cloud Loki log aggregation
+    GRAFANA_LOKI_URL: str = ""
+    GRAFANA_LOKI_USER: str = ""
+    GRAFANA_LOKI_TOKEN: str = ""
+
+    # Grafana Cloud OpenTelemetry (Logs, Metrics, Traces, System RAM/CPU)
+    OTEL_SERVICE_NAME: str = "divinlink"
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = ""
+    OTEL_EXPORTER_OTLP_PROTOCOL: str = "http/protobuf"
+    OTEL_EXPORTER_OTLP_HEADERS: str = ""
+
     @field_validator("RECHARGE_PACKS_PAISE", mode="before")
     @classmethod
     def _split_packs(cls, v: object) -> object:
@@ -197,6 +216,18 @@ class Settings(BaseSettings):
     @property
     def firebase_configured(self) -> bool:
         return bool(self.FIREBASE_CREDENTIALS_PATH or self.FIREBASE_CREDENTIALS_JSON)
+
+    @property
+    def sentry_configured(self) -> bool:
+        return bool(self.SENTRY_DSN)
+
+    @property
+    def loki_configured(self) -> bool:
+        return bool(self.GRAFANA_LOKI_URL and self.GRAFANA_LOKI_USER and self.GRAFANA_LOKI_TOKEN)
+
+    @property
+    def otel_configured(self) -> bool:
+        return bool(self.OTEL_EXPORTER_OTLP_ENDPOINT and self.OTEL_EXPORTER_OTLP_HEADERS)
 
 
 @lru_cache
