@@ -1,6 +1,8 @@
 """FastAPI router for Vedic, Chaldean, Name, and Mobile Numerology endpoints."""
 
-from fastapi import APIRouter, HTTPException, Query, status
+from functools import lru_cache
+
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.api.dependencies import OptionalUser
@@ -114,17 +116,10 @@ def analyze_mobile_endpoint(payload: MobileOnlyRequest) -> ApiResponse[MobileAna
         ) from exc
 
 
-@router.get(
-    "/profile/{number}",
-    response_model=ApiResponse[MulankProfile],
-    summary="Get 20-field master profile for a Mulank (1-9)",
-)
-def get_mulank_profile_endpoint(number: int) -> ApiResponse[MulankProfile]:
-    """Retrieves full 20-field master profile for Mulank number from client document NEW NUMRO.docx."""
-    if number not in MULANK_MASTER:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Number must be between 1 and 9.")
+@lru_cache(maxsize=16)
+def _build_cached_mulank_profile(number: int) -> MulankProfile:
     raw = MULANK_MASTER[number]
-    profile = MulankProfile(
+    return MulankProfile(
         number=number,
         planet=raw["planet"],
         planet_hi=raw["planet_hi"],
@@ -144,6 +139,18 @@ def get_mulank_profile_endpoint(number: int) -> ApiResponse[MulankProfile]:
         health_traits=raw["health_traits"],
         profession=raw["profession"],
     )
+
+
+@router.get(
+    "/profile/{number}",
+    response_model=ApiResponse[MulankProfile],
+    summary="Get 20-field master profile for a Mulank (1-9)",
+)
+def get_mulank_profile_endpoint(number: int) -> ApiResponse[MulankProfile]:
+    """Retrieves full 20-field master profile for Mulank number from client document NEW NUMRO.docx."""
+    if number not in MULANK_MASTER:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Number must be between 1 and 9.")
+    profile = _build_cached_mulank_profile(number)
     return ApiResponse(success=True, data=profile, message="Profile retrieved successfully.")
 
 
