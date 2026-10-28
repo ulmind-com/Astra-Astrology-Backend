@@ -62,17 +62,19 @@ def _loguru_to_otel_sink(message: Any) -> None:
             "CRITICAL": SeverityNumber.FATAL,
         }
         severity_number = severity_map.get(level_name, SeverityNumber.INFO)
+        attributes: dict[str, Any] = {
+            "logger.name": record.get("name", "app"),
+            "logger.function": record.get("function", ""),
+            "logger.line": record.get("line", 0),
+            "request_id": record.get("extra", {}).get("request_id", ""),
+            "client.ip": record.get("extra", {}).get("client_ip", ""),
+        }
         log_record = LogRecord(
             timestamp=int(record["time"].timestamp() * 1e9),
             body=record["message"],
             severity_number=severity_number,
             severity_text=level_name,
-            attributes={
-                "logger.name": record.get("name", "app"),
-                "logger.function": record.get("function", ""),
-                "logger.line": record.get("line", 0),
-                "request_id": record.get("extra", {}).get("request_id", ""),
-            },
+            attributes=attributes,
         )
         _otel_logger.emit(log_record)
     except Exception:
@@ -116,7 +118,15 @@ def init_telemetry(app: FastAPI | None = None) -> bool:
     except Exception as exc:
         logger.debug("System metrics instrumentor deferred: {}", exc)
 
-    # 4. Logs to Grafana Cloud
+    # 4. MongoDB / PyMongo auto-instrumentation (query duration & errors)
+    try:
+        from opentelemetry.instrumentation.pymongo import PymongoInstrumentor
+
+        PymongoInstrumentor().instrument(tracer_provider=tracer_provider)
+    except Exception as exc:
+        logger.debug("PyMongo instrumentor deferred: {}", exc)
+
+    # 5. Logs to Grafana Cloud
     log_endpoint = f"{endpoint}/v1/logs"
     _log_provider = LoggerProvider(resource=resource)
     log_exporter = OTLPLogExporter(endpoint=log_endpoint, headers=headers)
@@ -126,7 +136,7 @@ def init_telemetry(app: FastAPI | None = None) -> bool:
     # Hook Loguru to send logs to OpenTelemetry asynchronously
     logger.add(_loguru_to_otel_sink, level=settings.LOG_LEVEL.upper(), enqueue=True)
 
-    # 5. FastAPI auto-instrumentation
+    # 6. FastAPI auto-instrumentation
     if app:
         try:
             FastAPIInstrumentor.instrument_app(
