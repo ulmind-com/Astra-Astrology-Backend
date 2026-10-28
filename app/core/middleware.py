@@ -5,7 +5,6 @@ import uuid
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.gzip import GZipMiddleware
 from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
@@ -66,13 +65,8 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 
 
 def register_middleware(app: FastAPI) -> None:
-    # 1. GZip response compression (compresses responses >= 500 bytes to save up to 75% bandwidth)
-    app.add_middleware(GZipMiddleware, minimum_size=500)
-
-    # 2. Request context, IP extraction, and duration logging
+    # Added last = outermost, so CORS headers apply to every response.
     app.add_middleware(RequestContextMiddleware)
-
-    # 3. CORS (Added last = outermost, so CORS headers apply to every response)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.ALLOWED_ORIGINS,
