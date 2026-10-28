@@ -1,7 +1,9 @@
 """Schemas for Rashi (Moon Sign), Nakshatra & Astrology calculation."""
 
+import math
 from typing import Any, Literal
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class RashiCalculateRequest(BaseModel):
@@ -1042,8 +1044,51 @@ class KundliCalculateRequest(BaseModel):
         "true_pushya",
     ] = Field(default="lahiri")
     house_system: Literal["placidus", "equal", "whole_sign", "koch"] = Field(default="placidus")
-    chart_style: Literal["north_indian", "south_indian", "east_indian", "wheel"] = Field(default="north_indian")
+    chart_style: Literal["north_indian", "south_indian", "east_indian", "wheel"] = Field(
+        default="north_indian"
+    )
     language: Literal["en", "bn", "hi"] = Field(default="en")
+
+    @field_validator("timezone", mode="before")
+    @classmethod
+    def _coerce_timezone(cls, v: Any) -> float:
+        if v is None or v == "":
+            return 5.5
+        try:
+            val = float(v)
+            if math.isnan(val):
+                return 5.5
+            return val
+        except (ValueError, TypeError):
+            return 5.5
+
+    @field_validator("gender", mode="before")
+    @classmethod
+    def _coerce_gender(cls, v: Any) -> str:
+        if isinstance(v, str):
+            v_lower = v.strip().lower()
+            if v_lower in ("male", "m"):
+                return "male"
+            if v_lower in ("female", "f"):
+                return "female"
+            if v_lower in ("other", "o"):
+                return "other"
+        return "male"
+
+    @field_validator("chart_style", mode="before")
+    @classmethod
+    def _coerce_chart_style(cls, v: Any) -> str:
+        if isinstance(v, str):
+            v_lower = v.strip().lower()
+            if v_lower in ("north", "north_indian"):
+                return "north_indian"
+            if v_lower in ("south", "south_indian"):
+                return "south_indian"
+            if v_lower in ("east", "east_indian"):
+                return "east_indian"
+            if v_lower == "wheel":
+                return "wheel"
+        return "north_indian"
 
 
 class KundliPersonalDetails(BaseModel):
@@ -1407,6 +1452,19 @@ class KundliMatchingPersonInput(BaseModel):
     )
     ayanamsa: Literal["lahiri", "krishnamurti", "bv_raman", "yukteshwar"] = Field(default="lahiri")
     house_system: Literal["placidus", "equal", "whole_sign"] = Field(default="placidus")
+
+    @field_validator("timezone", mode="before")
+    @classmethod
+    def _coerce_timezone(cls, v: Any) -> float:
+        if v is None or v == "":
+            return 5.5
+        try:
+            val = float(v)
+            if math.isnan(val):
+                return 5.5
+            return val
+        except (ValueError, TypeError):
+            return 5.5
 
 
 class KundliMatchingRequest(BaseModel):
