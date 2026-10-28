@@ -161,6 +161,12 @@ class Settings(BaseSettings):
     GRAFANA_LOKI_USER: str = ""
     GRAFANA_LOKI_TOKEN: str = ""
 
+    # Grafana Cloud OpenTelemetry (Logs, Metrics, Traces, System RAM/CPU)
+    OTEL_SERVICE_NAME: str = "divinlink"
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = ""
+    OTEL_EXPORTER_OTLP_PROTOCOL: str = "http/protobuf"
+    OTEL_EXPORTER_OTLP_HEADERS: str = ""
+
     @field_validator("RECHARGE_PACKS_PAISE", mode="before")
     @classmethod
     def _split_packs(cls, v: object) -> object:
@@ -218,6 +224,10 @@ class Settings(BaseSettings):
     @property
     def loki_configured(self) -> bool:
         return bool(self.GRAFANA_LOKI_URL and self.GRAFANA_LOKI_USER and self.GRAFANA_LOKI_TOKEN)
+
+    @property
+    def otel_configured(self) -> bool:
+        return bool(self.OTEL_EXPORTER_OTLP_ENDPOINT and self.OTEL_EXPORTER_OTLP_HEADERS)
 
 
 @lru_cache

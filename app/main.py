@@ -12,6 +12,7 @@ from app.core.exceptions import register_exception_handlers
 from app.core.logging import setup_logging
 from app.core.middleware import register_middleware
 from app.core.sentry import init_sentry
+from app.core.telemetry import flush_telemetry, init_telemetry
 from app.db.mongodb import close_mongo_connection, connect_to_mongo
 from app.services.firebase import init_firebase
 from app.services.storage import configure_cloudinary
@@ -140,6 +141,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     yield
 
     logger.info("Shutting down...")
+    flush_telemetry()
     await close_mongo_connection()
 
 
@@ -157,6 +159,7 @@ def create_app() -> FastAPI:
 
     register_middleware(app)
     register_exception_handlers(app)
+    init_telemetry(app)
     app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
     @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
