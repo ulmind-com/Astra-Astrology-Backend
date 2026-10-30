@@ -27,45 +27,45 @@ from app.schemas.vastu import (
 # Quadrant structure: North (N1-N8), East (E1-E8), South (S1-S8), West (W1-W8)
 
 PADA_DEFINITIONS: list[dict[str, Any]] = [
-    # North Quadrant
-    {"pada_id": "N1", "quadrant": "North", "deity": "Roga (রোগ)", "center": 309.375, "auspicious": False, "effects": "দীর্ঘস্থায়ী অসুস্থতা, ঈর্ষা ও শত্রুভীতি বৃদ্ধি পায়।", "challenge": "অসুস্থতা ও দুর্বল জীবনীশক্তি"},
-    {"pada_id": "N2", "quadrant": "North", "deity": "Naga (নাগ)", "center": 320.625, "auspicious": False, "effects": "উদ্বেগ, আত্মীয়দের সাথে বৈরিতা ও মানসিক অস্থিরতা।", "challenge": "মানসিক ক্লেশ ও সম্পর্কের টানাপোড়েন"},
-    {"pada_id": "N3", "quadrant": "North", "deity": "Mukhya (মুখ্য)", "center": 331.875, "auspicious": True, "effects": "বিশাল ধনলাভ, বাণিজ্যিক সমৃদ্ধি ও নতুন অর্থপ্রবাহের পথ উন্মোচন।", "challenge": "অতি-উচ্চাকাঙ্ক্ষা নিয়ন্ত্রণ"},
-    {"pada_id": "N4", "quadrant": "North", "deity": "Bhallat (ভল্লাট)", "center": 343.125, "auspicious": True, "effects": "পূর্বপুরুষের সম্পত্তি লাভ, প্রচুর সঞ্চয় ও অক্ষয় ঐশ্বর্য।", "challenge": "সম্পদের সদ্ব্যবহার"},
-    {"pada_id": "N5", "quadrant": "North", "deity": "Soma (সোম / কুবের)", "center": 354.375, "auspicious": False, "effects": "পারিবারিক টানাপোড়েন, সন্তানহীনতার চিন্তা ও আবেগীয় সংকট।", "challenge": "আবেগীয় বিচ্ছিন্নতা"},
-    {"pada_id": "N6", "quadrant": "North", "deity": "Bhujanga (ভুজঙ্গ)", "center": 5.625, "auspicious": False, "effects": "পুত্রসন্তানের সাথে মনোমালিন্য, অহংকার ও আত্মঘাতী সিদ্ধান্ত।", "challenge": "পারিবারিক অসহযোগিতা"},
-    {"pada_id": "N7", "quadrant": "North", "deity": "Aditi (অদিতি)", "center": 16.875, "auspicious": False, "effects": "গৃহের নারীদের মধ্যে অস্থিরতা ও অতিরিক্ত দুশ্চিন্তা।", "challenge": "নারীদের মানসিক চাপ"},
-    {"pada_id": "N8", "quadrant": "North", "deity": "Diti (দিতি)", "center": 28.125, "auspicious": False, "effects": "অতিরিক্ত ব্যয়, ঋণগ্রস্ততা ও আয়ের তুলনায় খরচের আধিক্য।", "challenge": "অর্থ অপচয়"},
+    # North Quadrant (N5 is anchored at 0.0° True North, spanning 354.375° to 5.625°)
+    {"pada_id": "N1", "quadrant": "North", "deity": "Roga (রোগ)", "center": 315.0, "auspicious": False, "effects": "দীর্ঘস্থায়ী অসুস্থতা, ঈর্ষা ও শত্রুভীতি বৃদ্ধি পায়।", "challenge": "অসুস্থতা ও দুর্বল জীবনীশক্তি"},
+    {"pada_id": "N2", "quadrant": "North", "deity": "Naga (নাগ)", "center": 326.25, "auspicious": False, "effects": "উদ্বেগ, আত্মীয়দের সাথে বৈরিতা ও মানসিক অস্থিরতা।", "challenge": "মানসিক ক্লেশ ও সম্পর্কের টানাপোড়েন"},
+    {"pada_id": "N3", "quadrant": "North", "deity": "Mukhya (মুখ্য)", "center": 337.5, "auspicious": True, "effects": "বিশাল ধনলাভ, বাণিজ্যিক সমৃদ্ধি ও নতুন অর্থপ্রবাহের পথ উন্মোচন।", "challenge": "অতি-উচ্চাকাঙ্ক্ষা নিয়ন্ত্রণ"},
+    {"pada_id": "N4", "quadrant": "North", "deity": "Bhallat (ভল্লাট)", "center": 348.75, "auspicious": True, "effects": "পূর্বপুরুষের সম্পত্তি লাভ, প্রচুর সঞ্চয় ও অক্ষয় ঐশ্বর্য।", "challenge": "সম্পদের সদ্ব্যবহার"},
+    {"pada_id": "N5", "quadrant": "North", "deity": "Soma (সোম / কুবের)", "center": 0.0, "auspicious": False, "effects": "পারিবারিক টানাপোড়েন, সন্তানহীনতার চিন্তা ও আবেগীয় সংকট।", "challenge": "আবেগীয় বিচ্ছিন্নতা"},
+    {"pada_id": "N6", "quadrant": "North", "deity": "Bhujanga (ভুজঙ্গ)", "center": 11.25, "auspicious": False, "effects": "পুত্রসন্তানের সাথে মনোমালিন্য, অহংকার ও আত্মঘাতী সিদ্ধান্ত।", "challenge": "পারিবারিক অসহযোগিতা"},
+    {"pada_id": "N7", "quadrant": "North", "deity": "Aditi (অদিতি)", "center": 22.5, "auspicious": False, "effects": "গৃহের নারীদের মধ্যে অস্থিরতা ও অতিরিক্ত দুশ্চিন্তা।", "challenge": "নারীদের মানসিক চাপ"},
+    {"pada_id": "N8", "quadrant": "North", "deity": "Diti (দিতি)", "center": 33.75, "auspicious": False, "effects": "অতিরিক্ত ব্যয়, ঋণগ্রস্ততা ও আয়ের তুলনায় খরচের আধিক্য।", "challenge": "অর্থ অপচয়"},
 
-    # East Quadrant
-    {"pada_id": "E1", "quadrant": "East", "deity": "Shikhi (শিখী / অগ্নি)", "center": 39.375, "auspicious": False, "effects": "অগ্নিকাণ্ড বা বৈদ্যুতিক বিপদের ঝুঁকি, আর্থিক ক্ষতি।", "challenge": "আকস্মিক দুর্যোগ"},
-    {"pada_id": "E2", "quadrant": "East", "deity": "Parjanya (পর্জন্য)", "center": 50.625, "auspicious": False, "effects": "কন্যা সন্তানের স্বাস্থ্য সমস্যা ও আর্থিক অনটন।", "challenge": "পারিবারিক ব্যয়বৃদ্ধি"},
-    {"pada_id": "E3", "quadrant": "East", "deity": "Jayanta (জয়ন্ত)", "center": 61.875, "auspicious": True, "effects": "বিজয়, রাজকীয় সম্মান, সামাজিক গ্রহণযোগ্যতা ও সৌভাগ্য।", "challenge": "সততা বজায় রাখা"},
-    {"pada_id": "E4", "quadrant": "East", "deity": "Indra (ইন্দ্র)", "center": 73.125, "auspicious": True, "effects": "সরকারি সহযোগিতা, উচ্চপদস্থ কর্মকর্তাদের কৃপা ও প্রভাবশালী খ্যাতি।", "challenge": "অহংকার পরিহার"},
-    {"pada_id": "E5", "quadrant": "East", "deity": "Surya (সূর্য)", "center": 84.375, "auspicious": False, "effects": "অতিরিক্ত আত্মম্ভরিতা, ক্রোধ ও পরিবারের সদস্যদের মধ্যে বিরোধ।", "challenge": "উগ্র মনোভাব"},
-    {"pada_id": "E6", "quadrant": "East", "deity": "Satya (সত্য)", "center": 95.625, "auspicious": False, "effects": "বিশ্বাসভঙ্গ, প্রতিশ্রুতি পালনে ব্যর্থতা ও আইনি জটিলতা।", "challenge": "মিথ্যা অপবাদ"},
-    {"pada_id": "E7", "quadrant": "East", "deity": "Bhrisha (ভৃশ)", "center": 106.875, "auspicious": False, "effects": "ক্রোধোন্মাদনা, উগ্র আচরণ ও আত্মীয়দের সাথে বিচ্ছেদ।", "challenge": "হঠকারিতা"},
-    {"pada_id": "E8", "quadrant": "East", "deity": "Antariksha (অন্তরীক্ষ)", "center": 118.125, "auspicious": False, "effects": "চুরি, প্রতারণা ও আকস্মিক আর্থিক ডাকাতি।", "challenge": "প্রতারণা ঝুঁকি"},
+    # East Quadrant (E5 is anchored at 90.0° Due East)
+    {"pada_id": "E1", "quadrant": "East", "deity": "Shikhi (শিখী / অগ্নি)", "center": 45.0, "auspicious": False, "effects": "অগ্নিকাণ্ড বা বৈদ্যুতিক বিপদের ঝুঁকি, আর্থিক ক্ষতি।", "challenge": "আকস্মিক দুর্যোগ"},
+    {"pada_id": "E2", "quadrant": "East", "deity": "Parjanya (পর্জন্য)", "center": 56.25, "auspicious": False, "effects": "কন্যা সন্তানের স্বাস্থ্য সমস্যা ও আর্থিক অনটন।", "challenge": "পারিবারিক ব্যয়বৃদ্ধি"},
+    {"pada_id": "E3", "quadrant": "East", "deity": "Jayanta (জয়ন্ত)", "center": 67.5, "auspicious": True, "effects": "বিজয়, রাজকীয় সম্মান, সামাজিক গ্রহণযোগ্যতা ও সৌভাগ্য।", "challenge": "সততা বজায় রাখা"},
+    {"pada_id": "E4", "quadrant": "East", "deity": "Indra (ইন্দ্র)", "center": 78.75, "auspicious": True, "effects": "সরকারি সহযোগিতা, উচ্চপদস্থ কর্মকর্তাদের কৃপা ও প্রভাবশালী খ্যাতি।", "challenge": "অহংকার পরিহার"},
+    {"pada_id": "E5", "quadrant": "East", "deity": "Surya (সূর্য)", "center": 90.0, "auspicious": False, "effects": "অতিরিক্ত আত্মম্ভরিতা, ক্রোধ ও পরিবারের সদস্যদের মধ্যে বিরোধ।", "challenge": "উগ্র মনোভাব"},
+    {"pada_id": "E6", "quadrant": "East", "deity": "Satya (সত্য)", "center": 101.25, "auspicious": False, "effects": "বিশ্বাসভঙ্গ, প্রতিশ্রুতি পালনে ব্যর্থতা ও আইনি জটিলতা।", "challenge": "মিথ্যা অপবাদ"},
+    {"pada_id": "E7", "quadrant": "East", "deity": "Bhrisha (ভৃশ)", "center": 112.5, "auspicious": False, "effects": "ক্রোধোন্মাদনা, উগ্র আচরণ ও আত্মীয়দের সাথে বিচ্ছেদ।", "challenge": "হঠকারিতা"},
+    {"pada_id": "E8", "quadrant": "East", "deity": "Antariksha (অন্তরীক্ষ)", "center": 123.75, "auspicious": False, "effects": "চুরি, প্রতারণা ও আকস্মিক আর্থিক ডাকাতি।", "challenge": "প্রতারণা ঝুঁকি"},
 
-    # South Quadrant
-    {"pada_id": "S1", "quadrant": "South", "deity": "Anila (অনিল / বায়ু)", "center": 129.375, "auspicious": False, "effects": "সন্তান প্রসবের জটিলতা, ব্যবসায় মন্দা ও তীব্র হতাশা।", "challenge": "উদ্যমহীনতা"},
-    {"pada_id": "S2", "quadrant": "South", "deity": "Pusna (পূষা)", "center": 140.625, "auspicious": False, "effects": "পরাধীনতা, দাসত্বতুল্য চাকরি ও কর্মক্ষেত্রে অবমূল্যায়ন।", "challenge": "স্বাধীনতার অভাব"},
-    {"pada_id": "S3", "quadrant": "South", "deity": "Vitatha (বিতথ)", "center": 151.875, "auspicious": True, "effects": "উদ্যোক্তা হিসেবে বিপুল লাভ, নির্ভীক কর্মশক্তি ও প্রতিপত্তি।", "challenge": "অসাধু পথ পরিহার"},
-    {"pada_id": "S4", "quadrant": "South", "deity": "Gruhakshat (গৃহক্ষত)", "center": 163.125, "auspicious": True, "effects": "সন্তানদের সার্বিক সমৃদ্ধি, পারিবারিক আনন্দ ও সামাজিক মর্যাদা।", "challenge": "পারিবারিক দায়িত্ব"},
-    {"pada_id": "S5", "quadrant": "South", "deity": "Yama (যম)", "center": 174.375, "auspicious": False, "effects": "চরম সংকট — অকাল মৃত্যুভীতি, দীর্ঘস্থায়ী রোগ ও পুলিশি ঝামেলা।", "challenge": "মরণসম সংকট"},
-    {"pada_id": "S6", "quadrant": "South", "deity": "Gandharva (গন্ধর্ব)", "center": 185.625, "auspicious": False, "effects": "অপমান, আর্থিক দেউলিয়াত্ব ও সামাজিক অপযশ।", "challenge": "সম্মানহানি"},
-    {"pada_id": "S7", "quadrant": "South", "deity": "Bhrangaraj (ভৃঙ্গরাজ)", "center": 196.875, "auspicious": False, "effects": "কঠোর শ্রমেও চরম ব্যর্থতা, সঞ্চিত অর্থ নাশ।", "challenge": "শ্রমে ব্যর্থতা"},
-    {"pada_id": "S8", "quadrant": "South", "deity": "Mriga (মৃগ)", "center": 208.125, "auspicious": False, "effects": "পুত্রসন্তানের রোগ, পরিবারের শক্তির অবক্ষয় ও দুর্বল প্রতিরোধ।", "challenge": "শক্তিহীনতা"},
+    # South Quadrant (S5 is anchored at 180.0° Due South)
+    {"pada_id": "S1", "quadrant": "South", "deity": "Anila (অনিল / বায়ু)", "center": 135.0, "auspicious": False, "effects": "সন্তান প্রসবের জটিলতা, ব্যবসায় মন্দা ও তীব্র হতাশা।", "challenge": "উদ্যমহীনতা"},
+    {"pada_id": "S2", "quadrant": "South", "deity": "Pusna (পূষা)", "center": 146.25, "auspicious": False, "effects": "পরাধীনতা, দাসত্বতুল্য চাকরি ও কর্মক্ষেত্রে অবমূল্যায়ন।", "challenge": "স্বাধীনতার অভাব"},
+    {"pada_id": "S3", "quadrant": "South", "deity": "Vitatha (বিতথ)", "center": 157.5, "auspicious": True, "effects": "উদ্যোক্তা হিসেবে বিপুল লাভ, নির্ভীক কর্মশক্তি ও প্রতিপত্তি।", "challenge": "অসাধু পথ পরিহার"},
+    {"pada_id": "S4", "quadrant": "South", "deity": "Gruhakshat (গৃহক্ষত)", "center": 168.75, "auspicious": True, "effects": "সন্তানদের সার্বিক সমৃদ্ধি, পারিবারিক আনন্দ ও সামাজিক মর্যাদা।", "challenge": "পারিবারিক দায়িত্ব"},
+    {"pada_id": "S5", "quadrant": "South", "deity": "Yama (যম)", "center": 180.0, "auspicious": False, "effects": "চরম সংকট — অকাল মৃত্যুভীতি, দীর্ঘস্থায়ী রোগ ও পুলিশি ঝামেলা।", "challenge": "মরণসম সংকট"},
+    {"pada_id": "S6", "quadrant": "South", "deity": "Gandharva (গন্ধর্ব)", "center": 191.25, "auspicious": False, "effects": "অপমান, আর্থিক দেউলিয়াত্ব ও সামাজিক অপযশ।", "challenge": "সম্মানহানি"},
+    {"pada_id": "S7", "quadrant": "South", "deity": "Bhrangaraj (ভৃঙ্গরাজ)", "center": 202.5, "auspicious": False, "effects": "কঠোর শ্রমেও চরম ব্যর্থতা, সঞ্চিত অর্থ নাশ।", "challenge": "শ্রমে ব্যর্থতা"},
+    {"pada_id": "S8", "quadrant": "South", "deity": "Mriga (মৃগ)", "center": 213.75, "auspicious": False, "effects": "পুত্রসন্তানের রোগ, পরিবারের শক্তির অবক্ষয় ও দুর্বল প্রতিরোধ।", "challenge": "শক্তিহীনতা"},
 
-    # West Quadrant
-    {"pada_id": "W1", "quadrant": "West", "deity": "Pitri (পিতৃ / নৈঋত)", "center": 219.375, "auspicious": False, "effects": "পিতৃপুরুষের অসন্তোষ, দারিদ্র্য ও দীর্ঘস্থায়ী পারিবারিক সংকট।", "challenge": "পিতৃ দোষ"},
-    {"pada_id": "W2", "quadrant": "West", "deity": "Dauvarika (দৌবারিক)", "center": 230.625, "auspicious": False, "effects": "সম্পর্কের অস্থিতিশীলতা, অতিরিক্ত সন্দেহ ও দাম্পত্য দূরত্ব।", "challenge": "অবিশ্বাস"},
-    {"pada_id": "W3", "quadrant": "West", "deity": "Sugriva (সুগ্রীব)", "center": 241.875, "auspicious": True, "effects": "দ্রুত বস্তুগত সমৃদ্ধি, ব্যবসায়িক সম্প্রসারণ ও নির্ভরযোগ্য মিত্রলাভ।", "challenge": "বিনয়ী থাকা"},
-    {"pada_id": "W4", "quadrant": "West", "deity": "Pushpadanta (পুষ্পদন্ত)", "center": 253.125, "auspicious": True, "effects": "অটল ধনসম্পদ, সামাজিক প্রতিপত্তি ও কন্যা সন্তানের সৌভাগ্য।", "challenge": "ধনের অহংকার"},
-    {"pada_id": "W5", "quadrant": "West", "deity": "Varuna (বরুণ)", "center": 264.375, "auspicious": False, "effects": "অতিরিক্ত প্রত্যাশা, হতাশা ও মাদকাসক্তির ঝুঁকি।", "challenge": "আকাঙ্ক্ষার অপূর্ণতা"},
-    {"pada_id": "W6", "quadrant": "West", "deity": "Asura (অসুর)", "center": 275.625, "auspicious": False, "effects": "আইনি নোটিস, ট্যাক্স জটিলতা ও সরকারি দণ্ডাদেশ।", "challenge": "রাজদণ্ড"},
-    {"pada_id": "W7", "quadrant": "West", "deity": "Shesha (শোষ)", "center": 286.875, "auspicious": False, "effects": "শারীরিক দুর্বলতা, বিষণ্নতা ও জীবনীশক্তির অবক্ষয়।", "challenge": "হতাশা ও ক্লান্তি"},
-    {"pada_id": "W8", "quadrant": "West", "deity": "Papadayakshma (পাপযক্ষ্মা)", "center": 298.125, "auspicious": False, "effects": "অনৈতিক কাজে লিপ্ত হওয়া, গুপ্ত রোগ ও সামাজিক কলঙ্ক।", "challenge": "অসৎ প্রবৃত্তি"},
+    # West Quadrant (W5 is anchored at 270.0° Due West)
+    {"pada_id": "W1", "quadrant": "West", "deity": "Pitri (পিতৃ / নৈঋত)", "center": 225.0, "auspicious": False, "effects": "পিতৃপুরুষের অসন্তোষ, দারিদ্র্য ও দীর্ঘস্থায়ী পারিবারিক সংকট।", "challenge": "পিতৃ দোষ"},
+    {"pada_id": "W2", "quadrant": "West", "deity": "Dauvarika (দৌবারিক)", "center": 236.25, "auspicious": False, "effects": "সম্পর্কের অস্থিতিশীলতা, অতিরিক্ত সন্দেহ ও দাম্পত্য দূরত্ব।", "challenge": "অবিশ্বাস"},
+    {"pada_id": "W3", "quadrant": "West", "deity": "Sugriva (সুগ্রীব)", "center": 247.5, "auspicious": True, "effects": "দ্রুত বস্তুগত সমৃদ্ধি, ব্যবসায়িক সম্প্রসারণ ও নির্ভরযোগ্য মিত্রলাভ।", "challenge": "বিনয়ী থাকা"},
+    {"pada_id": "W4", "quadrant": "West", "deity": "Pushpadanta (পুষ্পদন্ত)", "center": 258.75, "auspicious": True, "effects": "অটল ধনসম্পদ, সামাজিক প্রতিপত্তি ও কন্যা সন্তানের সৌভাগ্য।", "challenge": "ধনের অহংকার"},
+    {"pada_id": "W5", "quadrant": "West", "deity": "Varuna (বরুণ)", "center": 270.0, "auspicious": False, "effects": "অতিরিক্ত প্রত্যাশা, হতাশা ও মাদকাসক্তির ঝুঁকি।", "challenge": "আকাঙ্ক্ষার অপূর্ণতা"},
+    {"pada_id": "W6", "quadrant": "West", "deity": "Asura (অসুর)", "center": 281.25, "auspicious": False, "effects": "আইনি নোটিস, ট্যাক্স জটিলতা ও সরকারি দণ্ডাদেশ।", "challenge": "রাজদণ্ড"},
+    {"pada_id": "W7", "quadrant": "West", "deity": "Shesha (শোষ)", "center": 292.5, "auspicious": False, "effects": "শারীরিক দুর্বলতা, বিষণ্নতা ও জীবনীশক্তির অবক্ষয়।", "challenge": "হতাশা ও ক্লান্তি"},
+    {"pada_id": "W8", "quadrant": "West", "deity": "Papadayakshma (পাপযক্ষ্মা)", "center": 303.75, "auspicious": False, "effects": "অনৈতিক কাজে লিপ্ত হওয়া, গুপ্ত রোগ ও সামাজিক কলঙ্ক।", "challenge": "অসৎ প্রবৃত্তি"},
 ]
 
 

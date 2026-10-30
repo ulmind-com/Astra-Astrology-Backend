@@ -18,6 +18,13 @@ from app.core.config import settings
 from app.services import firebase as firebase_module
 from app.services.firebase import FirebaseUser
 
+# Disable Sentry and OpenTelemetry during automated tests to avoid polluting
+# production monitoring dashboards and consuming monthly event quotas.
+os.environ["SENTRY_DSN"] = ""
+settings.SENTRY_DSN = ""
+os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = ""
+settings.OTEL_EXPORTER_OTLP_ENDPOINT = ""
+
 # A name of this run's own. Two pytest sessions against one shared database
 # drop each other's data between tests, and the failures that causes look like
 # real bugs in whatever happened to be running — which costs far more time than

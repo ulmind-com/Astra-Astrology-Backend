@@ -6,6 +6,7 @@ neither" rule as registration applies here, with the same rollback.
 """
 
 import secrets
+from typing import Any
 
 from loguru import logger
 from pymongo.errors import DuplicateKeyError
@@ -338,7 +339,7 @@ async def update_availability(profile: Astrologer, payload: AvailabilityUpdate) 
 MAX_GALLERY_IMAGES = 12
 
 
-async def to_public(profile: Astrologer) -> AstrologerPublic:
+async def to_public(profile: Astrologer, platform: Any = None) -> AstrologerPublic:
     """Fills in the platform defaults, so a card never shows a blank price.
 
     Also reports presence as it is *now*: an astrologer whose panel stopped
@@ -346,6 +347,10 @@ async def to_public(profile: Astrologer) -> AstrologerPublic:
     flag they set, so a closed browser never leaves a ghost on the directory.
     """
     from app.services import billing, presence
+    from app.services import settings as settings_service
+
+    if platform is None:
+        platform = await settings_service.get_settings()
 
     public = AstrologerPublic.model_validate(
         {**profile.model_dump(), "rates": {
@@ -356,13 +361,13 @@ async def to_public(profile: Astrologer) -> AstrologerPublic:
     )
     public.rates = ResolvedRates(
         chat_coins_per_minute=(
-            await billing.price_for(profile, ConsultationMode.CHAT)
+            await billing.price_for(profile, ConsultationMode.CHAT, platform=platform)
         ).coins_per_minute,
         call_coins_per_minute=(
-            await billing.price_for(profile, ConsultationMode.CALL)
+            await billing.price_for(profile, ConsultationMode.CALL, platform=platform)
         ).coins_per_minute,
         video_coins_per_minute=(
-            await billing.price_for(profile, ConsultationMode.VIDEO)
+            await billing.price_for(profile, ConsultationMode.VIDEO, platform=platform)
         ).coins_per_minute,
     )
     public.availability.is_online = presence.is_effectively_online(profile.availability)
@@ -446,7 +451,9 @@ async def list_public(
         .limit(limit)
         .to_list()
     )
-    return build_page([await to_public(p) for p in profiles], total, page, limit)
+    return build_page(
+        [await to_public(p, platform=platform) for p in profiles], total, page, limit
+    )
 
 
 async def get_public(identifier: str) -> AstrologerPublic:
