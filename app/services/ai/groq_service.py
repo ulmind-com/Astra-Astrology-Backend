@@ -14,7 +14,11 @@ from app.schemas.astrology import (
     KundliMatchingRequest,
 )
 from app.services.ai import retrieval
-from app.services.ai.knowledge_service import match_custom_rules, search_knowledge
+from app.services.ai.knowledge_service import (
+    corpus_vocabulary,
+    match_custom_rules,
+    search_knowledge,
+)
 from app.services.astrology.daily_horoscope import calculate_daily_horoscope
 from app.services.astrology.kundli_matching_service import calculate_kundli_matching
 from app.services.astrology.kundli_service import calculate_kundli
@@ -532,7 +536,15 @@ async def generate_astrology_response(
     # to find that out. The test is deliberately generous — see
     # `retrieval.is_answerable` — so a paying user asking a real question in any
     # of the three languages is never turned away.
-    verdict = retrieval.is_answerable(latest_user_text)
+    # The knowledge base's own words widen the gate, so seeding new material
+    # makes the assistant accept questions about it without anybody editing the
+    # lexicon by hand. Cheap: titles, tags and rule triggers only, cached.
+    try:
+        vocabulary = await corpus_vocabulary()
+    except Exception:  # noqa: BLE001 - the lexicon alone is a fine fallback
+        vocabulary = set()
+
+    verdict = retrieval.is_answerable(latest_user_text, extra_vocabulary=vocabulary)
     if not verdict.answerable:
         logger.info(
             "AI question refused ({}): {!r}", verdict.reason, latest_user_text[:120]

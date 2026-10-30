@@ -87,9 +87,22 @@ Order: injection → pleasantry → subject term → corpus vocabulary → very 
 refuse. It errs towards answering, because wrongly refusing a paying customer
 is worse than a slightly loose answer.
 
-`SUBJECT_TERMS` covers the disciplines *and* the life matters people consult an
-astrologer about, so *"When will I get a job?"* passes without naming a single
-technical term.
+`SUBJECT_TERMS` covers the disciplines, the life matters people consult an
+astrologer about, *and* timing and auspiciousness, so *"When will I get a job?"*
+passes without naming a single technical term.
+
+The timing group (`_TIMING`) was missing from the first version and the gate
+refused *"আজকের দিনে কোন সময়ে শুভ কাজ শুরু করা উচিত?"* — which hour of today is
+auspicious to begin something, one of the most ordinary questions an astrologer
+is asked. Several of its words are generic on their own ("time", "day",
+"work"); they are included anyway, because refusing a real question costs more
+than letting a vague one reach a model that still has the tools and the
+passages behind it. `tests/test_ai_retrieval.py` pins every question that was
+wrongly refused.
+
+The knowledge base's own vocabulary is passed in as `extra_vocabulary`
+(`knowledge_service.corpus_vocabulary`), so seeding new material widens the
+gate without anybody editing the lexicon.
 
 ## Grounding
 
@@ -134,6 +147,29 @@ every commit. Several tests are named for the specific defect they pin down.
 
 The chat-level tests monkeypatch `httpx.AsyncClient.post` to raise, proving the
 refusal happens *before* any network call rather than after one.
+
+## Rendering the reply
+
+The model is asked for structured readings and answers in Markdown — headed
+sections, bold terms, tables of planet against effect. The chat printed that as
+plain text, so a reading arrived as a wall of `##`, `**` and pipe characters.
+
+`src/components/ai/ai-markdown.tsx` in the web app renders it, with two choices
+that are about the chat bubble rather than about Markdown:
+
+- **Tables scroll sideways in their own box.** A reading's table is often five
+  or six columns of Bengali, far wider than a phone. Verified at 375px: a
+  789px-wide table scrolls inside a 276px wrapper and the page itself still has
+  no horizontal scroll.
+- **Headings render at close to body size.** In a chat bubble these are section
+  labels, not page headings.
+
+Only the astrologer's side is rendered as Markdown. What the user typed is
+shown verbatim — nobody asking about their "7*7 numerology" wants half their
+question turned into italics.
+
+Raw HTML is not enabled, and should stay that way: the text comes from a
+language model and nothing it writes should become markup.
 
 ## Not done yet
 

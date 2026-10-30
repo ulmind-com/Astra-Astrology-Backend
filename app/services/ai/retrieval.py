@@ -532,6 +532,28 @@ _DISCIPLINES = {
     "विवाह", "शादी", "भाग्य", "गुण",
 }
 
+#: Timing and auspiciousness — the muhurta vocabulary.
+#:
+#: Missing from the first version of this lexicon, which refused
+#: "আজকের দিনে কোন সময়ে শুভ কাজ শুরু করা উচিত?" — asking which hour of today
+#: is auspicious to begin something, one of the most ordinary questions an
+#: astrologer is asked. Several of these words are generic on their own
+#: ("time", "day", "work"); they are here anyway, because the cost of refusing
+#: a real question is higher than the cost of letting a vague one reach a model
+#: that still has the tools and the passages behind it.
+_TIMING = {
+    "auspicious", "inauspicious", "favourable", "favorable", "unfavourable",
+    "shubh", "shubha", "ashubh", "time", "timing", "today", "tomorrow",
+    "day", "date", "hour", "moment", "period", "season", "start", "begin",
+    "work", "success", "successful", "progress", "colour", "color", "lucky",
+    "suitable", "best", "good", "bad",
+    "শুভ", "অশুভ", "শুভাশুভ", "সময়", "দিন", "তারিখ", "ক্ষণ", "বেলা",
+    "আজ", "আজকে", "আজকের", "কাল", "আগামী", "কাজ", "শুরু", "সফল",
+    "সাফল্য", "উন্নতি", "রং", "রঙ", "ভালো", "খারাপ", "উপযুক্ত", "অনুকূল",
+    "शुभ", "अशुभ", "समय", "दिन", "तारीख", "क्षण", "आज", "कल", "काम",
+    "शुरू", "सफल", "सफलता", "उन्नति", "रंग", "अच्छा", "बुरा", "अनुकूल",
+}
+
 #: The things people consult an astrologer *about*. A question naming one of
 #: these is ours even when it names no technical term: "আমার চাকরি কবে হবে"
 #: is a career reading, not an off-topic question.
@@ -557,7 +579,7 @@ _LIFE_TOPICS = {
 }
 
 #: Everything the gate accepts, as one set.
-SUBJECT_TERMS: frozenset[str] = frozenset(_DISCIPLINES | _LIFE_TOPICS)
+SUBJECT_TERMS: frozenset[str] = frozenset(_DISCIPLINES | _LIFE_TOPICS | _TIMING)
 
 #: Attempts to reset the assistant's instructions rather than ask it something.
 #: These are refused outright: there is no legitimate question that needs them,
