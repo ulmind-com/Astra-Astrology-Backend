@@ -104,6 +104,41 @@ The knowledge base's own vocabulary is passed in as `extra_vocabulary`
 (`knowledge_service.corpus_vocabulary`), so seeding new material widens the
 gate without anybody editing the lexicon.
 
+### Matching is not exact, and must not be
+
+`_subject_hits` runs three tests, because an exact lookup is wrong for the
+languages this is asked in:
+
+1. the word is in `SUBJECT_TERMS`;
+2. `TERM_EQUIVALENTS` can translate it — that table is already a curated list
+   of this product's vocabulary, so anything in it is on subject by definition;
+3. **for Indic script only**, a subject word sitting anywhere inside a longer
+   one.
+
+Test 3 is the important one. Bengali and Hindi build compounds with no space:
+মহাদশা is মহা + দশা, অন্তর্দশা is অন্তর + দশা, রাশিফল is রাশি + ফল,
+কালসর্পদোষ is কালসর্প + দোষ. A lexicon holding দশা matched none of them, and
+the gate refused *"আমার বর্তমান মহাদশা ও অন্তর্দশা কেমন?"* — about as central
+a question as Vedic astrology has.
+
+It is restricted to Indic script deliberately. English does not compound
+without spaces, so containment there would accept "homework" for "work" and
+"Monday" for "day", and off-topic questions would start getting through.
+
+### Why there is a sweep instead of a list of fixes
+
+Two rounds of false refusals reached the user before
+`SHOULD_ANSWER` / `SHOULD_REFUSE` existed in `tests/test_ai_retrieval.py`.
+Adding vocabulary as each one was reported was never going to converge — the
+first round was the missing muhurta words, the second was the compound-word
+defect above, and the sweep then found six more in one pass, plus a question
+the gate should have refused and did not ("Recommend a good movie" matched
+"good", which is now out of the lexicon).
+
+**Add to the sweep, not to the lexicon.** If a real question is refused, put it
+in `SHOULD_ANSWER` first and then make it pass; the sweep runs both directions,
+so widening the gate cannot quietly open it to everything.
+
 ## Grounding
 
 `citations` reflects what was actually consulted — tool results and matched

@@ -21,7 +21,11 @@ from app.services.ai.knowledge_service import (
 )
 from app.services.astrology.daily_horoscope import calculate_daily_horoscope
 from app.services.astrology.kundli_matching_service import calculate_kundli_matching
-from app.services.astrology.kundli_service import calculate_kundli
+from app.services.astrology.kundli_service import (
+    PLANET_NAMES_LOCALIZED,
+    calculate_kundli,
+)
+from app.services.astrology.rashi_translations import RASHI_TRANSLATIONS
 from app.services.astrology.numerology import (
     calculate_bhagyank,
     calculate_chaldean_name,
@@ -51,6 +55,46 @@ Your foundational principles:
 6. FOLLOW-UP QUESTIONS: At the very end of your response, always propose 2 or 3 short, intriguing follow-up questions formatted as:
    [FOLLOW_UP: প্রথম প্রশ্ন?]
    [FOLLOW_UP: দ্বিতীয় প্রশ্ন?]
+
+7. WHICH TOOL TO USE — match the question, do not default to the birth chart:
+   - "How will today / this week go for me?", "আজকের দিনটা কেমন যাবে?", "আজ কেমন যাবে?"
+     → `get_daily_horoscope_tool` FIRST (today's tithi, nakshatra, hora, Rahu Kaal,
+       transits), THEN `calculate_kundli_tool` for the running dasha. A day
+       forecast needs today's sky, not only the birth chart.
+   - "When will I get a job / married / have a child?", "কবে হবে?"
+     → `calculate_kundli_tool`, then answer from the Vimshottari dasha and
+       antardasha windows. Name the actual period — "Jupiter–Venus, roughly
+       March 2027 to January 2029" — never a vague "soon" or "in time".
+   - Compatibility → `calculate_matchmaking_tool`. Numbers or names →
+     `calculate_numerology_tool`. Classical rules, Vastu, palmistry, remedies →
+     `search_vedic_rules_tool`.
+
+8. NEVER ASK FOR WHAT YOU ALREADY HAVE. If [USER STORED BIRTH DETAILS] appears
+   above, those are this user's details — use them immediately and silently.
+   Asking a signed-in user to re-type their birth date is the single most
+   irritating thing you can do. Ask only for what is genuinely missing, and ask
+   for that in one short sentence.
+
+9. NEVER MENTION YOUR TOOLS. The names `calculate_kundli_tool`,
+   `search_vedic_rules_tool` and the rest are internal plumbing. Never print
+   them, never say "I will use X", never show JSON, field names or raw numbers.
+   The reader wants a reading, not a system log.
+
+10. WRITE EVERY NAME IN THE READER'S LANGUAGE. In a Bengali answer the planets
+   are সূর্য, চন্দ্র, মঙ্গল, বুধ, বৃহস্পতি, শুক্র, শনি, রাহু, কেতু and the
+   signs are মেষ, বৃষ, মিথুন, কর্কট, সিংহ, কন্যা, তুলা, বৃশ্চিক, ধনু, মকর,
+   কুম্ভ, মীন. Put the English in brackets once if it helps — "বৃহস্পতি
+   (Jupiter)" — but never write a Bengali reading in English planet names, and
+   never print a sign as a bare number.
+
+11. BE SPECIFIC AND USEFUL. Every claim should rest on something in the chart:
+   name the planet, the house and the dasha that produce it. Give dates and
+   periods wherever the dasha allows. Vague encouragement is worse than
+   silence — the reader can get that anywhere.
+
+12. SAY WHEN YOU DO NOT KNOW. If the tools did not return what a question
+   needs, say so plainly and say what detail would let you answer. Never invent
+   a degree, a dasha date or a classical citation.
 """
 
 
@@ -173,7 +217,53 @@ ASTRO_TOOLS = [
 ]
 
 
-async def _execute_local_tool(func_name: str, arguments: dict[str, Any]) -> tuple[str, list[dict[str, str]]]:
+
+# ---------------------------------------------------------------------------
+# Naming things for the model
+# ---------------------------------------------------------------------------
+#: The chart engine speaks in numbers — `d1_asc_sign` is an int from 1 to 12,
+#: and every planet carries a `sign_num` rather than a sign. Handed those raw,
+#: the model printed what it was given: a reading that opened with
+#: "জন্ম লগ্ন: 11", which means nothing to a reader, and English planet names
+#: scattered through Bengali prose.
+#:
+#: So the numbers are resolved to names, in the language being answered in,
+#: before the model ever sees them. An interpreter can only be as accurate as
+#: the chart it is handed.
+
+
+def _sign_name(sign_num: Any, language: str = "bn") -> str | None:
+    """Name of a 1-12 rashi number, in the reader's language."""
+    try:
+        index = int(sign_num) - 1  # RASHI_TRANSLATIONS is keyed 0-11
+    except (TypeError, ValueError):
+        return None
+    entry = RASHI_TRANSLATIONS.get(index)
+    if not entry:
+        return None
+    chosen = entry.get(language) or entry.get("en") or {}
+    return chosen.get("name")
+
+
+def _planet_name(name: str | None, language: str = "bn") -> str | None:
+    """Localised planet name, falling back to the English the engine uses."""
+    if not name:
+        return None
+    return PLANET_NAMES_LOCALIZED.get(name, {}).get(language) or name
+
+
+def _named(english: str | None, language: str) -> str | None:
+    """"Jupiter" -> "বৃহস্পতি (Jupiter)", so the reading reads naturally but the
+    English stays available for anyone checking the figures."""
+    local = _planet_name(english, language)
+    if not local or local == english:
+        return english
+    return f"{local} ({english})"
+
+
+async def _execute_local_tool(
+    func_name: str, arguments: dict[str, Any], language: str = "bn"
+) -> tuple[str, list[dict[str, str]]]:
     """Executes local astrology calculations or RAG knowledge search and returns (result_json, citations)."""
     tool_citations: list[dict[str, str]] = []
     try:
@@ -194,13 +284,16 @@ async def _execute_local_tool(func_name: str, arguments: dict[str, Any]) -> tupl
             resp = calculate_kundli(req)
 
             summary = {
-                "ascendant_sign": resp.d1_asc_sign,
+                # Names, not numbers. See `_sign_name`: the engine returns
+                # `d1_asc_sign` as an int, and the model used to print it.
+                "ascendant_sign": _sign_name(resp.d1_asc_sign, language)
+                or resp.d1_asc_sign,
                 "moon_sign": resp.planetary_info.rasi,
                 "moon_nakshatra": resp.planetary_info.nakshatra,
                 "current_dasha": (
                     {
-                        "mahadasha": resp.current_dasha.mahadasha_lord,
-                        "antardasha": resp.current_dasha.antardasha_lord,
+                        "mahadasha": _named(resp.current_dasha.mahadasha_lord, language),
+                        "antardasha": _named(resp.current_dasha.antardasha_lord, language),
                         "verdict_bn": resp.current_dasha.verdict_bn,
                         "guidance_bn": resp.current_dasha.guidance_bn,
                     }
@@ -209,8 +302,8 @@ async def _execute_local_tool(func_name: str, arguments: dict[str, Any]) -> tupl
                 ),
                 "planets": [
                     {
-                        "name": p.name,
-                        "sign_num": p.sign_num,
+                        "name": _named(p.name, language),
+                        "sign": _sign_name(p.sign_num, language) or p.sign_num,
                         "house": p.house_num,
                         "is_retro": p.is_retrograde,
                     }
@@ -218,7 +311,7 @@ async def _execute_local_tool(func_name: str, arguments: dict[str, Any]) -> tupl
                 ],
                 "dignities": [
                     {
-                        "planet": d.planet,
+                        "planet": _named(d.planet, language),
                         "dignity": d.dignity,
                         "avastha_bn": d.avastha_bn,
                         "combust": d.is_combust,
@@ -241,7 +334,12 @@ async def _execute_local_tool(func_name: str, arguments: dict[str, Any]) -> tupl
             tool_citations.append({
                 "source": "সুইস এফিমেরিস বৈদিক কুন্ডলী এনজিন (Swiss Ephemeris 2.10)",
                 "category": "kundli",
-                "snippet": f"লগ্ন: {resp.d1_asc_sign}, চন্দ্র রাশি: {resp.planetary_info.rasi}, নক্ষত্র: {resp.planetary_info.nakshatra}। নির্ভুল লাহিড়ী অয়নাংশ গণনা সম্পন্ন।",
+                "snippet": (
+                    f"লগ্ন: {_sign_name(resp.d1_asc_sign, language) or resp.d1_asc_sign}, "
+                    f"চন্দ্র রাশি: {resp.planetary_info.rasi}, "
+                    f"নক্ষত্র: {resp.planetary_info.nakshatra}। "
+                    "নির্ভুল লাহিড়ী অয়নাংশ গণনা সম্পন্ন।"
+                ),
             })
             return json.dumps(summary, ensure_ascii=False), tool_citations
 
@@ -643,8 +741,9 @@ async def generate_astrology_response(
 
             resp.raise_for_status()
             data = resp.json()
-        except Exception:
+        except Exception as exc:
             # Safe fallback if API quota or connection issue occurs
+            logger.warning("Groq first call failed, using local synthesis: {}", exc)
             return await _local_astrological_fallback(
                 latest_user_text, custom_rules, user_birth_details, preferred_language
             )
@@ -664,7 +763,9 @@ async def generate_astrology_response(
                 except Exception:
                     args = {}
 
-                tool_result_str, retrieved_cites = await _execute_local_tool(func_name, args)
+                tool_result_str, retrieved_cites = await _execute_local_tool(
+                    func_name, args, preferred_language
+                )
                 tools_called.append(func_name)
 
                 for c in retrieved_cites:
@@ -690,10 +791,21 @@ async def generate_astrology_response(
                 final_resp = await client.post(
                     GROQ_CHAT_URL, headers=headers, json=final_payload
                 )
+                if final_resp.status_code >= 400:
+                    # Logged rather than swallowed. This failing silently is how
+                    # a 400 on every tool-using question went unnoticed: the
+                    # canned fallback answered instead, so the chat looked alive
+                    # while no reading was ever actually generated.
+                    logger.error(
+                        "Groq rejected the post-tool call ({}): {}",
+                        final_resp.status_code,
+                        final_resp.text[:600],
+                    )
                 final_resp.raise_for_status()
                 final_data = final_resp.json()
                 raw_reply = final_data["choices"][0]["message"]["content"]
-            except Exception:
+            except Exception as exc:
+                logger.warning("Falling back to local synthesis: {}", exc)
                 return await _local_astrological_fallback(
                     latest_user_text, custom_rules, user_birth_details, preferred_language
                 )

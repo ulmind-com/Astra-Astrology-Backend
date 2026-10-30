@@ -48,6 +48,10 @@ from typing import Any, Iterable, Sequence
 #: which keeps "D9" and "7th" whole while dropping punctuation.
 _WORD = re.compile(r"[0-9A-Za-zऀ-ॿঀ-৿]+")
 
+#: Devanagari or Bengali. Marks the words that compound without spaces, and
+#: so need the containment test the Latin ones must not have.
+_NATIVE_CHARS = re.compile(r"[\u0900-\u097F\u0980-\u09FF]")
+
 #: Words that match nearly everything and so separate nothing. The romanised
 #: Bengali and Hindi entries matter as much as the English ones: questions
 #: arrive as "amar biye kobe hobe" and "mera career kaisa rahega", and without
@@ -518,7 +522,13 @@ _DISCIPLINES = {
     "remedy", "remedies", "upay", "upaay", "gemstone", "ratna", "stone",
     "mantra", "puja", "pooja", "donation", "daan", "fasting", "vrat",
     "rudraksha", "yantra",
+    # Romanised multi-word terms arrive as separate tokens.
+    "sade", "saadhe", "sati", "saturn", "dhaiya",
     # Native script
+    "জন্মছক", "ছক", "প্রবেশদ্বার", "দ্বার", "মুখমণ্ডল", "মুখ", "রুদ্রাক্ষ",
+    "জন্মপত্রিকা", "পত্রিকা", "গ্রহণ", "অমাবস্যা", "পূর্ণিমা", "একাদশী",
+    "জন্मকুণ্ডলী", "জাতক", "জাতিকা", "ঠিকুজি",
+    "जन्मकुंडली", "प्रवेशद्वार", "रुद्राक्ष", "मुखमंडल", "जन्मपत्री",
     "জ্যোতিষ", "কুন্ডলী", "কুণ্ডলী", "রাশি", "নক্ষত্র", "দশা", "গ্রহ",
     "লগ্ন", "যোগ", "দোষ", "মাঙ্গলিক", "শনি", "বৃহস্পতি", "মঙ্গল", "শুক্র",
     "বুধ", "সূর্য", "চন্দ্র", "রাহু", "কেতু", "ভাব", "গোচর", "পঞ্চাং",
@@ -546,7 +556,7 @@ _TIMING = {
     "shubh", "shubha", "ashubh", "time", "timing", "today", "tomorrow",
     "day", "date", "hour", "moment", "period", "season", "start", "begin",
     "work", "success", "successful", "progress", "colour", "color", "lucky",
-    "suitable", "best", "good", "bad",
+    "suitable", "best",
     "শুভ", "অশুভ", "শুভাশুভ", "সময়", "দিন", "তারিখ", "ক্ষণ", "বেলা",
     "আজ", "আজকে", "আজকের", "কাল", "আগামী", "কাজ", "শুরু", "সফল",
     "সাফল্য", "উন্নতি", "রং", "রঙ", "ভালো", "খারাপ", "উপযুক্ত", "অনুকূল",
@@ -606,6 +616,56 @@ def looks_like_injection(question: str) -> bool:
     return bool(_INJECTION.search(question))
 
 
+#: Subject words written in an Indic script, long enough to be distinctive.
+#:
+#: Used for the containment test below. Latin terms are deliberately excluded:
+#: English does not compound without spaces, so containment there would accept
+#: "homework" for "work" and "Monday" for "day", and off-topic questions would
+#: start getting through.
+_NATIVE_SUBJECTS = tuple(
+    sorted(
+        (t for t in SUBJECT_TERMS if len(t) >= 3 and _NATIVE_CHARS.search(t)),
+        key=len,
+        reverse=True,
+    )
+)
+
+
+def _subject_hits(terms: list[str]) -> set[str]:
+    """Which of these words are about our subjects.
+
+    Three tests, because an exact lookup is not enough for the languages this
+    is asked in.
+
+    Bengali and Hindi build compounds with no space: মহাদশা is মহা + দশা,
+    অন্তর্দশা is অন্তর + দশা, রাশিফল is রাশি + ফল. A lexicon holding দশা does
+    not match any of them, and the gate refused "আমার বর্তমান মহাদশা ও
+    অন্তর্দশা কেমন?" — about as central a question as Vedic astrology has.
+    Adding each compound by hand is endless; containment catches the whole
+    family at once.
+
+    The equivalence table counts as well. It is already a curated list of this
+    product's vocabulary, so anything it can translate is by definition
+    something we talk about.
+    """
+    found: set[str] = set()
+    for term in terms:
+        if term in SUBJECT_TERMS:
+            found.add(term)
+            continue
+        # Anything the translation table recognises is on subject by definition.
+        if _equivalents(term):
+            found.add(term)
+            continue
+        # Indic compounds: a subject word sitting anywhere inside a longer one.
+        if _NATIVE_CHARS.search(term):
+            for subject in _NATIVE_SUBJECTS:
+                if subject in term:
+                    found.add(term)
+                    break
+    return found
+
+
 @dataclass
 class Verdict:
     """Why a question was let through, or was not."""
@@ -620,11 +680,19 @@ class Verdict:
 #: "thank you" are not met with a refusal notice.
 _SHORT_QUESTION = 3
 
-#: Openers that should never be refused, whatever else they contain.
+#: Longest a message can be and still count as a greeting or a "go on".
+#: Beyond this it is a question in its own right and is judged as one.
+_PLEASANTRY_MAX_TERMS = 3
+
+#: Openers and continuations that should not be refused.
 _PLEASANTRIES = {
     "hi", "hello", "hey", "namaskar", "namaste", "nomoskar", "pranam",
     "salam", "assalamualaikum", "thanks", "thank", "dhanyabad", "dhonnobad",
     "ok", "okay", "accha", "thik", "bye", "goodbye",
+    # Asking the reading to continue.
+    "more", "details", "detail", "explain", "continue", "elaborate",
+    "বলুন", "বল", "আরও", "আরো", "বিস্তারিত", "বুঝিয়ে", "বিশদ",
+    "बताइए", "बताओ", "और", "विस्तार", "समझाइए",
     "নমস্কার", "প্রণাম", "ধন্যবাদ", "হ্যালো", "আচ্ছা", "ঠিক",
     "नमस्कार", "नमस्ते", "प्रणाम", "धन्यवाद", "हैलो", "अच्छा",
 }
@@ -648,12 +716,16 @@ def is_answerable(question: str, *, extra_vocabulary: Iterable[str] = ()) -> Ver
     if looks_like_injection(question):
         return Verdict(False, "injection")
 
-    words = set(tokenize(question, keep_stopwords=True))
-    if words & _PLEASANTRIES:
-        return Verdict(True, "pleasantry")
-
     terms = tokenize(question)
-    hits = sorted(set(terms) & SUBJECT_TERMS)
+
+    # Greetings and "go on" — but only when the message is actually short.
+    # "explain" and "detail" mean continue a reading when they are the whole
+    # message; in "Explain how a car engine works in detail" they are not what
+    # the question is about, and without the length bound that sentence got in.
+    words = set(tokenize(question, keep_stopwords=True))
+    if words & _PLEASANTRIES and len(terms) <= _PLEASANTRY_MAX_TERMS:
+        return Verdict(True, "pleasantry")
+    hits = sorted(_subject_hits(terms))
     if hits:
         return Verdict(True, "subject", hits)
 
