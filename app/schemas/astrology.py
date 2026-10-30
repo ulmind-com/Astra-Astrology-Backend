@@ -1196,6 +1196,7 @@ class PlanetaryDignityItem(BaseModel):
     planet_hi: str
     sign: str
     sign_bn: str
+    sign_hi: str | None = None
     house: int
     degree: float
     degree_formatted: str
@@ -1218,11 +1219,14 @@ class HousePredictionItem(BaseModel):
     house_name_hi: str
     sign: str
     sign_bn: str
+    sign_hi: str | None = None
     sign_lord: str
     sign_lord_bn: str
+    sign_lord_hi: str | None = None
     lord_placement_house: int
     occupants: list[str] = Field(default_factory=list)
     occupants_bn: list[str] = Field(default_factory=list)
+    occupants_hi: list[str] = Field(default_factory=list)
     overview: str
     overview_bn: str
     overview_hi: str
@@ -1240,6 +1244,7 @@ class ExtendedYogaItem(BaseModel):
     name_hi: str
     category: str  # Pancha Mahapurusha, Raj Yoga, Dhana Yoga, Auspicious, Inauspicious
     category_bn: str
+    category_hi: str | None = None
     is_present: bool
     description: str
     description_bn: str
@@ -1256,13 +1261,17 @@ class DoshaAnalysisItem(BaseModel):
     is_present: bool
     severity: str  # High, Moderate, Mild, Cancelled, None
     severity_bn: str
+    severity_hi: str | None = None
     percentage: int = 0  # 0 to 100%
     specific_type: str | None = None
     specific_type_bn: str | None = None
+    specific_type_hi: str | None = None
     cancellation_reason: str | None = None
     cancellation_reason_bn: str | None = None
+    cancellation_reason_hi: str | None = None
     cancellation_rules_applied: list[str] = Field(default_factory=list)
     cancellation_rules_applied_bn: list[str] = Field(default_factory=list)
+    cancellation_rules_applied_hi: list[str] = Field(default_factory=list)
     remedy: str
     remedy_bn: str
     remedy_hi: str
@@ -1328,21 +1337,27 @@ class NakshatraPredictiveInsight(BaseModel):
 class GemstoneItem(BaseModel):
     category: str  # Life Stone (Lagna Lord), Lucky Stone (9th Lord), Career Stone (5th/10th Lord)
     category_bn: str
+    category_hi: str | None = None
     stone_name: str
     stone_name_bn: str
     stone_name_hi: str
     sanskrit_name: str
     ruling_planet: str
     ruling_planet_bn: str
+    ruling_planet_hi: str | None = None
     metal: str
     metal_bn: str
+    metal_hi: str | None = None
     finger: str
     finger_bn: str
+    finger_hi: str | None = None
     wearing_day: str
     wearing_day_bn: str
+    wearing_day_hi: str | None = None
     beej_mantra: str
     benefit: str
     benefit_bn: str
+    benefit_hi: str | None = None
 
 
 class PersonalRemedies(BaseModel):
@@ -1365,8 +1380,10 @@ class PersonalRemedies(BaseModel):
 class CurrentDashaInfo(BaseModel):
     mahadasha_lord: str
     mahadasha_lord_bn: str
+    mahadasha_lord_hi: str | None = None
     antardasha_lord: str
     antardasha_lord_bn: str
+    antardasha_lord_hi: str | None = None
     start_date: str
     end_date: str
     verdict: str
