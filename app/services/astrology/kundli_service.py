@@ -351,13 +351,17 @@ GEMSTONES_MASTER: dict[str, dict[str, str]] = {
         "sanskrit_name": "Manikya",
         "metal": "Gold / Copper",
         "metal_bn": "স্বর্ণ বা তামা",
+        "metal_hi": "स्वर्ण या तांबा",
         "finger": "Ring finger",
         "finger_bn": "অনামিকা অঙ্গুলি",
+        "finger_hi": "अनामिका अंगुली",
         "wearing_day": "Sunday morning",
         "wearing_day_bn": "রবিবার প্রাতঃকালে",
+        "wearing_day_hi": "रविवार प्रातःकाल",
         "beej_mantra": "ॐ হ্রাং হ্রীং হ্রৌং সঃ সূর্যায় নমঃ",
         "benefit": "Enhances leadership, vitality, governmental favor, and fatherly blessings.",
         "benefit_bn": "নেতৃত্ব ক্ষমতা, জীবনীশক্তি, শারীরিক তেজ এবং সরকারি সম্মান বৃদ্ধিতে সহায়ক।",
+        "benefit_hi": "नेतृत्व क्षमता, जीवन शक्ति, शारीरिक तेज और सरकारी प्रतिष्ठा में वृद्धि करता है।",
     },
     "Moon": {
         "stone_name": "Natural Pearl",
@@ -366,13 +370,17 @@ GEMSTONES_MASTER: dict[str, dict[str, str]] = {
         "sanskrit_name": "Mukta",
         "metal": "Silver",
         "metal_bn": "রূপা",
+        "metal_hi": "चांदी",
         "finger": "Little finger",
         "finger_bn": "কনিষ্ঠা অঙ্গুলি",
+        "finger_hi": "कनिष्ठिका अंगुली",
         "wearing_day": "Monday morning",
         "wearing_day_bn": "সোমবার প্রাতঃকালে",
+        "wearing_day_hi": "सोमवार प्रातःकाल",
         "beej_mantra": "ॐ শ্রাং শ্রীং শ্রৌং সঃ চন্দ্রায় নমঃ",
         "benefit": "Brings mental tranquility, emotional stability, sweet speech, and maternal blessings.",
         "benefit_bn": "মানসিক প্রশান্তি, গভীর স্মৃতিশক্তি, সিদ্ধান্ত গ্রহণের স্থিরতা এবং মায়ের সুস্বাস্থ্য আনে।",
+        "benefit_hi": "मानसिक शांति, भावनात्मक संतुलन, मधुर वाणी और माता का आशीर्वाद दिलाता है।",
     },
     "Mars": {
         "stone_name": "Red Coral",
@@ -381,13 +389,17 @@ GEMSTONES_MASTER: dict[str, dict[str, str]] = {
         "sanskrit_name": "Pravala",
         "metal": "Copper / Gold",
         "metal_bn": "তামা বা অষ্টধাতু",
+        "metal_hi": "तांबा या अष्टधातु",
         "finger": "Ring finger",
         "finger_bn": "অনামিকা অঙ্গুলি",
+        "finger_hi": "अनामिका अंगुली",
         "wearing_day": "Tuesday morning",
         "wearing_day_bn": "মঙ্গলবার প্রাতঃকালে",
+        "wearing_day_hi": "मंगलवार प्रातःकाल",
         "beej_mantra": "ॐ ক্রাং ক্রীং ক্রৌং সঃ ভৌমায় নমঃ",
         "benefit": "Increases courage, willpower, muscular vitality, land property gains, and removes obstacles.",
         "benefit_bn": "সাহস, পরাক্রম, ভূমি সম্পত্তি লাভ, রক্ত সঞ্চালন এবং রক্তচাপের ভারসাম্য রক্ষা করে।",
+        "benefit_hi": "साहस, पराक्रम, भूमि-भवन लाभ और रक्त संचार संतुलित रखता है।",
     },
     "Mercury": {
         "stone_name": "Emerald",
@@ -396,13 +408,17 @@ GEMSTONES_MASTER: dict[str, dict[str, str]] = {
         "sanskrit_name": "Marakata",
         "metal": "Gold / Bronze",
         "metal_bn": "স্বর্ণ বা ব্রোঞ্জ",
+        "metal_hi": "स्वर्ण या कांस्य",
         "finger": "Little finger",
         "finger_bn": "কনিষ্ঠা অঙ্গুলি",
+        "finger_hi": "कनिष्ठिका अंगुली",
         "wearing_day": "Wednesday morning",
         "wearing_day_bn": "বুধবার প্রাতঃকালে",
+        "wearing_day_hi": "बुधवार प्रातःकाल",
         "beej_mantra": "ॐ ব্রাং ব্রীং ব্রৌং সঃ বুধায় নমঃ",
         "benefit": "Sharpens analytical intellect, commerce acumen, speech eloquence, and academic success.",
         "benefit_bn": "তীক্ষ্ণ মেধা, ব্যবসায়িক বুদ্ধিমত্তা, মধুর বাচনভঙ্গি এবং হিসাবনিকাশে অসাধারণ দক্ষতা এনে দেয়।",
+        "benefit_hi": "तीक्ष्ण बुद्धि, व्यापारिक चातुर्य, वाक्पटुता और विद्या में सफलता प्रदान करता है।",
     },
     "Jupiter": {
         "stone_name": "Yellow Sapphire",
@@ -411,13 +427,17 @@ GEMSTONES_MASTER: dict[str, dict[str, str]] = {
         "sanskrit_name": "Pushparaga",
         "metal": "Gold",
         "metal_bn": "স্বর্ণ বা পিতল",
+        "metal_hi": "स्वर्ण या पीतल",
         "finger": "Index finger",
         "finger_bn": "তর্জনী অঙ্গুলি",
+        "finger_hi": "तर्जनी अंगुली",
         "wearing_day": "Thursday morning",
         "wearing_day_bn": "বৃহস্পতিবার প্রাতঃকালে",
+        "wearing_day_hi": "गुरुवार प्रातःकाल",
         "beej_mantra": "ॐ গ্রাং গ্রীং গ্রৌং সঃ গুরবে নমঃ",
         "benefit": "Expands wisdom, spiritual merit, financial affluence, marital harmony, and progeny joy.",
         "benefit_bn": "উচ্চ প্রজ্ঞা, আধ্যাত্মিক সুখ্যাতি, বিপুল ধনসম্পদ এবং দাম্পত্য ও সন্তান সুখ নিশ্চিত করে।",
+        "benefit_hi": "उच्च ज्ञान, आध्यात्मिक उन्नति, अपार धन-संपत्ति और दांपत्य व संतान सुख प्रदान करता है।",
     },
     "Venus": {
         "stone_name": "Diamond / White Zircon",
@@ -426,13 +446,17 @@ GEMSTONES_MASTER: dict[str, dict[str, str]] = {
         "sanskrit_name": "Vajra",
         "metal": "Silver / Platinum",
         "metal_bn": "রূপা বা প্লাটিনাম",
+        "metal_hi": "चांदी या प्लैटिनम",
         "finger": "Middle or Little finger",
         "finger_bn": "মধ্যমা বা কনিষ্ঠা অঙ্গুলি",
+        "finger_hi": "मध्यमा या कनिष्ठिका",
         "wearing_day": "Friday morning",
         "wearing_day_bn": "শুক্রবার প্রাতঃকালে",
+        "wearing_day_hi": "शुक्रवार प्रातःकाल",
         "beej_mantra": "ॐ দ্রাং দ্রীং দ্রৌং সঃ শুক্রায় নমঃ",
         "benefit": "Grants luxury, artistic refinement, marital bliss, aesthetic beauty, and prosperous vehicles.",
         "benefit_bn": "সৌন্দর্য, বৈভব, শিল্পকলায় খ্যাতি, সুমধুর দাম্পত্য প্রেম এবং বিলাসবহুল জীবনযাপন প্রদান করে।",
+        "benefit_hi": "ऐश्वर्य, भौतिक सुख-सुविधाएं, दांपत्य प्रेम और कला में ख्याति प्रदान करता है।",
     },
     "Saturn": {
         "stone_name": "Blue Sapphire / Amethyst",
@@ -441,13 +465,17 @@ GEMSTONES_MASTER: dict[str, dict[str, str]] = {
         "sanskrit_name": "Neelam",
         "metal": "Silver / Iron",
         "metal_bn": "পঞ্চধাতু বা রূপা",
+        "metal_hi": "पंचधातु या चांदी",
         "finger": "Middle finger",
         "finger_bn": "মধ্যমা অঙ্গুলি",
+        "finger_hi": "मध्यमा अंगुली",
         "wearing_day": "Saturday evening",
         "wearing_day_bn": "শনিবার গোধূলি লগ্নে",
+        "wearing_day_hi": "शनिवार सायंकाल",
         "beej_mantra": "ॐ প্রাং প্রীং প্রৌং সঃ শনৈশ্চরায় নমঃ",
         "benefit": "Endows discipline, patience, mass leadership, judicial triumph, and enduring career status.",
         "benefit_bn": "দৃঢ় ধৈর্য, কর্মনিষ্ঠা, জননেতৃত্ব, বিচারবুদ্ধি এবং কর্মক্ষেত্রে স্থায়ী প্রতিষ্ঠা দান করে।",
+        "benefit_hi": "धैर्य, कर्मठता, जनसमर्थन, न्यायप्रियता और कार्यक्षेत्र में स्थायित्व देता है।",
     },
 }
 
@@ -575,6 +603,7 @@ def _calculate_planetary_dignities(
                 planet_hi=p_local["hi"],
                 sign=sign_info["name_en"],
                 sign_bn=sign_info["name_bn"],
+                sign_hi=sign_info["name_hi"],
                 house=house_num,
                 degree=round(deg_in_s, 2),
                 degree_formatted=_format_dms_styled(deg_in_s, sign_info["name_en"]),
@@ -610,24 +639,32 @@ def _calculate_12_house_predictions(
         s_idx = int(c_lon / 30.0) % 12
         sign_info = RASHIS_DATA[s_idx]
         sign_lord = sign_info["lord"]
+        sign_lord_bn = PLANET_NAMES_LOCALIZED.get(sign_lord, {"bn": sign_lord})["bn"]
+        sign_lord_hi = PLANET_NAMES_LOCALIZED.get(sign_lord, {"hi": sign_lord}).get("hi", sign_lord)
         lord_h = planet_houses.get(sign_lord, 1)
 
         occupants = [p for p, ph in planet_houses.items() if ph == h_num]
         occupants_bn = [PLANET_NAMES_LOCALIZED[p]["bn"] for p in occupants if p in PLANET_NAMES_LOCALIZED]
+        occupants_hi = [PLANET_NAMES_LOCALIZED[p].get("hi", p) for p in occupants if p in PLANET_NAMES_LOCALIZED]
 
         occ_str_bn = f"{', '.join(occupants_bn)} অবস্থান করছে" if occupants_bn else "কোনো প্রত্যক্ষ গ্রহ অবস্থান করেনি"
+        occ_str_hi = f"{', '.join(occupants_hi)} स्थित हैं" if occupants_hi else "कोई प्रत्यक्ष ग्रह स्थित नहीं है"
 
         if lord_h in (1, 4, 7, 10):
             lord_h_str_bn = f"কেন্দ্র ভাবে ({lord_h}ম ঘরে) অবস্থান করে শক্তিশালী ফল প্রদান করছে।"
+            lord_h_str_hi = f"केन्द्र भाव ({lord_h}वें भाव) में स्थित होकर शक्तिशाली फल प्रदान कर रहे हैं।"
         elif lord_h in (5, 9):
             lord_h_str_bn = f"ত্রিকোণ ভাবে ({lord_h}ম ঘরে) অবস্থান করে অতীব শুভ ও সৌভাগ্যপূর্ণ প্রভাব বিস্তার করছে।"
+            lord_h_str_hi = f"त्रिकोण भाव ({lord_h}वें भाव) में स्थित होकर अत्यंत शुभ व भाग्यवर्धक प्रभाव डाल रहे हैं।"
         elif lord_h in (6, 8, 12):
             lord_h_str_bn = f"দুঃস্থান ভাবে ({lord_h}ম ঘরে) অবস্থান করায় কিছু সতর্কতা ও নিয়মিত বৈদিক প্রতিকার কাম্য।"
+            lord_h_str_hi = f"त्रिक/दुःस्थान भाव ({lord_h}वें भाव) में स्थित होने से सतर्कता एवं वैदिक उपाय हितकर हैं।"
         else:
             lord_h_str_bn = f"{lord_h}ম ঘরে অবস্থান করে প্রগতিশীল ফলাফল প্রদান করছে।"
+            lord_h_str_hi = f"{lord_h}वें भाव में स्थित होकर प्रगतिशील परिणाम दे रहे हैं।"
 
         overview_bn = (
-            f"{meta['name_bn']} রাশিতে {sign_info['name_bn']} রাশি পড়েছে। অধিপতি গ্রহ {PLANET_NAMES_LOCALIZED[sign_lord]['bn']} "
+            f"{meta['name_bn']} রাশিতে {sign_info['name_bn']} রাশি পড়েছে। অধিপতি গ্রহ {sign_lord_bn} "
             f"লগ্নের সাপেক্ষে {lord_h_str_bn} এই ঘরে {occ_str_bn}। {meta['desc_bn']}"
         )
         overview_en = (
@@ -635,8 +672,8 @@ def _calculate_12_house_predictions(
             f"Occupants: {', '.join(occupants) if occupants else 'None'}. {meta['desc_en']}"
         )
         overview_hi = (
-            f"{meta['name_hi']} में {sign_info['name_hi']} राशि स्थित है। स्वामी {sign_lord} भाव {lord_h} में स्थित हैं। "
-            f"{meta['desc_hi']}"
+            f"{meta['name_hi']} में {sign_info['name_hi']} राशि स्थित है। स्वामी {sign_lord_hi} लग्न से {lord_h_str_hi} "
+            f"इस भाव में {occ_str_hi}। {meta['desc_hi']}"
         )
 
         # Career / Wealth effect
@@ -675,11 +712,14 @@ def _calculate_12_house_predictions(
                 house_name_hi=meta["name_hi"],
                 sign=sign_info["name_en"],
                 sign_bn=sign_info["name_bn"],
+                sign_hi=sign_info["name_hi"],
                 sign_lord=sign_lord,
-                sign_lord_bn=PLANET_NAMES_LOCALIZED[sign_lord]["bn"],
+                sign_lord_bn=sign_lord_bn,
+                sign_lord_hi=sign_lord_hi,
                 lord_placement_house=lord_h,
                 occupants=occupants,
                 occupants_bn=occupants_bn,
+                occupants_hi=occupants_hi,
                 overview=overview_bn if lang == "bn" else (overview_hi if lang == "hi" else overview_en),
                 overview_bn=overview_bn,
                 overview_hi=overview_hi,
@@ -721,6 +761,7 @@ def _calculate_extended_yogas(
                 name_hi="रुचक योग (पंच महापुरुष योग)",
                 category="Pancha Mahapurusha",
                 category_bn="পঞ্চ মহাপুরুষ রাজযোগ",
+                category_hi="पंच महापुरुष राजयोग",
                 is_present=True,
                 description="Mars is in a Kendra house (1, 4, 7, 10) in Aries, Scorpio, or Capricorn.",
                 description_bn="মঙ্গল স্বক্ষেত্র বা তুঙ্গী হয়ে কেন্দ্রে অবস্থান করায় পরাশরীয় রুচক যোগ গঠিত হয়েছে।",
@@ -743,6 +784,7 @@ def _calculate_extended_yogas(
                 name_hi="भद्र योग (पंच महापुरुष योग)",
                 category="Pancha Mahapurusha",
                 category_bn="পঞ্চ মহাপুরুষ রাজযোগ",
+                category_hi="पंच महापुरुष राजयोग",
                 is_present=True,
                 description="Mercury is in Kendra in own/exalted sign (Gemini or Virgo).",
                 description_bn="বুধ স্বক্ষেত্র বা তুঙ্গী হয়ে কেন্দ্রস্থ হওয়ায় রাজকীয় ভদ্র যোগ গঠিত হয়েছে।",
@@ -765,6 +807,7 @@ def _calculate_extended_yogas(
                 name_hi="हंस योग (पंच महापुरुष योग)",
                 category="Pancha Mahapurusha",
                 category_bn="পঞ্চ মহাপুরুষ রাজযোগ",
+                category_hi="पंच महापुरुष राजयोग",
                 is_present=True,
                 description="Jupiter is placed in Kendra in own or exalted sign (Cancer, Sagittarius, or Pisces).",
                 description_bn="বৃহস্পতি কর্কট, ধনু বা মীন রাশিতে কেন্দ্রস্থ হয়ে দিব্য হংস যোগ সৃষ্টি করেছে।",
@@ -787,6 +830,7 @@ def _calculate_extended_yogas(
                 name_hi="मालव्य योग (पंच महापुरुष योग)",
                 category="Pancha Mahapurusha",
                 category_bn="পঞ্চ মহাপুরুষ রাজযোগ",
+                category_hi="पंच महापुरुष राजयोग",
                 is_present=True,
                 description="Venus is in Kendra in Taurus, Libra, or Pisces.",
                 description_bn="শুক্র স্বক্ষেত্র বা তুঙ্গী হয়ে কেন্দ্রে বিরাজ করায় ঐশ্বর্যশালী মালব্য যোগ গঠিত হয়েছে।",
@@ -809,6 +853,7 @@ def _calculate_extended_yogas(
                 name_hi="शश योग (पंच महापुरुष योग)",
                 category="Pancha Mahapurusha",
                 category_bn="পঞ্চ মহাপুরুষ রাজযোগ",
+                category_hi="पंच महापुरुष राजयोग",
                 is_present=True,
                 description="Saturn is placed in Kendra in Libra, Capricorn, or Aquarius.",
                 description_bn="শনি তুঙ্গী বা স্বক্ষেত্রগত হয়ে কেন্দ্রে অবস্থান করায় শাস্ত্রীয় শশ যোগ সৃষ্টি হয়েছে।",
@@ -833,6 +878,7 @@ def _calculate_extended_yogas(
                 name_hi="धर्म-कर्माधिपति राजयोग",
                 category="Raj Yoga",
                 category_bn="শ্রেষ্ঠ রাজযোগ",
+                category_hi="श्रेष्ठ राजयोग",
                 is_present=True,
                 description="9th lord (Bhagya) and 10th lord (Karma) are in conjunction or mutual aspect.",
                 description_bn="ভাগ্যপতি (৯ম পতি) এবং কর্মপতি (১০ম পতি)-র মধ্যে শুভ সম্পর্ক থাকায় পরম রাজযোগ গঠিত হয়েছে।",
@@ -854,6 +900,7 @@ def _calculate_extended_yogas(
                 name_hi="चंद्र-मंगल (लक्ष्मी) योग",
                 category="Dhana Yoga",
                 category_bn="ধন যোগ",
+                category_hi="धन योग",
                 is_present=True,
                 description="Moon and Mars are in conjunction or directly aspect each other.",
                 description_bn="চন্দ্র ও মঙ্গল পরস্পর যুক্ত বা সমসপ্তমে অবস্থান করে ধনকারক লক্ষ্মী যোগ সৃষ্টি করেছে।",
@@ -882,6 +929,7 @@ def _calculate_extended_yogas(
                 name_hi="विपरीत राजयोग",
                 category="Raj Yoga",
                 category_bn="বিপরীত রাজযোগ",
+                category_hi="विपरीत राजयोग",
                 is_present=True,
                 description="Lords of Dusthana houses (6th, 8th, or 12th) situated in Dusthanas, annihilating adversity.",
                 description_bn="৬ষ্ঠ, ৮ম বা ১২শ পতি দুঃস্থানে অবস্থান করায় প্রতিকূলতা নাশ করে অপ্রত্যাশিত রাজতুল্য বিজয় প্রদান করে।",
@@ -901,6 +949,7 @@ def _calculate_extended_yogas(
                 name_hi="गजकेसरी योग",
                 category="Auspicious",
                 category_bn="শুভ রাজযোগ",
+                category_hi="शुभ राजयोग",
                 is_present=True,
                 description="Jupiter is in Kendra (1st, 4th, 7th, 10th) from Moon.",
                 description_bn="চন্দ্র থেকে বৃহস্পতি কেন্দ্রগত (১ম, ৪র্থ, ৭ম বা ১০ম ভাবে) থাকায় রাজকীয় গজকেশরী যোগ গঠিত।",
@@ -920,6 +969,7 @@ def _calculate_extended_yogas(
                 name_hi="बुधादित्य योग",
                 category="Auspicious",
                 category_bn="বুদ্ধি যোগ",
+                category_hi="बुद्धि योग",
                 is_present=True,
                 description="Sun and Mercury in close conjunction in the same zodiac sign.",
                 description_bn="সূর্য ও বুধ একই রাশিতে শুভ সংযোগ তৈরি করায় বিদ্যাবুদ্ধির বুধাদিত্য যোগ গঠিত হয়েছে।",
@@ -939,6 +989,7 @@ def _calculate_extended_yogas(
                 name_hi="केमद्रुम योग",
                 category="Inauspicious",
                 category_bn="মানসিক ভাব",
+                category_hi="मानसिक योग",
                 is_present=True,
                 description="Moon is devoid of planetary support in 2nd and 12th houses.",
                 description_bn="চন্দ্রের ২য় ও ১২শ ভাবে কোনো শুভ গ্রহ না থাকায় মন একাকীত্ব বা আত্মনির্ভরশীলতার শিক্ষা দেয়।",
@@ -967,17 +1018,25 @@ def _calculate_doshas_analysis(
     if manglik.is_manglik:
         severity = "High" if manglik.percentage >= 70 else ("Moderate" if manglik.percentage >= 40 else "Mild")
         severity_bn = "উচ্চ" if severity == "High" else ("মধ্যম" if severity == "Moderate" else "আংশিক")
+        severity_hi = "उच्च" if severity == "High" else ("मध्यम" if severity == "Moderate" else "आंशिक")
         remedy_bn = "নিয়মিত হনুমান চালিসা পাঠ, প্রতি মঙ্গলবার মঙ্গল বীজ মন্ত্র জপ এবং বিবাহ পূর্বে ঘট বিবাহ/কুষ্ঠি মেলবন্ধন শুভ।"
         remedy_en = "Recite Hanuman Chalisa daily, chant Mars Beej Mantra on Tuesdays, and match charts carefully."
         remedy_hi = "नित्य हनुमान चालीसा का पाठ, मंगलवार को मंगल बीज मंत्र का जप और कुंडली मिलान आवश्यक है।"
         canc_reason = "; ".join(manglik.cancellations) if manglik.cancellations else None
+        spec_bn = f"{manglik.percentage}% মাঙ্গলিক প্রভাব"
+        spec_hi = f"{manglik.percentage}% मांगलिक प्रभाव"
+        spec_en = f"{manglik.percentage}% Manglik Influence"
     else:
         severity = "None"
         severity_bn = "দোষমুক্ত"
+        severity_hi = "दोषमुक्त"
         remedy_bn = "মাঙ্গলিক দোষ নেই। স্বাভাবিক শাস্ত্রীয় ধর্মকর্ম অব্যাহত রাখুন।"
         remedy_en = "No Manglik Dosha present. Normal auspicious Vedic practices apply."
         remedy_hi = "मांगलिक दोष नहीं है। दांपत्य जीवन के लिए शुभ।"
         canc_reason = None
+        spec_bn = "মাঙ্গলিক দোষ মুক্ত"
+        spec_hi = "मांगलिक दोष मुक्त"
+        spec_en = "No Manglik Dosha"
 
     doshas.append(
         DoshaAnalysisItem(
@@ -987,10 +1046,13 @@ def _calculate_doshas_analysis(
             is_present=manglik.is_manglik,
             severity=severity,
             severity_bn=severity_bn,
-            specific_type=f"{manglik.percentage}% মাঙ্গলিক প্রভাব" if manglik.is_manglik else "মাঙ্গলিক দোষ মুক্ত",
-            specific_type_bn=f"{manglik.percentage}% মাঙ্গলিক প্রভাব" if manglik.is_manglik else "মাঙ্গলিক দোষ মুক্ত",
+            severity_hi=severity_hi,
+            specific_type=spec_bn if lang == "bn" else (spec_hi if lang == "hi" else spec_en),
+            specific_type_bn=spec_bn,
+            specific_type_hi=spec_hi,
             cancellation_reason=canc_reason,
             cancellation_reason_bn=canc_reason,
+            cancellation_reason_hi=canc_reason,
             remedy=remedy_bn if lang == "bn" else (remedy_hi if lang == "hi" else remedy_en),
             remedy_bn=remedy_bn,
             remedy_hi=remedy_hi,
@@ -1001,6 +1063,7 @@ def _calculate_doshas_analysis(
     if is_kaal_sarp:
         rahu_h = planet_houses.get("Rahu", 1)
         ks_var = KAAL_SARP_VARIANTS.get(rahu_h, KAAL_SARP_VARIANTS[1])
+        ks_hi = ks_var.get("hi", ks_var.get("name"))
         remedy_bn = "প্রতি প্রদোষে বা মহা শিবরাত্রিতে শিবলিঙ্গে দুধ ও কাঁচা গঙ্গাজল অভিষেক, এবং মহামৃত্যুঞ্জয় মন্ত্র জপ হিতকর।"
         remedy_en = "Perform Rudra Abhishekam on Pradosham days, chant Maha Mrityunjaya Mantra, and feed stray animals."
         remedy_hi = "प्रदोष काल में शिवलिंग पर दुग्धाभिषेक करें और महामृत्युंजय मंत्र का नित्य जप करें।"
@@ -1013,8 +1076,10 @@ def _calculate_doshas_analysis(
                 is_present=True,
                 severity="Moderate",
                 severity_bn="মধ্যম প্রভাব",
-                specific_type=ks_var["name"],
+                severity_hi="मध्यम प्रभाव",
+                specific_type=ks_var["bn"] if lang == "bn" else (ks_hi if lang == "hi" else ks_var["name"]),
                 specific_type_bn=ks_var["bn"],
+                specific_type_hi=ks_hi,
                 cancellation_reason=None,
                 cancellation_reason_bn=None,
                 remedy=remedy_bn if lang == "bn" else (remedy_hi if lang == "hi" else remedy_en),
@@ -1031,11 +1096,13 @@ def _calculate_doshas_analysis(
                 is_present=False,
                 severity="None",
                 severity_bn="দোষমুক্ত",
-                specific_type="কালসর্প মুক্ত",
+                severity_hi="दोषमुक्त",
+                specific_type="কালসর্প মুক্ত" if lang == "bn" else ("कालसर्प दोष मुक्त" if lang == "hi" else "No Kaal Sarp Dosha"),
                 specific_type_bn="কালসর্প মুক্ত",
+                specific_type_hi="कालसर्प दोष मुक्त",
                 cancellation_reason=None,
                 cancellation_reason_bn=None,
-                remedy="কালসর্প যোগ নেই। জন্মছকে গ্রহগণ ভারসাম্যপূর্ণ অবস্থায় রয়েছে।",
+                remedy="কালসর্প যোগ নেই। জন্মছকে গ্রহগণ ভারসাম্যপূর্ণ অবস্থায় রয়েছে।" if lang == "bn" else ("कुंडली में कालसर्प दोष नहीं है। ग्रह पूर्णतः संतुलित हैं।" if lang == "hi" else "No Kaal Sarp Dosha present. Planets are well balanced."),
                 remedy_bn="কালসর্প যোগ নেই। জন্মছকে গ্রহগণ ভারসাম্যপূর্ণ অবস্থায় রয়েছে।",
                 remedy_hi="कुंडली में कालसर्प दोष नहीं है। ग्रह पूर्णतः संतुलित हैं।",
             )
@@ -1051,6 +1118,9 @@ def _calculate_doshas_analysis(
 
     has_pitra = (sun_s in (rahu_s, ketu_s, sat_s)) or (l9_s in (rahu_s, ketu_s))
     if has_pitra:
+        p_remedy_bn = "অমাবস্যা তিথিতে পূর্বপুরুষের উদ্দেশে তর্পণ/দান, বট বা অশ্বত্থ বৃক্ষে জল অর্পণ এবং পিপীলিকা ও কাককে খাদ্য দান অত্যন্ত শুভ।"
+        p_remedy_hi = "अमावस्या पर पितृ तर्पण, पीपल के वृक्ष में जल अर्पण और ब्राह्मण/जरूरतमंदों को भोजन कराएं।"
+        p_remedy_en = "Offer water to Peepal tree, perform Tarpan on Amavasya, feed birds and cows."
         doshas.append(
             DoshaAnalysisItem(
                 dosha_name="Pitra Dosha",
@@ -1059,16 +1129,21 @@ def _calculate_doshas_analysis(
                 is_present=True,
                 severity="Moderate",
                 severity_bn="মধ্যম",
-                specific_type="সূর্য বা ৯ম পতির রাহু/কেতু সংযোগ",
+                severity_hi="मध्यम",
+                specific_type="সূর্য বা ৯ম পতির রাহু/কেতু সংযোগ" if lang == "bn" else ("सूर्य या नवमेश की राहु/केतु से युति" if lang == "hi" else "Sun or 9th Lord affiliated with Rahu/Ketu"),
                 specific_type_bn="সূর্য বা ৯ম পতির রাহু/কেতু সংযোগ",
+                specific_type_hi="सूर्य या नवमेश की राहु/केतु से युति",
                 cancellation_reason=None,
                 cancellation_reason_bn=None,
-                remedy="অমাবস্যা তিথিতে পূর্বপুরুষের উদ্দেশে তর্পণ/দান, বট বা অশ্বত্থ বৃক্ষে জল অর্পণ এবং পিপীলিকা ও কাককে খাদ্য দান অত্যন্ত শুভ।",
-                remedy_bn="অমাবস্যা তিথিতে পূর্বপুরুষের উদ্দেশে তর্পণ/দান, বট বা অশ্বত্থ বৃক্ষে জল অর্পণ এবং পিপীলিকা ও কাককে খাদ্য দান অত্যন্ত শুভ।",
-                remedy_hi="अमावस्या पर पितृ तर्पण, पीपल के वृक्ष में जल अर्पण और ब्राह्मण/जरूरतमंदों को भोजन कराएं।",
+                remedy=p_remedy_bn if lang == "bn" else (p_remedy_hi if lang == "hi" else p_remedy_en),
+                remedy_bn=p_remedy_bn,
+                remedy_hi=p_remedy_hi,
             )
         )
     else:
+        p_remedy_bn = "পিতৃ দোষ নেই। পূর্বপুরুষের শুভাশিস আপনার অনুকূলে রয়েছে।"
+        p_remedy_hi = "पितृ दोष नहीं है। पूर्वजों का आशीर्वाद प्राप्त है।"
+        p_remedy_en = "No Pitra Dosha present. Forefathers' blessings are upon you."
         doshas.append(
             DoshaAnalysisItem(
                 dosha_name="Pitra Dosha",
@@ -1077,13 +1152,15 @@ def _calculate_doshas_analysis(
                 is_present=False,
                 severity="None",
                 severity_bn="দোষমুক্ত",
-                specific_type="পিতৃ দোষ নেই",
+                severity_hi="दोषमुक्त",
+                specific_type="পিতৃ দোষ নেই" if lang == "bn" else ("पितृ दोष नहीं है" if lang == "hi" else "No Pitra Dosha"),
                 specific_type_bn="পিতৃ দোষ নেই",
+                specific_type_hi="पितृ दोष नहीं है",
                 cancellation_reason=None,
                 cancellation_reason_bn=None,
-                remedy="পিতৃ দোষ নেই। পূর্বপুরুষের শুভাশিস আপনার অনুকূলে রয়েছে।",
-                remedy_bn="পিতৃ দোষ নেই। পূর্বপুরুষের শুভাশিস আপনার অনুকূলে রয়েছে।",
-                remedy_hi="पितृ दोष नहीं है। पूर्वजों का आशीर्वाद प्राप्त है।",
+                remedy=p_remedy_bn if lang == "bn" else (p_remedy_hi if lang == "hi" else p_remedy_en),
+                remedy_bn=p_remedy_bn,
+                remedy_hi=p_remedy_hi,
             )
         )
 
@@ -1091,6 +1168,9 @@ def _calculate_doshas_analysis(
     jup_s = planet_signs.get("Jupiter", 0)
     has_chandal = (jup_s == rahu_s) or (jup_s == ketu_s)
     if has_chandal:
+        g_remedy_bn = "প্রতি বৃহস্পতিবার গুরু বা ব্রাহ্মণকে হলুদ ফল/মিষ্টি দান, গায়ত্রী মন্ত্র জপ এবং শিক্ষক ও বয়োজ্যেষ্ঠদের প্রতি সদাচরণ কাম্য।"
+        g_remedy_hi = "गुरुवार को पीले वस्त्र या चने की दाल दान करें, गायत्री मंत्र का जप करें।"
+        g_remedy_en = "Donate yellow items on Thursdays, chant Gayatri Mantra, and show deep respect to teachers and elders."
         doshas.append(
             DoshaAnalysisItem(
                 dosha_name="Guru Chandal Dosha",
@@ -1099,16 +1179,21 @@ def _calculate_doshas_analysis(
                 is_present=True,
                 severity="Moderate",
                 severity_bn="মধ্যম",
-                specific_type="বৃহস্পতি ও ছায়া গ্রহের একরাশিতে সংযোগ",
+                severity_hi="मध्यम",
+                specific_type="বৃহস্পতি ও ছায়া গ্রহের একরাশিতে সংযোগ" if lang == "bn" else ("बृहस्पति एवं राहु/केतु की एक ही राशि में युति" if lang == "hi" else "Jupiter conjoined with shadow planet"),
                 specific_type_bn="বৃহস্পতি ও ছায়া গ্রহের একরাশিতে সংযোগ",
+                specific_type_hi="बृहस्पति एवं राहु/केतु की एक ही राशि में युति",
                 cancellation_reason=None,
                 cancellation_reason_bn=None,
-                remedy="প্রতি বৃহস্পতিবার গুরু বা ব্রাহ্মণকে হলুদ ফল/মিষ্টি দান, গায়ত্রী মন্ত্র জপ এবং শিক্ষক ও বয়োজ্যেষ্ঠদের প্রতি সদাচরণ কাম্য।",
-                remedy_bn="প্রতি বৃহস্পতিবার গুরু বা ব্রাহ্মণকে হলুদ ফল/মিষ্টি দান, গায়ত্রী মন্ত্র জপ এবং শিক্ষক ও বয়োজ্যেষ্ঠদের প্রতি সদাচরণ কাম্য।",
-                remedy_hi="गुरुवार को पीले वस्त्र या चने की दाल दान करें, गायत्री मंत्र का जप करें।",
+                remedy=g_remedy_bn if lang == "bn" else (g_remedy_hi if lang == "hi" else g_remedy_en),
+                remedy_bn=g_remedy_bn,
+                remedy_hi=g_remedy_hi,
             )
         )
     else:
+        g_remedy_bn = "গুরু চণ্ডাল দোষ নেই। বৃহস্পতি স্বতন্ত্রভাবে সদর্থক প্রভাব রাখছে।"
+        g_remedy_hi = "गुरु चांडाल दोष नहीं है। गुरु ग्रह शुभ प्रभाव में हैं।"
+        g_remedy_en = "No Guru Chandal Dosha present. Jupiter exerts independent benefic influence."
         doshas.append(
             DoshaAnalysisItem(
                 dosha_name="Guru Chandal Dosha",
@@ -1117,13 +1202,15 @@ def _calculate_doshas_analysis(
                 is_present=False,
                 severity="None",
                 severity_bn="দোষমুক্ত",
-                specific_type="দোষমুক্ত",
+                severity_hi="दोषमुक्त",
+                specific_type="দোষমুক্ত" if lang == "bn" else ("दोषमुक्त" if lang == "hi" else "Free from Dosha"),
                 specific_type_bn="দোষমুক্ত",
+                specific_type_hi="दोषमुक्त",
                 cancellation_reason=None,
                 cancellation_reason_bn=None,
-                remedy="গুরু চণ্ডাল দোষ নেই। বৃহস্পতি স্বতন্ত্রভাবে সদর্থক প্রভাব রাখছে।",
-                remedy_bn="গুরু চণ্ডাল দোষ নেই। বৃহস্পতি স্বতন্ত্রভাবে সদর্থক প্রভাব রাখছে।",
-                remedy_hi="गुरु चांडाल दोष नहीं है। गुरु ग्रह शुभ प्रभाव में हैं।",
+                remedy=g_remedy_bn if lang == "bn" else (g_remedy_hi if lang == "hi" else g_remedy_en),
+                remedy_bn=g_remedy_bn,
+                remedy_hi=g_remedy_hi,
             )
         )
 
@@ -1143,21 +1230,27 @@ def _calculate_personal_remedies(
     life_stone = GemstoneItem(
         category="Life Stone (প্রাণ রত্ন)",
         category_bn="প্রাণ রত্ন / লগ্ন রত্ন",
+        category_hi="प्राण रत्न / लग्न रत्न",
         stone_name=l1_meta["stone_name"],
         stone_name_bn=l1_meta["stone_name_bn"],
         stone_name_hi=l1_meta["stone_name_hi"],
         sanskrit_name=l1_meta["sanskrit_name"],
         ruling_planet=l1_lord,
         ruling_planet_bn=PLANET_NAMES_LOCALIZED[l1_lord]["bn"],
+        ruling_planet_hi=PLANET_NAMES_LOCALIZED[l1_lord]["hi"],
         metal=l1_meta["metal"],
         metal_bn=l1_meta["metal_bn"],
+        metal_hi=l1_meta["metal_hi"],
         finger=l1_meta["finger"],
         finger_bn=l1_meta["finger_bn"],
+        finger_hi=l1_meta["finger_hi"],
         wearing_day=l1_meta["wearing_day"],
         wearing_day_bn=l1_meta["wearing_day_bn"],
+        wearing_day_hi=l1_meta["wearing_day_hi"],
         beej_mantra=l1_meta["beej_mantra"],
         benefit=l1_meta["benefit"],
         benefit_bn=l1_meta["benefit_bn"],
+        benefit_hi=l1_meta["benefit_hi"],
     )
 
     # 2. Lucky Stone (L9 Lord - Bhagya)
@@ -1166,21 +1259,27 @@ def _calculate_personal_remedies(
     lucky_stone = GemstoneItem(
         category="Lucky Stone (ভাগ্য রত্ন)",
         category_bn="ভাগ্য রত্ন / ধর্ম রত্ন",
+        category_hi="भाग्य रत्न / धर्म रत्न",
         stone_name=l9_meta["stone_name"],
         stone_name_bn=l9_meta["stone_name_bn"],
         stone_name_hi=l9_meta["stone_name_hi"],
         sanskrit_name=l9_meta["sanskrit_name"],
         ruling_planet=l9_lord,
         ruling_planet_bn=PLANET_NAMES_LOCALIZED[l9_lord]["bn"],
+        ruling_planet_hi=PLANET_NAMES_LOCALIZED[l9_lord]["hi"],
         metal=l9_meta["metal"],
         metal_bn=l9_meta["metal_bn"],
+        metal_hi=l9_meta["metal_hi"],
         finger=l9_meta["finger"],
         finger_bn=l9_meta["finger_bn"],
+        finger_hi=l9_meta["finger_hi"],
         wearing_day=l9_meta["wearing_day"],
         wearing_day_bn=l9_meta["wearing_day_bn"],
+        wearing_day_hi=l9_meta["wearing_day_hi"],
         beej_mantra=l9_meta["beej_mantra"],
         benefit=l9_meta["benefit"],
         benefit_bn=l9_meta["benefit_bn"],
+        benefit_hi=l9_meta["benefit_hi"],
     )
 
     # 3. Career Stone (L10 Lord)
@@ -1189,21 +1288,27 @@ def _calculate_personal_remedies(
     career_stone = GemstoneItem(
         category="Career Stone (কর্ম রত্ন)",
         category_bn="কর্ম রত্ন / প্রতিষ্ঠা রত্ন",
+        category_hi="कर्म रत्न / प्रतिष्ठा रत्न",
         stone_name=l10_meta["stone_name"],
         stone_name_bn=l10_meta["stone_name_bn"],
         stone_name_hi=l10_meta["stone_name_hi"],
         sanskrit_name=l10_meta["sanskrit_name"],
         ruling_planet=l10_lord,
         ruling_planet_bn=PLANET_NAMES_LOCALIZED[l10_lord]["bn"],
+        ruling_planet_hi=PLANET_NAMES_LOCALIZED[l10_lord]["hi"],
         metal=l10_meta["metal"],
         metal_bn=l10_meta["metal_bn"],
+        metal_hi=l10_meta["metal_hi"],
         finger=l10_meta["finger"],
         finger_bn=l10_meta["finger_bn"],
+        finger_hi=l10_meta["finger_hi"],
         wearing_day=l10_meta["wearing_day"],
         wearing_day_bn=l10_meta["wearing_day_bn"],
+        wearing_day_hi=l10_meta["wearing_day_hi"],
         beej_mantra=l10_meta["beej_mantra"],
         benefit=l10_meta["benefit"],
         benefit_bn=l10_meta["benefit_bn"],
+        benefit_hi=l10_meta["benefit_hi"],
     )
 
     # Rudraksha
@@ -1227,29 +1332,31 @@ def _calculate_personal_remedies(
 
     # Lucky colors & numbers based on Lagna Lord
     colors_map = {
-        "Sun": (["Gold", "Copper Red", "Orange"], ["সোনালী", "গাঢ় লাল", "কমলা"]),
-        "Moon": (["White", "Silver", "Cream"], ["শুভ্র সাদা", "রৌপ্য", "ক্রিম"]),
-        "Mars": (["Coral Red", "Scarlet", "Maroon"], ["রক্ত লাল", "মেরুন", "কমলা"]),
-        "Mercury": (["Emerald Green", "Mint", "Sage"], ["পান্না সবুজ", "হালকা সবুজ", "হলুদ"]),
-        "Jupiter": (["Golden Yellow", "Saffron", "Mustard"], ["হলুদ", "বাসন্তী", "জাফরান"]),
-        "Venus": (["Silvery White", "Pink", "Pastel"], ["সাদা", "গোলাপি", "হালকা নীল"]),
-        "Saturn": (["Deep Blue", "Navy", "Charcoal"], ["নীল", "কালো", "নেভি ব্লু"]),
+        "Sun": (["Gold", "Copper Red", "Orange"], ["সোনালী", "গাঢ় লাল", "কমলা"], ["सुनहरा", "ताम्र लाल", "नारंगी"]),
+        "Moon": (["White", "Silver", "Cream"], ["শুভ্র সাদা", "রৌপ্য", "ক্রিম"], ["सफेद", "चांदी", "क्रीम"]),
+        "Mars": (["Coral Red", "Scarlet", "Maroon"], ["রক্ত লাল", "মেরুন", "কমলা"], ["लाल", "मूंगा लाल", "नारंगी"]),
+        "Mercury": (["Emerald Green", "Mint", "Sage"], ["পান্না সবুজ", "হালকা সবুজ", "হলুদ"], ["हरा", "पन्ना हरा", "पीला"]),
+        "Jupiter": (["Golden Yellow", "Saffron", "Mustard"], ["হলুদ", "বাসন্তী", "জাফরান"], ["पीला", "केसरिया", "सुनहरा"]),
+        "Venus": (["Silvery White", "Pink", "Pastel"], ["সাদা", "গোলাপি", "হালকা নীল"], ["सफेद", "गुलाबी", "हल्का नीला"]),
+        "Saturn": (["Deep Blue", "Navy", "Charcoal"], ["নীল", "কালো", "নেভি ব্লু"], ["नीला", "गहरा नीला", "काला"]),
     }
     nums_map = {
         "Sun": [1, 4, 7], "Moon": [2, 7, 9], "Mars": [9, 3, 1],
         "Mercury": [5, 6, 8], "Jupiter": [3, 9, 7], "Venus": [6, 5, 8], "Saturn": [8, 5, 6],
     }
     dirs_map = {
-        "Sun": ("East", "পূর্ব দিক"), "Moon": ("North-West", "উত্তর-পশ্চিম দিক"),
-        "Mars": ("South", "দক্ষিণ দিক"), "Mercury": ("North", "উত্তর দিক"),
-        "Jupiter": ("North-East (Ishanya)", "উত্তর-পূর্ব (ঈশান কোণ)"),
-        "Venus": ("South-East (Agni)", "দক্ষিণ-পূর্ব (অগ্নি কোণ)"),
-        "Saturn": ("West", "পশ্চিম দিক"),
+        "Sun": ("East", "পূর্ব দিক", "पूर्व दिशा"),
+        "Moon": ("North-West", "উত্তর-পশ্চিম দিক", "उत्तर-पश्चिम दिशा"),
+        "Mars": ("South", "দক্ষিণ দিক", "दक्षिण दिशा"),
+        "Mercury": ("North", "উত্তর দিক", "उत्तर दिशा"),
+        "Jupiter": ("North-East (Ishanya)", "উত্তর-পূর্ব (ঈশান কোণ)", "उत्तर-पूर्व (ईशान कोण)"),
+        "Venus": ("South-East (Agni)", "দক্ষিণ-পূর্ব (অগ্নি কোণ)", "दक्षिण-पूर्व (आग्नेय कोण)"),
+        "Saturn": ("West", "পশ্চিম দিক", "पश्चिम दिशा"),
     }
 
-    cols_en, cols_bn = colors_map.get(l1_lord, colors_map["Jupiter"])
+    cols_en, cols_bn, cols_hi = colors_map.get(l1_lord, colors_map["Jupiter"])
     nums = nums_map.get(l1_lord, [3, 7, 9])
-    dir_en, dir_bn = dirs_map.get(l1_lord, ("East", "পূর্ব দিক"))
+    dir_en, dir_bn, dir_hi = dirs_map.get(l1_lord, ("East", "পূর্ব দিক", "पूर्व दिशा"))
 
     return PersonalRemedies(
         life_stone=life_stone,
@@ -1261,10 +1368,10 @@ def _calculate_personal_remedies(
         ishta_devata=ishta_bn if lang == "bn" else (ishta_hi if lang == "hi" else ishta_en),
         ishta_devata_bn=ishta_bn,
         ishta_devata_hi=ishta_hi,
-        lucky_colors=cols_bn if lang == "bn" else cols_en,
+        lucky_colors=cols_bn if lang == "bn" else (cols_hi if lang == "hi" else cols_en),
         lucky_colors_bn=cols_bn,
         lucky_numbers=nums,
-        favorable_direction=dir_bn if lang == "bn" else dir_en,
+        favorable_direction=dir_bn if lang == "bn" else (dir_hi if lang == "hi" else dir_en),
         favorable_direction_bn=dir_bn,
     )
 
@@ -1287,10 +1394,12 @@ def _calculate_current_dasha(
                     ad_lord = ant.lord
                     md_bn = PLANET_NAMES_LOCALIZED.get(md_lord, {"bn": md_lord})["bn"]
                     ad_bn = PLANET_NAMES_LOCALIZED.get(ad_lord, {"bn": ad_lord})["bn"]
+                    md_hi = PLANET_NAMES_LOCALIZED.get(md_lord, {"hi": md_lord}).get("hi", md_lord)
+                    ad_hi = PLANET_NAMES_LOCALIZED.get(ad_lord, {"hi": ad_lord}).get("hi", ad_lord)
 
                     verdict_bn = f"বর্তমানে আপনার {md_bn} মহাদশায় {ad_bn} অন্তর্দশা চলছে।"
                     verdict_en = f"You are currently running {md_lord} Mahadasha with {ad_lord} Antardasha."
-                    verdict_hi = f"वर्तमान में आपकी {md_lord} महादशा में {ad_lord} अंतर्दशा चल रही है।"
+                    verdict_hi = f"वर्तमान में आपकी {md_hi} महादशा में {ad_hi} अंतर्दशा चल रही है।"
 
                     guidance_bn = (
                         f"এই সময়ে {md_bn}-এর মূল প্রভাব সক্রিয় থাকবে এবং {ad_bn}-এর ফলাফল দৈনন্দিন ঘটনায় প্রতিফলিত হবে। "
@@ -1301,14 +1410,16 @@ def _calculate_current_dasha(
                         f"Chanting the planetary beej mantras ensures auspicious outcomes."
                     )
                     guidance_hi = (
-                        f"इस अवधि में {md_lord} और {ad_lord} का संयुक्त प्रभाव कार्यक्षेत्र और जीवन पर रहेगा। मंत्र जप लाभकारी होगा।"
+                        f"इस अवधि में {md_hi} महादशा एवं {ad_hi} अंतर्दशा का संयुक्त प्रभाव जीवन और कार्यक्षेत्र पर सक्रिय रहेगा। नियमित मंत्र जप अत्यंत कल्याणकारी होगा।"
                     )
 
                     return CurrentDashaInfo(
                         mahadasha_lord=md_lord,
                         mahadasha_lord_bn=md_bn,
+                        mahadasha_lord_hi=md_hi,
                         antardasha_lord=ad_lord,
                         antardasha_lord_bn=ad_bn,
+                        antardasha_lord_hi=ad_hi,
                         start_date=now.strftime("%d-%m-%Y"),
                         end_date=ant.end_date,
                         verdict=verdict_bn if lang == "bn" else (verdict_hi if lang == "hi" else verdict_en),
@@ -1325,17 +1436,23 @@ def _calculate_current_dasha(
     if dashas_grid:
         first = dashas_grid[0]
         ad_first = first.antardashas[-1] if first.antardashas else None
+        md_first = first.lord
+        ad_f_lord = ad_first.lord if ad_first else first.lord
+        md_first_hi = PLANET_NAMES_LOCALIZED.get(md_first, {"hi": md_first}).get("hi", md_first)
+        ad_f_hi = PLANET_NAMES_LOCALIZED.get(ad_f_lord, {"hi": ad_f_lord}).get("hi", ad_f_lord)
         return CurrentDashaInfo(
             mahadasha_lord=first.lord,
             mahadasha_lord_bn=PLANET_NAMES_LOCALIZED.get(first.lord, {"bn": first.lord})["bn"],
-            antardasha_lord=ad_first.lord if ad_first else first.lord,
-            antardasha_lord_bn=PLANET_NAMES_LOCALIZED.get(ad_first.lord if ad_first else first.lord, {"bn": first.lord})["bn"],
+            mahadasha_lord_hi=md_first_hi,
+            antardasha_lord=ad_f_lord,
+            antardasha_lord_bn=PLANET_NAMES_LOCALIZED.get(ad_f_lord, {"bn": first.lord})["bn"],
+            antardasha_lord_hi=ad_f_hi,
             start_date=now.strftime("%d-%m-%Y"),
             end_date=ad_first.end_date if ad_first else "2030-01-01",
-            verdict="চলতি বিংশোত্তরী দশা সক্রিয় রয়েছে।",
+            verdict="চলতি বিংশোত্তরী দশা সক্রিয় রয়েছে।" if lang == "bn" else ("विंशोत्तरी दशा सक्रिय है।" if lang == "hi" else "Current Vimshottari Dasha is active."),
             verdict_bn="চলতি বিংশোত্তরী দশা সক্রিয় রয়েছে।",
             verdict_hi="विंशोत्तरी दशा सक्रिय है।",
-            guidance="দশাপতির বৈদিক প্রতিকার ও বীজ মন্ত্র জপ করুন।",
+            guidance="দশাপতির বৈদিক প্রতিকার ও বীজ মন্ত্র জপ করুন।" if lang == "bn" else ("दशा स्वामी के बीज मंत्र का जप करें।" if lang == "hi" else "Chant the dasha lord's beej mantra."),
             guidance_bn="দশাপতির বৈদিক প্রতিকার ও বীজ মন্ত্র জপ করুন।",
             guidance_hi="दशा स्वामी के बीज मंत्र का जप करें।",
         )

@@ -589,6 +589,7 @@ RASHI_CLASSICAL_EXTRAS: list[dict[str, Any]] = [
         "sign_idx": 0,
         "beej_mantra": "ॐ ক্রাং ক্রীং ক্রৌং সঃ ভৌমায় নমঃ",
         "beej_mantra_hi": "ॐ क्रां क्रीं क्रौं सः भौमाय नमः",
+        "beej_mantra_en": "Om Kraam Kreem Kroum Sah Bhaumaya Namah",
         "charity_en": "Donate red lentils (masoor dal), copper vessels, or red cloth to needy.",
         "charity_bn": "লাল মসুর ডাল, তামার পাত্র বা লাল বস্ত্র অভাবী মানুষকে দান করুন।",
         "charity_hi": "लाल मसूर दाल, तांबे का बर्तन या लाल वस्त्र दान करें।",
@@ -599,6 +600,7 @@ RASHI_CLASSICAL_EXTRAS: list[dict[str, Any]] = [
         "sign_idx": 1,
         "beej_mantra": "ॐ দ্রাং দ্রীং দ্রৌং সঃ শুক্রায় নমঃ",
         "beej_mantra_hi": "ॐ द्रां द्रीं द्रौं सः शुक्राय नमः",
+        "beej_mantra_en": "Om Draam Dreem Droum Sah Shukraya Namah",
         "charity_en": "Donate white rice, sugar, curd, milk or perfumed items.",
         "charity_bn": "সুগন্ধি আতর, চাল, চিনি, দুধ বা সাদা মিষ্টান্ন দান করুন।",
         "charity_hi": "चावल, चीनी, दूध, दही या इत्र दान करें।",
@@ -609,6 +611,7 @@ RASHI_CLASSICAL_EXTRAS: list[dict[str, Any]] = [
         "sign_idx": 2,
         "beej_mantra": "ॐ ব্রাং ব্রীং ব্রৌং সঃ বুধায় নমঃ",
         "beej_mantra_hi": "ॐ ब्रां ब्रीं ब्रौं सः बुधाय नमः",
+        "beej_mantra_en": "Om Braam Breem Broum Sah Budhaya Namah",
         "charity_en": "Donate green moong dal, educational books, or green vegetables to cows.",
         "charity_bn": "সবুজ মুগ ডাল, ছাত্রছাত্রীদের বই বা গোরুকে সবুজ ঘাস/শাকসবজি দান।",
         "charity_hi": "हरी मूंग दाल, पुस्तकें या गाय को हरा चारा खिलाएं।",
@@ -619,6 +622,7 @@ RASHI_CLASSICAL_EXTRAS: list[dict[str, Any]] = [
         "sign_idx": 3,
         "beej_mantra": "ॐ শ্রাং শ্রীং শ্রৌং সঃ চন্দ্রায় নমঃ",
         "beej_mantra_hi": "ॐ श्रां श्रीं श्रौं सः चन्द्राय नमः",
+        "beej_mantra_en": "Om Shraam Shreem Shroum Sah Chandraya Namah",
         "charity_en": "Donate milk, silver, rice, white flowers, or drinking water facility.",
         "charity_bn": "দুধ, রূপা, চাল, সাদা ফুল অথবা তৃষ্ণার্তকে সুপেয় জল দান।",
         "charity_hi": "दूध, चांदी, चावल, सफेद फूल या जल सेवा करें।",
@@ -629,6 +633,7 @@ RASHI_CLASSICAL_EXTRAS: list[dict[str, Any]] = [
         "sign_idx": 4,
         "beej_mantra": "ॐ হ্রাং হ্রীং হ্রৌং সঃ সূর্যায় নমঃ",
         "beej_mantra_hi": "ॐ ह्रां ह्रीं ह्रौं सः सूर्याय नमः",
+        "beej_mantra_en": "Om Hraam Hreem Hroum Sah Suryaya Namah",
         "charity_en": "Offer water to the rising Sun; donate wheat, jaggery, or ruby red items.",
         "charity_bn": "উদীয়মান সূর্যকে তামার ঘটিতে অর্ঘ্য প্রদান; গম, গুড় বা কেশর দান করুন।",
         "charity_hi": "सूर्य को अर्घ्य दें; गेहूं, गुड़ या तांबे का दान करें।",
@@ -639,6 +644,7 @@ RASHI_CLASSICAL_EXTRAS: list[dict[str, Any]] = [
         "sign_idx": 5,
         "beej_mantra": "ॐ বুং বুধায় নমঃ",
         "beej_mantra_hi": "ॐ बुं बुधाय नमः",
+        "beej_mantra_en": "Om Bum Budhaya Namah",
         "charity_en": "Water the Tulsi plant; donate green apparel, notebooks, or pens.",
         "charity_bn": "তুলসী গাছে জল সিঞ্চন; সবুজ বস্ত্র, খাতা বা কলম অভাবী পড়ুয়াকে দান।",
         "charity_hi": "तुलसी में जल दें; हरी वस्तुएं, स्टेशनरी या किताबें दान करें।",
@@ -649,6 +655,7 @@ RASHI_CLASSICAL_EXTRAS: list[dict[str, Any]] = [
         "sign_idx": 6,
         "beej_mantra": "ॐ শুং শুক্রায় নমঃ",
         "beej_mantra_hi": "ॐ शुं शुक्राय नमः",
+        "beej_mantra_en": "Om Shum Shukraya Namah",
         "charity_en": "Donate white silks, sandalwood, cosmetics, or sweets made of khoya.",
         "charity_bn": "সাদা রেশমি বস্ত্র, চন্দন, সুগন্ধি বা ক্ষীরের মিষ্টি দান করুন।",
         "charity_hi": "सफेद रेशमी वस्त्र, चंदन, सौंदर्य सामग्री या खीर दान करें।",
@@ -659,6 +666,7 @@ RASHI_CLASSICAL_EXTRAS: list[dict[str, Any]] = [
         "sign_idx": 7,
         "beej_mantra": "ॐ ভৌং ভৌমায় নমঃ",
         "beej_mantra_hi": "ॐ भौं भौमाय नमः",
+        "beej_mantra_en": "Om Bhoum Bhaumaya Namah",
         "charity_en": "Recite Hanuman Chalisa; donate jaggery, sweets, or red coral items.",
         "charity_bn": "হনুমান চালিসা পাঠ; লাল মিষ্টি, গুড় বা রক্তচন্দন দান করুন।",
         "charity_hi": "हनुमान चालीसा पाठ करें; लाल मिठाई, गुड़ या सिंदूर दान करें।",
@@ -669,6 +677,7 @@ RASHI_CLASSICAL_EXTRAS: list[dict[str, Any]] = [
         "sign_idx": 8,
         "beej_mantra": "ॐ গ্রাং গ্রীং গ্রৌং সঃ গুরবে নমঃ",
         "beej_mantra_hi": "ॐ ग्रां ग्रीं ग्रौं सः गुरवे नमः",
+        "beej_mantra_en": "Om Graam Greem Groum Sah Gurave Namah",
         "charity_en": "Donate chana dal, yellow bananas, turmeric, or spiritual scriptures.",
         "charity_bn": "ছোলার ডাল, পাকা কলা, হলুদ গুঁড়ো বা ধর্মীয় গ্রন্থ দান করুন।",
         "charity_hi": "चने की दाल, पीले केले, हल्दी या धार्मिक ग्रंथ दान करें।",
@@ -679,6 +688,7 @@ RASHI_CLASSICAL_EXTRAS: list[dict[str, Any]] = [
         "sign_idx": 9,
         "beej_mantra": "ॐ প্রাং প্রীং প্রৌং সঃ শনৈশ্চরায় নমঃ",
         "beej_mantra_hi": "ॐ प्रां प्रीं प्रौं सः शनैश्चराय नमः",
+        "beej_mantra_en": "Om Praam Preem Proum Sah Shanaishcharaya Namah",
         "charity_en": "Donate sesame oil, black umbrella, leather shoes, or black blankets.",
         "charity_bn": "তিল তেল, কালো ছাতা, চামড়ার জুতো বা কালো কম্বল দরিদ্রকে দান।",
         "charity_hi": "तिल का तेल, काला छाता, जूते या काला कंबल दान करें।",
@@ -689,6 +699,7 @@ RASHI_CLASSICAL_EXTRAS: list[dict[str, Any]] = [
         "sign_idx": 10,
         "beej_mantra": "ॐ শং শনৈশ্চরায় নমঃ",
         "beej_mantra_hi": "ॐ शं शनैश्चराय नमः",
+        "beej_mantra_en": "Om Sham Shanaishcharaya Namah",
         "charity_en": "Light a mustard oil lamp under Peepal tree; serve visually impaired elders.",
         "charity_bn": "অশ্বত্থ তলায় সর্ষের তেলের প্রদীপ প্রজ্জ্বলন ও প্রবীণ/অসহায় মানুষকে সেবা।",
         "charity_hi": "पीपल के नीचे सरसों के तेल का दीपक जलाएं; असहायों की सेवा करें।",
@@ -699,6 +710,7 @@ RASHI_CLASSICAL_EXTRAS: list[dict[str, Any]] = [
         "sign_idx": 11,
         "beej_mantra": "ॐ বৃহস্পতয়ে নমঃ",
         "beej_mantra_hi": "ॐ बृहस्पतये नमः",
+        "beej_mantra_en": "Om Brihaspataye Namah",
         "charity_en": "Feed cows yellow fruits; donate saffron sweets, books, or yellow cloth.",
         "charity_bn": "গোরুকে পাকা কলা খাওয়ান; কেশর মিষ্টান্ন, পুজোসামগ্রী বা হলুদ কাপড় দান।",
         "charity_hi": "गाय को केले खिलाएं; केसरिया मिठाई या पीले वस्त्र दान करें।",
@@ -1919,7 +1931,12 @@ def calculate_daily_horoscope(payload: DailyHoroscopeRequest) -> DailyHoroscopeR
         else:
             remedy_text = f"Chant Om Namah Shivaya and offer water to the Sun ({sign_meta['lord']})."
 
-        beej_mantra = rashi_extra.get("beej_mantra_hi" if lang == "hi" else "beej_mantra", "")
+        if lang == "hi":
+            beej_mantra = rashi_extra.get("beej_mantra_hi") or rashi_extra.get("beej_mantra", "")
+        elif lang == "bn":
+            beej_mantra = rashi_extra.get("beej_mantra", "")
+        else:
+            beej_mantra = rashi_extra.get("beej_mantra_en") or rashi_extra.get("beej_mantra_hi") or rashi_extra.get("beej_mantra", "")
         charity_dana = rashi_extra.get(f"charity_{lang}", rashi_extra.get("charity_en", ""))
 
         sign_horoscopes.append(
