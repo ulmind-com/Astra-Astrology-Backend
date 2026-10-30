@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 import httpx
+from loguru import logger
 
 from app.core.config import settings
 from app.schemas.astrology import (
@@ -12,6 +13,7 @@ from app.schemas.astrology import (
     KundliMatchingPersonInput,
     KundliMatchingRequest,
 )
+from app.services.ai import retrieval
 from app.services.ai.knowledge_service import match_custom_rules, search_knowledge
 from app.services.astrology.daily_horoscope import calculate_daily_horoscope
 from app.services.astrology.kundli_matching_service import calculate_kundli_matching
@@ -46,6 +48,27 @@ Your foundational principles:
    [FOLLOW_UP: প্রথম প্রশ্ন?]
    [FOLLOW_UP: দ্বিতীয় প্রশ্ন?]
 """
+
+
+#: Offered with a refusal, so a user who asked something off-subject is pointed
+#: back to what this assistant can actually do rather than left at a dead end.
+_REFUSAL_FOLLOWUPS = {
+    "bn": [
+        "\u0986\u09ae\u09be\u09b0 \u0995\u09c1\u09a8\u09cd\u09a1\u09b2\u09c0\u09a4\u09c7 \u0995\u09cb\u09a8 \u09b0\u09be\u099c\u09af\u09cb\u0997 \u0986\u099b\u09c7?",
+        "\u0986\u09ae\u09be\u09b0 \u09ac\u09b0\u09cd\u09a4\u09ae\u09be\u09a8 \u09a6\u09b6\u09be \u0995\u09c0 \u099a\u09b2\u099b\u09c7?",
+        "\u0986\u09ae\u09be\u09b0 \u099c\u09a8\u09cd\u09af \u09b6\u09c1\u09ad \u09b0\u09a4\u09cd\u09a8 \u0995\u09cb\u09a8\u099f\u09bf?",
+    ],
+    "hi": [
+        "\u092e\u0947\u0930\u0940 \u0915\u0941\u0902\u0921\u0932\u0940 \u092e\u0947\u0902 \u0915\u094c\u0928 \u0938\u0947 \u0930\u093e\u091c\u092f\u094b\u0917 \u0939\u0948\u0902?",
+        "\u092e\u0947\u0930\u0940 \u0935\u0930\u094d\u0924\u092e\u093e\u0928 \u0926\u0936\u093e \u0915\u094c\u0928 \u0938\u0940 \u0939\u0948?",
+        "\u092e\u0947\u0930\u0947 \u0932\u093f\u090f \u0936\u0941\u092d \u0930\u0924\u094d\u0928 \u0915\u094c\u0928 \u0938\u093e \u0939\u0948?",
+    ],
+    "en": [
+        "Which raja yogas are in my chart?",
+        "Which dasha am I running now?",
+        "Which gemstone suits my chart?",
+    ],
+}
 
 ASTRO_TOOLS = [
     {
@@ -502,6 +525,29 @@ async def generate_astrology_response(
             latest_user_text = m.get("content", "")
             break
 
+    # The gate, before the model and before the local fallback alike.
+    #
+    # A refusal taken here cannot be argued with. A model merely *instructed* to
+    # refuse can always be talked round, and the instruction costs a round trip
+    # to find that out. The test is deliberately generous — see
+    # `retrieval.is_answerable` — so a paying user asking a real question in any
+    # of the three languages is never turned away.
+    verdict = retrieval.is_answerable(latest_user_text)
+    if not verdict.answerable:
+        logger.info(
+            "AI question refused ({}): {!r}", verdict.reason, latest_user_text[:120]
+        )
+        return {
+            "reply": retrieval.refusal_text(preferred_language),
+            "tools_called": [],
+            "citations": [],
+            "suggested_followups": _REFUSAL_FOLLOWUPS.get(
+                preferred_language, _REFUSAL_FOLLOWUPS["en"]
+            ),
+            "answered": False,
+            "refusal_reason": verdict.reason,
+        }
+
     custom_rules = await match_custom_rules(latest_user_text)
 
     # If Groq API key is not configured, gracefully fallback to local authoritative astrology synthesis
@@ -664,13 +710,14 @@ async def generate_astrology_response(
             "আজকের দিনে কোন হোরায় গুরুত্বপূর্ণ কাজ করা উচিত?",
         ]
 
-    # If no citations were collected from tools, add authoritative default
-    if not citations_map:
-        citations_map["default_shastra"] = {
-            "source": "বৃহৎ পরাশর হোরাশাস্ত্র ও ফলদীপিকা",
-            "category": "shastra",
-            "snippet": "সুইস এফিমেরিস ২.১০ নির্ভুল লাহিড়ী অয়নাংশ ও পরাশর বৈদিক জ্যোতিষ গণনা।",
-        }
+    # Nothing is invented here on purpose.
+    #
+    # This used to attach a citation to the Brihat Parashara Hora Shastra and
+    # Phaladeepika whenever no tool had run and no rule had matched — which is
+    # precisely when the answer came from the model alone and rested on no
+    # source at all. An empty list is the truthful answer to "what was this
+    # based on", and it can be shown to the client without anybody having to
+    # defend a reference that was never read.
 
     return {
         "reply": final_content,

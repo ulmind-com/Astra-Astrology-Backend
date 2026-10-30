@@ -16,12 +16,21 @@ from typing import Any
 
 from beanie import PydanticObjectId
 from loguru import logger
+from pydantic import BaseModel
 
 from app.models.ai_astrologer import (
     AIChatFeedback,
     AICustomRule,
     AIKnowledgeDoc,
 )
+from app.services.ai import retrieval
+
+
+class _TitleTags(BaseModel):
+    """Projection for the vocabulary build: titles and tags, never bodies."""
+
+    title: str = ""
+    tags: list[str] = []
 
 
 def _clean_text(text: str) -> str:
@@ -32,36 +41,99 @@ def _clean_text(text: str) -> str:
     return text.strip()
 
 
-def _chunk_text(text: str, chunk_size: int = 800, overlap: int = 150) -> list[str]:
-    """Splits a long text into overlapping chunks respecting sentence/paragraph boundaries."""
-    paragraphs = text.split("\n\n")
-    chunks: list[str] = []
-    current_chunk: list[str] = []
-    current_length = 0
+#: Sentence ends in the three scripts this corpus is written in. The Bengali and
+#: Hindi danda (।) is a sentence end exactly as a full stop is, and leaving it
+#: out meant native-script passages had no split points at all.
+_SENTENCE_END = re.compile(r"(?<=[.!?\u0964\u0965])\s+")
 
-    for para in paragraphs:
+
+def _split_long(text: str, limit: int) -> list[str]:
+    """Break one over-long block into pieces no larger than `limit`.
+
+    Tries sentence boundaries first, and only cuts mid-sentence when a single
+    sentence is itself longer than the limit — which happens in PDF extracts
+    where the text came out as one unbroken run.
+    """
+    pieces: list[str] = []
+    buffer = ""
+    for sentence in _SENTENCE_END.split(text):
+        if not sentence:
+            continue
+        # A single sentence bigger than the limit has to be cut by length. Cut
+        # at the last space that fits rather than at the character limit: a cut
+        # through the middle of a word leaves that word in neither piece, so it
+        # can never be retrieved again.
+        while len(sentence) > limit:
+            if buffer:
+                pieces.append(buffer.strip())
+                buffer = ""
+            cut = sentence.rfind(" ", 0, limit + 1)
+            if cut <= 0:
+                # One unbroken token longer than the limit; nothing to do but
+                # cut it, and nothing is lost that was ever a word.
+                cut = limit
+            pieces.append(sentence[:cut].strip())
+            sentence = sentence[cut:].lstrip()
+        if len(buffer) + len(sentence) + 1 > limit and buffer:
+            pieces.append(buffer.strip())
+            buffer = sentence
+        else:
+            buffer = f"{buffer} {sentence}".strip() if buffer else sentence
+    if buffer.strip():
+        pieces.append(buffer.strip())
+    return [p for p in pieces if p]
+
+
+def _chunk_text(text: str, chunk_size: int = 800, overlap: int = 150) -> list[str]:
+    """Split a document into passages of roughly `chunk_size` characters.
+
+    This used to split on blank lines only. A PDF extracted as one unbroken run
+    of text has none, so the whole document came back as a single "chunk" — the
+    live corpus held passages of 100,000 characters against a requested 800,
+    which made every one of them match every question, made the context sent to
+    the model useless, and meant a single query pulled 1.3 MB out of Atlas.
+
+    Over-long blocks are now broken at sentence boundaries, and mid-sentence
+    only when one sentence is itself longer than the limit.
+    """
+    if chunk_size <= 0:
+        return [text] if text.strip() else []
+
+    blocks: list[str] = []
+    for para in text.split("\n\n"):
         para = para.strip()
         if not para:
             continue
-        para_len = len(para)
-
-        if current_length + para_len > chunk_size and current_chunk:
-            combined = "\n\n".join(current_chunk)
-            chunks.append(combined)
-            if len(current_chunk) > 1 and len(current_chunk[-1]) < overlap:
-                current_chunk = [current_chunk[-1], para]
-                current_length = len(current_chunk[0]) + para_len
-            else:
-                current_chunk = [para]
-                current_length = para_len
+        if len(para) > chunk_size:
+            blocks.extend(_split_long(para, chunk_size))
         else:
-            current_chunk.append(para)
-            current_length += para_len
+            blocks.append(para)
 
-    if current_chunk:
-        chunks.append("\n\n".join(current_chunk))
+    chunks: list[str] = []
+    current: list[str] = []
+    current_length = 0
 
-    return chunks
+    for block in blocks:
+        block_len = len(block)
+        if current and current_length + block_len > chunk_size:
+            chunks.append("\n\n".join(current))
+            # Carry the tail of the last chunk into the next one, so a fact
+            # split across a boundary is still whole in one of them.
+            tail = current[-1]
+            if len(current) > 1 and len(tail) <= overlap:
+                current = [tail, block]
+                current_length = len(tail) + block_len
+            else:
+                current = [block]
+                current_length = block_len
+        else:
+            current.append(block)
+            current_length += block_len
+
+    if current:
+        chunks.append("\n\n".join(current))
+
+    return [c for c in chunks if c.strip()]
 
 
 async def seed_initial_knowledge_from_resources(force_reseed: bool = False) -> int:
@@ -595,57 +667,156 @@ async def match_custom_rules(query: str) -> list[AICustomRule]:
     return matched
 
 
+#: How many candidates the text index is asked for before re-ranking.
+#: Wide enough that the right passage is almost certainly inside it, small
+#: enough that it is a bounded query rather than the whole collection.
+_CANDIDATE_LIMIT = 400
+
+#: Below this many candidates the text index is assumed to have missed — it
+#: stems for English and merely tokenises Bengali and Hindi — and a token scan
+#: is run as well so a native-script question is not left with nothing.
+_THIN_CANDIDATES = 3
+
+#: A hard ceiling on the fallback scan, so the bad old behaviour (fetch
+#: everything, every time) cannot come back through the back door.
+_FALLBACK_LIMIT = 1500
+
+
+async def _text_candidates(
+    query: str, category: str | None, limit: int
+) -> list[AIKnowledgeDoc]:
+    """Candidates from the MongoDB text index.
+
+    The index on (title, content) has existed since this model was written and
+    was never queried — the old search fetched the entire collection and scored
+    it in Python. Asking the index instead is what turns this from a full scan
+    into a bounded lookup.
+    """
+    criteria: dict[str, Any] = {"$text": {"$search": query}, "is_active": True}
+    if category:
+        criteria["category"] = category
+    try:
+        return await AIKnowledgeDoc.find(criteria).limit(limit).to_list()
+    except Exception as exc:  # noqa: BLE001 - a missing index must not break chat
+        logger.warning("Text search unavailable, falling back to scan: {}", exc)
+        return []
+
+
+async def _token_candidates(
+    terms: list[str], category: str | None, limit: int
+) -> list[AIKnowledgeDoc]:
+    """Candidates by matching any query word, for scripts the index does not stem.
+
+    Still a database query rather than a scan into Python: the regex is anchored
+    on word boundaries so "ram" cannot match inside "program", which is the bug
+    the old substring scoring had.
+    """
+    if not terms:
+        return []
+    patterns = [
+        {"content": {"$regex": rf"(?<![\w\u0980-\u09FF\u0900-\u097F]){re.escape(t)}", "$options": "i"}}
+        for t in terms[:12]
+    ]
+    criteria: dict[str, Any] = {"is_active": True, "$or": patterns}
+    if category:
+        criteria["category"] = category
+    try:
+        return await AIKnowledgeDoc.find(criteria).limit(limit).to_list()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Token candidate query failed: {}", exc)
+        return []
+
+
 async def search_knowledge(query: str, category: str | None = None, top_k: int = 5) -> list[dict[str, Any]]:
-    """Performs hybrid token and keyword search across all indexed shastras and client documents."""
+    """Find the passages that can answer this question.
+
+    Two steps, and the split is the point. The database narrows the field with
+    an index; BM25 decides the order of what comes back.
+
+    What this replaced loaded every active document into memory on every single
+    message and scored by counting substrings. That was wrong in ways that
+    compounded: `count("ram")` scored a hit inside "program", a passage that
+    merely repeated a word beat one that was about it, and a long passage beat
+    a short precise one for no reason but length. It also got slower with every
+    document seeded, which is exactly backwards for a knowledge base meant to
+    grow.
+    """
     from app.db.mongodb import is_ready
 
     if not is_ready():
         return []
 
-    tokens = [t.lower() for t in re.findall(r"[\w\u0980-\u09FF]+", query) if len(t) >= 2]
-    if not tokens:
+    terms = retrieval.expand(retrieval.tokenize(query))
+    if not terms:
         return []
 
-    find_conditions: list[Any] = [AIKnowledgeDoc.is_active == True]
-    if category:
-        find_conditions.append(AIKnowledgeDoc.category == category)
+    # The text index is asked for the expanded wording, not the question as
+    # typed. The corpus is entirely English; a Bengali question matches none of
+    # it unless its English equivalents go in too.
+    candidates = await _text_candidates(" ".join(terms), category, _CANDIDATE_LIMIT)
 
-    docs = await AIKnowledgeDoc.find(*find_conditions).to_list()
-    scored_docs: list[tuple[float, AIKnowledgeDoc]] = []
+    if len(candidates) < _THIN_CANDIDATES:
+        seen = {str(d.id) for d in candidates}
+        for doc in await _token_candidates(terms, category, _FALLBACK_LIMIT):
+            if str(doc.id) not in seen:
+                candidates.append(doc)
+                seen.add(str(doc.id))
 
-    for doc in docs:
-        content_lower = (doc.title + " " + doc.content).lower()
-        score = 0.0
+    if not candidates:
+        return []
 
-        for token in tokens:
-            count = content_lower.count(token)
-            if count > 0:
-                title_count = doc.title.lower().count(token)
-                score += (count * 1.0) + (title_count * 4.0)
+    ranked = retrieval.rank(query, candidates, top_k=top_k)
 
-        for token in tokens:
-            if token in doc.category.lower():
-                score += 3.0
+    return [
+        {
+            "id": str(s.doc.id),
+            "title": s.doc.title,
+            "category": s.doc.category,
+            "content": s.doc.content,
+            "source_file": s.doc.source_file,
+            "score": round(s.score, 4),
+            "matched_terms": s.matched,
+        }
+        for s in ranked
+    ]
 
-        if score > 0:
-            scored_docs.append((score, doc))
 
-    scored_docs.sort(key=lambda x: x[0], reverse=True)
+#: Subject words taken from the knowledge base itself, so seeding new material
+#: widens the gate without anyone editing the lexicon by hand. Titles, tags and
+#: rule triggers only — never passage bodies, which would mean the full scan
+#: this module just stopped doing.
+_vocabulary_cache: set[str] | None = None
 
-    results = []
-    for score, doc in scored_docs[:top_k]:
-        results.append(
-            {
-                "id": str(doc.id),
-                "title": doc.title,
-                "category": doc.category,
-                "content": doc.content,
-                "source_file": doc.source_file,
-                "score": score,
-            }
-        )
 
-    return results
+async def corpus_vocabulary(refresh: bool = False) -> set[str]:
+    """Words the knowledge base uses in its titles, tags and rule triggers."""
+    global _vocabulary_cache
+    if _vocabulary_cache is not None and not refresh:
+        return _vocabulary_cache
+
+    from app.db.mongodb import is_ready
+
+    if not is_ready():
+        return set()
+
+    words: set[str] = set()
+    try:
+        async for doc in AIKnowledgeDoc.find(
+            AIKnowledgeDoc.is_active == True
+        ).project(_TitleTags):
+            words.update(retrieval.tokenize(doc.title))
+            for tag in doc.tags or []:
+                words.update(retrieval.tokenize(tag))
+        async for rule in AICustomRule.find(AICustomRule.is_active == True):
+            words.update(retrieval.tokenize(rule.rule_title))
+            for kw in rule.trigger_keywords or []:
+                words.update(retrieval.tokenize(kw))
+    except Exception as exc:  # noqa: BLE001 - the gate falls back to its lexicon
+        logger.warning("Could not build corpus vocabulary: {}", exc)
+        return _vocabulary_cache or set()
+
+    _vocabulary_cache = words
+    return words
 
 
 async def save_user_feedback(
