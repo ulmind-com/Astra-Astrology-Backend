@@ -11,10 +11,10 @@ from app.services.astrology.vastu_engine import (
 
 def test_pada_count_and_anchors():
     assert len(PADA_DEFINITIONS) == 32
-    # Verify N5 is centered at 0° (or 354.375° to 5.625°)
+    # Verify N5 is centered at 0.0° (spans 354.375° to 5.625°)
     n5 = [p for p in PADA_DEFINITIONS if p["pada_id"] == "N5"][0]
     assert n5["quadrant"] == "North"
-    assert n5["center"] == 354.375  # Spans across 0° North
+    assert n5["center"] == 0.0  # Centered at 0.0° True North
 
 
 def test_auspicious_entrances():
@@ -27,15 +27,15 @@ def test_auspicious_entrances():
 def test_resolve_pada_trigonometry():
     # 0.0° should resolve to N5
     p0 = resolve_entrance_pada(0.0)
-    assert p0.pada_id in ("N5", "N6")  # Right at the meridian
+    assert p0.pada_id == "N5"
 
-    # 62.0° should resolve to E3 (Jayanta - Auspicious)
-    p_e3 = resolve_entrance_pada(62.0)
+    # 65.0° should resolve to E3 (Jayanta - Auspicious, span 61.875° - 73.125°)
+    p_e3 = resolve_entrance_pada(65.0)
     assert p_e3.pada_id == "E3"
     assert p_e3.is_auspicious is True
     assert p_e3.deity == "Jayanta (জয়ন্ত)"
 
-    # 175.0° should resolve to S5 (Yama - Malefic)
+    # 175.0° should resolve to S5 (Yama - Malefic, span 174.375° - 185.625°)
     p_s5 = resolve_entrance_pada(175.0)
     assert p_s5.pada_id == "S5"
     assert p_s5.is_auspicious is False
@@ -54,7 +54,7 @@ def test_16_zones_metadata():
 
 def test_full_vastu_audit_excellent():
     res = perform_vastu_audit(
-        main_entrance_degree=62.0,  # E3 Jayanta (Auspicious)
+        main_entrance_degree=65.0,  # E3 Jayanta (Auspicious, 61.875° - 73.125°)
         placements={
             "kitchen": "SE",
             "master_bed": "SW",
