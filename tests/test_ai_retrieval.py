@@ -439,3 +439,41 @@ def test_short_text_stays_in_one_chunk():
 def test_empty_text_yields_no_chunks():
     assert _chunk_text("", 800, 150) == []
     assert _chunk_text("   \n\n  ", 800, 150) == []
+
+
+# ---------------------------------------------------------------------------
+# False refusals
+#
+# Every question here was refused by the first version of the gate. Muhurta —
+# which hour is auspicious to begin something — is among the most ordinary
+# things an astrologer is asked, and the lexicon had none of its vocabulary.
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "question",
+    [
+        "আজকের দিনে কোন সময়ে শুভ কাজ শুরু করা উচিত?",
+        "What time today is auspicious to start work?",
+        "কবে ভালো সময় আসবে?",
+        "আজ কোন মুহূর্ত শুভ?",
+        "आज कौन सा समय शुभ है?",
+        "আমার জন্য কোন রং শুভ?",
+        "Which day is good for signing the agreement?",
+        "আমি কি সফল হব?",
+        "মেরি উন্নতি কবে হবে?",
+        "Is today favourable for travel?",
+    ],
+)
+def test_timing_and_auspiciousness_questions_are_answered(question):
+    verdict = is_answerable(question)
+    assert verdict.answerable, f"wrongly refused: {question!r} ({verdict.reason})"
+
+
+def test_off_topic_is_still_refused_after_widening():
+    """Widening the lexicon must not have opened the gate to everything."""
+    for q in [
+        "Who will win the cricket world cup final?",
+        "Give me a recipe for chocolate cake with eggs and butter",
+        "Write a Python function that sorts a list of integers",
+        "Translate this paragraph into German for my homework",
+    ]:
+        assert not is_answerable(q).answerable, f"wrongly accepted: {q!r}"
