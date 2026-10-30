@@ -65,7 +65,10 @@ async def live(websocket: WebSocket, token: str | None = Query(default=None)) ->
     realtime.register(connection)
 
     # An astrologer holding this socket is an astrologer at their desk.
-    await _set_presence(user_id, role, online=True)
+    astrologer_profile: Any = None
+    if role == "astrologer" and user_id:
+        astrologer_profile = await _profile_for(user_id, role)
+    await _set_presence(astrologer_profile, online=True)
 
     sender = asyncio.create_task(_pump(connection))
     try:
@@ -90,7 +93,7 @@ async def live(websocket: WebSocket, token: str | None = Query(default=None)) ->
             # Nothing arriving for longer than the timeout means it is not.
             await asyncio.wait_for(websocket.receive_text(), timeout=IDLE_TIMEOUT_SECONDS)
             connection.offer({"type": "pong"})
-            await _touch_presence(user_id, role)
+            await _touch_presence(astrologer_profile)
 
     except (TimeoutError, WebSocketDisconnect):
         pass
@@ -104,7 +107,7 @@ async def live(websocket: WebSocket, token: str | None = Query(default=None)) ->
         # Only the *last* tab closing takes them offline — an astrologer with
         # the panel open twice is still at their desk.
         if not (user_id and realtime.is_connected(user_id)):
-            await _set_presence(user_id, role, online=False)
+            await _set_presence(astrologer_profile, online=False)
 
 
 # -------------------------------------------------------------- presence
@@ -120,12 +123,11 @@ async def _profile_for(user_id: str | None, role: str | None) -> Any:
     return await Astrologer.find_one(Astrologer.user_id == PydanticObjectId(user_id))
 
 
-async def _set_presence(user_id: str | None, role: str | None, *, online: bool) -> None:
+async def _set_presence(profile: Any, *, online: bool) -> None:
     """Opening the panel is going online; closing it is going offline."""
+    if profile is None:
+        return
     try:
-        profile = await _profile_for(user_id, role)
-        if profile is None:
-            return
         from app.services import presence
 
         if online:
@@ -133,17 +135,16 @@ async def _set_presence(user_id: str | None, role: str | None, *, online: bool) 
         else:
             await presence.go_offline(profile, reason="panel closed")
     except Exception as exc:  # noqa: BLE001 - presence must never break the socket
-        logger.warning("Could not update presence for {}: {}", user_id, exc)
+        logger.warning("Could not update presence: {}", exc)
 
 
-async def _touch_presence(user_id: str | None, role: str | None) -> None:
+async def _touch_presence(profile: Any) -> None:
     """Refreshes the stamp, so the read-time TTL keeps agreeing they are here."""
+    if profile is None:
+        return
     try:
-        profile = await _profile_for(user_id, role)
-        if profile is None:
-            return
         from app.services import presence
 
         await presence.beat(profile)
     except Exception as exc:  # noqa: BLE001
-        logger.debug("Presence refresh skipped for {}: {}", user_id, exc)
+        logger.debug("Presence refresh skipped: {}", exc)

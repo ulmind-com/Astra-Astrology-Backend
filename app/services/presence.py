@@ -79,15 +79,22 @@ async def beat(profile: Astrologer) -> Astrologer:
     was_online = is_effectively_online(profile.availability)
 
     profile.availability.last_seen_at = now
+    status_changed = False
     if not profile.availability.is_online:
         profile.availability.is_online = True
         profile.availability.last_online_at = now
+        status_changed = True
 
     await profile.save()
 
     if not was_online:
         logger.info("Astrologer {} is online.", profile.display_name)
-    await _publish(profile)
+    # Only broadcast to all websockets when online status actually changes.
+    # Routine keep-alive beats just refresh the TTL timestamp; clients compute
+    # availability TTL locally so flooding the socket network with redundant
+    # card broadcasts is eliminated.
+    if not was_online or status_changed:
+        await _publish(profile)
     return profile
 
 

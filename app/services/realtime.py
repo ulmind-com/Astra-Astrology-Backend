@@ -104,7 +104,7 @@ def is_enabled() -> bool:
 
 
 # ------------------------------------------------------------- astrologers
-async def astrologer_payload(profile: Any) -> dict[str, Any]:
+async def astrologer_payload(profile: Any, platform: Any = None) -> dict[str, Any]:
     """Exactly the fields a directory card and a profile header draw.
 
     Prices are resolved here — an astrologer with no rate of their own carries
@@ -113,6 +113,10 @@ async def astrologer_payload(profile: Any) -> dict[str, Any]:
     """
     from app.models.enums import ConsultationMode
     from app.services import billing, presence
+    from app.services import settings as settings_service
+
+    if platform is None:
+        platform = await settings_service.get_settings()
 
     availability = profile.availability
     rates = {}
@@ -122,7 +126,7 @@ async def astrologer_payload(profile: Any) -> dict[str, Any]:
         (ConsultationMode.VIDEO, "video"),
     ):
         rates[f"{key}_coins_per_minute"] = (
-            await billing.price_for(profile, mode)
+            await billing.price_for(profile, mode, platform=platform)
         ).coins_per_minute
 
     last_seen = availability.last_seen_at
@@ -294,11 +298,17 @@ async def publish_all_astrologers() -> int:
     everyone who has no rate of their own.
     """
     from app.models.astrologer import Astrologer
+    from app.services import settings as settings_service
 
+    platform = await settings_service.get_settings()
     sent = 0
     for profile in await Astrologer.find_all().to_list():
-        await publish_astrologer(profile)
-        sent += 1
+        try:
+            payload = await astrologer_payload(profile, platform=platform)
+            _broadcast({"type": "astrologer", "data": payload})
+            sent += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not build the live payload for {}: {}", profile.id, exc)
     return sent
 
 
