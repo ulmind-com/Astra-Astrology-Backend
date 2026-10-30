@@ -9,7 +9,6 @@ from pymongo.errors import DuplicateKeyError
 from app.core.exceptions import BadRequestError
 from app.models.settings import SETTINGS_KEY, CoinRateChange, PlatformSettings
 
-
 _in_memory_settings: PlatformSettings | None = None
 
 
@@ -21,11 +20,30 @@ def _default_platform_settings() -> PlatformSettings:
     return PlatformSettings.model_construct(**defaults)
 
 
-async def get_settings() -> PlatformSettings:
-    """Returns the singleton, creating it with defaults the first time."""
-    from app.db.mongodb import is_ready
-
+def invalidate_settings_cache() -> None:
+    """Clears the in-memory settings cache so the next access fetches fresh from DB."""
     global _in_memory_settings
+    _in_memory_settings = None
+
+
+def set_cached_settings(doc: PlatformSettings) -> None:
+    """Updates the in-memory settings cache directly."""
+    global _in_memory_settings
+    _in_memory_settings = doc
+
+
+async def get_settings(*, force_refresh: bool = False) -> PlatformSettings:
+    """Returns the singleton platform settings.
+
+    Uses an in-memory cache to guarantee 0ms latency and eliminate repeated
+    MongoDB queries during routine requests and heartbeats.
+    """
+    global _in_memory_settings
+
+    if not force_refresh and _in_memory_settings is not None:
+        return _in_memory_settings
+
+    from app.db.mongodb import is_ready
 
     if not is_ready():
         if _in_memory_settings is None:
@@ -35,6 +53,7 @@ async def get_settings() -> PlatformSettings:
     try:
         existing = await PlatformSettings.find_one(PlatformSettings.key == SETTINGS_KEY)
         if existing is not None:
+            _in_memory_settings = existing
             return existing
 
         created = PlatformSettings()
@@ -43,9 +62,9 @@ async def get_settings() -> PlatformSettings:
         except DuplicateKeyError:
             # Two requests raced; the unique index settled it.
             existing = await PlatformSettings.find_one(PlatformSettings.key == SETTINGS_KEY)
-            if existing is None:  # pragma: no cover - the index guarantees one
-                return created
-            return existing
+            _in_memory_settings = existing or created
+            return _in_memory_settings
+        _in_memory_settings = created
         return created
     except Exception as exc:
         logger.warning(
@@ -66,6 +85,9 @@ async def _publish(doc: PlatformSettings, *, reprice: bool) -> None:
     and those cards have to be rewritten or they would keep showing the old
     number until something else touched them.
     """
+    global _in_memory_settings
+    _in_memory_settings = doc
+
     from app.services import realtime
 
     await realtime.publish_settings(doc)

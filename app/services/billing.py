@@ -71,9 +71,14 @@ def coin_value_paise(coins_per_rupee: int) -> int:
     return 100 // max(coins_per_rupee, 1)
 
 
-async def price_for(profile: Astrologer, mode: ConsultationMode) -> Price:
+async def price_for(
+    profile: Astrologer,
+    mode: ConsultationMode,
+    platform: PlatformSettings | None = None,
+) -> Price:
     """This astrologer's price for this kind of session, right now."""
-    platform = await settings_service.get_settings()
+    if platform is None:
+        platform = await settings_service.get_settings()
 
     rate = _own_rate(profile, mode) or _default_rate(platform, mode)
     commission = (
