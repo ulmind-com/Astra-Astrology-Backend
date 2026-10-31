@@ -85,7 +85,17 @@ async def beat(profile: Astrologer) -> Astrologer:
         profile.availability.last_online_at = now
         status_changed = True
 
-    await profile.save()
+    # Atomically update ONLY availability fields so other profile fields (like gallery)
+    # are never overwritten by heartbeat background calls
+    await Astrologer.get_pymongo_collection().update_one(
+        {"_id": profile.id},
+        {
+            "$set": {
+                "availability": profile.availability.model_dump(),
+                "updated_at": now,
+            }
+        },
+    )
 
     if not was_online:
         logger.info("Astrologer {} is online.", profile.display_name)
@@ -110,7 +120,16 @@ async def go_offline(profile: Astrologer, *, reason: str = "closed") -> Astrolog
 
     profile.availability.is_online = False
     profile.availability.last_seen_at = None
-    await profile.save()
+
+    await Astrologer.get_pymongo_collection().update_one(
+        {"_id": profile.id},
+        {
+            "$set": {
+                "availability": profile.availability.model_dump(),
+                "updated_at": utcnow(),
+            }
+        },
+    )
 
     logger.info("Astrologer {} is offline ({}).", profile.display_name, reason)
     await _publish(profile)

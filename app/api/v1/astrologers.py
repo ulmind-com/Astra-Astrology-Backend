@@ -39,6 +39,9 @@ router = APIRouter(prefix="/astrologers", tags=["astrologers"])
 async def get_my_profile(
     user: AstrologerUser, profile: CurrentAstrologer
 ) -> ApiResponse[AstrologerProfile]:
+    fresh = await Astrologer.find_one(Astrologer.user_id == user.id)
+    if fresh is not None:
+        profile = fresh
     return ApiResponse(
         message="Profile fetched.", data=astrologer_service.to_profile(user, profile)
     )
