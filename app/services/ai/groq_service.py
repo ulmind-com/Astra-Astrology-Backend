@@ -74,6 +74,7 @@ Name the planet, house or dasha behind what you say, even briefly — that is wh
 TOOLS — match the question, don't default to the birth chart
 - "how will today/this week go" → get_daily_horoscope_tool, then calculate_kundli_tool for the running dasha.
 - "when will I get a job/married/a child" → calculate_kundli_tool, answer from the running dasha.
+- career, business, agency, marketing, profession, finances → calculate_kundli_tool (analyze 10th house Karma/profession, 3rd house communication/outreach/agency, 11th house gains/network, 2nd house wealth/branding, Budh/Mercury for commerce/marketing, Rahu for online/digital scale, and running dasha). If chart is not linked, provide classical Vedic astrological guidance based on Mercury/Rahu/Jupiter significations, auspicious muhurta, and practical planetary remedies.
 - compatibility → calculate_matchmaking_tool · numbers/names → calculate_numerology_tool · classical rules, vastu, palmistry, remedies → search_vedic_rules_tool.
 - wants to talk to a real astrologer, or a question that genuinely needs one → find_astrologer_tool. Offer it once, naturally, at the end of your own answer — "I read it this way; X specialises in this and is online now at N coins a minute, shall I point you there?" Never lead with it, never push, never offer it twice in a conversation, and always give your own reading first.
 - "how do I use X", "where is X", "what does X cost", "what can you do", anything about coins, wallet or recharge → app_guide_tool. You are this app's guide as well as its astrologer: give the steps in order, say what it costs, and check their balance. If they cannot afford it, say how many coins short they are and point them to /account/wallet — warmly, not as a sales pitch. If they are not signed in, ask them to sign in rather than telling them to recharge.
@@ -1130,6 +1131,15 @@ async def _prepare(
         preferred_language = detected
 
     verdict = retrieval.is_answerable(latest_user_text, extra_vocabulary=vocabulary)
+    if not verdict.answerable and not retrieval.looks_like_injection(latest_user_text):
+        # In an ongoing consultation, check if recent user messages established subject context
+        user_turns = [m.get("content", "") for m in messages if m.get("role") == "user" and m.get("content")]
+        if len(user_turns) > 1:
+            combined_recent = " ".join(user_turns[-3:])
+            combined_verdict = retrieval.is_answerable(combined_recent, extra_vocabulary=vocabulary)
+            if combined_verdict.answerable:
+                verdict = combined_verdict
+
     if not verdict.answerable:
         logger.info(
             "AI question refused ({}): {!r}", verdict.reason, latest_user_text[:120]
@@ -1246,7 +1256,7 @@ async def _prepare(
             for t in chosen_tools
             if t.get("function", {}).get("name") != "calculate_kundli_tool"
         ]
-    base_prompt = ASTROLOGER_SYSTEM_PROMPT if chosen_tools else CONVERSATIONAL_PROMPT
+    base_prompt = ASTROLOGER_SYSTEM_PROMPT if (chosen_tools or chart_block) else CONVERSATIONAL_PROMPT
 
     full_system_prompt = (
         base_prompt

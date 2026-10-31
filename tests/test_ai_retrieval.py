@@ -545,6 +545,16 @@ SHOULD_ANSWER = [
     "ওয়ালেট রিচার্জ কীভাবে করব",
     "মেরা কয়েন ব্যালেন্স কত আছে দেখুন",
     "मेरे अकाउंट में कितने कॉयन हैं",
+
+    # Agency, marketing, business strategy & entrepreneurship
+    "Amar agency r jonno kon marketing technique use korle valo hobe?",
+    "আপনার এজেন্সির জন্য কোনো নির্দিষ্ট মার্কেটিং কৌশল দরকার?",
+    "আমার এজেন্সির জন্য কোন মার্কেটিং টেকনিক ভালো হবে?",
+    "Kon strategy nile amar agency grow korbe?",
+    "Startup shuru korte chai kon idea bhalo?",
+    "Digital marketing agency khulte chai kon somoy shubh?",
+    "আমার ব্যবসার জন্য সেরা মার্কেটিং পদ্ধতি কী?",
+    "Client pabo kivabe?",
 ]
 
 SHOULD_REFUSE = [
