@@ -68,6 +68,25 @@ _TRIGGERS: dict[str, tuple[str, ...]] = {
     ),
 }
 
+
+#: Disciplines that read something other than the sky.
+#:
+#: Palmistry reads a hand, face reading a face, vastu a building. None of them
+#: needs a birth chart, and computing one costs ~550 tokens in the system
+#: context plus the chance of tipping the request over the daily allowance —
+#: which is exactly what happened to "হস্তরেখায় বিবাহ রেখা কী বলে?" in the
+#: evaluation set.
+_CHARTLESS = (
+    "palm", "palmistry", "hast", "hastrekha", "hand", "rekha", "mount",
+    "face", "physiognomy", "samudrik", "mukh", "forehead",
+    "vastu", "vaastu", "direction", "disha", "compass", "kitchen", "entrance",
+    "bedroom", "brahmasthan", "pada", "zone",
+    "হস্তরেখা", "হাতের", "রেখা", "মুখমণ্ডল", "মুখ", "সামুদ্রিক",
+    "বাস্তু", "দিক", "কম্পাস", "রান্নাঘর", "প্রবেশদ্বার", "শয়নকক্ষ",
+    "हस्तरेखा", "हाथ", "रेखा", "मुखमंडल", "चेहरा", "सामुद्रिक",
+    "वास्तु", "दिशा", "रसोई", "प्रवेशद्वार",
+)
+
 #: A question of this many meaningful words or fewer, naming no subject, is a
 #: greeting or an acknowledgement — "নমস্কার", "ok", "thanks", "tell me more".
 _CONVERSATIONAL_WORDS = 3
@@ -138,6 +157,14 @@ def select_tool_names(question: str) -> tuple[str, ...]:
 
     terms = _terms(question)
     names = list(CORE_TOOLS)
+
+    # A hand, a face or a building is not read from a birth chart, so offering
+    # the tool that computes one only invites a round that answers nothing.
+    # `needs_chart` already declines to precompute it; this keeps the offer in
+    # step with that decision.
+    if terms & set(_CHARTLESS) and not (terms & _CHART_WORDS):
+        names = [n for n in names if n != "calculate_kundli_tool"]
+
     for tool, triggers in _TRIGGERS.items():
         if terms & set(triggers):
             names.append(tool)
@@ -168,4 +195,22 @@ def needs_chart(question: str) -> bool:
     """
     if is_conversational(question):
         return False
-    return not is_about_the_app(question)
+    if is_about_the_app(question):
+        return False
+    # Palmistry, face reading and vastu read a hand, a face or a building.
+    # A birth chart tells them nothing.
+    terms = _terms(question)
+    return not (terms & set(_CHARTLESS) and not (terms & _CHART_WORDS))
+
+
+#: Words that mean the birth chart really is wanted, even alongside another
+#: discipline — "does my kundli agree with my palm" needs both.
+_CHART_WORDS = frozenset(
+    {
+        "kundli", "kundali", "chart", "horoscope", "dasha", "lagna", "rashi",
+        "nakshatra", "graha", "planet", "yoga", "dosha", "janam",
+        "কুন্ডলী", "কুণ্ডলী", "জন্মছক", "দশা", "লগ্ন", "রাশি", "নক্ষত্র",
+        "গ্রহ", "যোগ", "দোষ", "কোষ্ঠী",
+        "कुंडली", "दशा", "लग्न", "राशि", "नक्षत्र", "ग्रह", "योग", "दोष",
+    }
+)

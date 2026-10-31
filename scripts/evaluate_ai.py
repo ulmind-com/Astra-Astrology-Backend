@@ -159,7 +159,14 @@ def main() -> int:
                 or any(mark in reply for mark in _BUSY_MARKS)
             ),
             "refused": _REFUSAL_MARK in reply,
-            "asks_birth": any(mark in reply for mark in _ASKS_BIRTH),
+            # Explaining a screen is not asking for the data. A guide answer
+            # naturally says "enter your date, time and place" because that is
+            # step two of using the feature — flagging it as a failure made a
+            # correct reply look broken.
+            "asks_birth": (
+                "app_guide_tool" not in tools
+                and any(mark in reply for mark in _ASKS_BIRTH)
+            ),
             "reply": reply,
         }
         rows.append(row)
