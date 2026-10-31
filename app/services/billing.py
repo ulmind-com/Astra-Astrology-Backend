@@ -236,6 +236,10 @@ async def charge_due(
     earning_total = 0
     out_of_coins = False
 
+    astro = await Astrologer.get(astrologer_id)
+    astro_name = astro.display_name if astro else None
+    astro_img = astro.profile_image_url if astro else None
+
     while charged < due:
         minute = charged + 1
         try:
@@ -244,8 +248,14 @@ async def charge_due(
                 amount_coins=price.coins_per_minute,
                 reason=TransactionReason.CONSULTATION,
                 idempotency_key=f"session:{session_id}:minute:{minute}",
-                ref=TransactionRef(session_id=session_id),
-                note=f"{mode.value} · minute {minute}",
+                ref=TransactionRef(
+                    session_id=session_id,
+                    astrologer_id=astrologer_id,
+                    astrologer_name=astro_name,
+                    astrologer_image_url=astro_img,
+                    consultation_mode=mode.value,
+                ),
+                note=f"{mode.value.capitalize()} consultation with {astro_name or 'Astrologer'} · minute {minute}",
             )
         except BadRequestError as exc:
             # The only expected failure here is an empty wallet. Stop at the

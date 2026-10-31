@@ -7,6 +7,9 @@ from loguru import logger
 
 from app.api.dependencies import CurrentUser
 from app.core.config import settings
+from app.models.astrologer import Astrologer
+from app.models.call import CallSession
+from app.models.chat import ChatSession
 from app.models.enums import PaymentOrderStatus, TransactionReason
 from app.models.wallet import WalletTransaction
 from app.schemas.common import ApiResponse, Paginated, build_page
@@ -29,7 +32,20 @@ from app.services import wallet as wallet_service
 router = APIRouter(prefix="/wallet", tags=["wallet"])
 
 
-def to_transaction(txn: WalletTransaction) -> TransactionOut:
+def to_transaction(
+    txn: WalletTransaction,
+    astro_info: dict[str, Any] | None = None,
+) -> TransactionOut:
+    info = astro_info or {}
+    astro_id = (
+        str(txn.ref.astrologer_id)
+        if txn.ref.astrologer_id
+        else info.get("astrologer_id")
+    )
+    astro_name = txn.ref.astrologer_name or info.get("astrologer_name")
+    astro_img = txn.ref.astrologer_image_url or info.get("astrologer_image_url")
+    mode = txn.ref.consultation_mode or info.get("consultation_mode")
+
     return TransactionOut(
         id=str(txn.id),
         direction=txn.direction,
@@ -44,9 +60,69 @@ def to_transaction(txn: WalletTransaction) -> TransactionOut:
             razorpay_payment_id=txn.ref.razorpay_payment_id,
             razorpay_refund_id=txn.ref.razorpay_refund_id,
             session_id=str(txn.ref.session_id) if txn.ref.session_id else None,
+            astrologer_id=astro_id,
+            astrologer_name=astro_name,
+            astrologer_image_url=astro_img,
+            consultation_mode=mode,
         ),
         created_at=txn.created_at,
+        astrologer_id=astro_id,
+        astrologer_name=astro_name,
+        astrologer_image_url=astro_img,
+        consultation_mode=mode,
     )
+
+
+async def enrich_transactions(items: list[WalletTransaction]) -> list[TransactionOut]:
+    """Batch resolves astrologer info for consultation transactions, including historical ones."""
+    needed_sessions = [
+        t.ref.session_id
+        for t in items
+        if t.ref.session_id and not t.ref.astrologer_name
+    ]
+
+    session_map: dict[str, dict[str, Any]] = {}
+    if needed_sessions:
+        chats = await ChatSession.find({"_id": {"$in": needed_sessions}}).to_list()
+        calls = await CallSession.find({"_id": {"$in": needed_sessions}}).to_list()
+
+        astro_ids = set()
+        for c in chats:
+            astro_ids.add(c.astrologer_id)
+        for cl in calls:
+            astro_ids.add(cl.astrologer_id)
+
+        astros = (
+            await Astrologer.find({"_id": {"$in": list(astro_ids)}}).to_list()
+            if astro_ids
+            else []
+        )
+        astro_dict = {a.id: a for a in astros}
+
+        for c in chats:
+            a = astro_dict.get(c.astrologer_id)
+            session_map[str(c.id)] = {
+                "astrologer_id": str(c.astrologer_id),
+                "astrologer_name": a.display_name if a else None,
+                "astrologer_image_url": a.profile_image_url if a else None,
+                "consultation_mode": "chat",
+            }
+        for cl in calls:
+            a = astro_dict.get(cl.astrologer_id)
+            session_map[str(cl.id)] = {
+                "astrologer_id": str(cl.astrologer_id),
+                "astrologer_name": a.display_name if a else None,
+                "astrologer_image_url": a.profile_image_url if a else None,
+                "consultation_mode": cl.mode.value if hasattr(cl.mode, "value") else str(cl.mode),
+            }
+
+    return [
+        to_transaction(
+            t,
+            astro_info=session_map.get(str(t.ref.session_id)) if t.ref.session_id else None,
+        )
+        for t in items
+    ]
 
 
 def to_balance(wallet: Any) -> WalletBalance:
@@ -63,10 +139,11 @@ def to_balance(wallet: Any) -> WalletBalance:
 async def my_wallet(user: CurrentUser) -> ApiResponse[WalletSummary]:
     wallet = await wallet_service.get_or_create_wallet(user.id)
     recent, _ = await wallet_service.list_transactions(user.id, page=1, limit=5)
+    enriched_recent = await enrich_transactions(recent)
     return ApiResponse(
         message="Wallet fetched.",
         data=WalletSummary(
-            wallet=to_balance(wallet), recent=[to_transaction(t) for t in recent]
+            wallet=to_balance(wallet), recent=enriched_recent
         ),
     )
 
@@ -85,9 +162,10 @@ async def my_transactions(
     items, total = await wallet_service.list_transactions(
         user.id, page=page, limit=limit, reason=reason
     )
+    enriched_items = await enrich_transactions(items)
     return ApiResponse(
         message=f"{total} transaction(s).",
-        data=build_page([to_transaction(t) for t in items], total, page, limit),
+        data=build_page(enriched_items, total, page, limit),
     )
 
 

@@ -63,6 +63,11 @@ class TransactionRef(BaseModel):
     razorpay_refund_id: str | None = None
     session_id: PydanticObjectId | None = None
     reverses_transaction_id: PydanticObjectId | None = None
+    # Consultation metadata for fast statements & user wallet audit
+    astrologer_id: PydanticObjectId | None = None
+    astrologer_name: str | None = None
+    astrologer_image_url: str | None = None
+    consultation_mode: str | None = None
 
 
 class WalletTransaction(TimestampedDocument):

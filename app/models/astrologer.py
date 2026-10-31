@@ -85,6 +85,14 @@ class RatingSummary(BaseModel):
     count: int = Field(default=0, ge=0)
 
 
+class ServiceDuration(BaseModel):
+    """Cumulative minutes spent delivering consultations by mode (Astrotalk-style tracking)."""
+
+    chat_minutes: int = Field(default=0, ge=0)
+    call_minutes: int = Field(default=0, ge=0)
+    video_minutes: int = Field(default=0, ge=0)
+
+
 class BankDetails(BaseModel):
     account_holder_name: str | None = None
     account_number_last4: str | None = Field(default=None, max_length=4)
@@ -133,6 +141,7 @@ class Astrologer(TimestampedDocument):
     availability: Availability = Field(default_factory=Availability)
     rating: RatingSummary = Field(default_factory=RatingSummary)
     total_consultations: int = Field(default=0, ge=0)
+    service_duration: ServiceDuration = Field(default_factory=ServiceDuration)
     followers_count: int = Field(default=0, ge=0)
 
     # ------------------------------------------------------------ curation

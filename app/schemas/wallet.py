@@ -30,6 +30,10 @@ class TransactionRefOut(BaseModel):
     razorpay_payment_id: str | None = None
     razorpay_refund_id: str | None = None
     session_id: str | None = None
+    astrologer_id: str | None = None
+    astrologer_name: str | None = None
+    astrologer_image_url: str | None = None
+    consultation_mode: str | None = None
 
 
 class TransactionOut(BaseModel):
@@ -45,6 +49,11 @@ class TransactionOut(BaseModel):
     coins_per_rupee: int | None = None
     ref: TransactionRefOut = Field(default_factory=TransactionRefOut)
     created_at: datetime
+    # Enriched consultation details for direct UI consumption
+    astrologer_id: str | None = None
+    astrologer_name: str | None = None
+    astrologer_image_url: str | None = None
+    consultation_mode: str | None = None
 
 
 class WalletSummary(BaseModel):
@@ -361,6 +370,10 @@ class EarningRow(BaseModel):
     minutes: int
     earning_paise: int
     created_at: datetime
+    user_id: str | None = None
+    user_name: str | None = None
+    user_image_url: str | None = None
+    coins_charged: int | None = None
 
 
 class AdminEarningRow(EarningRow):

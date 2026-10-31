@@ -11,6 +11,7 @@ from fastapi import APIRouter, Query
 
 from app.api.dependencies import AdminUser, CurrentAstrologer, CurrentUser
 from app.models.astrologer import Astrologer
+from app.models.user import User
 from app.schemas.common import ApiResponse
 from app.schemas.wallet import (
     AdminEarningRow,
@@ -58,6 +59,13 @@ async def my_recent_earnings(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> ApiResponse[list[EarningRow]]:
     rows = await earnings_service.recent_for_astrologer(user.id, limit)
+
+    user_ids = [r["user_id"] for r in rows if r.get("user_id")]
+    user_map = {}
+    if user_ids:
+        users = await User.find({"_id": {"$in": user_ids}}).to_list()
+        user_map = {u.id: u for u in users}
+
     return ApiResponse(
         message=f"{len(rows)} consultation{'' if len(rows) == 1 else 's'}.",
         data=[
@@ -67,6 +75,10 @@ async def my_recent_earnings(
                 minutes=r["minutes"],
                 earning_paise=r["earning_paise"],
                 created_at=r["created_at"],
+                user_id=str(r["user_id"]) if r.get("user_id") else None,
+                user_name=user_map[r["user_id"]].full_name if r.get("user_id") in user_map else None,
+                user_image_url=user_map[r["user_id"]].avatar_url if r.get("user_id") in user_map else None,
+                coins_charged=r.get("coins_charged"),
             )
             for r in rows
         ],
@@ -109,6 +121,12 @@ async def recent_platform_earnings(
             {"_id": {"$in": [r["astrologer_id"] for r in rows]}}
         ).to_list()
     }
+    user_ids = [r["user_id"] for r in rows if r.get("user_id")]
+    user_map = {}
+    if user_ids:
+        users = await User.find({"_id": {"$in": user_ids}}).to_list()
+        user_map = {u.id: u for u in users}
+
     return ApiResponse(
         message=f"{len(rows)} consultation{'' if len(rows) == 1 else 's'}.",
         data=[
@@ -124,6 +142,9 @@ async def recent_platform_earnings(
                 gross_paise=r["gross_paise"],
                 commission_percent=r["commission_percent"],
                 commission_paise=r["commission_paise"],
+                user_id=str(r["user_id"]) if r.get("user_id") else None,
+                user_name=user_map[r["user_id"]].full_name if r.get("user_id") in user_map else None,
+                user_image_url=user_map[r["user_id"]].avatar_url if r.get("user_id") in user_map else None,
             )
             for r in rows
         ],

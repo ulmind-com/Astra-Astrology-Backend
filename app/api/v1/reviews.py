@@ -5,10 +5,11 @@ from typing import Annotated
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Query, status
 
-from app.api.dependencies import AdminUser, CurrentUser
+from app.api.dependencies import AdminUser, CurrentAstrologer, CurrentUser
 from app.core.exceptions import BadRequestError, NotFoundError
 from app.models.astrologer import Astrologer
 from app.models.review import Review
+from app.models.user import User
 from app.schemas.common import ApiResponse
 from app.schemas.review import (
     HideReviewRequest,
@@ -23,7 +24,7 @@ from app.services import reviews as service
 router = APIRouter(prefix="/reviews", tags=["reviews"])
 
 
-def _out(review: Review) -> ReviewOut:
+def _out(review: Review, author_avatar: str | None = None) -> ReviewOut:
     return ReviewOut(
         id=str(review.id),
         astrologer_id=str(review.astrologer_id),
@@ -31,7 +32,47 @@ def _out(review: Review) -> ReviewOut:
         stars=review.stars,
         text=review.text,
         author_name=review.author_name,
+        author_avatar_url=author_avatar,
+        session_id=str(review.session_id) if review.session_id else None,
         created_at=review.created_at,
+    )
+
+
+async def _enrich_reviews(reviews: list[Review]) -> list[ReviewOut]:
+    """Resolves author avatar from User model for rich review rendering."""
+    user_ids = [r.user_id for r in reviews if r.user_id]
+    avatars: dict[PydanticObjectId, str | None] = {}
+    if user_ids:
+        users = await User.find({"_id": {"$in": user_ids}}).to_list()
+        avatars = {u.id: u.avatar_url for u in users}
+
+    return [_out(r, author_avatar=avatars.get(r.user_id)) for r in reviews]
+
+
+@router.get(
+    "/astrologer/me",
+    response_model=ApiResponse[ReviewPage],
+    summary="All reviews and feedback for the authenticated astrologer",
+)
+async def my_astrologer_reviews(
+    astrologer: CurrentAstrologer,
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> ApiResponse[ReviewPage]:
+    profile = astrologer.profile
+    items, total = await service.for_astrologer(profile.id, skip=skip, limit=limit)
+    enriched = await _enrich_reviews(items)
+    return ApiResponse(
+        message=f"{total} review(s) received.",
+        data=ReviewPage(
+            items=enriched,
+            total=total,
+            summary=ReviewSummary(
+                average=profile.rating.average,
+                count=profile.rating.count,
+                breakdown=await service.breakdown(profile.id),
+            ),
+        ),
     )
 
 
@@ -105,10 +146,11 @@ async def for_astrologer(
         raise NotFoundError("Astrologer not found.", error_code="astrologer_not_found")
 
     items, total = await service.for_astrologer(profile.id, skip=skip, limit=limit)
+    enriched = await _enrich_reviews(items)
     return ApiResponse(
         message="Reviews fetched.",
         data=ReviewPage(
-            items=[_out(r) for r in items],
+            items=enriched,
             total=total,
             summary=ReviewSummary(
                 average=profile.rating.average,
