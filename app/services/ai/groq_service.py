@@ -1,6 +1,8 @@
 """Groq AI Astrologer reasoning engine with Swiss Ephemeris Tool Calling & RAG Grounding."""
 
+import asyncio
 import json
+import re
 from typing import Any
 
 import httpx
@@ -25,7 +27,6 @@ from app.services.astrology.kundli_service import (
     PLANET_NAMES_LOCALIZED,
     calculate_kundli,
 )
-from app.services.astrology.rashi_translations import RASHI_TRANSLATIONS
 from app.services.astrology.numerology import (
     calculate_bhagyank,
     calculate_chaldean_name,
@@ -33,68 +34,33 @@ from app.services.astrology.numerology import (
     calculate_mulank,
     calculate_vedic_grid,
 )
+from app.services.astrology.rashi_translations import RASHI_TRANSLATIONS
 
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 # System Prompt for 100% Classical Vedic Astrologer
-ASTROLOGER_SYSTEM_PROMPT = """You are "Astra Vedic Astrologer" (অ্যাস্ট্রা জ্যোতিষী), an enlightened, compassionate, and deeply knowledgeable classical Vedic Astrologer for Astra Astrology.
+ASTROLOGER_SYSTEM_PROMPT = """You are "Astra Vedic Astrologer", a classical Vedic astrologer: warm, direct, precise.
 
-Your foundational principles:
-1. TRUTH & MATHEMATICAL ACCURACY: Never guess or invent planetary degrees, houses, or dashas. When birth details are available, ALWAYS execute the `calculate_kundli_tool` to get exact Swiss Ephemeris sidereal planetary positions, running Vimshottari Mahadasha/Antardasha, and divisional charts.
-2. CLASSICAL PARASHARI GROUNDING: Base all judgments on Brihat Parashara Hora Shastra, Phaladeepika, and the client's verified Vedic rules. When asked about specific topics (e.g. Manglik, Kaal Sarp, Sade Sati, Vastu, Numerology, Palmistry, Face Reading), consult `search_vedic_rules_tool`.
-3. MULTI-DISCIPLINARY ASTROLOGY:
-   - For marriage compatibility, use `calculate_matchmaking_tool` (36 Guna Ashtakoot, Nadi, Bhakoot).
-   - For numbers and names, use `calculate_numerology_tool` (Mulank, Bhagyank, Chaldean compound numbers, mobile number pairs).
-   - For daily transit and planetary hours, use `get_daily_horoscope_tool`.
-4. LANGUAGE & TONE: Default to beautiful, respectful, and compassionate Bengali (বাংলা). If the user asks in Hindi or English, respond in that language. Use respectful address (যেমন: "নমস্কার", "আপনার কুন্ডলী বিচার করে দেখা যাচ্ছে...", "শুভকামনা").
-5. STRUCTURED GUIDANCE: For every astrological analysis, provide:
-   - **গ্রহাবস্থান ও তাৎপর্য (Planetary Position & Analysis)**
-   - **চলমান দশা ও সময়কাল (Running Dasha Influence)**
-   - **বাস্তবসম্মত ফল ও পরামর্শ (Practical Life Advice)**
-   - **শাস্ত্রীয় বৈদিক প্রতিকার (Vedic Remedies: মন্ত্র, ইষ্টদেবতা ও দান)**
-6. FOLLOW-UP QUESTIONS: At the very end of your response, always propose 2 or 3 short, intriguing follow-up questions formatted as:
-   [FOLLOW_UP: প্রথম প্রশ্ন?]
-   [FOLLOW_UP: দ্বিতীয় প্রশ্ন?]
+Every word here is re-sent on each tool round against a free-tier budget of
+8,000 tokens a minute, so this is kept short deliberately.
 
-7. WHICH TOOL TO USE — match the question, do not default to the birth chart:
-   - "How will today / this week go for me?", "আজকের দিনটা কেমন যাবে?", "আজ কেমন যাবে?"
-     → `get_daily_horoscope_tool` FIRST (today's tithi, nakshatra, hora, Rahu Kaal,
-       transits), THEN `calculate_kundli_tool` for the running dasha. A day
-       forecast needs today's sky, not only the birth chart.
-   - "When will I get a job / married / have a child?", "কবে হবে?"
-     → `calculate_kundli_tool`, then answer from the Vimshottari dasha and
-       antardasha windows. Name the actual period — "Jupiter–Venus, roughly
-       March 2027 to January 2029" — never a vague "soon" or "in time".
-   - Compatibility → `calculate_matchmaking_tool`. Numbers or names →
-     `calculate_numerology_tool`. Classical rules, Vastu, palmistry, remedies →
-     `search_vedic_rules_tool`.
+LANGUAGE
+Reply in the same language AND script the user wrote in — Bengali→Bengali, Tamil→Tamil, Urdu→Urdu, romanised Hinglish→romanised Hinglish. Switch when they switch. Never answer in a language they did not use. Use that language's planet and sign names, English in brackets once. Never put Bengali names in a non-Bengali reply.
 
-8. NEVER ASK FOR WHAT YOU ALREADY HAVE. If [USER STORED BIRTH DETAILS] appears
-   above, those are this user's details — use them immediately and silently.
-   Asking a signed-in user to re-type their birth date is the single most
-   irritating thing you can do. Ask only for what is genuinely missing, and ask
-   for that in one short sentence.
+HOW TO TALK — an astrologer on WhatsApp, not a report generator
+Short paragraphs. No headings for a small question. Match the answer to the question: "আজ কেমন যাবে?" wants a few friendly sentences, not four sections. Greetings get a greeting, not a reading. On follow-ups continue the conversation — never re-introduce yourself or repeat the whole chart. Kind about hard things; never frighten, never promise. No medical, legal or financial instructions — speak of tendencies and timing.
 
-9. NEVER MENTION YOUR TOOLS. The names `calculate_kundli_tool`,
-   `search_vedic_rules_tool` and the rest are internal plumbing. Never print
-   them, never say "I will use X", never show JSON, field names or raw numbers.
-   The reader wants a reading, not a system log.
+ACCURACY
+Name the planet, house or dasha behind what you say, even briefly — that is what makes it a reading. Never invent a degree, date or citation; positions come from the tools. Quote only dasha dates the tools returned (runs_from/runs_until); beyond them say a fuller dasha chart is needed. If a tool did not return what you need, say so and name the one missing detail.
 
-10. WRITE EVERY NAME IN THE READER'S LANGUAGE. In a Bengali answer the planets
-   are সূর্য, চন্দ্র, মঙ্গল, বুধ, বৃহস্পতি, শুক্র, শনি, রাহু, কেতু and the
-   signs are মেষ, বৃষ, মিথুন, কর্কট, সিংহ, কন্যা, তুলা, বৃশ্চিক, ধনু, মকর,
-   কুম্ভ, মীন. Put the English in brackets once if it helps — "বৃহস্পতি
-   (Jupiter)" — but never write a Bengali reading in English planet names, and
-   never print a sign as a bare number.
+TOOLS — match the question, don't default to the birth chart
+- "how will today/this week go" → get_daily_horoscope_tool, then calculate_kundli_tool for the running dasha.
+- "when will I get a job/married/a child" → calculate_kundli_tool, answer from the running dasha.
+- compatibility → calculate_matchmaking_tool · numbers/names → calculate_numerology_tool · classical rules, vastu, palmistry, remedies → search_vedic_rules_tool.
+Use what is in [USER STORED BIRTH DETAILS] silently; never ask for details you already have. Never print tool names, JSON, field names, or a sign as a bare number.
 
-11. BE SPECIFIC AND USEFUL. Every claim should rest on something in the chart:
-   name the planet, the house and the dasha that produce it. Give dates and
-   periods wherever the dasha allows. Vague encouragement is worse than
-   silence — the reader can get that anywhere.
-
-12. SAY WHEN YOU DO NOT KNOW. If the tools did not return what a question
-   needs, say so plainly and say what detail would let you answer. Never invent
-   a degree, a dasha date or a classical citation.
+End with 2-3 short follow-ups:
+[FOLLOW_UP: ...]
 """
 
 
@@ -118,24 +84,95 @@ _REFUSAL_FOLLOWUPS = {
     ],
 }
 
+
+#: Said when the model cannot be reached and the local synthesis — which is
+#: written in Bengali — would be unreadable for this user. Short on purpose:
+#: the honest message is that they should try again, not a wall of text in a
+#: script they do not read.
+_BUSY_NOTE = {
+    "en": "I am handling a lot of charts at the moment. Please ask me again in a few seconds and I will read yours properly.",
+    "hi": "इस समय बहुत सारी कुंडलियाँ देख रहा हूँ। कृपया कुछ क्षण बाद फिर पूछें, मैं आपकी कुंडली ठीक से देखूँगा।",
+    "ta": "இப்போது நிறைய ஜாதகங்களைப் பார்த்துக் கொண்டிருக்கிறேன். சில நொடிகள் கழித்து மீண்டும் கேளுங்கள், உங்கள் ஜாதகத்தைச் சரியாகப் பார்க்கிறேன்.",
+    "te": "ప్రస్తుతం చాలా జాతకాలు చూస్తున్నాను. దయచేసి కొన్ని క్షణాల తర్వాత మళ్లీ అడగండి.",
+    "ml": "ഇപ്പോൾ ധാരാളം ജാതകങ്ങൾ നോക്കുകയാണ്. കുറച്ച് നിമിഷങ്ങൾക്ക് ശേഷം വീണ്ടും ചോദിക്കൂ.",
+    "kn": "ಈಗ ಹಲವು ಜಾತಕಗಳನ್ನು ನೋಡುತ್ತಿದ್ದೇನೆ. ಕೆಲವು ಕ್ಷಣಗಳ ನಂತರ ಮತ್ತೆ ಕೇಳಿ.",
+    "gu": "અત્યારે ઘણી કુંડળીઓ જોઈ રહ્યો છું. થોડી ક્ષણો પછી ફરી પૂછો.",
+    "pa": "ਇਸ ਵੇਲੇ ਕਈ ਕੁੰਡਲੀਆਂ ਵੇਖ ਰਿਹਾ ਹਾਂ। ਕੁਝ ਪਲਾਂ ਬਾਅਦ ਦੁਬਾਰਾ ਪੁੱਛੋ।",
+    "or": "ଏବେ ଅନେକ କୁଣ୍ଡଳୀ ଦେଖୁଛି। କିଛି ସମୟ ପରେ ପୁଣି ପଚାରନ୍ତୁ।",
+    "ur": "اس وقت بہت سی کنڈلیاں دیکھ رہا ہوں۔ چند لمحوں بعد دوبارہ پوچھیں۔",
+}
+
+
+#: Names for the languages `retrieval.detect_language` reports, so the model is
+#: told "write in Tamil" rather than "write in the user's language" — the
+#: second wording sometimes had it answer in the language of the chart data.
+_LANGUAGE_NAMES = {
+    "bn": "Bengali (বাংলা)",
+    "hi": "Hindi (हिन्दी)",
+    "ta": "Tamil (தமிழ்)",
+    "te": "Telugu (తెలుగు)",
+    "kn": "Kannada (ಕನ್ನಡ)",
+    "ml": "Malayalam (മലയാളം)",
+    "gu": "Gujarati (ગુજરાતી)",
+    "pa": "Punjabi (ਪੰਜਾਬੀ)",
+    "or": "Odia (ଓଡ଼ିଆ)",
+    "si": "Sinhala (සිංහල)",
+    "ur": "Urdu (اردو)",
+    "ne": "Nepali (नेपाली)",
+    "he": "Hebrew",
+    "ru": "Russian",
+    "th": "Thai",
+    "my": "Burmese",
+    "ja": "Japanese",
+    "zh": "Chinese",
+    "ko": "Korean",
+    # Latin script is reported as "en"; the prompt tells the model to mirror
+    # whatever Latin-script language the user actually used.
+    "en": "",
+}
+
+#: Longest reply we ask for. Output is charged against the same per-minute
+#: budget as input, and a chat answer that runs past this is too long to
+#: read on a phone anyway.
+MAX_REPLY_TOKENS = 900
+
+#: How much of an earlier message is carried forward. Readings are long; a
+#: handful of them quoted back in full is thousands of tokens spent on
+#: history rather than on the question being asked now.
+MAX_HISTORY_CHARS = 700
+
+#: How many earlier turns to carry at all.
+MAX_HISTORY_MESSAGES = 6
+
+#: How many times the model may ask for tools before the reading is written.
+#: A reading legitimately needs two or three — the chart, today's sky, a
+#: classical rule — and the cap is only here so a model that keeps asking
+#: cannot loop forever at the user's expense.
+MAX_TOOL_ROUNDS = 3
+
 ASTRO_TOOLS = [
+    # Descriptions are terse on purpose. These definitions are re-sent on every
+    # tool round, so each word here is paid for two or three times per question
+    # against a free-tier budget of 8,000 tokens a minute. Trimming them from
+    # 3,491 characters to roughly a third is most of what makes a two-tool
+    # reading fit inside one minute.
     {
         "type": "function",
         "function": {
             "name": "calculate_kundli_tool",
-            "description": "Calculates exact Vedic Birth Chart (Kundli), divisional charts D1/D9/D10, planetary degrees, combustion, running Vimshottari Dasha, and Yogas using Swiss Ephemeris.",
+            "description": "Vedic birth chart: planets, houses, dignities, yogas, doshas, running Vimshottari dasha with dates, remedies. Swiss Ephemeris.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string", "description": "Native's name"},
-                    "day": {"type": "integer", "description": "Day of birth (1-31)"},
-                    "month": {"type": "integer", "description": "Month of birth (1-12)"},
-                    "year": {"type": "integer", "description": "Year of birth (e.g. 1995)"},
-                    "hour": {"type": "integer", "description": "Hour of birth (0-23)"},
-                    "minute": {"type": "integer", "description": "Minute of birth (0-59)"},
-                    "lat": {"type": "number", "description": "Latitude of birth place (e.g. 22.5726)"},
-                    "lon": {"type": "number", "description": "Longitude of birth place (e.g. 88.3639)"},
-                    "place": {"type": "string", "description": "City or place of birth (e.g. Kolkata)"},
+                    "name": {"type": "string"},
+                    "day": {"type": "integer"},
+                    "month": {"type": "integer"},
+                    "year": {"type": "integer"},
+                    "hour": {"type": "integer", "description": "0-23"},
+                    "minute": {"type": "integer"},
+                    "lat": {"type": "number"},
+                    "lon": {"type": "number"},
+                    "place": {"type": "string"},
                 },
                 "required": ["day", "month", "year", "hour", "minute"],
             },
@@ -145,12 +182,12 @@ ASTRO_TOOLS = [
         "type": "function",
         "function": {
             "name": "get_daily_horoscope_tool",
-            "description": "Calculates today's Gochar (Transit), 24 Planetary Horas, Navatara Bala, Chandrashtama alert, and Shani Sade Sati for a Rashi and Nakshatra.",
+            "description": "Today's panchang and transits: tithi, nakshatra, yoga, hora, Rahu Kaal, lucky colour and score. Use for 'how will today go'.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "rashi_index": {"type": "integer", "description": "Rashi index (0=Aries/মেষ to 11=Pisces/মীন)"},
-                    "nakshatra_index": {"type": "integer", "description": "Optional birth nakshatra index (0-26)"},
+                    "rashi_index": {"type": "integer", "description": "0-11, moon sign"},
+                    "nakshatra_index": {"type": "integer", "description": "0-26"},
                 },
                 "required": ["rashi_index"],
             },
@@ -160,17 +197,17 @@ ASTRO_TOOLS = [
         "type": "function",
         "function": {
             "name": "calculate_numerology_tool",
-            "description": "Calculates Vedic and Chaldean Numerology including Mulank (Driver), Bhagyank (Conductor), Name compound number, lucky numbers, colors, and mobile number vibration.",
+            "description": "Mulank, bhagyank, Chaldean name number, mobile number analysis.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string", "description": "Full name"},
-                    "day": {"type": "integer", "description": "Day of birth (1-31)"},
-                    "month": {"type": "integer", "description": "Month of birth (1-12)"},
-                    "year": {"type": "integer", "description": "Year of birth (e.g. 1995)"},
-                    "mobile_number": {"type": "string", "description": "Optional 10-digit mobile number for vibration analysis"},
+                    "name": {"type": "string"},
+                    "day": {"type": "integer"},
+                    "month": {"type": "integer"},
+                    "year": {"type": "integer"},
+                    "mobile_number": {"type": "string"},
                 },
-                "required": ["name", "day", "month", "year"],
+                "required": [],
             },
         },
     },
@@ -178,24 +215,27 @@ ASTRO_TOOLS = [
         "type": "function",
         "function": {
             "name": "calculate_matchmaking_tool",
-            "description": "Performs authentic 36 Guna Ashtakoot Kundli Matching for marriage, including Nadi Dosha, Bhakoot Dosha, and Manglik compatibility.",
+            "description": "36-guna Ashtakoot matching, Nadi, Bhakoot, Manglik for two charts.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "boy_name": {"type": "string", "description": "Boy's name"},
+                    "boy_name": {"type": "string"},
                     "boy_day": {"type": "integer"},
                     "boy_month": {"type": "integer"},
                     "boy_year": {"type": "integer"},
                     "boy_hour": {"type": "integer"},
                     "boy_minute": {"type": "integer"},
-                    "girl_name": {"type": "string", "description": "Girl's name"},
+                    "girl_name": {"type": "string"},
                     "girl_day": {"type": "integer"},
                     "girl_month": {"type": "integer"},
                     "girl_year": {"type": "integer"},
                     "girl_hour": {"type": "integer"},
                     "girl_minute": {"type": "integer"},
                 },
-                "required": ["boy_day", "boy_month", "boy_year", "girl_day", "girl_month", "girl_year"],
+                "required": [
+                    "boy_day", "boy_month", "boy_year",
+                    "girl_day", "girl_month", "girl_year",
+                ],
             },
         },
     },
@@ -203,12 +243,12 @@ ASTRO_TOOLS = [
         "type": "function",
         "function": {
             "name": "search_vedic_rules_tool",
-            "description": "Searches classical Vedic scriptures and client's resource documents for rules, dosha remedies, gemstone guidelines, palmistry loops/marriage cards, face reading, or vastu principles.",
+            "description": "Search the client's classical texts for rules: doshas, remedies, vastu, palmistry, nakshatra techniques.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "Astrology topic or question keywords to search"},
-                    "category": {"type": "string", "description": "Optional category (kundli, rashi, vastu, numerology, palmistry, face_reading)"},
+                    "query": {"type": "string"},
+                    "category": {"type": "string", "description": "kundli|rashi|nakshatra|vastu|numerology|palmistry|matchmaking"},
                 },
                 "required": ["query"],
             },
@@ -216,6 +256,48 @@ ASTRO_TOOLS = [
     },
 ]
 
+
+
+
+#: Longest we will wait out a rate limit before giving the reader something.
+#: Groq's free tier allows 8,000 tokens a minute and a reading with chart data
+#: attached is most of that, so a second question inside the same minute is
+#: refused with a 429 that says exactly how long to wait. Waiting is far better
+#: than what used to happen — the canned fallback was served instead, so the
+#: reader got a generic chart dump in place of an answer to their question.
+MAX_RATE_LIMIT_WAIT = 12.0
+
+#: "Please try again in 8.6025s"
+_RETRY_AFTER = re.compile(r"try again in ([0-9.]+)\s*s", re.IGNORECASE)
+
+
+def _retry_delay(response: httpx.Response) -> float | None:
+    """How long Groq says to wait, or None if it is not a wait-and-retry."""
+    if response.status_code != 429:
+        return None
+    header = response.headers.get("retry-after")
+    if header:
+        try:
+            return float(header)
+        except ValueError:
+            pass
+    match = _RETRY_AFTER.search(response.text or "")
+    if match:
+        return float(match.group(1))
+    return 1.0
+
+
+async def _post_groq(
+    client: httpx.AsyncClient, headers: dict[str, str], payload: dict[str, Any]
+) -> httpx.Response:
+    """POST to Groq, waiting out a rate limit once if it is short enough."""
+    response = await client.post(GROQ_CHAT_URL, headers=headers, json=payload)
+    delay = _retry_delay(response)
+    if delay is not None and delay <= MAX_RATE_LIMIT_WAIT:
+        logger.info("Groq rate limited; waiting {:.1f}s and retrying", delay)
+        await asyncio.sleep(delay + 0.3)
+        response = await client.post(GROQ_CHAT_URL, headers=headers, json=payload)
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -230,6 +312,38 @@ ASTRO_TOOLS = [
 #: So the numbers are resolved to names, in the language being answered in,
 #: before the model ever sees them. An interpreter can only be as accurate as
 #: the chart it is handed.
+
+
+def _narrative(english: str, bengali: str, hindi: str | None, language: str) -> str:
+    """Pick the prose the reader can actually read.
+
+    The engine writes its verdicts in three languages. Handing a Tamil or
+    Gujarati reader the Bengali one does not merely waste tokens: the model
+    reads it as the house style and answers with Bengali words mixed into
+    Tamil. English is the fallback because every one of these readers is more
+    likely to parse it than a script they do not use.
+    """
+    if language == "bn":
+        return bengali or english
+    if language == "hi":
+        return hindi or english or bengali
+    return english or bengali
+
+
+def _not_yet_over(end_date: str) -> bool:
+    """Whether a dasha period runs past today.
+
+    The engine formats dates as DD-MM-YYYY. Comparing those as strings is
+    meaningless — "14-04-2028" sorts below "31-10-2026" — so they are parsed.
+    An unparseable date is kept rather than dropped: showing one period too
+    many is better than silently losing the one the reader asked about.
+    """
+    from datetime import date, datetime
+
+    try:
+        return datetime.strptime(end_date, "%d-%m-%Y").date() >= date.today()
+    except (ValueError, TypeError):
+        return True
 
 
 def _sign_name(sign_num: Any, language: str = "bn") -> str | None:
@@ -290,16 +404,43 @@ async def _execute_local_tool(
                 or resp.d1_asc_sign,
                 "moon_sign": resp.planetary_info.rasi,
                 "moon_nakshatra": resp.planetary_info.nakshatra,
+                # The dates matter as much as the lords. Without them the model
+                # was asked "when will this happen?" while holding no dates at
+                # all, and duly invented some — a reading that named a Venus
+                # sub-period running in 2024 when the chart said otherwise.
                 "current_dasha": (
                     {
                         "mahadasha": _named(resp.current_dasha.mahadasha_lord, language),
                         "antardasha": _named(resp.current_dasha.antardasha_lord, language),
-                        "verdict_bn": resp.current_dasha.verdict_bn,
-                        "guidance_bn": resp.current_dasha.guidance_bn,
+                        "runs_from": resp.current_dasha.start_date,
+                        "runs_until": resp.current_dasha.end_date,
+                        # Narrative in the reader's language, not always
+                        # Bengali. Sending verdict_bn to a Tamil reader put
+                        # Bengali words into a Tamil reply — the model copied
+                        # what it was handed, quite reasonably.
+                        "verdict": _narrative(
+                            resp.current_dasha.verdict,
+                            resp.current_dasha.verdict_bn,
+                            resp.current_dasha.verdict_hi,
+                            language,
+                        ),
+                        "guidance": _narrative(
+                            resp.current_dasha.guidance,
+                            resp.current_dasha.guidance_bn,
+                            resp.current_dasha.guidance_hi,
+                            language,
+                        ),
                     }
                     if resp.current_dasha
                     else None
                 ),
+                # The mahadashas still to come are deliberately NOT sent.
+                # `dashas_grid` carries the lords and their lengths but leaves
+                # start_date and end_date empty, and handing the model a period
+                # with no dates is how it came to announce a Venus sub-period
+                # running in 2024. Only dates that actually exist are passed;
+                # for anything further out the model is told to say it needs a
+                # fuller dasha chart rather than to guess.
                 "planets": [
                     {
                         "name": _named(p.name, language),
@@ -309,15 +450,10 @@ async def _execute_local_tool(
                     }
                     for p in resp.d1_planets
                 ],
-                "dignities": [
-                    {
-                        "planet": _named(d.planet, language),
-                        "dignity": d.dignity,
-                        "avastha_bn": d.avastha_bn,
-                        "combust": d.is_combust,
-                    }
-                    for d in resp.planetary_dignities[:9]
-                ],
+                # `dignities` is deliberately not sent. It was the largest field in
+                # this summary and it restates what `planets` already says —
+                # sign, house and retrogradation — in prose. Against a free-tier
+                # budget that is a third of a reading's allowance spent twice.
                 "yogas": [y.name for y in resp.active_yogas_details] + [y.name for y in resp.extended_yogas if y.is_present],
                 "doshas": [d.dosha_name for d in resp.doshas_analysis if d.is_present],
                 "remedies": (
@@ -493,7 +629,25 @@ async def _local_astrological_fallback(
     user_birth_details: dict[str, Any] | None,
     preferred_language: str = "bn",
 ) -> dict[str, Any]:
-    """Provides an authoritative classical Vedic response when external LLM is offline or unconfigured."""
+    """A reading assembled locally when the model is unreachable.
+
+    Everything it writes is Bengali, which is right for a Bengali reader and
+    wrong for everybody else: a Tamil speaker asking in Tamil was handed a wall
+    of Bengali and no explanation. For any other language it says plainly that
+    the astrologer is busy and to ask again in a moment, which is at least true
+    and readable. Translating the whole synthesis is the better fix and a
+    larger one.
+    """
+    if preferred_language not in ("bn", ""):
+        return {
+            "reply": _BUSY_NOTE.get(preferred_language, _BUSY_NOTE["en"]),
+            "tools_called": [],
+            "citations": [],
+            "suggested_followups": [],
+            "answered": False,
+            "refusal_reason": "model_unavailable",
+        }
+
     citations_map: dict[str, dict[str, str]] = {}
     reply_parts: list[str] = []
     tools_called: list[str] = ["local_astrology_rules_engine"]
@@ -642,6 +796,14 @@ async def generate_astrology_response(
     except Exception:  # noqa: BLE001 - the lexicon alone is a fine fallback
         vocabulary = set()
 
+    # What the user actually wrote in wins over the toggle they set once. A
+    # Tamil speaker typing Tamil should be answered in Tamil whatever the app
+    # last remembered about them; only an empty or script-less message falls
+    # back to the stored preference.
+    detected = retrieval.detect_language(latest_user_text)
+    if detected != "en" or not preferred_language or preferred_language not in ("bn", "hi", "en"):
+        preferred_language = detected
+
     verdict = retrieval.is_answerable(latest_user_text, extra_vocabulary=vocabulary)
     if not verdict.answerable:
         logger.info(
@@ -671,6 +833,9 @@ async def generate_astrology_response(
         "Content-Type": "application/json",
     }
 
+    tools_called: list[str] = []
+    citations_map: dict[str, dict[str, str]] = {}
+
     custom_rules_context = ""
     if custom_rules:
         rule_texts = [
@@ -684,22 +849,51 @@ async def generate_astrology_response(
     # Inject birth details into system context if available
     birth_context = ""
     if user_birth_details:
+        # The chart is computed here rather than left for the model to ask for.
+        #
+        # Every tool round re-sends the system prompt, the tool definitions and
+        # the whole conversation, so a question that needs two tools costs three
+        # API calls and most of the free tier's 8,000 tokens a minute. When the
+        # birth details are already known, the chart is not a question — it is
+        # arithmetic we can do before the model is even called. Handing it over
+        # up front turns the common question from three calls into one.
+        #
+        # It costs about 550 tokens in the system context. A single avoided
+        # round costs about 1,500, so it pays for itself immediately.
+        chart_block = ""
+        try:
+            chart_json, chart_cites = await _execute_local_tool(
+                "calculate_kundli_tool", user_birth_details, preferred_language
+            )
+            chart_block = f"\n[THIS USER'S CHART, already calculated]:\n{chart_json}\n"
+            for c in chart_cites:
+                citations_map[c["source"]] = c
+            tools_called.append("calculate_kundli_tool")
+        except Exception as exc:  # noqa: BLE001 - the model can still ask for it
+            logger.warning("Could not precompute the chart: {}", exc)
+
         birth_context = (
             f"\n[USER STORED BIRTH DETAILS]:\n"
             f"Name: {user_birth_details.get('name', 'User')}\n"
-            f"Date of Birth: {user_birth_details.get('day')}/{user_birth_details.get('month')}/{user_birth_details.get('year')}\n"
-            f"Time of Birth: {user_birth_details.get('hour')}:{user_birth_details.get('minute')}\n"
-            f"Place: {user_birth_details.get('place', 'Kolkata')} (Lat: {user_birth_details.get('lat', 22.5726)}, Lon: {user_birth_details.get('lon', 88.3639)})\n"
-            f"You may invoke `calculate_kundli_tool` or `calculate_numerology_tool` with these exact details.\n"
+            f"DOB: {user_birth_details.get('day')}/{user_birth_details.get('month')}/{user_birth_details.get('year')} "
+            f"{user_birth_details.get('hour')}:{user_birth_details.get('minute')}\n"
+            f"Place: {user_birth_details.get('place', 'Kolkata')} "
+            f"({user_birth_details.get('lat', 22.5726)}, {user_birth_details.get('lon', 88.3639)})\n"
+            + chart_block
+            + "The chart above is already computed — do NOT call calculate_kundli_tool "
+            "again unless you need something it does not contain.\n"
         )
 
-    lang_instruction = ""
-    if preferred_language == "hi":
-        lang_instruction = "\nIMPORTANT: The user prefers Hindi. Respond in clear, respectful Vedic Hindi (हिन्दी).\n"
-    elif preferred_language == "en":
-        lang_instruction = "\nIMPORTANT: The user prefers English. Respond in clear, classical Vedic English.\n"
-    else:
-        lang_instruction = "\nIMPORTANT: Default to respectful, compassionate Bengali (বাংলা).\n"
+    # Named rather than described, because a model told "the user's language"
+    # sometimes picks the language of the chart data instead of the question.
+    language_name = _LANGUAGE_NAMES.get(preferred_language, "")
+    lang_instruction = (
+        f"\nIMPORTANT: Write your entire reply in {language_name}, the language this "
+        "user wrote in. Do not answer in any other language.\n"
+        if language_name
+        else "\nIMPORTANT: Write your entire reply in the same language and script the "
+        "user wrote their message in.\n"
+    )
 
     full_system_prompt = (
         ASTROLOGER_SYSTEM_PROMPT + birth_context + custom_rules_context + lang_instruction
@@ -708,11 +902,14 @@ async def generate_astrology_response(
     api_messages: list[dict[str, Any]] = [
         {"role": "system", "content": full_system_prompt}
     ]
-    for m in messages:
-        api_messages.append({"role": m["role"], "content": m["content"]})
-
-    tools_called: list[str] = []
-    citations_map: dict[str, dict[str, str]] = {}
+    # Only the recent turns, and only the head of each. The last reading is
+    # worth remembering; quoting all of it back on every follow-up is not,
+    # especially when the whole minute's budget is 8,000 tokens.
+    for m in messages[-MAX_HISTORY_MESSAGES:]:
+        content = m.get("content") or ""
+        if len(content) > MAX_HISTORY_CHARS:
+            content = content[:MAX_HISTORY_CHARS].rstrip() + " […]"
+        api_messages.append({"role": m["role"], "content": content})
 
     for r in custom_rules:
         citations_map[r.rule_title] = {
@@ -730,14 +927,14 @@ async def generate_astrology_response(
             "tools": ASTRO_TOOLS,
             "tool_choice": "auto",
             "temperature": 0.3,
-            "max_tokens": 2048,
+            "max_tokens": MAX_REPLY_TOKENS,
         }
 
         try:
-            resp = await client.post(GROQ_CHAT_URL, headers=headers, json=payload)
+            resp = await _post_groq(client, headers, payload)
             if resp.status_code in (400, 404):
                 payload["model"] = settings.GROQ_FALLBACK_MODEL or "qwen/qwen3.8-27b"
-                resp = await client.post(GROQ_CHAT_URL, headers=headers, json=payload)
+                resp = await _post_groq(client, headers, payload)
 
             resp.raise_for_status()
             data = resp.json()
@@ -751,11 +948,33 @@ async def generate_astrology_response(
         choice = data["choices"][0]
         assistant_message = choice["message"]
 
-        # Step 2: Handle Tool Calls if any
-        if assistant_message.get("tool_calls"):
+        # Tool calls, for as many rounds as the reading needs.
+        #
+        # This used to run exactly one round: execute whatever the first reply
+        # asked for, then send the results back *without* the tool definitions.
+        # Groq reads a request carrying no tools as `tool_choice: none`, so the
+        # moment the model wanted a second tool it answered
+        #
+        #     "Tool choice is none, but model called a tool"
+        #
+        # with a 400, and the code quietly served a canned fallback instead. It
+        # happened on exactly the questions that need two tools — "how will
+        # today go for me?" needs the birth chart *and* today's sky — so those
+        # questions could never be answered properly, and the failure was
+        # invisible because the fallback is plausible-looking text.
+        #
+        # Now every round carries the tools, and the loop ends when the model
+        # stops asking for them.
+        raw_reply = assistant_message.get("content", "") or ""
+
+        for _ in range(MAX_TOOL_ROUNDS):
+            tool_calls = assistant_message.get("tool_calls")
+            if not tool_calls:
+                break
+
             api_messages.append(assistant_message)
 
-            for tc in assistant_message["tool_calls"]:
+            for tc in tool_calls:
                 func_name = tc["function"]["name"]
                 args_str = tc["function"].get("arguments", "{}")
                 try:
@@ -780,37 +999,46 @@ async def generate_astrology_response(
                     }
                 )
 
-            # Step 3: Get final response from model after tools execution
-            final_payload = {
-                "model": payload["model"],
-                "messages": api_messages,
-                "temperature": 0.3,
-                "max_tokens": 2048,
-            }
             try:
-                final_resp = await client.post(
-                    GROQ_CHAT_URL, headers=headers, json=final_payload
+                next_resp = await _post_groq(
+                    client,
+                    headers,
+                    {
+                        "model": payload["model"],
+                        "messages": api_messages,
+                        # Carried on every round. Leaving these out is what
+                        # produced the 400 described above.
+                        "tools": ASTRO_TOOLS,
+                        "tool_choice": "auto",
+                        "temperature": 0.3,
+                        "max_tokens": MAX_REPLY_TOKENS,
+                    },
                 )
-                if final_resp.status_code >= 400:
-                    # Logged rather than swallowed. This failing silently is how
-                    # a 400 on every tool-using question went unnoticed: the
-                    # canned fallback answered instead, so the chat looked alive
-                    # while no reading was ever actually generated.
+                if next_resp.status_code >= 400:
+                    # Logged rather than swallowed. Silent failure here is how a
+                    # 400 on every two-tool question went unnoticed for so long.
                     logger.error(
-                        "Groq rejected the post-tool call ({}): {}",
-                        final_resp.status_code,
-                        final_resp.text[:600],
+                        "Groq rejected a tool round ({}): {}",
+                        next_resp.status_code,
+                        next_resp.text[:600],
                     )
-                final_resp.raise_for_status()
-                final_data = final_resp.json()
-                raw_reply = final_data["choices"][0]["message"]["content"]
+                next_resp.raise_for_status()
+                assistant_message = next_resp.json()["choices"][0]["message"]
+                raw_reply = assistant_message.get("content", "") or raw_reply
             except Exception as exc:
                 logger.warning("Falling back to local synthesis: {}", exc)
                 return await _local_astrological_fallback(
                     latest_user_text, custom_rules, user_birth_details, preferred_language
                 )
         else:
-            raw_reply = assistant_message.get("content", "")
+            # The loop ran its full count and the model was still asking for
+            # tools. Whatever it has said by now is what the reader gets, rather
+            # than another round that might never end.
+            if assistant_message.get("tool_calls"):
+                logger.warning(
+                    "Stopped after {} tool rounds; answering with what we have.",
+                    MAX_TOOL_ROUNDS,
+                )
 
     # Parse out suggested followups [FOLLOW_UP: ...]
     followups: list[str] = []

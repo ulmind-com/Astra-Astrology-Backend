@@ -206,6 +206,152 @@ question turned into italics.
 Raw HTML is not enabled, and should stay that way: the text comes from a
 language model and nothing it writes should become markup.
 
+## Giving the model something worth interpreting
+
+An interpreter is only as accurate as the chart it is handed. Four things were
+wrong with what the tools passed, all found by reading real replies rather than
+by reading code:
+
+- **Numbers instead of names.** `d1_asc_sign` is an int 1-12 and every planet
+  carried a `sign_num`, so a reading opened with "জন্ম লগ্ন: 11". `_sign_name`
+  and `_planet_name` now resolve both through `RASHI_TRANSLATIONS` and
+  `PLANET_NAMES_LOCALIZED`, in the language being answered in.
+- **English names in Bengali prose** — "Jupiter", "Capricorn". Now
+  "বৃহস্পতি (Jupiter)": the reading reads naturally and the English stays
+  available to anyone checking the figures.
+- **No dasha dates.** `CurrentDashaInfo` has `start_date` and `end_date` and the
+  summary did not pass them, so a model asked "when will I get a job?" held no
+  dates and invented some — it announced a Venus sub-period running in 2024
+  when the chart said 2026-2028. The real dates are now sent.
+- **Date-less periods are deliberately not sent.** `dashas_grid` carries the
+  coming mahadasha lords but leaves their dates empty. Passing those would
+  invite exactly the invention above, so they are left out and the prompt tells
+  the model to say a fuller dasha chart is needed rather than guess.
+
+## One round of tools was not enough
+
+The model got one chance to call tools. The results were then sent back
+*without* the tool definitions, and Groq reads a request carrying no tools as
+`tool_choice: none` — so the moment the model wanted a second tool it answered
+
+```
+"Tool choice is none, but model called a tool"
+```
+
+with a 400, and the code quietly served `_local_astrological_fallback` instead.
+
+This hit exactly the questions that need two tools. *"আজকের দিনটা আমার কেমন
+যাবে?"* needs the birth chart **and** today's sky, so it could never be
+answered properly — and the failure was invisible, because the fallback is
+plausible-looking text. Two different questions returning a byte-identical
+reply is what gave it away.
+
+Tool calling is now a loop (`MAX_TOOL_ROUNDS`), carrying the tools every round.
+
+## Fitting inside the free tier
+
+The product must run on Groq's free tier. Every model available on this key —
+`openai/gpt-oss-120b`, `gpt-oss-20b`, `qwen/qwen3.8-27b` — carries the same
+**8,000 tokens per minute**, so there is no model to switch to. The budget is
+fixed and the work had to fit inside it.
+
+What made it fit, largest effect first:
+
+**The chart is computed before the model is called.** When birth details are
+known, the kundli is not a question — it is arithmetic. It is run up front and
+placed in the system context, so the common question costs **one** API call
+instead of three. Every tool round re-sends the system prompt, the tool
+definitions *and* the whole conversation, so a round costs about 1,500 tokens;
+the chart block costs about 550. It pays for itself immediately.
+
+**Everything re-sent per round was cut.** Tool schemas 3,491 → 2,511
+characters; system prompt 4,257 → 2,069. Per-round overhead fell from ~2,273
+tokens to ~1,526.
+
+**The chart summary lost its largest field.** `dignities` restated in prose
+what `planets` already carries — sign, house, retrogradation. Summary 2,641 →
+1,661 characters.
+
+**History is bounded.** The endpoint sends the last 8 messages; readings are
+long, so each is now truncated to `MAX_HISTORY_CHARS` and only
+`MAX_HISTORY_MESSAGES` are replayed. Quoting several full readings back costs
+thousands of tokens that the current question needs.
+
+**Replies are capped** at `MAX_REPLY_TOKENS` (900, was 2,048). Output is
+charged against the same budget, and a longer answer is unreadable on a phone.
+
+**Short rate limits are waited out** rather than falling back. Groq states the
+delay; `_post_groq` honours it up to `MAX_RATE_LIMIT_WAIT`.
+
+Measured after: **three questions inside one minute, all answered from the
+model, no fallback**, in five API calls total. One 429 occurred and the retry
+absorbed it.
+
+If a future change adds tokens per round, this is the budget it is spending.
+
+## Errors must be logged
+
+Every Groq failure used to be swallowed by `except Exception` straight into the
+fallback. That is how a 400 on every two-tool question survived unnoticed: the
+chat looked alive while no reading was being generated. Failures are now logged
+with the response body, which is how both the 400 and the 429 above were found.
+
+## Any language the user writes in
+
+The product answers in whatever language the question arrives in, the way a
+general assistant does. Three things make that work.
+
+**The tokenizer reads every script.** It listed Latin, Devanagari and Bengali
+only, so a Tamil or Gujarati question produced *no words at all* — it slipped
+past the gate as a "short message" by accident, and retrieval had nothing to
+search with. `_WORD` now covers the Indic blocks, Arabic, Cyrillic, Hebrew,
+Thai, CJK and the rest. Note the ranges are explicit rather than `\w`: Python's
+`\w` excludes combining vowel marks, and splitting on those tears আমার into আম.
+
+**`detect_language` picks the language by script.** Coarse and deliberate — it
+needs no model, no network and no training data, and it is right about the only
+thing that matters here: whether we hold any vocabulary for this language.
+Latin script is reported as `en`, since it cannot separate English from Spanish
+from romanised Bengali and does not need to.
+
+**The gate refuses only languages it can read.** `JUDGEABLE` is `{bn, hi, en}`
+— the languages `SUBJECT_TERMS` covers. A question in Tamil, Telugu, Gujarati,
+Punjabi, Malayalam, Odia or Urdu returns `unjudged_language` and is answered,
+because refusing someone on the grounds that we cannot read them is the worst
+possible reason to refuse. A small Latin-script vocabulary (`_LATIN_OTHER`)
+covers Spanish, Portuguese, French, German and Indonesian so those are
+recognised rather than waved through.
+
+The reply language is the model's job, not a detector's: it is told to mirror
+the user's language *and script*, including romanised Hinglish. The language is
+**named** in the instruction ("write in Tamil (தமிழ்)") rather than described,
+because "the user's language" sometimes had it answer in the language of the
+chart data instead.
+
+### Chart data must be in the reader's language too
+
+A Tamil reply came back with Bengali words in it. The cause was not the prompt:
+`current_dasha` sent `verdict_bn` and `guidance_bn` regardless of language, and
+the model reasonably read that as the house style. `_narrative` now picks the
+English, Bengali or Hindi variant to match, and the same applies to the
+dignity's `avastha`. The prompt's Bengali sign-name list is scoped to Bengali
+replies for the same reason.
+
+### Tone
+
+The prompt asks for an astrologer on WhatsApp, not a report generator: answer
+sized to the question, short paragraphs, no headings for a small question,
+greetings answered with a greeting rather than a reading. It is still required
+to name the planet, house or dasha behind each claim — that is what separates a
+reading from a horoscope column.
+
+### When the model is unreachable
+
+`_local_astrological_fallback` writes Bengali, which is right for a Bengali
+reader and unreadable for everyone else. For any other language it now returns
+a short note in that language saying the astrologer is busy and to ask again.
+Translating the whole local synthesis is the better fix and a larger one.
+
 ## Not done yet
 
 - **Embeddings.** Dense retrieval with reciprocal-rank fusion would fix

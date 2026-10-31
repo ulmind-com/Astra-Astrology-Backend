@@ -345,7 +345,7 @@ Finger Elemental Governance:
 
     # 3. Ingest Nakshatra Prediction Techniques from client_nakshatra_rules.py
     try:
-        from app.services.astrology.client_nakshatra_rules import TECHNIQUES, NAKSHATRA_NAMES
+        from app.services.astrology.client_nakshatra_rules import NAKSHATRA_NAMES, TECHNIQUES
         nak_grouped: dict[int, list[dict[str, Any]]] = {}
         for t in TECHNIQUES:
             nak_idx = t.get("nak", 0)
