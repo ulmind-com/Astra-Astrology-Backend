@@ -9,7 +9,7 @@ from typing import Annotated
 from beanie import PydanticObjectId
 from fastapi import APIRouter, File, Header, Query, UploadFile, status
 
-from app.api.dependencies import AstrologerUser, CurrentAstrologer, CurrentUser
+from app.api.dependencies import AstrologerUser, CurrentAstrologer, CurrentUser, OptionalUser
 from app.core.exceptions import NotFoundError
 from app.models.astrologer import Astrologer
 from app.models.enums import ConsultationMode, Skill
@@ -20,6 +20,8 @@ from app.schemas.astrologer import (
     AstrologerPublic,
     AstrologerUpdate,
     AvailabilityUpdate,
+    FavoriteStatusResult,
+    FavoriteToggleResult,
     GalleryUploadResult,
 )
 from app.schemas.common import ApiResponse, MessageResponse, Paginated
@@ -27,6 +29,7 @@ from app.schemas.review import ReviewOut, ReviewPage, ReviewSummary
 from app.schemas.wallet import ConsultationQuote
 from app.services import astrologer as astrologer_service
 from app.services import billing
+from app.services import favorite as favorite_service
 from app.services import reviews as review_service
 from app.services import settings as settings_service
 from app.services import wallet as wallet_service
@@ -236,6 +239,49 @@ async def list_astrologers(
     )
     page_of = await astrologer_service.list_public(filters, page, limit)
     return ApiResponse(message=f"{page_of.meta.total} astrologer(s) found.", data=page_of)
+
+
+# ============================================================ favorites
+@router.get(
+    "/favorites/my",
+    response_model=ApiResponse[list[AstrologerPublic]],
+    summary="My favorited astrologers",
+)
+async def my_favorite_astrologers(user: CurrentUser) -> ApiResponse[list[AstrologerPublic]]:
+    astros = await favorite_service.list_user_favorites(user)
+    public_list = [await astrologer_service.to_public(a) for a in astros]
+    return ApiResponse(message=f"{len(public_list)} favorite astrologer(s).", data=public_list)
+
+
+@router.post(
+    "/{identifier}/favorite",
+    response_model=ApiResponse[FavoriteToggleResult],
+    summary="Toggle favorite status for an astrologer",
+)
+async def toggle_favorite(
+    identifier: str, user: CurrentUser
+) -> ApiResponse[FavoriteToggleResult]:
+    is_fav, count = await favorite_service.toggle_favorite(user, identifier)
+    msg = "Added to sacred favorites." if is_fav else "Removed from favorites."
+    return ApiResponse(
+        message=msg,
+        data=FavoriteToggleResult(is_favorite=is_fav, favorites_count=count, message=msg),
+    )
+
+
+@router.get(
+    "/{identifier}/favorite",
+    response_model=ApiResponse[FavoriteStatusResult],
+    summary="Check favorite status and count for an astrologer",
+)
+async def get_favorite_status(
+    identifier: str, user: OptionalUser
+) -> ApiResponse[FavoriteStatusResult]:
+    is_fav, count = await favorite_service.get_favorite_status(user, identifier)
+    return ApiResponse(
+        message="Favorite status fetched.",
+        data=FavoriteStatusResult(is_favorite=is_fav, favorites_count=count),
+    )
 
 
 @router.get(
