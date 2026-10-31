@@ -22,7 +22,7 @@ ceiling, and they are enforced on write as well as on read.
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from loguru import logger
@@ -81,14 +81,14 @@ def merge(existing: list[dict[str, Any]], new_facts: list[str]) -> list[dict[str
     the same worry more than once, and a memory listing it five times reads as
     broken.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     kept: list[dict[str, Any]] = []
     cutoff = now - timedelta(days=FACT_TTL_DAYS)
 
     for item in existing:
         when = item.get("at")
         if isinstance(when, datetime):
-            when_aware = when if when.tzinfo else when.replace(tzinfo=timezone.utc)
+            when_aware = when if when.tzinfo else when.replace(tzinfo=UTC)
             if when_aware < cutoff:
                 continue
         kept.append(item)
@@ -105,8 +105,8 @@ def _ago(when: Any) -> str | None:
     """"three weeks ago", roughly. Precision here would be false precision."""
     if not isinstance(when, datetime):
         return None
-    aware = when if when.tzinfo else when.replace(tzinfo=timezone.utc)
-    days = (datetime.now(timezone.utc) - aware).days
+    aware = when if when.tzinfo else when.replace(tzinfo=UTC)
+    days = (datetime.now(UTC) - aware).days
     if days <= 0:
         return "earlier today"
     if days == 1:
@@ -175,7 +175,7 @@ async def save(user_id: Any, facts: list[dict[str, Any]]) -> None:
     try:
         from app.models.ai_astrologer import AIUserMemory
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         record = await AIUserMemory.find_one(AIUserMemory.user_id == user_id)
         if record is None:
             record = AIUserMemory(user_id=user_id, facts=facts, last_seen_at=now)

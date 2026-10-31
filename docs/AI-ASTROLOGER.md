@@ -513,6 +513,88 @@ once, never as a lead and never twice in a conversation. Presence is re-judged
 against the clock inside the service, so an astrologer whose panel closed
 without a clean disconnect is not offered.
 
+## Routing: deciding what a question needs before calling the model
+
+The complaint that "the AI is not answering properly" was measured rather than
+guessed at. Twenty-eight realistic questions were put through the live service
+(`scripts/`-style harness, kept out of the repo) and **every one of the six
+failures was a rate limit**, not a mistake in the reasoning. The readings
+themselves were fine; the budget ran out and users got canned fallback text.
+
+The cause was fixed overhead. Measured on the live service:
+
+| question | input tokens, before |
+| :--- | ---: |
+| "নমস্কার" | 2,342 |
+| "how do I use the kundli feature?" | 2,351 |
+| "আমার রাশি কী?" | 2,984 |
+
+Saying *hello* cost 2,342 tokens, because every tool schema and the whole
+system prompt went with it. At that rate three or four questions exhaust the
+minute.
+
+`services/ai/router.py` now decides, locally and with no model call:
+
+- **which tools to offer.** Small talk gets none. A product question gets the
+  guide and not the ephemeris. A reading gets the chart and the rule search,
+  plus whichever specialist the wording calls for.
+- **whether to compute the chart.** It costs ~550 tokens in the system context
+  and is pure waste on "how do I recharge my wallet", which was being sent the
+  native's full planetary positions.
+- **which system prompt.** A question needing no tools needs none of the rules
+  about tools either; `CONVERSATIONAL_PROMPT` is a fraction of the size.
+
+| question | before | after |
+| :--- | ---: | ---: |
+| "নমস্কার" | 2,342 | 239 (−89%) |
+| "আর কিছু বলুন" | 2,342 | 241 (−89%) |
+| "how do I use the kundli feature?" | 2,351 | 1,369 (−41%) |
+| "আমার রাশি কী?" | 2,984 | 2,173 (−27%) |
+
+The router's bias is deliberate and is what its tests pin down: offering a tool
+that goes unused costs only its schema, while failing to offer one the question
+needed costs the answer. So anything uncertain gets the full set.
+
+### Two limits, not one — and only one of them is a pause
+
+This is the finding that explains "the AI stopped working".
+
+Groq's free tier meters **tokens per minute** (8,000) *and* **tokens per day**
+(200,000, per model). Only the first was being handled. A per-minute limit is a
+pause: wait a few seconds and it refills. A per-day limit is not — once it is
+spent it is gone until tomorrow, and waiting achieves nothing.
+
+So after roughly seventy readings the day's budget for one model was gone and
+**every user got canned fallback text for the rest of the day**, whatever they
+asked. Diagnosed from the error body, which says so plainly:
+
+```
+tokens per day (TPD): Limit 200000, Used 199168, Requested 2160
+```
+
+Each model has its own daily bucket. `MODEL_CHAIN` steps over a spent model to
+the next, so the assistant keeps answering. Verified live with the primary
+model genuinely exhausted: it switched to `gpt-oss-20b` and gave real readings
+rather than falling back.
+
+Three models is three times the free daily capacity, at no cost.
+
+### Do not offer a tool whose answer is already in the context
+
+The chart is precomputed into the system context *and* `calculate_kundli_tool`
+was still being offered, so the model fetched what it had just been given. That
+cost a whole extra round, and a round re-sends the prompt, the schemas and the
+conversation: roughly 2,600 tokens became roughly 6,000. Against a daily
+allowance that is the difference between about seventy-five readings a day and
+about thirty-three.
+
+### What the free tier actually supports
+
+Roughly **two to three readings a minute**, per account, and that limit is
+account-wide rather than per user. A single person chatting at a human pace
+fits comfortably. Several at once will not, and no amount of trimming changes
+that — it is the shape of the tier.
+
 ## Not done yet
 
 - **Embeddings.** Dense retrieval with reciprocal-rank fusion would fix

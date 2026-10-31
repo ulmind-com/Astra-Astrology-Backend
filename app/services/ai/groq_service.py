@@ -3,6 +3,7 @@
 import asyncio
 import json
 import re
+import time
 from typing import Any
 
 import httpx
@@ -16,7 +17,7 @@ from app.schemas.astrology import (
     KundliMatchingRequest,
 )
 from app.services.ai import memory as ai_memory
-from app.services.ai import product_guide, retrieval
+from app.services.ai import product_guide, retrieval, router
 from app.services.ai.knowledge_service import (
     corpus_vocabulary,
     match_custom_rules,
@@ -40,6 +41,22 @@ from app.services.astrology.rashi_translations import RASHI_TRANSLATIONS
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 # System Prompt for 100% Classical Vedic Astrologer
+#: Used when the router decides no tools are needed — a greeting, a thank-you,
+#: "tell me more". The full prompt is two thirds rules about which tool to call
+#: and how to quote dasha dates, none of which applies when nothing is being
+#: called. Sending it to answer "নমস্কার" cost 689 tokens of the minute's
+#: 8,000 to produce one sentence.
+CONVERSATIONAL_PROMPT = """You are "Astra Vedic Astrologer", a classical Vedic astrologer: warm, direct, brief.
+
+Reply in the same language AND script the user wrote in — Bengali→Bengali, Tamil→Tamil, romanised Hinglish→romanised Hinglish. Never answer in a language they did not use.
+
+This is small talk, not a reading. Answer in one or two warm sentences, the way an astrologer would in a chat. Do not introduce yourself again, do not list what you can do, do not give a reading nobody asked for. If they greet you, greet them back and invite their question.
+
+End with 2-3 short follow-ups:
+[FOLLOW_UP: ...]
+"""
+
+
 ASTROLOGER_SYSTEM_PROMPT = """You are "Astra Vedic Astrologer", a classical Vedic astrologer: warm, direct, precise.
 
 Every word here is re-sent on each tool round against a free-tier budget of
@@ -299,6 +316,60 @@ ASTRO_TOOLS = [
 
 
 
+# ---------------------------------------------------------------------------
+# Living within the daily allowance
+# ---------------------------------------------------------------------------
+#: Models to fall through, in order of preference.
+#:
+#: The free tier meters **two** things, and only one of them was being handled.
+#: The per-minute allowance (8,000 tokens) is a pause: wait a few seconds and
+#: it refills. The per-day allowance (200,000 tokens, per model) is not — once
+#: it is gone it is gone until tomorrow, and waiting achieves nothing.
+#:
+#: That second limit is what "the AI stopped working" was. After roughly
+#: seventy readings the daily budget for one model was spent and every user got
+#: canned fallback text for the rest of the day, whatever they asked.
+#:
+#: Each model has its own daily bucket, so when one is spent the next still
+#: answers. Three models is three times the free daily capacity, at no cost.
+MODEL_CHAIN: tuple[str, ...] = (
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+    "qwen/qwen3.8-27b",
+)
+
+#: Models known to be out of daily allowance, and when to try them again.
+#: Module level on purpose: the knowledge is worth keeping between requests,
+#: and losing it on a restart costs only one wasted call.
+_exhausted_until: dict[str, float] = {}
+
+#: How long to leave an exhausted model alone. The allowance resets on
+#: Groq's own daily schedule, so this is a sweep interval rather than a
+#: calculation — it only has to be long enough not to hammer a dead model.
+_DAILY_COOLDOWN_SECONDS = 30 * 60
+
+
+def _is_daily_limit(body: str) -> bool:
+    """Whether this 429 is the daily allowance rather than the per-minute one."""
+    lowered = (body or "").lower()
+    return "per day" in lowered or "tpd" in lowered
+
+
+def _mark_exhausted(model: str) -> None:
+    _exhausted_until[model] = time.monotonic() + _DAILY_COOLDOWN_SECONDS
+    logger.warning("{} is out of daily allowance; trying another model", model)
+
+
+def _available_models(preferred: str) -> list[str]:
+    """The models worth trying, best first, skipping those known to be spent."""
+    now = time.monotonic()
+    ordered = [preferred] + [m for m in MODEL_CHAIN if m != preferred]
+    usable = [m for m in ordered if _exhausted_until.get(m, 0.0) <= now]
+    # If every one is marked spent, try them anyway rather than refusing
+    # outright: a cooldown is a guess and the allowance may have reset.
+    return usable or ordered
+
+
 #: Longest we will wait out a rate limit before giving the reader something.
 #: Generous because the streaming path shows a status line while it waits —
 #: the reader sees "just a moment" rather than a frozen screen — and a
@@ -340,15 +411,53 @@ def _retry_delay(response: httpx.Response) -> float | None:
 async def _post_groq(
     client: httpx.AsyncClient, headers: dict[str, str], payload: dict[str, Any]
 ) -> httpx.Response:
-    """POST to Groq, waiting out a rate limit once if it is short enough."""
-    response = await client.post(GROQ_CHAT_URL, headers=headers, json=payload)
-    delay = _reset_seconds(response) if response.status_code == 429 else None
-    if delay is None:
-        delay = _retry_delay(response)
-    if delay is not None and delay <= MAX_RATE_LIMIT_WAIT:
-        logger.info("Groq rate limited; waiting {:.1f}s and retrying", delay)
-        await asyncio.sleep(delay + 0.3)
-        response = await client.post(GROQ_CHAT_URL, headers=headers, json=payload)
+    """POST to Groq, handling both kinds of limit.
+
+    A per-minute limit is a pause, so it is waited out. A per-day limit is not
+    — the allowance does not come back today, and waiting only delays the same
+    refusal. Each model has its own daily bucket, so the request moves to the
+    next model instead. That is the difference between the assistant going
+    quiet for the rest of the day and it carrying on.
+    """
+    attempted: list[str] = []
+    for model in _available_models(payload.get("model") or MODEL_CHAIN[0]):
+        attempted.append(model)
+        body = dict(payload)
+        body["model"] = model
+        # `reasoning_effort` is a gpt-oss parameter; other models reject it.
+        body.pop("reasoning_effort", None)
+        body.update(_reasoning(model))
+
+        response = await client.post(GROQ_CHAT_URL, headers=headers, json=body)
+
+        if response.status_code == 429:
+            text = response.text
+            if _is_daily_limit(text):
+                _mark_exhausted(model)
+                continue
+            delay = _reset_seconds(response) or _retry_delay(response)
+            if delay is not None and delay <= MAX_RATE_LIMIT_WAIT:
+                logger.info("Rate limited on {}; waiting {:.1f}s", model, delay)
+                await asyncio.sleep(delay + 0.3)
+                response = await client.post(GROQ_CHAT_URL, headers=headers, json=body)
+                if response.status_code == 429 and _is_daily_limit(response.text):
+                    _mark_exhausted(model)
+                    continue
+
+        if response.status_code in (400, 404):
+            # Not this model's parameters, or not this model. Try the next.
+            logger.warning(
+                "{} refused the request ({}); trying the next model",
+                model,
+                response.status_code,
+            )
+            continue
+
+        if attempted[0] != model:
+            logger.info("Answered with {} after {} was unavailable", model, attempted[0])
+        return response
+
+    logger.error("Every model refused: {}", ", ".join(attempted))
     return response
 
 
@@ -659,8 +768,8 @@ async def _execute_local_tool(
             return json.dumps(summary, ensure_ascii=False), tool_citations
 
         elif func_name == "find_astrologer_tool":
-            from app.services import astrologer as astrologer_service
             from app.schemas.astrologer import AstrologerFilters
+            from app.services import astrologer as astrologer_service
 
             # Online only, and presence is re-judged against the clock inside
             # the service: an astrologer whose panel closed without a clean
@@ -870,12 +979,19 @@ async def _local_astrological_fallback(
             citations_map["kundli_engine"] = {
                 "source": "সুইস এফিমেরিস বৈদিক কুন্ডলী এনজিন",
                 "category": "kundli",
-                "snippet": f"লগ্ন: {kundli.d1_asc_sign}, চন্দ্র রাশি: {kundli.planetary_info.rasi}, জন্ম নক্ষত্র: {kundli.planetary_info.nakshatra}।",
+                "snippet": (
+                    f"লগ্ন: {_sign_name(kundli.d1_asc_sign, preferred_language) or kundli.d1_asc_sign}, "
+                    f"চন্দ্র রাশি: {kundli.planetary_info.rasi}, "
+                    f"জন্ম নক্ষত্র: {kundli.planetary_info.nakshatra}।"
+                ),
             }
 
             reply_parts.append(
                 f"নমস্কার {user_birth_details.get('name', '')}। সুইস এফিমেরিসের নিখুঁত লাহিড়ী অয়নাংশ গণনা অনুযায়ী আপনার জন্মকুন্ডলীর প্রধান জ্যোতিষীয় চিত্র:\n\n"
-                f"• **জন্ম লগ্ন:** {kundli.d1_asc_sign}\n"
+                # Named, not numbered. This path builds its own text and so
+                # missed the fix made for the tool payload — it was still
+                # opening every offline reading with "জন্ম লগ্ন: 11".
+                f"• **জন্ম লগ্ন:** {_sign_name(kundli.d1_asc_sign, preferred_language) or kundli.d1_asc_sign}\n"
                 f"• **চন্দ্র রাশি:** {kundli.planetary_info.rasi}\n"
                 f"• **জন্ম নক্ষত্র:** {kundli.planetary_info.nakshatra}\n"
             )
@@ -884,7 +1000,9 @@ async def _local_astrological_fallback(
                 cd = kundli.current_dasha
                 reply_parts.append(
                     f"**চলমান বিংশোত্তরী দশা:**\n"
-                    f"বর্তমানে আপনার **{cd.mahadasha_lord}** এর মহাদশা এবং **{cd.antardasha_lord}** এর অন্তর্দশা চলছে। "
+                    f"বর্তমানে আপনার **{_named(cd.mahadasha_lord, preferred_language)}** এর মহাদশা এবং "
+                    f"**{_named(cd.antardasha_lord, preferred_language)}** এর অন্তর্দশা "
+                    f"({cd.start_date} – {cd.end_date}) চলছে। "
                     f"{cd.verdict_bn} {cd.guidance_bn}\n"
                 )
 
@@ -1064,7 +1182,8 @@ async def _prepare(
 
     # Inject birth details into system context if available
     birth_context = ""
-    if user_birth_details:
+    chart_block = ""
+    if user_birth_details and router.needs_chart(latest_user_text):
         # The chart is computed here rather than left for the model to ask for.
         #
         # Every tool round re-sends the system prompt, the tool definitions and
@@ -1076,7 +1195,6 @@ async def _prepare(
         #
         # It costs about 550 tokens in the system context. A single avoided
         # round costs about 1,500, so it pays for itself immediately.
-        chart_block = ""
         try:
             chart_json, chart_cites = await _execute_local_tool(
                 "calculate_kundli_tool", user_birth_details, preferred_language, user_id
@@ -1096,8 +1214,10 @@ async def _prepare(
             f"Place: {user_birth_details.get('place', 'Kolkata')} "
             f"({user_birth_details.get('lat', 22.5726)}, {user_birth_details.get('lon', 88.3639)})\n"
             + chart_block
-            + "The chart above is already computed — do NOT call calculate_kundli_tool "
-            "again unless you need something it does not contain.\n"
+            + "The chart above is already computed. Answer from it directly. Do not "
+            "look anything up unless the question needs a specific classical rule "
+            "that the chart does not contain — every lookup costs the reader a "
+            "wait and the service a large share of its minute.\n"
         )
 
     # Named rather than described, because a model told "the user's language"
@@ -1111,8 +1231,25 @@ async def _prepare(
         "user wrote their message in.\n"
     )
 
+    # A question needing no tools needs none of the rules about tools either.
+    chosen_tools = router.select_tools(latest_user_text, ASTRO_TOOLS)
+
+    # The chart is already in the context, so offering the tool that computes
+    # it invites the model to fetch what it has just been given. That costs a
+    # whole extra round — and a round re-sends the prompt, the schemas and the
+    # conversation, roughly doubling a reading from ~2,600 tokens to ~6,000.
+    # Against 8,000 a minute that is the difference between three readings a
+    # minute and one.
+    if chart_block:
+        chosen_tools = [
+            t
+            for t in chosen_tools
+            if t.get("function", {}).get("name") != "calculate_kundli_tool"
+        ]
+    base_prompt = ASTROLOGER_SYSTEM_PROMPT if chosen_tools else CONVERSATIONAL_PROMPT
+
     full_system_prompt = (
-        ASTROLOGER_SYSTEM_PROMPT
+        base_prompt
         + memory_context
         + birth_context
         + custom_rules_context
@@ -1140,6 +1277,10 @@ async def _prepare(
 
     return {
         "api_messages": api_messages,
+        # Only the tools this question justifies. Every schema is re-sent on
+        # every round, so offering all seven to answer "নমস্কার" cost 1,100
+        # tokens of the minute's 8,000 for nothing.
+        "tools": chosen_tools,
         "model": settings.GROQ_DEFAULT_MODEL or "openai/gpt-oss-120b",
         "headers": headers,
         "tools_called": tools_called,
@@ -1182,13 +1323,13 @@ async def generate_astrology_response(
     custom_rules = prepared["custom_rules"]
     user_birth_details = prepared["user_birth_details"]
     user_id = prepared["user_id"]
+    tools = prepared["tools"]
 
     async with httpx.AsyncClient(timeout=45.0) as client:
         payload = {
             "model": model_to_use,
             "messages": api_messages,
-            "tools": ASTRO_TOOLS,
-            "tool_choice": "auto",
+            **({"tools": tools, "tool_choice": "auto"} if tools else {}),
             "temperature": 0.3,
             "max_tokens": MAX_REPLY_TOKENS,
             **_reasoning(model_to_use),
@@ -1196,10 +1337,6 @@ async def generate_astrology_response(
 
         try:
             resp = await _post_groq(client, headers, payload)
-            if resp.status_code in (400, 404):
-                payload["model"] = settings.GROQ_FALLBACK_MODEL or "qwen/qwen3.8-27b"
-                resp = await _post_groq(client, headers, payload)
-
             resp.raise_for_status()
             data = resp.json()
         except Exception as exc:
@@ -1272,8 +1409,7 @@ async def generate_astrology_response(
                         "messages": api_messages,
                         # Carried on every round. Leaving these out is what
                         # produced the 400 described above.
-                        "tools": ASTRO_TOOLS,
-                        "tool_choice": "auto",
+                        **({"tools": tools, "tool_choice": "auto"} if tools else {}),
                         "temperature": 0.3,
                         "max_tokens": MAX_REPLY_TOKENS,
                         **_reasoning(payload["model"]),
@@ -1484,6 +1620,7 @@ async def stream_astrology_response(
     citations_map = prepared["citations_map"]
     remembered = prepared["remembered"]
     language = prepared["language"]
+    tools = prepared["tools"]
 
     shield = ai_memory.TagShield()
     raw_reply = ""
@@ -1494,8 +1631,7 @@ async def stream_astrology_response(
                 payload = {
                     "model": model,
                     "messages": api_messages,
-                    "tools": ASTRO_TOOLS,
-                    "tool_choice": "auto",
+                    **({"tools": tools, "tool_choice": "auto"} if tools else {}),
                     "temperature": 0.3,
                     "max_tokens": MAX_REPLY_TOKENS,
                     "stream": True,
@@ -1644,7 +1780,10 @@ async def stream_astrology_response(
             yield {"type": "delta", "text": fallback["reply"]}
         yield {
             "type": "done",
-            "reply": fallback["reply"] if not raw_reply else raw_reply,
+            # Whatever had already reached the reader wins: replacing a half
+            # sentence with the canned text would read as the answer changing
+            # its mind mid-stream.
+            "reply": raw_reply or fallback["reply"],
             "tools_called": fallback.get("tools_called", []),
             "citations": fallback.get("citations", []),
             "suggested_followups": fallback.get("suggested_followups", []),
