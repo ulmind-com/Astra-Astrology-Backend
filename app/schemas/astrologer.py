@@ -321,3 +321,15 @@ class AstrologerFilters(BaseModel):
 class GalleryUploadResult(BaseModel):
     image: GalleryImage
     gallery: list[GalleryImage]
+
+
+class FavoriteToggleResult(BaseModel):
+    is_favorite: bool
+    favorites_count: int
+    message: str
+
+
+class FavoriteStatusResult(BaseModel):
+    is_favorite: bool
+    favorites_count: int
+

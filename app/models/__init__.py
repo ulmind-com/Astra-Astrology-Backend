@@ -7,6 +7,7 @@ from app.models.astrologer import Astrologer
 from app.models.call import CallSession, ZegoCallbackEvent
 from app.models.chat import ChatMessage, ChatRead, ChatSession
 from app.models.earning import EarningEntry
+from app.models.favorite import AstrologerFavorite
 from app.models.otp import OtpCode
 from app.models.pending_registration import PendingRegistration
 from app.models.face_reading import FaceReading, FaceRule
@@ -53,6 +54,7 @@ DOCUMENT_MODELS: list[type[Document]] = [
     PalmRule,
     Review,
     EarningEntry,
+    AstrologerFavorite,
     AIKnowledgeDoc,
     AICustomRule,
     AIChatSession,
@@ -67,6 +69,7 @@ __all__ = [
     "AIChatSession",
     "AIChatFeedback",
     "Astrologer",
+    "AstrologerFavorite",
     "CallSession",
     "Appointment",
     "AppointmentSlot",
