@@ -175,3 +175,38 @@ def test_the_chain_only_names_models_this_account_has():
         "openai/gpt-oss-20b",
         "qwen/qwen3.8-27b",
     }
+
+
+# ---------------------------------------------------------------------------
+# Disciplines that do not read the sky
+#
+# Palmistry reads a hand, face reading a face, vastu a building. Computing a
+# birth chart for them costs ~550 tokens in the system context and answers
+# nothing — and tipped one palmistry question over the daily allowance in the
+# evaluation set.
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "question",
+    [
+        "হস্তরেখায় বিবাহ রেখা কী বলে?",
+        "what does the marriage line on my palm mean",
+        "রান্নাঘর কোন দিকে হওয়া উচিত?",
+        "which direction should the kitchen face",
+        "মুখমণ্ডল দেখে কী বোঝা যায়?",
+    ],
+)
+def test_chartless_disciplines_skip_the_birth_chart(question):
+    assert not needs_chart(question), question
+    assert "calculate_kundli_tool" not in select_tool_names(question), question
+
+
+def test_the_chart_is_kept_when_the_question_asks_for_both():
+    """"Does my kundli agree with my palm" genuinely needs the chart."""
+    q = "আমার কুন্ডলী ও হস্তরেখা মিলিয়ে বলুন"
+    assert needs_chart(q)
+    assert "calculate_kundli_tool" in select_tool_names(q)
+
+
+def test_ordinary_readings_still_get_the_chart():
+    for q in ["আমার রাশি কী?", "আমার job কবে হবে?", "what is my dasha"]:
+        assert needs_chart(q), q
