@@ -12,7 +12,7 @@ from app.models.appointment import Appointment
 from app.models.astrologer import Astrologer
 from app.models.call import CallSession
 from app.models.chat import ChatSession
-from app.models.enums import TransactionReason
+from app.models.enums import PaymentOrderStatus, TransactionReason
 from app.models.wallet import WalletTransaction
 from app.schemas.common import ApiResponse, Paginated, build_page
 from app.schemas.wallet import (
@@ -111,6 +111,27 @@ def to_transaction(
         consultations.get(session_id_str) if (consultations and session_id_str) else None
     )
 
+    astro_id = (
+        str(txn.ref.astrologer_id)
+        if (txn.ref and txn.ref.astrologer_id)
+        else (consultation.astrologer_id if consultation else None)
+    )
+    astro_name = (
+        txn.ref.astrologer_name
+        if (txn.ref and txn.ref.astrologer_name)
+        else (consultation.astrologer_name if consultation else None)
+    )
+    astro_img = (
+        txn.ref.astrologer_image_url
+        if (txn.ref and txn.ref.astrologer_image_url)
+        else (consultation.astrologer_avatar if consultation else None)
+    )
+    mode = (
+        txn.ref.consultation_mode
+        if (txn.ref and txn.ref.consultation_mode)
+        else (consultation.mode if consultation else None)
+    )
+
     note = txn.note
     if consultation and consultation.astrologer_name and note:
         lower_note = note.lower()
@@ -136,13 +157,21 @@ def to_transaction(
         amount_paise=txn.amount_paise,
         coins_per_rupee=txn.coins_per_rupee,
         ref=TransactionRefOut(
-            razorpay_order_id=txn.ref.razorpay_order_id,
-            razorpay_payment_id=txn.ref.razorpay_payment_id,
-            razorpay_refund_id=txn.ref.razorpay_refund_id,
+            razorpay_order_id=txn.ref.razorpay_order_id if txn.ref else None,
+            razorpay_payment_id=txn.ref.razorpay_payment_id if txn.ref else None,
+            razorpay_refund_id=txn.ref.razorpay_refund_id if txn.ref else None,
             session_id=session_id_str,
+            astrologer_id=astro_id,
+            astrologer_name=astro_name,
+            astrologer_image_url=astro_img,
+            consultation_mode=mode,
         ),
         consultation=consultation,
         created_at=txn.created_at,
+        astrologer_id=astro_id,
+        astrologer_name=astro_name,
+        astrologer_image_url=astro_img,
+        consultation_mode=mode,
     )
 
 

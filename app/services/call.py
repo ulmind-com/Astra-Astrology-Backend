@@ -258,6 +258,25 @@ async def _close(
     session.duration_seconds = int((now - started).total_seconds()) if started else 0
     await session.save()
 
+    if status is CallStatus.ENDED and session.started_at:
+        try:
+            from app.models.astrologer import Astrologer, ServiceDuration
+            from app.models.enums import ConsultationMode
+
+            astro = await Astrologer.get(session.astrologer_id)
+            if astro:
+                minutes = max(1, session.duration_seconds // 60)
+                if not hasattr(astro, "service_duration") or astro.service_duration is None:
+                    astro.service_duration = ServiceDuration()
+                if session.mode == ConsultationMode.VIDEO:
+                    astro.service_duration.video_minutes += minutes
+                else:
+                    astro.service_duration.call_minutes += minutes
+                astro.total_consultations += 1
+                await astro.save()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not update astrologer service duration for call {}: {}", session.id, exc)
+
     logger.info(
         "Call {} {} by {} after {}s", session.id, status.value, by.value, session.duration_seconds
     )

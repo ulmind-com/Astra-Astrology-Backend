@@ -167,6 +167,21 @@ class AstrologerAdminUpdate(AstrologerUpdate):
     status: AccountStatus | None = Field(default=None, description="Applies to the account")
 
 
+class ServiceDurationOut(BaseModel):
+    """Cumulative delivery time per service mode (Astrotalk-style breakdown)."""
+
+    chat_minutes: int = 0
+    call_minutes: int = 0
+    video_minutes: int = 0
+    chat_hours: int = 0
+    call_hours: int = 0
+    video_hours: int = 0
+    total_hours: int = 0
+    formatted_chat: str = "0 hrs chat"
+    formatted_call: str = "0 hrs call"
+    formatted_video: str = "0 hrs video"
+
+
 # ---------------------------------------------------------------- output
 class AstrologerProfile(BaseModel):
     """The astrologer's own view, and the admin's."""
@@ -205,6 +220,7 @@ class AstrologerProfile(BaseModel):
     availability: Availability
     rating: RatingSummary
     total_consultations: int
+    service_duration: ServiceDurationOut = Field(default_factory=ServiceDurationOut)
     followers_count: int
 
     is_listed: bool
@@ -279,6 +295,7 @@ class AstrologerPublic(BaseModel):
     availability: Availability
     rating: RatingSummary
     total_consultations: int
+    service_duration: ServiceDurationOut = Field(default_factory=ServiceDurationOut)
     followers_count: int
     is_featured: bool
 

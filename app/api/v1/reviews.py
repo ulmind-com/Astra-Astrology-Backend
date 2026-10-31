@@ -32,9 +32,47 @@ def _out(review: Review, author_avatar: str | None = None) -> ReviewOut:
         stars=review.stars,
         text=review.text,
         author_name=review.author_name,
+        author_avatar_url=author_avatar,
         author_avatar=author_avatar,
         session_id=str(review.session_id) if review.session_id else None,
         created_at=review.created_at,
+    )
+
+
+async def _enrich_reviews(reviews: list[Review]) -> list[ReviewOut]:
+    """Resolves author avatar from User model for rich review rendering."""
+    user_ids = [r.user_id for r in reviews if r.user_id]
+    avatars: dict[PydanticObjectId, str | None] = {}
+    if user_ids:
+        users = await User.find({"_id": {"$in": user_ids}}).to_list()
+        avatars = {u.id: u.avatar_url for u in users}
+
+    return [_out(r, author_avatar=avatars.get(r.user_id)) for r in reviews]
+
+
+@router.get(
+    "/astrologer/me",
+    response_model=ApiResponse[ReviewPage],
+    summary="All reviews and feedback for the authenticated astrologer",
+)
+async def my_astrologer_reviews(
+    astrologer: CurrentAstrologer,
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> ApiResponse[ReviewPage]:
+    items, total = await service.for_astrologer(astrologer.id, skip=skip, limit=limit)
+    enriched = await _enrich_reviews(items)
+    return ApiResponse(
+        message=f"{total} review(s) received.",
+        data=ReviewPage(
+            items=enriched,
+            total=total,
+            summary=ReviewSummary(
+                average=astrologer.rating.average,
+                count=astrologer.rating.count,
+                breakdown=await service.breakdown(astrologer.id),
+            ),
+        ),
     )
 
 
@@ -90,46 +128,6 @@ async def my_reviews(user: CurrentUser) -> ApiResponse[list[ReviewOut]]:
 
 
 @router.get(
-    "/astrologer/me",
-    response_model=ApiResponse[ReviewPage],
-    summary="All client reviews and feedback left for me as an astrologer",
-)
-async def my_astrologer_reviews(
-    astrologer: CurrentAstrologer,
-    skip: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
-) -> ApiResponse[ReviewPage]:
-    items, total = await service.for_astrologer(astrologer.id, skip=skip, limit=limit)
-    user_ids = [r.user_id for r in items if r.user_id]
-    user_map = {}
-    if user_ids:
-        users = await User.find({"_id": {"$in": user_ids}}).to_list()
-        user_map = {u.id: u for u in users}
-
-    review_outs = [
-        _out(
-            r,
-            author_avatar=user_map.get(r.user_id).avatar_url
-            if user_map.get(r.user_id)
-            else None,
-        )
-        for r in items
-    ]
-    return ApiResponse(
-        message="Reviews fetched.",
-        data=ReviewPage(
-            items=review_outs,
-            total=total,
-            summary=ReviewSummary(
-                average=astrologer.rating.average,
-                count=astrologer.rating.count,
-                breakdown=await service.breakdown(astrologer.id),
-            ),
-        ),
-    )
-
-
-@router.get(
     "/astrologers/{astrologer_id}",
     response_model=ApiResponse[ReviewPage],
     summary="What people said about an astrologer",
@@ -148,25 +146,11 @@ async def for_astrologer(
         raise NotFoundError("Astrologer not found.", error_code="astrologer_not_found")
 
     items, total = await service.for_astrologer(profile.id, skip=skip, limit=limit)
-    user_ids = [r.user_id for r in items if r.user_id]
-    user_map = {}
-    if user_ids:
-        users = await User.find({"_id": {"$in": user_ids}}).to_list()
-        user_map = {u.id: u for u in users}
-
-    review_outs = [
-        _out(
-            r,
-            author_avatar=user_map.get(r.user_id).avatar_url
-            if user_map.get(r.user_id)
-            else None,
-        )
-        for r in items
-    ]
+    enriched = await _enrich_reviews(items)
     return ApiResponse(
         message="Reviews fetched.",
         data=ReviewPage(
-            items=review_outs,
+            items=enriched,
             total=total,
             summary=ReviewSummary(
                 average=profile.rating.average,

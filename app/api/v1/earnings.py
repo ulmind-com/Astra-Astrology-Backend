@@ -69,7 +69,7 @@ async def my_recent_earnings(
     for r in rows:
         uid = r.get("user_id")
         u = user_map.get(uid) if uid else None
-        uname = f"{u.first_name} {u.last_name or ''}".strip() if u else None
+        uname = u.full_name if u else None
         uavatar = u.avatar_url if u else None
 
         data.append(
@@ -82,6 +82,7 @@ async def my_recent_earnings(
                 user_id=str(uid) if uid else None,
                 user_name=uname,
                 user_avatar=uavatar,
+                user_image_url=uavatar,
                 coins_charged=r.get("coins_charged"),
                 gross_paise=r.get("gross_paise"),
             )
@@ -139,7 +140,7 @@ async def recent_platform_earnings(
     for r in rows:
         uid = r.get("user_id")
         u = user_map.get(uid) if uid else None
-        uname = f"{u.first_name} {u.last_name or ''}".strip() if u else None
+        uname = u.full_name if u else None
         uavatar = u.avatar_url if u else None
         admin_data.append(
             AdminEarningRow(
@@ -148,15 +149,16 @@ async def recent_platform_earnings(
                 minutes=r["minutes"],
                 earning_paise=r["earning_paise"],
                 created_at=r["created_at"],
-                user_id=str(uid) if uid else None,
-                user_name=uname,
-                user_avatar=uavatar,
                 astrologer_id=str(r["astrologer_id"]),
                 astrologer_name=names.get(r["astrologer_id"]),
                 coins_charged=r["coins_charged"],
                 gross_paise=r["gross_paise"],
                 commission_percent=r["commission_percent"],
                 commission_paise=r["commission_paise"],
+                user_id=str(uid) if uid else None,
+                user_name=uname,
+                user_avatar=uavatar,
+                user_image_url=uavatar,
             )
         )
 

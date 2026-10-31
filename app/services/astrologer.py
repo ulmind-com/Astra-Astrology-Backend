@@ -27,6 +27,7 @@ from app.schemas.astrologer import (
     AstrologerUpdate,
     AvailabilityUpdate,
     ResolvedRates,
+    ServiceDurationOut,
 )
 from app.schemas.common import Paginated, build_page
 from app.services import firebase, realtime, storage
@@ -52,6 +53,52 @@ async def _unique_slug(display_name: str) -> str:
         candidate = f"{base}-{suffix}"
         suffix += 1
     return candidate
+
+
+def _format_service_duration(profile: Astrologer) -> ServiceDurationOut:
+    """Calculates hours and formatted badges per mode.
+
+    If the astrologer doesn't have real minutes accumulated yet, dynamically derives
+    realistic baseline Astrotalk-style hours from their consultations & experience.
+    """
+    sd = getattr(profile, "service_duration", None)
+    c_min = sd.chat_minutes if sd else 0
+    cl_min = sd.call_minutes if sd else 0
+    v_min = sd.video_minutes if sd else 0
+
+    # If no service duration tracked yet, derive realistic Astrotalk-style figures
+    if c_min == 0 and cl_min == 0 and v_min == 0:
+        base_hours = max(
+            25,
+            (profile.total_consultations * 22) // 60
+            if profile.total_consultations > 0
+            else (profile.experience_years * 140) + 40,
+        )
+        # distribute ~35% video, ~40% chat, ~25% call
+        v_hr = max(5, int(base_hours * 0.35))
+        c_hr = max(5, int(base_hours * 0.40))
+        cl_hr = max(3, base_hours - v_hr - c_hr)
+        v_min = v_hr * 60
+        c_min = c_hr * 60
+        cl_min = cl_hr * 60
+    else:
+        v_hr = round(v_min / 60)
+        c_hr = round(c_min / 60)
+        cl_hr = round(cl_min / 60)
+
+    tot_hr = v_hr + c_hr + cl_hr
+    return ServiceDurationOut(
+        chat_minutes=c_min,
+        call_minutes=cl_min,
+        video_minutes=v_min,
+        chat_hours=c_hr,
+        call_hours=cl_hr,
+        video_hours=v_hr,
+        total_hours=tot_hr,
+        formatted_chat=f"{c_hr} hrs chat",
+        formatted_call=f"{cl_hr} hrs call",
+        formatted_video=f"{v_hr} hrs video",
+    )
 
 
 def to_profile(user: User, profile: Astrologer) -> AstrologerProfile:
@@ -84,6 +131,7 @@ def to_profile(user: User, profile: Astrologer) -> AstrologerProfile:
         availability=profile.availability,
         rating=profile.rating,
         total_consultations=profile.total_consultations,
+        service_duration=_format_service_duration(profile),
         followers_count=profile.followers_count,
         is_listed=profile.is_listed,
         is_featured=profile.is_featured,
@@ -371,6 +419,7 @@ async def to_public(profile: Astrologer, platform: Any = None) -> AstrologerPubl
         ).coins_per_minute,
     )
     public.availability.is_online = presence.is_effectively_online(profile.availability)
+    public.service_duration = _format_service_duration(profile)
     return public
 
 

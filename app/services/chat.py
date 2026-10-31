@@ -228,6 +228,21 @@ async def _close(
     session.duration_seconds = int((now - started).total_seconds()) if started else 0
     await session.save()
 
+    if status is ChatStatus.ENDED and session.started_at:
+        try:
+            from app.models.astrologer import Astrologer, ServiceDuration
+
+            astro = await Astrologer.get(session.astrologer_id)
+            if astro:
+                minutes = max(1, session.duration_seconds // 60)
+                if not hasattr(astro, "service_duration") or astro.service_duration is None:
+                    astro.service_duration = ServiceDuration()
+                astro.service_duration.chat_minutes += minutes
+                astro.total_consultations += 1
+                await astro.save()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not update astrologer service duration for chat {}: {}", session.id, exc)
+
     # Saved first, so the expiry is counted from an `ended_at` that is on
     # disk. Never allowed to fail the close: a chat that stayed open because
     # its cleanup threw would keep charging.
