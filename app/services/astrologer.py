@@ -70,7 +70,7 @@ def to_profile(user: User, profile: Astrologer) -> AstrologerProfile:
         bio=profile.bio,
         profile_image_url=profile.profile_image_url,
         banner_image_url=profile.banner_image_url,
-        gallery=profile.gallery,
+        gallery=profile.gallery or [],
         intro_video_url=profile.intro_video_url,
         skills=profile.skills,
         languages=profile.languages,
@@ -593,6 +593,9 @@ async def add_gallery_image(user: User, profile: Astrologer, file):  # noqa: ANN
     from app.core.exceptions import BadRequestError
     from app.models.astrologer import GalleryImage
 
+    if profile.gallery is None:
+        profile.gallery = []
+
     if len(profile.gallery) >= MAX_GALLERY_IMAGES:
         raise BadRequestError(
             f"The gallery is full — {MAX_GALLERY_IMAGES} images at most. "
@@ -610,6 +613,9 @@ async def add_gallery_image(user: User, profile: Astrologer, file):  # noqa: ANN
 
 async def remove_gallery_image(profile: Astrologer, public_id: str) -> Astrologer:
     from app.core.exceptions import NotFoundError
+
+    if profile.gallery is None:
+        profile.gallery = []
 
     image = next((g for g in profile.gallery if g.public_id == public_id), None)
     if image is None:

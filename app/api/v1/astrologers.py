@@ -185,7 +185,7 @@ async def add_gallery_image(
     image, profile = await astrologer_service.add_gallery_image(user, profile, file)
     return ApiResponse(
         message="Image added to your gallery.",
-        data=GalleryUploadResult(image=image, gallery=profile.gallery),
+        data=GalleryUploadResult(image=image, gallery=profile.gallery or []),
     )
 
 

@@ -12,7 +12,15 @@ from pydantic import BaseModel
 from app.core.config import settings
 from app.core.exceptions import BadRequestError, ServiceUnavailableError
 
-ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif", "image/heic"}
+ALLOWED_IMAGE_TYPES = {
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+    "image/heic",
+    "image/pjpeg",
+}
 ALLOWED_DOC_TYPES = {"application/pdf"}
 ALLOWED_VIDEO_TYPES = {"video/mp4", "video/quicktime", "video/webm"}
 ALLOWED_AUDIO_TYPES = {"audio/mpeg", "audio/mp4", "audio/aac", "audio/webm", "audio/ogg"}
@@ -77,8 +85,41 @@ async def upload_file(
     """
     _require_config()
 
+    raw_content_type = (file.content_type or "").strip().lower()
+
+    # If content_type is missing or generic octet-stream, guess from filename
+    if not raw_content_type or raw_content_type == "application/octet-stream":
+        import mimetypes
+
+        guessed, _ = mimetypes.guess_type(file.filename or "")
+        if guessed:
+            raw_content_type = guessed.lower()
+            file.content_type = raw_content_type
+
+    # Normalize alternate JPEG mime types
+    if raw_content_type in ("image/jpg", "image/pjpeg"):
+        raw_content_type = "image/jpeg"
+        file.content_type = "image/jpeg"
+
     allowed = allowed_types or (ALLOWED_IMAGE_TYPES | ALLOWED_DOC_TYPES | ALLOWED_VIDEO_TYPES)
-    if file.content_type not in allowed:
+    if "image/jpeg" in allowed:
+        allowed = set(allowed) | {"image/jpg", "image/pjpeg"}
+
+    if raw_content_type not in allowed:
+        # Check image magic bytes before rejecting mobile uploads
+        contents_peek = await file.read(16)
+        await file.seek(0)
+        if contents_peek.startswith(b"\xff\xd8\xff"):
+            raw_content_type = "image/jpeg"
+        elif contents_peek.startswith(b"\x89PNG\r\n\x1a\n"):
+            raw_content_type = "image/png"
+        elif contents_peek.startswith(b"GIF8"):
+            raw_content_type = "image/gif"
+        elif contents_peek.startswith(b"RIFF") and b"WEBP" in contents_peek:
+            raw_content_type = "image/webp"
+        file.content_type = raw_content_type
+
+    if raw_content_type not in allowed:
         raise BadRequestError(
             f"Unsupported file type '{file.content_type}'. Allowed: {', '.join(sorted(allowed))}.",
             error_code="unsupported_file_type",
