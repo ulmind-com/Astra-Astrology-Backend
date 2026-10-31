@@ -430,6 +430,89 @@ or Hindi is rare enough that the trade runs the other way.
 feature now carries Bengali and Hindi aliases, and the longest alias wins so
 "kundli matching" is not answered with the kundli page.
 
+## Streaming
+
+`POST /ai-astrologer/chat/stream` returns server-sent events:
+`status` while a tool runs, `delta` for each piece of the answer, `done` with
+the citations and follow-ups. The web page consumes it in `lib/ai-stream.ts`.
+
+The tool rounds stream too. Groq sends tool calls as deltas like anything
+else, so there is no need for an unstreamed call followed by a streamed one —
+that would cost a whole extra round against the token budget. Tool-call
+arguments arrive in fragments keyed by `index` and must be concatenated before
+they can be parsed; `_merge_tool_call_deltas` does that.
+
+### `reasoning_effort` — the bug that made streaming produce nothing
+
+gpt-oss reasons before it answers, and that reasoning is charged against the
+same `max_tokens` as the reply. At the default effort it reasoned 2,232
+characters on a simple question and **never reached the answer**: a stream of
+855 chunks containing no content at all. At `"low"` the same question reasoned
+118 characters and went straight to calling the tool it needed.
+
+It is sent only to gpt-oss, which is the only model here that accepts it.
+
+### The tag shield
+
+`[FOLLOW_UP: …]` and `[REMEMBER: …]` arrive at the end of a reply like any
+other tokens, so a naive stream shows the reader the machinery — and
+`[REMEMBER:` is a note the assistant writes to itself *about them*.
+`memory.TagShield` withholds text after an unclosed `[` until the bracket
+closes, drops it if it was a tag, and releases it if it was ordinary prose
+("[see note]"). Text with no bracket is never delayed.
+
+### Rate-limit retries must be capped by attempts, not only by time
+
+The streaming path cannot reuse `_post_groq`, which buffers, so the wait is
+done inline. The first version capped only total time — and because
+`x-ratelimit-reset-tokens` reports a sub-second refill during sustained use,
+it spun **55 times in one request**, sending the reader a status line each
+time. `MIN_RATE_LIMIT_WAIT` and `MAX_RATE_LIMIT_RETRIES` bound it now.
+
+## Memory between visits
+
+An astrologer who forgets you the moment you leave is a search box.
+`AIUserMemory` holds a handful of short facts per user, replayed into the
+system context as `[WHAT YOU REMEMBER ABOUT THIS USER]` with a note of how long
+ago they last spoke.
+
+**The facts are written by the model, for free.** Asking a second model to
+summarise each conversation would double the cost of every message. Instead
+the model emits `[REMEMBER: …]` inline in the reply it was already producing,
+exactly as it already emits `[FOLLOW_UP: …]`.
+
+Bounded hard, because this rides along on every request: `MAX_FACTS`,
+`MAX_FACT_CHARS`, `MAX_CONTEXT_CHARS`, and a TTL, enforced on write and on
+read. Secrets — passwords, OTPs, card and ID numbers — are refused outright;
+astrology invites intimate disclosure and a memory file is the wrong place for
+any of it. `DELETE /ai-astrologer/memory` erases everything, because people are
+entitled to ask and an assistant that cannot forget is one they stop telling
+things to.
+
+## Voice
+
+`POST /ai-astrologer/transcribe` takes an audio clip and returns the words,
+via Whisper on the **same Groq key**, metered in audio-seconds (7,200 an hour)
+rather than against the 8,000 tokens a minute the readings compete for. Voice
+therefore costs nothing that the chat needs.
+
+Typing Bengali or Hindi on a phone keyboard is the barrier for a great many of
+the people this is for, and for older users it is often the whole barrier. The
+button is held rather than toggled so it cannot be left recording, and the
+transcript lands **in the input box rather than being sent**, so a mis-heard
+word can be corrected before it is answered.
+
+No language is passed to Whisper: it detects better than our guess, and a user
+whose app is set to Bengali may well speak Hindi.
+
+## Handing over to a human
+
+`find_astrologer_tool` returns who is online now, their speciality and their
+rate. The prompt is explicit that it comes *after* the assistant's own answer,
+once, never as a lead and never twice in a conversation. Presence is re-judged
+against the clock inside the service, so an astrologer whose panel closed
+without a clean disconnect is not offered.
+
 ## Not done yet
 
 - **Embeddings.** Dense retrieval with reciprocal-rank fusion would fix
