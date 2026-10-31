@@ -4,12 +4,13 @@ import uuid
 from typing import Annotated
 
 import httpx
+from loguru import logger
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 
 from app.api.dependencies import AdminUser, get_optional_user
 from app.core.config import settings
-from app.core.exceptions import NotFoundError, UnauthorizedError
+from app.core.exceptions import BadRequestError, NotFoundError, UnauthorizedError
 from app.models.ai_astrologer import (
     AIChatFeedback,
     AIChatSession,
@@ -37,32 +38,15 @@ from app.services.ai.knowledge_service import (
 router = APIRouter(tags=["ai-astrologer"])
 
 
-@router.post("/ai-astrologer/chat", response_model=ApiResponse[AIChatResponse])
-@router.post("/ai-chat/message", response_model=ApiResponse[AIChatResponse])
-async def send_ai_chat_message(
-    payload: AIChatRequest,
-    user: Annotated[User | None, Depends(get_optional_user)] = None,
-) -> ApiResponse[AIChatResponse]:
-    """Sends a question to Astra AI Astrologer and receives a 100% verified Vedic response."""
-    session_id = payload.session_id or str(uuid.uuid4())
 
-    # Find or create session
-    session = await AIChatSession.find_one(AIChatSession.session_id == session_id)
-    if not session:
-        session = AIChatSession(
-            session_id=session_id,
-            user_id=user.id if user else None,
-            title=(payload.message[:35] + "...") if len(payload.message) > 35 else payload.message,
-            birth_details=payload.birth_details.model_dump() if payload.birth_details else None,
-            messages=[],
-        )
-        await session.insert()
-    else:
-        if payload.birth_details:
-            session.birth_details = payload.birth_details.model_dump()
-        if user and not session.user_id:
-            session.user_id = user.id
+async def _resolve_birth_details(payload, user, session):
+    """Work out which birth details this reading should use.
 
+    Three sources, in order of how specific they are: what the session
+    already holds, flat fields sent with this request, and finally the
+    user's saved profile. Extracted so the streaming and non-streaming
+    endpoints cannot disagree about whose chart is being read.
+    """
     # If flat birth parameters were provided, parse them into birth_details
     effective_birth = session.birth_details
     if not effective_birth and payload.birth_date:
@@ -123,6 +107,37 @@ async def send_ai_chat_message(
             except Exception:
                 pass
 
+    return effective_birth
+
+
+@router.post("/ai-astrologer/chat", response_model=ApiResponse[AIChatResponse])
+@router.post("/ai-chat/message", response_model=ApiResponse[AIChatResponse])
+async def send_ai_chat_message(
+    payload: AIChatRequest,
+    user: Annotated[User | None, Depends(get_optional_user)] = None,
+) -> ApiResponse[AIChatResponse]:
+    """Sends a question to Astra AI Astrologer and receives a 100% verified Vedic response."""
+    session_id = payload.session_id or str(uuid.uuid4())
+
+    # Find or create session
+    session = await AIChatSession.find_one(AIChatSession.session_id == session_id)
+    if not session:
+        session = AIChatSession(
+            session_id=session_id,
+            user_id=user.id if user else None,
+            title=(payload.message[:35] + "...") if len(payload.message) > 35 else payload.message,
+            birth_details=payload.birth_details.model_dump() if payload.birth_details else None,
+            messages=[],
+        )
+        await session.insert()
+    else:
+        if payload.birth_details:
+            session.birth_details = payload.birth_details.model_dump()
+        if user and not session.user_id:
+            session.user_id = user.id
+
+    effective_birth = await _resolve_birth_details(payload, user, session)
+
     # Append user message
     user_msg_item = ChatMessageItem(role="user", content=payload.message)
     session.messages.append(user_msg_item)
@@ -169,6 +184,107 @@ async def send_ai_chat_message(
         )
     )
 
+
+
+@router.post(
+    "/ai-astrologer/chat/stream",
+    summary="Ask the astrologer and receive the reply as it is written",
+)
+async def stream_ai_chat_message(
+    payload: AIChatRequest,
+    user: Annotated[User | None, Depends(get_optional_user)] = None,
+):
+    """The same conversation as `/chat`, delivered as server-sent events.
+
+    Waiting ten seconds at an empty bubble is most of what makes an assistant
+    feel like a form rather than a person. The answer is identical; it simply
+    arrives as it is written, with a line of status while the chart is being
+    read so the pause is explained rather than blank.
+
+    The session is saved once, when the stream finishes. A reader who closes
+    the tab halfway leaves no half-written reply in their history.
+    """
+    import json as _json
+
+    from fastapi.responses import StreamingResponse
+
+    from app.services.ai.groq_service import stream_astrology_response
+
+    session_id = payload.session_id or str(uuid.uuid4())
+    session = await AIChatSession.find_one(AIChatSession.session_id == session_id)
+    if not session:
+        session = AIChatSession(
+            session_id=session_id,
+            user_id=user.id if user else None,
+            title=(payload.message[:35] + "...") if len(payload.message) > 35 else payload.message,
+            birth_details=payload.birth_details.model_dump() if payload.birth_details else None,
+            messages=[],
+        )
+        await session.insert()
+
+    effective_birth = await _resolve_birth_details(payload, user, session)
+
+    session.messages.append(ChatMessageItem(role="user", content=payload.message))
+    history_to_send = [{"role": m.role, "content": m.content} for m in session.messages[-8:]]
+
+    async def events():
+        final: dict | None = None
+        try:
+            async for event in stream_astrology_response(
+                messages=history_to_send,
+                user_birth_details=effective_birth,
+                preferred_language=payload.preferred_language or "bn",
+                user_id=user.id if user else None,
+            ):
+                if event.get("type") == "done":
+                    final = event
+                payload_out = dict(event)
+                payload_out["session_id"] = session.session_id
+                yield f"data: {_json.dumps(payload_out, ensure_ascii=False)}\n\n"
+        except Exception as exc:  # noqa: BLE001 - the reader must not get a dead stream
+            logger.exception("AI stream failed")
+            yield (
+                "data: "
+                + _json.dumps(
+                    {
+                        "type": "error",
+                        "message": "Something went wrong while answering. Please try again.",
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n\n"
+            )
+
+        if final and final.get("reply"):
+            try:
+                session.messages.append(
+                    ChatMessageItem(
+                        role="assistant",
+                        content=final["reply"],
+                        citations=[
+                            c["source"] if isinstance(c, dict) and "source" in c else str(c)
+                            for c in final.get("citations", [])
+                        ],
+                        tools_called=final.get("tools_called", []),
+                        suggested_followups=final.get("suggested_followups", []),
+                    )
+                )
+                await session.save()
+            except Exception:  # noqa: BLE001 - the answer was delivered either way
+                logger.exception("Could not save the streamed session")
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            # Nginx buffers proxied responses by default, which would hold the
+            # whole stream back and deliver it as one lump — the exact problem
+            # this endpoint exists to solve.
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 @router.get("/ai-astrologer/session/{session_id}", response_model=ApiResponse[dict])
 @router.get("/ai-chat/session/{session_id}", response_model=ApiResponse[dict])
@@ -462,3 +578,63 @@ async def approve_and_learn_feedback(
         keywords=payload.keywords,
     )
     return ApiResponse(data={"rule_id": str(rule.id), "status": "learned"})
+
+
+@router.post(
+    "/ai-astrologer/transcribe",
+    response_model=ApiResponse[dict],
+    summary="Turn a spoken question into text",
+)
+async def transcribe_audio(
+    file: Annotated[UploadFile, File(description="A short audio clip")],
+    user: Annotated[User | None, Depends(get_optional_user)] = None,
+) -> ApiResponse[dict]:
+    """Transcribe a recording so it can be sent as a chat message.
+
+    Separate from the chat endpoint on purpose: the browser holds the audio and
+    the text, the user gets to see what was heard before it is sent, and a
+    mis-heard word can be corrected rather than silently answered.
+
+    Open to signed-out visitors, like the chat itself. Whisper is metered in
+    audio-seconds on its own budget, so this costs nothing that the readings
+    compete for.
+    """
+    from app.services.ai import speech
+
+    audio = await file.read()
+    if len(audio) > speech.MAX_BYTES:
+        raise BadRequestError(
+            "That recording is too long. Please keep it under two minutes.",
+            error_code="audio_too_large",
+        )
+
+    try:
+        text = await speech.transcribe(audio, file.filename or "audio.webm")
+    except speech.SpeechError as exc:
+        raise BadRequestError(str(exc), error_code="transcription_failed") from exc
+
+    return ApiResponse(message="Transcribed.", data={"text": text})
+
+
+@router.delete(
+    "/ai-astrologer/memory",
+    response_model=ApiResponse[dict],
+    summary="Forget everything the assistant remembers about me",
+)
+async def forget_memory(
+    user: Annotated[User | None, Depends(get_optional_user)] = None,
+) -> ApiResponse[dict]:
+    """Erase this user's remembered facts.
+
+    Exists because people are entitled to ask, and because an assistant that
+    cannot forget is one they stop telling things to.
+    """
+    from app.services.ai import memory as ai_memory
+
+    if user is None:
+        raise UnauthorizedError("Sign in to manage what is remembered about you.")
+    cleared = await ai_memory.forget(user.id)
+    return ApiResponse(
+        message="Forgotten." if cleared else "There was nothing remembered.",
+        data={"cleared": cleared},
+    )
