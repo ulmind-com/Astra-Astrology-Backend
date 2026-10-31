@@ -286,6 +286,32 @@ CHIDRA_DASHA_ALERTS = {
     ("Mercury", "Saturn"): "Final phase of Mercury Mahadasha. Moving into Ketu Mahadasha. Career fatigue, nervous strain, and deep desire for solitude and higher knowledge.",
 }
 
+CHIDRA_DASHA_ALERTS_LOCALIZED = {
+    "en": CHIDRA_DASHA_ALERTS,
+    "bn": {
+        ("Ketu", "Mercury"): "কেতু মহাদশার সমাপনী পর্যায়। ২০ বছরের শুক্র মহাদশার প্রস্তুতি শুরু হচ্ছে। মানসিক অস্থিরতা, ত্বক ও স্নায়ুর সংবেদনশীলতা এবং আত্মিক রূপান্তরের সময়।",
+        ("Venus", "Ketu"): "শুক্র মহাদশার সমাপনী পর্ব। এরপরে সূর্য মহাদশার সূচনা। বিলাসবহুল আসক্তি হ্রাস, সম্পর্কের পুনর্বিবেচনা ও আকস্মিক কর্মক্ষেত্রে পরিবর্তন।",
+        ("Sun", "Venus"): "সূর্য মহাদশার চূড়ান্ত পর্যায়। ১০ বছরের চন্দ্র মহাদশার প্রস্তুতি। অহংকার ত্যাগ, পারিবারিক জীবনের দিকে মনোযোগ ও স্বাস্থ্যের উন্নতি।",
+        ("Moon", "Sun"): "চন্দ্র মহাদশার শেষ অন্তর্দশা। এরপরে মঙ্গল মহাদশা শুরু হবে। মানসিক সিদ্ধান্ত গ্রহণে দৃঢ়তা, ভূমি-সম্পত্তি সংক্রান্ত বিষয় ও শারীরিক তেজ বৃদ্ধি।",
+        ("Mars", "Rahu"): "মঙ্গল মহাদশার সমাপনী ছিদ্র দশা। সামনে ১৮ বছরের রাহু মহাদশা। অস্থির মানসিক শক্তি, আকস্মিক স্থানান্তর ও সতর্কতার সাথে সিদ্ধান্ত নেওয়া প্রয়োজন।",
+        ("Rahu", "Mars"): "রাহু মহাদশার চরম সমাপনী মুহূর্ত। ১৬ বছরের শুভ বৃহস্পতি মহাদশার দ্বারপ্রান্তে। মানসিক বিভ্রান্তির অবসান, দীর্ঘদিনের ঝামেলার নিষ্পত্তি ও আত্মিক শান্তি লাভ।",
+        ("Jupiter", "Rahu"): "বৃহস্পতি মহাদশার অন্তিম পর্যায়। এরপর ১৯ বছরের শনি মহাদশার শুরু। আত্মতুষ্টি পরিহার করে শৃঙ্খলাপরায়ণ কর্ম ও সতর্ক অর্থ ব্যয়ের সময়।",
+        ("Saturn", "Jupiter"): "শনি মহাদশার চূড়ান্ত সমাপ্তি। ১৭ বছরের বুধ মহাদশার আগমন। দীর্ঘ কর্মফল পরিশোধের স্বস্তি, ভারমুক্ত মন ও নতুন ব্যবসার শুভ সুযোগ।",
+        ("Mercury", "Saturn"): "বুধ মহাদশার সমাপনী ছিদ্র দশা। ৭ বছরের কেতু মহাদশার প্রাক্কালে কর্মক্ষেত্রে মানসিক ক্লান্তি ও গভীর আধ্যাত্মিক অনুসন্ধানের তাগিদ।",
+    },
+    "hi": {
+        ("Ketu", "Mercury"): "केतु महादशा का अंतिम चरण। 20 वर्षीय शुक्र महादशा की तैयारी। मानसिक चंचलता, त्वचा संवेदनशीलता और आध्यात्मिक परिवर्तन का समय।",
+        ("Venus", "Ketu"): "शुक्र महादशा का समापन। इसके बाद सूर्य महादशा प्रारंभ होगी। विलासिता से वैराग्य, संबंधों का पुनर्मूल्यांकन एवं करियर में अप्रत्याशित बदलाव।",
+        ("Sun", "Venus"): "सूर्य महादशा का अंतिम चरण। 10 वर्षीय चंद्र महादशा की ओर प्रस्थान। अहंकार का शमन, पारिवारिक संतुलन एवं स्वास्थ्य सुधार।",
+        ("Moon", "Sun"): "चंद्र महादशा की अंतिम अंतर्दशा। मंगल महादशा की तैयारी। मानसिक दृढ़ता, संपत्ति से जुड़े कार्य एवं ऊर्जा में वृद्धि।",
+        ("Mars", "Rahu"): "मंगल महादशा का समापन छिद्र दशा। आगामी 18 वर्षीय राहु महादशा। अस्थिर ऊर्जा एवं यात्राएं; अत्यंत सावधानी बरतने की सलाह।",
+        ("Rahu", "Mars"): "राहु महादशा का अंतिम समय। 16 वर्षीय देवगुरु बृहस्पति महादशा का आगमन। मानसिक भटकाव से मुक्ति एवं आध्यात्मिक शांति।",
+        ("Jupiter", "Rahu"): "बृहस्पति महादशा का समापन। इसके बाद 19 वर्षीय शनि महादशा की शुरुआत। अनुशासन, कर्तव्यनिष्ठा एवं वित्तीय सतर्कता आवश्यक।",
+        ("Saturn", "Jupiter"): "शनि महादशा का अंतिम चरण। 17 वर्षीय बुध महादशा का प्रारंभ। पुराने भार से मुक्ति, बौद्धिक प्रगति एवं व्यापारिक अवसर।",
+        ("Mercury", "Saturn"): "बुध महादशा का अंतिम दौर। आगामी केतु महादशा। कार्यक्षेत्र में थकान एवं गहन आध्यात्मिक ज्ञान की ओर आकर्षण।",
+    },
+}
+
 
 def _format_datetime(dt: datetime) -> str:
     return dt.strftime("%d-%m-%Y %H:%M")
@@ -598,6 +624,7 @@ def _calculate_dasha_sandhi_and_chidra(
     running_info: CurrentRunningDashaInfo,
     dashas: list[KPDashaPeriod],
     current_dt: datetime,
+    language: str = "en",
 ) -> DashaSandhiChidraInfo:
     """Detects Chidra Dasha (final Antardasha) and Dasha Sandhi transition boundaries."""
     current_md_lord = running_info.mahadasha
@@ -631,14 +658,29 @@ def _calculate_dasha_sandhi_and_chidra(
             is_chidra = True
             severity = "warning"
             chidra_key = (current_md_lord, current_ad_lord)
-            chidra_msg = CHIDRA_DASHA_ALERTS.get(
-                chidra_key,
-                f"You are undergoing Chidra Dasha ({current_md_lord}-{current_ad_lord}), the closing chapter of {current_md_lord} Mahadasha. Prepare for transition to {next_md_lord}."
-            )
-            precautions.append("Avoid signing major irrevocable contracts without double-checking.")
-            precautions.append("Postpone high-risk speculations or emotional real estate transactions.")
-            precautions.append("Practice mindfulness and health checkups as planetary vibrations shift.")
-            remedies.append(f"Chant Gayatri Mantra daily to balance the planetary exchange between {current_md_lord} and {next_md_lord}.")
+            alerts_dict = CHIDRA_DASHA_ALERTS_LOCALIZED.get(language, CHIDRA_DASHA_ALERTS)
+            default_fallback = {
+                "bn": f"আপনি বর্তমানে ছিদ্র দশার ({current_md_lord}-{current_ad_lord}) মধ্য দিয়ে যাচ্ছেন, যা {current_md_lord} মহাদশার অন্তিম অধ্যায়। {next_md_lord}-এ রূপান্তরের প্রস্তুতি নিন।",
+                "hi": f"आप वर्तमान में छिद्र दशा ({current_md_lord}-{current_ad_lord}) से गुजर रहे हैं, जो {current_md_lord} महादशा का अंतिम चरण है। {next_md_lord} में संक्रमण की तैयारी करें।",
+                "en": f"You are undergoing Chidra Dasha ({current_md_lord}-{current_ad_lord}), the closing chapter of {current_md_lord} Mahadasha. Prepare for transition to {next_md_lord}.",
+            }.get(language, f"You are undergoing Chidra Dasha ({current_md_lord}-{current_ad_lord}), the closing chapter of {current_md_lord} Mahadasha. Prepare for transition to {next_md_lord}.")
+            chidra_msg = alerts_dict.get(chidra_key, default_fallback)
+
+            if language == "bn":
+                precautions.append("অভিজ্ঞদের পরামর্শ ব্যতীত কোনো বড় ও স্থায়ী চুক্তিতে স্বাক্ষর করা পরিহার করুন।")
+                precautions.append("উচ্চ ঝুঁকিপূর্ণ ফটকা কারবার বা আবেগতাড়িত আর্থিক লেনদেন পিছিয়ে দিন।")
+                precautions.append("মহাজাগতিক শক্তি পরিবর্তনের এই সময়ে স্বাস্থ্য ও মানসিক শান্তির বিশেষ যত্ন নিন।")
+                remedies.append(f"{current_md_lord} ও {next_md_lord}-এর রূপান্তরকালীন শক্তি ভারসাম্যের জন্য প্রতিদিন গায়ত্রী মন্ত্র জপ করুন।")
+            elif language == "hi":
+                precautions.append("उचित परामर्श के बिना किसी बड़े एवं स्थायी अनुबंध पर हस्ताक्षर करने से बचें।")
+                precautions.append("जोखिम भरे सट्टा निवेश अथवा जल्दबाजी में वित्तीय निर्णयों को टालें।")
+                precautions.append("ग्रहों के कंपन परिवर्तन के इस समय स्वास्थ्य एवं मानसिक शांति का ध्यान रखें।")
+                remedies.append(f"{current_md_lord} एवं {next_md_lord} के ऊर्जा संतुलन हेतु प्रतिदिन गायत्री मंत्र का जप करें।")
+            else:
+                precautions.append("Avoid signing major irrevocable contracts without double-checking.")
+                precautions.append("Postpone high-risk speculations or emotional real estate transactions.")
+                precautions.append("Practice mindfulness and health checkups as planetary vibrations shift.")
+                remedies.append(f"Chant Gayatri Mantra daily to balance the planetary exchange between {current_md_lord} and {next_md_lord}.")
 
         # Check Dasha Sandhi: within 180 days before or after MD transition
         try:
@@ -647,13 +689,25 @@ def _calculate_dasha_sandhi_and_chidra(
             if 0 <= days_to_trans <= 180:
                 is_sandhi = True
                 severity = "critical" if days_to_trans <= 60 else "warning"
-                sandhi_msg = f"Active Dasha Sandhi: Only {days_to_trans} days remain until entering {next_md_lord} Mahadasha. Overlapping energies are strong."
-                precautions.append(f"Upcoming major shift from {current_md_lord} to {next_md_lord}. Maintain psychological composure.")
+                if language == "bn":
+                    sandhi_msg = f"সক্রিয় দশা সন্ধি: {next_md_lord} মহাদশা শুরু হতে আর মাত্র {days_to_trans} দিন বাকি। রূপান্তরের মিশ্র প্রভাব তীব্র।"
+                    precautions.append(f"{current_md_lord} থেকে {next_md_lord}-এ আসন্ন বড় পরিবর্তন। মানসিক ধৈর্য বজায় রাখুন।")
+                elif language == "hi":
+                    sandhi_msg = f"सक्रिय दशा संधि: {next_md_lord} महादशा प्रारंभ होने में केवल {days_to_trans} दिन शेष हैं। ऊर्जा का संक्रमण तीव्र है।"
+                    precautions.append(f"{current_md_lord} से {next_md_lord} में आगामी बड़ा परिवर्तन। मानसिक संतुलन बनाए रखें।")
+                else:
+                    sandhi_msg = f"Active Dasha Sandhi: Only {days_to_trans} days remain until entering {next_md_lord} Mahadasha. Overlapping energies are strong."
+                    precautions.append(f"Upcoming major shift from {current_md_lord} to {next_md_lord}. Maintain psychological composure.")
             elif -180 <= days_to_trans < 0:
                 is_sandhi = True
                 days_since = abs(days_to_trans)
                 severity = "warning"
-                sandhi_msg = f"Fresh Dasha Sandhi: Entered {current_md_lord} Mahadasha {days_since} days ago. The new planetary ruler is settling."
+                if language == "bn":
+                    sandhi_msg = f"নবীন দশা সন্ধি: {days_since} দিন পূর্বে {current_md_lord} মহাদশা শুরু হয়েছে। নতুন শাসক গ্রহের প্রভাব স্থিতিশীল হচ্ছে।"
+                elif language == "hi":
+                    sandhi_msg = f"नवीन दशा संधि: {days_since} दिन पूर्व {current_md_lord} महादशा प्रारंभ हुई है। नए ग्रह का प्रभाव स्थिर हो रहा है।"
+                else:
+                    sandhi_msg = f"Fresh Dasha Sandhi: Entered {current_md_lord} Mahadasha {days_since} days ago. The new planetary ruler is settling."
         except Exception:
             pass
 
@@ -672,17 +726,22 @@ def _calculate_dasha_sandhi_and_chidra(
     )
 
 
-def _get_rashi_name(idx: int) -> str:
+def _get_rashi_name(idx: int, language: str = "en") -> str:
     r = RASHIS_DATA[idx % 12]
+    if language == "bn":
+        return r.get("name_bn") or r.get("name_en") or "মেষ"
+    elif language == "hi":
+        return r.get("name_hi") or r.get("name_en") or "मेष"
     return r.get("name_en") or r.get("name") or "Aries"
 
 
 def _calculate_personalized_dasha_phala(
     asc_sign_index: int,
     planets: list[Any],
+    language: str = "en",
 ) -> list[PersonalizedDashaPhalaItem]:
     """Generates personalized, Lagna-aware predictions for each planet."""
-    asc_name = _get_rashi_name(asc_sign_index)
+    asc_name = _get_rashi_name(asc_sign_index, language)
     functional_map = LAGNA_FUNCTIONAL_RULES.get(asc_sign_index, {})
 
     # Map planet locations
@@ -700,7 +759,7 @@ def _calculate_personalized_dasha_phala(
 
         house_placed = getattr(p_obj, "bhav_house", 1) if p_obj else 1
         sign_idx = getattr(p_obj, "sign_index", 0) if p_obj else 0
-        sign_name = _get_rashi_name(sign_idx)
+        sign_name = _get_rashi_name(sign_idx, language)
         is_retro = getattr(p_obj, "is_retrograde", False) if p_obj else False
 
         # Determine Dignity
@@ -744,35 +803,87 @@ def _calculate_personalized_dasha_phala(
         # Dynamic Life Domain Impacts
         houses_owned = [h for h in range(1, 13) if RASHIS_DATA[(asc_sign_index + h - 1) % 12]["lord"] == lord]
 
-        career_text = (
-            f"As {func_nature} placed in House {house_placed} ({sign_name}), career brings notable expansion, authority, and recognized efforts."
-            if score >= 60 else
-            f"Placed in House {house_placed}, career demands disciplined patience, avoiding sudden job leaps or conflicts with superiors."
-        )
-
-        wealth_text = (
-            f"Financial stability is bolstered through structured earnings, assets, and timely investment growth."
-            if score >= 55 else
-            f"Expenditure pressures may arise; maintain strict liquid cash reserves and avoid speculative investments."
-        )
-
-        relationship_text = (
-            "Harmonious domestic bliss, support from mentors, and rewarding mutual understanding."
-            if score >= 50 else
-            "Sensitivities in communication may emerge; cultivate patience and clear boundaries."
-        )
-
-        health_text = (
-            "Robust vitality, strong immunity, and high energy for daily pursuits."
-            if score >= 55 else
-            "Energy fluctuations or vulnerability in digestion/nervous system; maintain adequate sleep and balanced diet."
-        )
-
-        gemstone_warn = ""
-        if "Maraka" in func_nature or house_placed in [6, 8, 12] or dignity == "Debilitated":
-            gemstone_warn = f"CAUTION: Do NOT wear gemstones of {lord} without an astrologer's prescription, as it rules sensitive/maraka houses for {asc_name} Lagna."
+        if language == "bn":
+            career_text = (
+                f"ভাব {house_placed}-এ ({sign_name}) শুভ অবস্থান থাকায় কর্মজীবনে উল্লেখযোগ্য প্রসার, পদমর্যাদা বৃদ্ধি ও স্বীকৃতি অর্জিত হবে।"
+                if score >= 60 else
+                f"ভাব {house_placed}-এ অবস্থানের কারণে কর্মক্ষেত্রে শৃঙ্খলা ও ধৈর্য বজায় রাখা প্রয়োজন; বিরোধ এড়িয়ে চলুন।"
+            )
+            wealth_text = (
+                "সুশৃঙ্খল উপার্জন, সম্পদ বৃদ্ধি ও সময়োপযোগী লাভজনক বিনিয়োগের মাধ্যমে আর্থিক স্থিতি দৃঢ় থাকবে।"
+                if score >= 55 else
+                "অপ্রত্যাশিত খরচের চাপ থাকতে পারে; পর্যাপ্ত তরল তহবিল রাখুন এবং ঝুঁকিপূর্ণ ফটকা এড়িয়ে চলুন।"
+            )
+            relationship_text = (
+                "পারিবারিক জীবনে সৌহার্দ্যপূর্ণ আনন্দ, অভিভাবকদের সমর্থন ও পারস্পরিক চমৎকার বোঝাপড়া বজায় থাকবে।"
+                if score >= 50 else
+                "কথাবার্তায় সংবেদনশীলতা দেখা দিতে পারে; পারস্পরিক যোগাযোগে ধৈর্য ও সহনশীলতা অবলম্বন করুন।"
+            )
+            health_text = (
+                "উত্তম জীবনীশক্তি, মজবুত রোগপ্রতিরোধ ক্ষমতা ও দৈনন্দিন কাজে ইতিবাচক উদ্যম বজায় থাকবে।"
+                if score >= 55 else
+                "হজম বা স্নায়ুতন্ত্রের সংবেদনশীলতা দেখা দিতে পারে; পরিমিত আহার ও পর্যাপ্ত বিশ্রাম প্রয়োজন।"
+            )
+            if "Maraka" in func_nature or house_placed in [6, 8, 12] or dignity == "Debilitated":
+                gemstone_warn = f"সতর্কতা: বিশেষজ্ঞ জ্যোতিষীর পরামর্শ ব্যতীত {lord}-এর রত্ন ধারণ করবেন না, কারণ এটি {asc_name} লগ্নের সংবেদনশীল ভাবের কারক।"
+            else:
+                gemstone_warn = f"এই গ্রহের অন্তর্দশায় {lord}-এর অনুকূল রত্ন বা ধাতু ধারণ শুভ শক্তি বৃদ্ধি করতে সহায়ক।"
+            remedy_text = f"নিয়মিত {lord}-এর বীজ মন্ত্র জপ করুন এবং এর নির্ধারিত দিনে দান-ধ্যান সম্পন্ন করুন।"
+            overall_impact_text = f"{sign_name} রাশিতে {house_placed}ম ভাবের অধিপতিত্ব। {func_nature} রূপে নিজস্ব কর্মফল প্রদান করছে।"
+        elif language == "hi":
+            career_text = (
+                f"भाव {house_placed} ({sign_name}) में अनुकूल स्थिति से कार्यक्षेत्र में प्रतिष्ठा, पदोन्नति एवं प्रयासों की मान्यता प्राप्त होगी।"
+                if score >= 60 else
+                f"भाव {house_placed} में स्थिति के कारण कार्यक्षेत्र में संयम बरतें; वरिष्ठों के साथ वाद-विवाद से बचें।"
+            )
+            wealth_text = (
+                "संरचित आय, संपत्ति में वृद्धि एवं बुद्धिमत्तापूर्ण निवेश से वित्तीय स्थिति सुदृढ़ रहेगी।"
+                if score >= 55 else
+                "अनावश्यक व्यय का दबाव हो सकता है; पर्याप्त नकदी संचित रखें और जोखिम भरे निवेश से बचें।"
+            )
+            relationship_text = (
+                "पारिवारिक सौहार्द, बुजुर्गों का आशीर्वाद एवं मधुर संबंधों का लाभ मिलेगा।"
+                if score >= 50 else
+                "संवाद में संवेदनशीलता रह सकती है; संयम एवं आपसी समझ बनाए रखें।"
+            )
+            health_text = (
+                "उत्तम जीवन ऊर्जा, सुदृढ़ प्रतिरोधक क्षमता एवं दैनिक कार्यों में नई स्फूर्ति रहेगी।"
+                if score >= 55 else
+                "पाचन तंत्र अथवा मौसमी संवेदनशीलता का ध्यान रखें; संतुलित आहार एवं नियमित दिनचर्या आवश्यक है।"
+            )
+            if "Maraka" in func_nature or house_placed in [6, 8, 12] or dignity == "Debilitated":
+                gemstone_warn = f"सावधानी: ज्योतिषी के परामर्श के बिना {lord} का रत्न धारण न करें, क्योंकि यह {asc_name} लग्न हेतु संवेदनशील भाव का स्वामी है।"
+            else:
+                gemstone_warn = f"{lord} के रत्न का उपयोग इसकी अंतर्दशा में ऊर्जा संवर्धन हेतु शुभ माना जाता है।"
+            remedy_text = f"प्रतिदिन {lord} के बीज मंत्र का जप करें एवं इसके संबंधित वार को दान करें।"
+            overall_impact_text = f"{sign_name} राशि के {house_placed}वें भाव में स्थित होकर {func_nature} के रूप में कर्मफल प्रदान कर रहा है।"
         else:
-            gemstone_warn = f"Gemstone amplification for {lord} is supportive and auspicious during its sub-periods."
+            career_text = (
+                f"As {func_nature} placed in House {house_placed} ({sign_name}), career brings notable expansion, authority, and recognized efforts."
+                if score >= 60 else
+                f"Placed in House {house_placed}, career demands disciplined patience, avoiding sudden job leaps or conflicts with superiors."
+            )
+            wealth_text = (
+                f"Financial stability is bolstered through structured earnings, assets, and timely investment growth."
+                if score >= 55 else
+                f"Expenditure pressures may arise; maintain strict liquid cash reserves and avoid speculative investments."
+            )
+            relationship_text = (
+                "Harmonious domestic bliss, support from mentors, and rewarding mutual understanding."
+                if score >= 50 else
+                "Sensitivities in communication may emerge; cultivate patience and clear boundaries."
+            )
+            health_text = (
+                "Robust vitality, strong immunity, and high energy for daily pursuits."
+                if score >= 55 else
+                "Energy fluctuations or vulnerability in digestion/nervous system; maintain adequate sleep and balanced diet."
+            )
+            if "Maraka" in func_nature or house_placed in [6, 8, 12] or dignity == "Debilitated":
+                gemstone_warn = f"CAUTION: Do NOT wear gemstones of {lord} without an astrologer's prescription, as it rules sensitive/maraka houses for {asc_name} Lagna."
+            else:
+                gemstone_warn = f"Gemstone amplification for {lord} is supportive and auspicious during its sub-periods."
+            remedy_text = f"Regular chanting of {lord}'s mantra and charitable donation on its designated weekday."
+            overall_impact_text = f"Governing House {house_placed} in {sign_name}. {func_nature} delivering focused karmic results."
 
         phala_list.append(
             PersonalizedDashaPhalaItem(
@@ -785,13 +896,13 @@ def _calculate_personalized_dasha_phala(
                 dignity=dignity,
                 is_retrograde=is_retro,
                 favorability_score=score,
-                overall_impact=f"Governing House {house_placed} in {sign_name}. {func_nature} delivering focused karmic results.",
+                overall_impact=overall_impact_text,
                 career_impact=career_text,
                 wealth_impact=wealth_text,
                 relationship_impact=relationship_text,
                 health_impact=health_text,
                 gemstone_warning=gemstone_warn,
-                recommended_remedy=f"Regular chanting of {lord}'s mantra and charitable donation on its designated weekday.",
+                recommended_remedy=remedy_text,
             )
         )
 
@@ -802,6 +913,7 @@ def _calculate_yogini_dasha(
     birth_dt: datetime,
     moon_lon: float,
     current_dt: datetime,
+    language: str = "en",
 ) -> YoginiDashaSystem:
     """Calculates the 36-year Yogini Dasha cycle with 8 Yoginis and Antar-Yoginis."""
     nak_span = 360.0 / 27.0
@@ -876,6 +988,13 @@ def _calculate_yogini_dasha(
                 if is_sub_curr:
                     current_sub_yogini = sub_name
 
+                if language == "bn":
+                    sub_sig = f"{y_name}-এর অধীনে {sub_name}-এর উপ-যোগিনী পর্যায়।"
+                elif language == "hi":
+                    sub_sig = f"{y_name} के अंतर्गत {sub_name} की उप-योगिनी अवधि।"
+                else:
+                    sub_sig = f"Sub-period of {sub_name} under {y_name}."
+
                 sub_periods.append(
                     YoginiPeriodItem(
                         name=sub_name,
@@ -885,11 +1004,18 @@ def _calculate_yogini_dasha(
                         end_date=_format_date(sub_end),
                         is_current=is_sub_curr,
                         nature=YOGINI_NATURES[sub_name],
-                        significance=f"Sub-period of {sub_name} under {y_name}.",
+                        significance=sub_sig,
                         sub_periods=[],
                     )
                 )
                 sub_start = sub_end
+
+            if language == "bn":
+                major_sig = f"{y_name} ({YOGINI_RULERS[y_name]}) - {YOGINI_NATURES[y_name]} প্রভাব।"
+            elif language == "hi":
+                major_sig = f"{y_name} ({YOGINI_RULERS[y_name]}) - {YOGINI_NATURES[y_name]} प्रभाव।"
+            else:
+                major_sig = f"{y_name} ({YOGINI_RULERS[y_name]}) - {YOGINI_NATURES[y_name]} vibration."
 
             all_periods.append(
                 YoginiPeriodItem(
@@ -900,17 +1026,30 @@ def _calculate_yogini_dasha(
                     end_date=_format_date(y_end),
                     is_current=is_curr,
                     nature=YOGINI_NATURES[y_name],
-                    significance=f"{y_name} ({YOGINI_RULERS[y_name]}) - {YOGINI_NATURES[y_name]} vibration.",
+                    significance=major_sig,
                     sub_periods=sub_periods,
                 )
             )
             y_start = y_end
 
-    verdict = (
-        f"Currently running {current_yogini} Yogini (ruled by {YOGINI_RULERS.get(current_yogini, '')}) "
-        f"with {current_sub_yogini} sub-period in Cycle {current_cycle_num}. "
-        f"Vibration is {YOGINI_NATURES.get(current_yogini, 'Neutral')}."
-    )
+    if language == "bn":
+        verdict = (
+            f"বর্তমানে {current_cycle_num} নম্বর চক্রে {current_yogini} যোগিনী (রুলার: {YOGINI_RULERS.get(current_yogini, '')}) "
+            f"এবং {current_sub_yogini} উপ-যোগিনী চলমান। "
+            f"সামগ্রিক প্রভাব {YOGINI_NATURES.get(current_yogini, 'Neutral')}।"
+        )
+    elif language == "hi":
+        verdict = (
+            f"वर्तमान में चक्र {current_cycle_num} में {current_yogini} योगिनी (स्वामी: {YOGINI_RULERS.get(current_yogini, '')}) "
+            f"एवं {current_sub_yogini} उप-योगिनी सक्रिय है। "
+            f"प्रभाव {YOGINI_NATURES.get(current_yogini, 'Neutral')} है।"
+        )
+    else:
+        verdict = (
+            f"Currently running {current_yogini} Yogini (ruled by {YOGINI_RULERS.get(current_yogini, '')}) "
+            f"with {current_sub_yogini} sub-period in Cycle {current_cycle_num}. "
+            f"Vibration is {YOGINI_NATURES.get(current_yogini, 'Neutral')}."
+        )
 
     return YoginiDashaSystem(
         birth_nakshatra=nak_name,
@@ -928,6 +1067,7 @@ def _calculate_dasha_transit_synergy(
     natal_moon_sign_idx: int,
     running_info: CurrentRunningDashaInfo,
     current_dt: datetime,
+    language: str = "en",
 ) -> DashaTransitSynergy:
     """Calculates live transit positions of MD/AD lords and detects Sade Sati status."""
     md_lord = running_info.mahadasha
@@ -993,26 +1133,57 @@ def _calculate_dasha_transit_synergy(
     saturn_diff = (saturn_transit_sign_idx - natal_moon_sign_idx) % 12
     sade_sati_active = False
     sade_sati_phase = "None"
-    sade_sati_desc = "No major Saturn Sade Sati obstruction at present."
 
     if saturn_diff == 11:
         sade_sati_active = True
         sade_sati_phase = "Rising Phase (12th House)"
-        sade_sati_desc = "Saturn is transiting the 12th house from your natal Moon sign. Eye strain, sleep patterns, and expenditures require vigilance."
+        if language == "bn":
+            sade_sati_desc = "শনি আপনার জন্ম রাশি থেকে দ্বাদশ ভাবে গোচর করছে (আরোহণ পর্যায়)। চোখের যত্ন, পর্যাপ্ত ঘুম ও ব্যয়ের ক্ষেত্রে সতর্কতা প্রয়োজন।"
+        elif language == "hi":
+            sade_sati_desc = "शनि आपकी जन्म राशि से द्वादश भाव में गोचर कर रहा है (उदय चरण)। व्यय, अनिद्रा एवं स्वास्थ्य पर विशेष ध्यान दें।"
+        else:
+            sade_sati_desc = "Saturn is transiting the 12th house from your natal Moon sign. Eye strain, sleep patterns, and expenditures require vigilance."
     elif saturn_diff == 0:
         sade_sati_active = True
         sade_sati_phase = "Peak Phase (1st House - Janma Shani)"
-        sade_sati_desc = "Saturn is transiting directly over your Janma Rashi. Deep psychological introspection and steady patience bring maturity."
+        if language == "bn":
+            sade_sati_desc = "শনি সরাসরি আপনার জন্ম রাশিতে গোচর করছে (চূড়া পর্যায় - জন্ম শনি)। ধৈর্য, সততা ও গভীর আত্মবিশ্লেষণ দীর্ঘমেয়াদী পরিপক্বতা আনে।"
+        elif language == "hi":
+            sade_sati_desc = "शनि आपकी जन्म राशि पर गोचर कर रहा है (शिखर चरण - जन्म शनि)। धैर्य एवं संयम से आत्म-विकास और परिपक्वता प्राप्त होगी।"
+        else:
+            sade_sati_desc = "Saturn is transiting directly over your Janma Rashi. Deep psychological introspection and steady patience bring maturity."
     elif saturn_diff == 1:
         sade_sati_active = True
         sade_sati_phase = "Setting Phase (2nd House)"
-        sade_sati_desc = "Saturn is in the 2nd house from your Moon sign. Financial restructuring and family diplomacy are rewarded."
+        if language == "bn":
+            sade_sati_desc = "শনি আপনার চন্দ্র রাশি থেকে দ্বিতীয় ভাবে রয়েছে (অবতরণ পর্যায়)। আর্থিক ব্যবস্থাপনা ও পারিবারিক শান্তি বজায় রাখলে শুভ ফল মিলবে।"
+        elif language == "hi":
+            sade_sati_desc = "शनि आपकी चंद्र राशि से द्वितीय भाव में है (अस्त चरण)। वित्तीय पुनर्गठन एवं पारिवारिक शांति को प्राथमिकता दें।"
+        else:
+            sade_sati_desc = "Saturn is in the 2nd house from your Moon sign. Financial restructuring and family diplomacy are rewarded."
     elif saturn_diff == 3:
         sade_sati_phase = "Kantaka Shani (4th House)"
-        sade_sati_desc = "Saturn transits the 4th house from natal Moon. Domestic adjustments and mother's well-being need care."
+        if language == "bn":
+            sade_sati_desc = "শনি জন্ম রাশি থেকে চতুর্থ ভাবে গোচর করছে (কণ্টক শনি)। গৃহস্থালী সুখ ও মাতার স্বাস্থ্যের বিশেষ যত্ন নিন।"
+        elif language == "hi":
+            sade_sati_desc = "शनि चंद्र राशि से चतुर्थ भाव में है (कंटक शनि)। घरेलू सुख एवं माता के स्वास्थ्य का ध्यान रखें।"
+        else:
+            sade_sati_desc = "Saturn transits the 4th house from natal Moon. Domestic adjustments and mother's well-being need care."
     elif saturn_diff == 7:
         sade_sati_phase = "Ashtama Shani (8th House)"
-        sade_sati_desc = "Saturn transits the 8th house from natal Moon. Avoid reckless adventures and maintain steady discipline."
+        if language == "bn":
+            sade_sati_desc = "শনি জন্ম রাশি থেকে অষ্টম ভাবে গোচর করছে (অষ্টম শনি)। ঝুঁকিপূর্ণ কাজ এড়িয়ে চলুন এবং শৃঙ্খলাপরায়ণ থাকুন।"
+        elif language == "hi":
+            sade_sati_desc = "शनि चंद्र राशि से अष्टम भाव में है (अष्टम शनि)। जोखिम भरे कार्यों से बचें एवं नियमित दिनचर्या रखें।"
+        else:
+            sade_sati_desc = "Saturn transits the 8th house from natal Moon. Avoid reckless adventures and maintain steady discipline."
+    else:
+        if language == "bn":
+            sade_sati_desc = "বর্তমানে শনির সাড়ে সাতির কোনো বড় বাধা বা প্রতিকূল প্রভাব নেই।"
+        elif language == "hi":
+            sade_sati_desc = "वर्तमान में शनि की साढ़े साती का कोई प्रतिकूल प्रभाव नहीं है।"
+        else:
+            sade_sati_desc = "No major Saturn Sade Sati obstruction at present."
 
     # Synergy Score
     syn_score = 50
@@ -1031,14 +1202,27 @@ def _calculate_dasha_transit_synergy(
 
     syn_score = min(max(syn_score, 15), 95)
 
-    md_sign_name = _get_rashi_name(md_transit_sign_idx)
-    ad_sign_name = _get_rashi_name(ad_transit_sign_idx)
+    md_sign_name = _get_rashi_name(md_transit_sign_idx, language)
+    ad_sign_name = _get_rashi_name(ad_transit_sign_idx, language)
 
-    verdict = (
-        f"MD Lord {md_lord} is transiting in {md_sign_name} (House {md_house_from_moon} from Moon - {md_nature}). "
-        f"AD Lord {ad_lord} is transiting in {ad_sign_name} (House {ad_house_from_moon} from Moon - {ad_nature}). "
-        f"Saturn Transit: {sade_sati_phase}. Overall planetary synergy is {syn_score}% aligned."
-    )
+    if language == "bn":
+        verdict = (
+            f"মহাদশা লর্ড {md_lord} {md_sign_name} রাশিতে গোচর করছেন (চন্দ্র থেকে {md_house_from_moon}ম ভাব - {md_nature})। "
+            f"অন্তর্দশা লর্ড {ad_lord} {ad_sign_name} রাশিতে অবস্থান করছেন (চন্দ্র থেকে {ad_house_from_moon}ম ভাব - {ad_nature})। "
+            f"শনির সাড়ে সাতি স্থিতি: {sade_sati_phase}। সার্বিক মহাজাগতিক সমন্বয় {syn_score}% অনুকূল।"
+        )
+    elif language == "hi":
+        verdict = (
+            f"महादशा स्वामी {md_lord} {md_sign_name} राशि में गोचरस्थ हैं (चंद्र से {md_house_from_moon}वां भाव - {md_nature})। "
+            f"अंतर्दशा स्वामी {ad_lord} {ad_sign_name} राशि में हैं (चंद्र से {ad_house_from_moon}वां भाव - {ad_nature})। "
+            f"शनि गोचर: {sade_sati_phase}। समग्र ग्रहीय समन्वय {syn_score}% अनुकूल है।"
+        )
+    else:
+        verdict = (
+            f"MD Lord {md_lord} is transiting in {md_sign_name} (House {md_house_from_moon} from Moon - {md_nature}). "
+            f"AD Lord {ad_lord} is transiting in {ad_sign_name} (House {ad_house_from_moon} from Moon - {ad_nature}). "
+            f"Saturn Transit: {sade_sati_phase}. Overall planetary synergy is {syn_score}% aligned."
+        )
 
     return DashaTransitSynergy(
         md_lord=md_lord,
@@ -1061,6 +1245,7 @@ def _calculate_dasha_life_timeline(
     dashas: list[KPDashaPeriod],
     phala_map: dict[str, PersonalizedDashaPhalaItem],
     birth_year: int,
+    language: str = "en",
 ) -> list[DashaTimelineSegment]:
     """Generates visual life timeline bar segments for all Mahadashas."""
     segments: list[DashaTimelineSegment] = []
@@ -1085,11 +1270,24 @@ def _calculate_dasha_life_timeline(
         age_end = int(accum_age + dur_years)
         accum_age = age_end
 
-        theme_text = (
-            f"Period of major empowerment, progress, and fruitful outcomes."
-            if score >= 65 else
-            (f"Transformative period demanding patience and cautious navigation." if score <= 40 else "Balanced growth through steady perseverance.")
-        )
+        if language == "bn":
+            theme_text = (
+                "অসাধারণ সাফল্য, ক্ষমতায়ন ও সর্বাঙ্গীন অগ্রগতির একটি অত্যন্ত শুভ সময়।"
+                if score >= 65 else
+                ("ধৈর্য, আধ্যাত্মিক চর্চা ও সতর্ক পদক্ষেপ দাবি করে এমন রূপান্তরমূলক সময়।" if score <= 40 else "ধারাবাহিক অধ্যবসায় ও শৃঙ্খলার মাধ্যমে জীবনের ভারসাম্যপূর্ণ বিকাশ।")
+            )
+        elif language == "hi":
+            theme_text = (
+                "सफलता, अधिकार एवं सर्वांगीण प्रगति का अत्यंत फलदायी काल।"
+                if score >= 65 else
+                ("धैर्य, आध्यात्मिक साधना एवं सतर्कता से आगे बढ़ने का परिवर्तन काल।" if score <= 40 else "सतत प्रयास एवं अनुशासन द्वारा संतुलित जीवन विकास का समय।")
+            )
+        else:
+            theme_text = (
+                f"Period of major empowerment, progress, and fruitful outcomes."
+                if score >= 65 else
+                (f"Transformative period demanding patience and cautious navigation." if score <= 40 else "Balanced growth through steady perseverance.")
+            )
 
         segments.append(
             DashaTimelineSegment(
@@ -1118,6 +1316,7 @@ def calculate_advanced_dasha(payload: KPCalculateRequest) -> KPCalculateResponse
     """
     # 1. Obtain baseline KP astrological output
     res: KPCalculateResponse = calculate_kp(payload)
+    lang = getattr(payload, "language", "en") or "en"
 
     # Determine birth moment and current UTC moment
     birth_dt = datetime(
@@ -1158,12 +1357,14 @@ def calculate_advanced_dasha(payload: KPCalculateRequest) -> KPCalculateResponse
         running_info=running_info,
         dashas=uncompressed_dashas,
         current_dt=current_dt,
+        language=lang,
     )
 
     # 4. Personalized Kundli-Aware Dasha Phala
     phala_list = _calculate_personalized_dasha_phala(
         asc_sign_index=asc_sign_index,
         planets=res.planets,
+        language=lang,
     )
     res.personalized_dasha_phala = phala_list
     phala_map = {item.planet: item for item in phala_list}
@@ -1173,6 +1374,7 @@ def calculate_advanced_dasha(payload: KPCalculateRequest) -> KPCalculateResponse
         birth_dt=birth_dt,
         moon_lon=moon_lon,
         current_dt=current_dt,
+        language=lang,
     )
 
     # 6. Live Dasha-Transit Synergy & Sade Sati
@@ -1180,6 +1382,7 @@ def calculate_advanced_dasha(payload: KPCalculateRequest) -> KPCalculateResponse
         natal_moon_sign_idx=natal_moon_sign_idx,
         running_info=running_info,
         current_dt=current_dt,
+        language=lang,
     )
 
     # 7. Life Timeline Bar Segments
@@ -1187,6 +1390,7 @@ def calculate_advanced_dasha(payload: KPCalculateRequest) -> KPCalculateResponse
         dashas=uncompressed_dashas,
         phala_map=phala_map,
         birth_year=payload.year,
+        language=lang,
     )
 
     return res

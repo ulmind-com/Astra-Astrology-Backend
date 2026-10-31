@@ -128,3 +128,36 @@ def test_dasha_api_endpoint():
     assert len(data["personalized_dasha_phala"]) == 9
     assert len(data["dasha_life_timeline"]) == 9
 
+
+def test_dasha_calculation_multilingual():
+    """Validates Bengali and Hindi localization of Dasha calculation."""
+    for lang in ("bn", "hi"):
+        payload = KPCalculateRequest(
+            name="Test Native",
+            gender="female",
+            day=1,
+            month=1,
+            year=1992,
+            hour=10,
+            minute=0,
+            second=0,
+            place="Kolkata, India",
+            latitude=22.5726,
+            longitude=88.3639,
+            timezone=5.5,
+            ayanamsa="krishnamurti",
+            language=lang,
+        )
+        res = calculate_advanced_dasha(payload)
+        assert res.dasha_sandhi_chidra is not None
+        assert res.yogini_dasha is not None
+        assert res.dasha_transit_synergy is not None
+        assert len(res.personalized_dasha_phala) == 9
+        first_phala = res.personalized_dasha_phala[0]
+        assert first_phala.career_impact != ""
+        assert first_phala.wealth_impact != ""
+        assert first_phala.recommended_remedy != ""
+        assert len(res.dasha_life_timeline) == 9
+        assert res.dasha_life_timeline[0].theme != ""
+
+
