@@ -947,11 +947,24 @@ def _calculate_dashakoot(boy_data: dict[str, Any], girl_data: dict[str, Any], la
     porutham_count = sum(1 for item in items if item.received > 0)
     is_favorable = total_dashakoot >= 18.0
 
-    verdict = (
-        "Dashakoot matching is favorable with healthy scores across vital poruthams."
-        if is_favorable
-        else "Dashakoot score is moderate. Remedial harmonization advised for key poruthams."
-    )
+    if lang == "bn":
+        verdict = (
+            "দক্ষিণ ভারতীয় দশকূট মিলন অত্যন্ত শুভ ও অনুকূল।"
+            if is_favorable
+            else "দক্ষিণ ভারতীয় দশকূট স্কোর মধ্যম। মূল পরুথামগুলোর জন্য বৈদিক শান্তি উপায় বাঞ্ছনীয়।"
+        )
+    elif lang == "hi":
+        verdict = (
+            "दक्षिण भारतीय दशकूट मिलान अत्यंत शुभ एवं अनुकूल है।"
+            if is_favorable
+            else "दक्षिण भारतीय दशकूट प्राप्तांक मध्यम है। मुख्य पोरुथम हेतु वैदिक शांति उपाय अनुशंसित हैं।"
+        )
+    else:
+        verdict = (
+            "Dashakoot matching is favorable with healthy scores across vital poruthams."
+            if is_favorable
+            else "Dashakoot score is moderate. Remedial harmonization advised for key poruthams."
+        )
 
     return DashakootResult(
         items=items,
@@ -1022,6 +1035,8 @@ def _evaluate_dosha_cancellations(
             bhakoot_reason = (
                 "উভয়ের রাশিনাথ একই গ্রহ হওয়ায় ভকূট দোষ সম্পূর্ণ বাতিল (দোষভঙ্গ)।"
                 if lang == "bn"
+                else "दोनों के राशि स्वामी एक ही ग्रह होने के कारण भकूट दोष पूर्णतः निरस्त (दोषभंग) हो गया है।"
+                if lang == "hi"
                 else "Bhakoot Dosha is cancelled because both Janma Rashis share the same planetary lord."
             )
         elif PLANET_FRIENDSHIP.get(b_lord, {}).get(g_lord, 0) == 5 and PLANET_FRIENDSHIP.get(g_lord, {}).get(b_lord, 0) == 5:
@@ -1029,18 +1044,36 @@ def _evaluate_dosha_cancellations(
             bhakoot_reason = (
                 f"উভয়ের রাশিনাথ {b_lord} ও {g_lord} পরস্পরের মিত্র হওয়ায় ভকূট দোষ প্রশমিত হয়েছে।"
                 if lang == "bn"
+                else f"दोनों के राशि स्वामी {b_lord} एवं {g_lord} परस्पर प्राकृतिक मित्र होने के कारण भकूट दोष शांत हो गया है।"
+                if lang == "hi"
                 else f"Bhakoot Dosha is neutralized because sign lords {b_lord} and {g_lord} are natural friends."
             )
+
+    bhakoot_default_reason = (
+        ("ভকূট দোষ নেই (উভয়ের রাশির দূরত্ব শুভ)।" if not has_bhakoot_dosha else "ভকূট দোষ বিদ্যমান; আর্থিক শৃঙ্খলা ও প্রতিকার বিধান বাঞ্ছনীয়।")
+        if lang == "bn"
+        else ("भकूट दोष अनुपस्थित है (दोनों राशियों की दूरी अनुकूल है)।" if not has_bhakoot_dosha else "भकूट दोष उपस्थित है; आर्थिक सतर्कता एवं शांति उपाय अनुशंसित हैं।")
+        if lang == "hi"
+        else ("Bhakoot dosha is absent." if not has_bhakoot_dosha else "Bhakoot dosha present; financial discipline & remedies recommended.")
+    )
+
+    bhakoot_remedy = (
+        ("প্রতি বৃহস্পতিবার শ্রী বিষ্ণু সহস্রনাম পাঠ এবং তুলসী অর্পণ কল্যাণকর।" if (has_bhakoot_dosha and not bhakoot_cancelled) else "কোনো প্রতিকারের প্রয়োজন নেই।")
+        if lang == "bn"
+        else ("प्रति गुरुवार श्री विष्णु सहस्रनाम का पाठ एवं तुलसी दल अर्पण करें।" if (has_bhakoot_dosha and not bhakoot_cancelled) else "किसी उपाय की आवश्यकता नहीं है।")
+        if lang == "hi"
+        else ("Recitation of Sri Vishnu Sahasranama and offering Tulsi on Thursdays." if (has_bhakoot_dosha and not bhakoot_cancelled) else "No remedy required.")
+    )
 
     cancellations.append(
         DoshaCancellationInfo(
             dosha_name="Bhakoot Dosha",
             is_present=has_bhakoot_dosha,
             is_cancelled=bhakoot_cancelled,
-            cancellation_reason=bhakoot_reason if bhakoot_cancelled else ("Bhakoot dosha is absent." if not has_bhakoot_dosha else "Bhakoot dosha present; financial discipline & remedies recommended."),
+            cancellation_reason=bhakoot_reason if bhakoot_cancelled else bhakoot_default_reason,
             shastra_citation="Muhurta Chintamani & Phaladeepika",
             severity="None" if (not has_bhakoot_dosha or bhakoot_cancelled) else "Moderate",
-            remedy="Recitation of Sri Vishnu Sahasranama and offering Tulsi on Thursdays." if (has_bhakoot_dosha and not bhakoot_cancelled) else "No remedy required.",
+            remedy=bhakoot_remedy,
         )
     )
 
@@ -1059,6 +1092,8 @@ def _evaluate_dosha_cancellations(
             nadi_reason = (
                 "উভয়ের নক্ষত্র একই কিন্তু চরণ/পদ ভিন্ন হওয়ায় শাস্ত্রসম্মতভাবে নাড়ী দোষ নিবৃত্ত হয়েছে।"
                 if lang == "bn"
+                else "दोनों का जन्म नक्षत्र एक ही है परंतु चरण भिन्न होने से शास्त्रीय नियमानुसार नाड़ी दोष समाप्त हो गया है।"
+                if lang == "hi"
                 else "Nadi Dosha is cancelled because both share the same Nakshatra but have different Padas (Charan Bheda)."
             )
         # Rule 2: Same Rashi, different Nakshatras
@@ -1067,6 +1102,8 @@ def _evaluate_dosha_cancellations(
             nadi_reason = (
                 "একই রাশি হওয়া সত্ত্বেও নক্ষত্র ভিন্ন হওয়ায় নাড়ী দোষ ভঙ্গ হয়েছে।"
                 if lang == "bn"
+                else "एक ही राशि होते हुए भी जन्म नक्षत्र भिन्न होने के कारण नाड़ी दोष भंग हो गया है।"
+                if lang == "hi"
                 else "Nadi Dosha is cancelled because both share the same Rashi but have different Nakshatras."
             )
         # Rule 3: Auspicious exempt Nakshatras
@@ -1075,18 +1112,36 @@ def _evaluate_dosha_cancellations(
             nadi_reason = (
                 "রোহিণী, মৃগশিরা, আর্দ্রা, হস্তা বা অনুরাধা নক্ষত্র জনিত কারণে নাড়ী দোষের অশুভত্ব বিনষ্ট হয়েছে।"
                 if lang == "bn"
+                else "रोहिणी, मृगशिरा, आर्द्रा, हस्त अथवा अनुराधा नक्षत्र के प्रभाव से नाड़ी दोष का कुप्रभाव समाप्त हो गया है।"
+                if lang == "hi"
                 else "Classical exemption applies for friendly stars (Rohini, Mrigashira, Ardra, Hasta, Anuradha)."
             )
+
+    nadi_default_reason = (
+        ("নাড়ী দোষ নেই (উভয়ের নাড়ী ভিন্ন)।" if not has_nadi_dosha else "একই নাড়ী বিদ্যমান এবং কোনো শাস্ত্রীয় ভঙ্গ যোগ নেই; বিশেষ সতর্কতা প্রয়োজন।")
+        if lang == "bn"
+        else ("नाड़ी दोष अनुपस्थित है (दोनों की नाड़ी भिन्न है)।" if not has_nadi_dosha else "समान नाड़ी उपस्थित है तथा कोई शास्त्रीय दोषभंग नहीं है; शारीरिक एवं आनुवंशिक सतर्कता आवश्यक है।")
+        if lang == "hi"
+        else ("Nadi dosha is absent (Different Nadis)." if not has_nadi_dosha else "Same Nadi present without classical cancellation; physiological care advised.")
+    )
+
+    nadi_remedy = (
+        ("প্রতিদিন ১০৮ বার মহামৃত্যুঞ্জয় মন্ত্র জপ এবং যোগ্য পাত্রে সুবর্ণ বা তিল দান।" if (has_nadi_dosha and not nadi_cancelled) else "কোনো প্রতিকারের প্রয়োজন নেই।")
+        if lang == "bn"
+        else ("नित्य १०८ बार महामृत्युंजय मंत्र जप एवं सुवर्ण या तिल का दान करें।" if (has_nadi_dosha and not nadi_cancelled) else "किसी उपाय की आवश्यकता नहीं है।")
+        if lang == "hi"
+        else ("Chanting of Mahamrityunjaya Mantra (108 times daily) and offering gold/sesame seeds." if (has_nadi_dosha and not nadi_cancelled) else "No remedy required.")
+    )
 
     cancellations.append(
         DoshaCancellationInfo(
             dosha_name="Nadi Dosha",
             is_present=has_nadi_dosha,
             is_cancelled=nadi_cancelled,
-            cancellation_reason=nadi_reason if nadi_cancelled else ("Nadi dosha is absent (Different Nadis)." if not has_nadi_dosha else "Same Nadi present without classical cancellation; physiological care advised."),
+            cancellation_reason=nadi_reason if nadi_cancelled else nadi_default_reason,
             shastra_citation="Brihat Parashara Hora Shastra (Adhyaya 81)",
             severity="None" if (not has_nadi_dosha or nadi_cancelled) else "Strong",
-            remedy="Chanting of Mahamrityunjaya Mantra (108 times daily) and offering gold/sesame seeds." if (has_nadi_dosha and not nadi_cancelled) else "No remedy required.",
+            remedy=nadi_remedy,
         )
     )
 
@@ -1096,14 +1151,38 @@ def _evaluate_dosha_cancellations(
     has_rajju_dosha = (b_rajjoo == g_rajjoo)
     rajju_info = RAJJU_ANATOMY.get(b_rajjoo, {"part": "General", "impact": "Longevity of bond", "bn": "রজ্জু দোষ"})
 
+    rajju_impact = (
+        ("রজ্জু দোষ অনুপস্থিত (উভয়ের রজ্জু ভিন্ন)।" if not has_rajju_dosha else rajju_info.get("bn", rajju_info["impact"]))
+        if lang == "bn"
+        else ("रज्जू दोष अनुपस्थित है (दोनों की रज्जू भिन्न है)।" if not has_rajju_dosha else rajju_info.get("hi", rajju_info["impact"]))
+        if lang == "hi"
+        else ("No negative impact (Different Rajjus)" if not has_rajju_dosha else rajju_info["impact"])
+    )
+
+    rajju_remedy = (
+        ("ভগবান শিব ও দেবী পার্বতীর পূজা এবং উমা-মহেশ্বর ব্রত পালন।" if has_rajju_dosha else "কোনো প্রতিকারের প্রয়োজন নেই।")
+        if lang == "bn"
+        else ("भगवान शिव एवं माता पार्वती की पूजा तथा उमा-महेश्वर व्रत का पालन करें।" if has_rajju_dosha else "किसी उपाय की आवश्यकता नहीं है।")
+        if lang == "hi"
+        else ("Worship of Lord Shiva and Goddess Parvati (Om Uma-Maheshwaraya Namah)." if has_rajju_dosha else "None needed.")
+    )
+
+    rajju_canc_reason = (
+        ("উভয়ের রজ্জু ভিন্ন হওয়ায় কোনো রজ্জু দোষ নেই; দীর্ঘায়ু নিশ্চিত।" if not has_rajju_dosha else f"উভয়েই {b_rajjoo} রজ্জুভুক্ত, যা দাম্পত্যের অঙ্গ সামঞ্জস্যকে প্রভাবিত করে।")
+        if lang == "bn"
+        else ("दोनों की रज्जू भिन्न होने से रज्जू दोष अनुपस्थित है; दांपत्य दीर्घायु सुरक्षित है।" if not has_rajju_dosha else f"दोनों {b_rajjoo} रज्जू से संबंधित हैं जो दांपत्य जीवन के अंग संतुलन को प्रभावित करती है।")
+        if lang == "hi"
+        else ("Both partners belong to different Rajjus, ensuring long marital longevity." if not has_rajju_dosha else f"Both belong to {b_rajjoo} Rajju affecting {rajju_info['part']}.")
+    )
+
     rajju_detail = RajjuDoshaDetail(
         is_present=has_rajju_dosha,
         rajju_type=b_rajjoo if has_rajju_dosha else "None",
         body_part=rajju_info["part"] if has_rajju_dosha else "-",
-        classical_impact=rajju_info["impact"] if has_rajju_dosha else "No negative impact (Different Rajjus)",
+        classical_impact=rajju_impact,
         male_rajju=b_rajjoo,
         female_rajju=g_rajjoo,
-        remedy="Worship of Lord Shiva and Goddess Parvati (Om Uma-Maheshwaraya Namah)." if has_rajju_dosha else "None needed.",
+        remedy=rajju_remedy,
     )
 
     cancellations.append(
@@ -1111,24 +1190,40 @@ def _evaluate_dosha_cancellations(
             dosha_name="Rajju Dosha",
             is_present=has_rajju_dosha,
             is_cancelled=False,
-            cancellation_reason="Both partners belong to different Rajjus, ensuring long marital longevity." if not has_rajju_dosha else f"Both belong to {b_rajjoo} Rajju affecting {rajju_info['part']}.",
+            cancellation_reason=rajju_canc_reason,
             shastra_citation="Muhurta Chintamani & Kalaprakasika",
             severity="Strong" if has_rajju_dosha else "None",
-            remedy="Recitation of Mrityunjaya Japa and Uma-Maheshwara Vrat." if has_rajju_dosha else "No remedy required.",
+            remedy=rajju_remedy,
         )
     )
 
     # 4. VEDHA DOSHA
     has_vedha_dosha = (b_nak_idx, g_nak_idx) in VEDHA_PAIRS
+    vedha_canc_reason = (
+        ("বেধ দোষ নেই; নক্ষত্রদ্বয়ের মাঝে কোনো বিরুদ্ধ বাধা নেই।" if not has_vedha_dosha else "নক্ষত্রদ্বয় পরস্পরের জন্য শাস্ত্রীয় বেধ শলাকায় অবস্থিত।")
+        if lang == "bn"
+        else ("वेध दोष अनुपस्थित है; नक्षत्रों के मध्य कोई बाधा नहीं है।" if not has_vedha_dosha else "दोनों नक्षत्र परस्पर वेध शलाका में स्थित हैं।")
+        if lang == "hi"
+        else ("Vedha dosha absent; no starry obstructions detected." if not has_vedha_dosha else "Nakshatras belong to mutually obstructive Vedha pair.")
+    )
+
+    vedha_remedy = (
+        ("বিবাহের পূর্বে নবগ্রহ শান্তি ও নক্ষত্র পূজা।" if has_vedha_dosha else "কোনো প্রতিকারের প্রয়োজন নেই।")
+        if lang == "bn"
+        else ("विवाह पूर्व नवग्रह शांति एवं नक्षत्र पूजन कराएं।" if has_vedha_dosha else "किसी उपाय की आवश्यकता नहीं है।")
+        if lang == "hi"
+        else ("Navagraha Shanti Puja prior to marriage." if has_vedha_dosha else "No remedy required.")
+    )
+
     cancellations.append(
         DoshaCancellationInfo(
             dosha_name="Vedha Dosha",
             is_present=has_vedha_dosha,
             is_cancelled=False,
-            cancellation_reason="Vedha dosha absent; no starry obstructions detected." if not has_vedha_dosha else "Nakshatras belong to mutually obstructive Vedha pair.",
+            cancellation_reason=vedha_canc_reason,
             shastra_citation="Jataka Parijata & Muhurta Chintamani",
             severity="Moderate" if has_vedha_dosha else "None",
-            remedy="Navagraha Shanti Puja prior to marriage." if has_vedha_dosha else "No remedy required.",
+            remedy=vedha_remedy,
         )
     )
 
@@ -1387,14 +1482,24 @@ def calculate_kundli_matching(payload: KundliMatchingRequest) -> KundliMatchingR
 
     is_compatible = (total_score >= 18.0) and manglik_match
 
-    if is_compatible:
+    if payload.language == "bn":
         verdict_summary = (
-            "All factors are conducive for the match. The couple can go ahead with this alliance "
-            "with mutual harmony and long-term domestic fulfillment."
+            "যোটক বিচারে সমস্ত বৈদিক উপাদান শুভ ও অনুকূল। বর ও কনে পারস্পরিক সম্প্রীতি ও দীর্ঘস্থায়ী দাম্পত্য সুখের সাথে বিবাহ বন্ধনে আবদ্ধ হতে পারেন।"
+            if is_compatible
+            else "যোটক বিচারে গ্রহগত বৈষম্য রয়েছে বা গুণ গ্রহণযোগ্য মাত্রার নিচে। বিবাহ চূড়ান্ত করার পূর্বে বিশেষ বৈদিক প্রতিকার ও অভিজ্ঞ জ্যোতিষীর পরামর্শ নেওয়া বাঞ্ছনীয়।"
+        )
+    elif payload.language == "hi":
+        verdict_summary = (
+            "कुंडली मिलान के सभी वैदिक घटक शुभ एवं अनुकूल हैं। वर-वधू आपसी सामंजस्य, सौहार्द तथा दीर्घकालिक दांपत्य सुख के साथ विवाह बंधन में बंध सकते हैं।"
+            if is_compatible
+            else "गुण मिलान में ग्रहीय असमानता है अथवा प्राप्तांक सामान्य सीमा से कम है। विवाह संस्कार से पूर्व वैदिक शांति उपाय एवं विद्वान ज्योतिषी से परामर्श आवश्यक है।"
         )
     else:
         verdict_summary = (
-            "The matching score contains astrological discord or falls below the standard threshold. "
+            "All factors are conducive for the match. The couple can go ahead with this alliance "
+            "with mutual harmony and long-term domestic fulfillment."
+            if is_compatible
+            else "The matching score contains astrological discord or falls below the standard threshold. "
             "Remedial consultation is advised before solemnizing the marriage."
         )
 
@@ -1422,33 +1527,74 @@ def calculate_kundli_matching(payload: KundliMatchingRequest) -> KundliMatchingR
     g_papa = girl_data["papasamya_score"]
     papa_diff = round(abs(b_papa.total_points - g_papa.total_points), 2)
     papa_balanced = papa_diff <= 4.0
+
+    if payload.language == "bn":
+        papa_verdict = "পাপসাম্য শুভ ও সুষম (উভয়ের পাপ প্রভাব ভারসাম্যে রয়েছে)" if papa_balanced else "পাপসাম্য অসম (উভয়ের পাপ পয়েন্টে উল্লেখযোগ্য ব্যবধান রয়েছে)"
+        papa_desc = (
+            "উভয় কুণ্ডলীতে ক্রূর গ্রহের প্রভাব সুষম হওয়ায় আয়ু ও পারিবারিক শান্তিতে কোনো বিঘ্ন ঘটবে না।"
+            if papa_balanced
+            else "পাপসাম্যের ব্যবধানের কারণে দাম্পত্যে পারস্পরিক ধৈর্য ও নির্দিষ্ট বৈদিক শান্তি পূজা করা সমীচীন।"
+        )
+    elif payload.language == "hi":
+        papa_verdict = "पापसाम्य शुभ एवं संतुलित (दोनों का पाप प्रभाव साम्यावस्था में है)" if papa_balanced else "पापसाम्य असंतुलित (दोनों के पाप अंकों में असमानता है)"
+        papa_desc = (
+            "दोनों कुंडलियों में क्रूर ग्रहों का प्रभाव संतुलित होने से दांपत्य दीर्घायु एवं पारिवारिक शांति सुनिश्चित होती है।"
+            if papa_balanced
+            else "पाप अंकों में अंतर के कारण आपसी समझ, धैर्य तथा विशेष वैदिक शांति पूजन की अनुशंसा की जाती है।"
+        )
+    else:
+        papa_verdict = "Balanced Malefic Forces (Papasamya Auspicious)" if papa_balanced else "Imbalanced Malefic Forces (Papasamya Disparity)"
+        papa_desc = (
+            "The malefic planetary energies in both horoscopes are well balanced, ensuring longevity and peaceful household."
+            if papa_balanced
+            else "A disparity in malefic points suggests intentional emotional patience and protective rituals."
+        )
+
     papasamya_result = PapasamyaResult(
         groom_score=b_papa,
         bride_score=g_papa,
         difference=papa_diff,
         is_balanced=papa_balanced,
-        verdict="Balanced Malefic Forces (পাপসাম্য শুভ)" if papa_balanced else "Imbalanced Malefic Forces (পাপসাম্য অসম)",
-        description=(
-            "The malefic planetary energies in both horoscopes are well balanced, ensuring longevity and peaceful household."
-            if papa_balanced
-            else "A disparity in malefic points suggests intentional emotional patience and protective rituals."
-        ),
+        verdict=papa_verdict,
+        description=papa_desc,
     )
 
     # Dasha Comparison
     b_dasha = boy_data["dasha_overview"]
     g_dasha = girl_data["dasha_overview"]
+
+    if payload.language == "bn":
+        dasha_verd = "অনুকূল দশা চক্র ও গ্রহের শুভ প্রবাহ"
+        dasha_desc = f"বরের বর্তমানে {b_dasha.current_mahadasha} মহাদশা এবং কনের {g_dasha.current_mahadasha} মহাদশা চলমান, যা পরস্পরের জন্য সহায়ক।"
+    elif payload.language == "hi":
+        dasha_verd = "अनुकूल दशा चक्र एवं शुभ ग्रहीय प्रभाव"
+        dasha_desc = f"वर की वर्तमान में {b_dasha.current_mahadasha} महादशा एवं वधू की {g_dasha.current_mahadasha} महादशा चल रही है, जो परस्पर सहायक है।"
+    else:
+        dasha_verd = "Harmonious Dasha Progression"
+        dasha_desc = f"Groom undergoes {b_dasha.current_mahadasha} Mahadasha, while Bride undergoes {g_dasha.current_mahadasha} Mahadasha with supportive planetary synergies."
+
     dasha_comp = DashaComparisonResult(
         groom_dasha=b_dasha,
         bride_dasha=g_dasha,
         dasha_sandhi_present=False,
-        dasha_compatibility_verdict="Harmonious Dasha Progression",
-        dasha_compatibility_description=f"Groom undergoes {b_dasha.current_mahadasha} Mahadasha, while Bride undergoes {g_dasha.current_mahadasha} Mahadasha with supportive planetary synergies.",
+        dasha_compatibility_verdict=dasha_verd,
+        dasha_compatibility_description=dasha_desc,
     )
 
     # Personality Trait Comparison
     b_traits = RASHI_TRAITS.get(boy_data["rashi_idx"] + 1, RASHI_TRAITS[1])
     g_traits = RASHI_TRAITS.get(girl_data["rashi_idx"] + 1, RASHI_TRAITS[2])
+
+    if payload.language == "bn":
+        comp_summary = f"এই সম্পর্ক {boy_data['rashi_info']['name_bn']}-র নির্ভীক স্বভাবের সাথে {girl_data['rashi_info']['name_bn']}-র কমনীয়তার ভারসাম্য রক্ষা করে একটি সুন্দর দাম্পত্যের বিকাশ ঘটায়।"
+    elif payload.language == "hi":
+        comp_summary = f"यह संबंध {boy_data['rashi_info'].get('name_hi', boy_data['rashi_info']['name_en'])} के साहसी स्वभाव एवं {girl_data['rashi_info'].get('name_hi', girl_data['rashi_info']['name_en'])} की सौम्यता का संतुलन स्थापित कर एक सुदृढ़ साझेदारी बनाता है।"
+    else:
+        comp_summary = (
+            f"The alliance balances {boy_data['rashi_info']['name_en']}'s {b_traits['pos'][0].lower()} nature with "
+            f"{girl_data['rashi_info']['name_en']}'s {g_traits['pos'][0].lower()} grace, creating a resilient partnership."
+        )
+
     personality = PersonalityTraitReport(
         groom_positive_traits=b_traits["pos"],
         groom_negative_traits=b_traits["neg"],
@@ -1456,10 +1602,7 @@ def calculate_kundli_matching(payload: KundliMatchingRequest) -> KundliMatchingR
         bride_positive_traits=g_traits["pos"],
         bride_negative_traits=g_traits["neg"],
         bride_summary=g_traits["summary"],
-        compatibility_summary=(
-            f"The alliance balances {boy_data['rashi_info']['name_en']}'s {b_traits['pos'][0].lower()} nature with "
-            f"{girl_data['rashi_info']['name_en']}'s {g_traits['pos'][0].lower()} grace, creating a resilient partnership."
-        ),
+        compatibility_summary=comp_summary,
     )
 
     # Detailed Manglik Breakdown for inspection
@@ -1475,13 +1618,26 @@ def calculate_kundli_matching(payload: KundliMatchingRequest) -> KundliMatchingR
     }
 
     # Classical Shastric Recommendation
-    classical_recommendation = (
-        "You can proceed with confidence with this marital alliance. The celestial energies exhibit high mutual respect, "
-        "emotional harmony, and joint prosperity. Observing traditional pre-marital rituals will further strengthen life-long happiness."
-        if is_compatible
-        else "While there are areas of mutual goodwill, careful remedial precautions (particularly concerning dosha balance) "
-        "are recommended before formalizing this partnership."
-    )
+    if payload.language == "bn":
+        classical_recommendation = (
+            "উভয়ের গ্রহাবস্থান অত্যন্ত শুভ এবং পারস্পরিক শ্রদ্ধা, মানসিক ঐক্য ও যৌথ সমৃদ্ধি নির্দেশ করে। আপনারা পূর্ণ আস্থার সাথে এই বিবাহ সম্পন্ন করতে পারেন।"
+            if is_compatible
+            else "উভয়ের মাঝে আন্তরিকতা থাকলেও কুণ্ডলীতে গ্রহগত দোষ বা বৈষম্য রয়েছে। এই সম্পর্ক চূড়ান্ত করার আগে শাস্ত্রীয় প্রতিকার ও শান্তি বিধান করা কল্যাণকর।"
+        )
+    elif payload.language == "hi":
+        classical_recommendation = (
+            "दोनों का ग्रह सामंजस्य अत्यंत शुभ है जो परस्पर सम्मान, भावनात्मक तालमेल तथा संयुक्त समृद्धि का सूचक है। आप पूर्ण विश्वास के साथ इस वैवाहिक संबंध में आगे बढ़ सकते हैं।"
+            if is_compatible
+            else "परस्पर सद्भाव होने के बावजूद कुंडली में कुछ दोष या असंतुलन विद्यमान हैं। विवाह से पूर्व शास्त्रीय शांति उपाय एवं परामर्श लेना हितकर रहेगा।"
+        )
+    else:
+        classical_recommendation = (
+            "You can proceed with confidence with this marital alliance. The celestial energies exhibit high mutual respect, "
+            "emotional harmony, and joint prosperity. Observing traditional pre-marital rituals will further strengthen life-long happiness."
+            if is_compatible
+            else "While there are areas of mutual goodwill, careful remedial precautions (particularly concerning dosha balance) "
+            "are recommended before formalizing this partnership."
+        )
 
     forecast = _calculate_marriage_life_forecast(
         boy_data=boy_data,

@@ -676,6 +676,7 @@ def _calculate_badhaka_maraka(
     asc_sign_idx: int,
     cusps: list[KPCuspDetail],
     planets: list[KPPlanetDetail],
+    language: str = "en",
 ) -> KPBadhakaMarakaInfo:
     """Calculates Badhaka and Maraka Sthanas per classical KP rules:
     - Movable Ascendant (Aries, Cancer, Libra, Capricorn) -> 11th House is Badhaka
@@ -684,17 +685,47 @@ def _calculate_badhaka_maraka(
     - 2nd and 7th Houses are Maraka Sthanas.
     """
     if asc_sign_idx in (0, 3, 6, 9):
-        asc_type = "Movable (Chara)"
+        asc_type = (
+            "চর (Movable)" if language == "bn"
+            else "चर (Movable)" if language == "hi"
+            else "Movable (Chara)"
+        )
         badhaka_house = 11
-        note = "For Movable Ascendant, 11th House is Badhaka Sthana. Planetary activations to 11th may bring sudden obstacles."
+        note = (
+            "চর লগ্নের ক্ষেত্রে একাদশ (১১শ) ভাব হলো বাধক স্থান। ১১শ ভাবে গ্রহের সক্রিয়তা আকস্মিক বাধা বা বিলম্ব আনতে পারে।"
+            if language == "bn"
+            else "चर लग्न के लिए एकादश (११वां) भाव बाधक स्थान होता है। ११वें भाव की सक्रियता से कार्यों में अचानक बाधा आ सकती है।"
+            if language == "hi"
+            else "For Movable Ascendant, 11th House is Badhaka Sthana. Planetary activations to 11th may bring sudden obstacles."
+        )
     elif asc_sign_idx in (1, 4, 7, 10):
-        asc_type = "Fixed (Sthira)"
+        asc_type = (
+            "স্থির (Fixed)" if language == "bn"
+            else "स्थिर (Fixed)" if language == "hi"
+            else "Fixed (Sthira)"
+        )
         badhaka_house = 9
-        note = "For Fixed Ascendant, 9th House is Badhaka Sthana. Higher journeys or paternal matters may encounter friction."
+        note = (
+            "স্থির লগ্নের ক্ষেত্রে নবম (৯ম) ভাব হলো বাধক স্থান। পিতৃপক্ষ বা উচ্চশিক্ষা/দূরযাত্রায় অপ্রত্যাশিত বাধা সৃষ্টি হতে পারে।"
+            if language == "bn"
+            else "स्थिर लग्न के लिए नवम (९वां) भाव बाधक स्थान होता है। उच्च यात्राओं या पैतृक मामलों में बाधाएं आ सकती हैं।"
+            if language == "hi"
+            else "For Fixed Ascendant, 9th House is Badhaka Sthana. Higher journeys or paternal matters may encounter friction."
+        )
     else:
-        asc_type = "Dual (Dwiswabhava)"
+        asc_type = (
+            "দ্বি-স্বভাব (Dual)" if language == "bn"
+            else "द्विस्वभाव (Dual)" if language == "hi"
+            else "Dual (Dwiswabhava)"
+        )
         badhaka_house = 7
-        note = "For Dual Ascendant, 7th House is Badhaka Sthana. Partnerships and public dealings require extra discernment."
+        note = (
+            "দ্বি-স্বভাব লগ্নের ক্ষেত্রে সপ্তম (৭ম) ভাব হলো বাধক স্থান। অংশীদারিত্ব বা জনসংযোগের ক্ষেত্রে সতর্ক বিচার প্রয়োজন।"
+            if language == "bn"
+            else "द्विस्वभाव लग्न के लिए सप्तम (७वां) भाव बाधक स्थान होता है। साझेदारी एवं वैवाहिक मामलों में विशेष सावधानी आवश्यक है।"
+            if language == "hi"
+            else "For Dual Ascendant, 7th House is Badhaka Sthana. Partnerships and public dealings require extra discernment."
+        )
 
     badhaka_c = cusps[badhaka_house - 1]
     badhaka_sign = badhaka_c.sign
@@ -871,6 +902,13 @@ def _calculate_kp_life_events(
         verdict = v_bn if language == "bn" else v_hi if language == "hi" else v_en
         desc = ev.get(f"rule_{language}", ev["rule_en"])
 
+        if language == "bn":
+            timing_hint = f"{csl_name} বা {csl_star}-এর দশা/অন্তর্দশায় {fav_matches} ভাব সক্রিয় হলে ফল পাওয়া যাবে।"
+        elif language == "hi":
+            timing_hint = f"{csl_name} या {csl_star} की दशा/अंतर्दशा में भाव {fav_matches} के सक्रिय होने पर फल मिलेगा।"
+        else:
+            timing_hint = f"Active during Dasha/Antardasha of {csl_name} or {csl_star} signifying houses {fav_matches}."
+
         results.append(
             KPEventAnalysisItem(
                 category=ev["category"],
@@ -885,24 +923,24 @@ def _calculate_kp_life_events(
                 promise_score=promise_score,
                 verdict=verdict,
                 description=desc,
-                timing_hint=f"Active during Dasha/Antardasha of {csl_name} or {csl_star} signifying houses {fav_matches}.",
+                timing_hint=timing_hint,
             )
         )
 
     return results
 
 
-def _calculate_kp_aspects(planets: list[KPPlanetDetail]) -> list[KPAspectItem]:
+def _calculate_kp_aspects(planets: list[KPPlanetDetail], language: str = "en") -> list[KPAspectItem]:
     """Calculates Western & KP Angular Aspects with precise orbs:
     Conjunction (0° ±8°), Sextile (60° ±6°), Square (90° ±6°), Trine (120° ±8°), Opposition (180° ±8°).
     """
     aspects = []
     aspect_defs = [
-        ("Conjunction", "☌", 0.0, 8.0, "Harmonious", "Intense merger and blending of planetary forces."),
-        ("Sextile", "⚹", 60.0, 6.0, "Harmonious", "Favorable cooperative flow and friendly opportunities."),
-        ("Square", "□", 90.0, 6.0, "Challenging", "Dynamic tension, testing hurdles, and growth through effort."),
-        ("Trine", "△", 120.0, 8.0, "Harmonious", "Effortless luck, fortune, and highest harmonious synergy."),
-        ("Opposition", "☍", 180.0, 8.0, "Challenging", "Polarity, direct confrontation, or need for balance."),
+        ("Conjunction", "☌", 0.0, 8.0, "Harmonious", "Intense merger and blending of planetary forces.", "গ্রহদ্বয়ের শক্তির নিবিড় মিলন ও সমন্বয়।", "ग्रह शक्तियों का गहन मिलन एवं समन्वय।"),
+        ("Sextile", "⚹", 60.0, 6.0, "Harmonious", "Favorable cooperative flow and friendly opportunities.", "পারস্পরিক সহায়তা ও শুভ সুযোগের সৃষ্টি।", "सकारात्मक सहयोग एवं अनुकूल अवसरों की प्राप्ति।"),
+        ("Square", "□", 90.0, 6.0, "Challenging", "Dynamic tension, testing hurdles, and growth through effort.", "কর্মপ্রচেষ্টার মাধ্যমে বাধা অতিক্রম ও মানসিক সংঘাত।", "कठिन प्रयास व संघर्ष के उपरांत सफलता।"),
+        ("Trine", "△", 120.0, 8.0, "Harmonious", "Effortless luck, fortune, and highest harmonious synergy.", "অক্লান্ত সৌভাগ্য, সর্বোচ্চ সম্প্রীতি ও দৈব অনুগ্রহ।", "सहज सौभाग्य, उच्च सामंजस्य व दैवीय कृपा।"),
+        ("Opposition", "☍", 180.0, 8.0, "Challenging", "Polarity, direct confrontation, or need for balance.", "সরাসরি সংঘাত ও ভারসাম্য রক্ষার প্রয়োজনীয়তা।", "प्रत्यक्ष टकराव एवं संतुलन बनाए रखने की आवश्यकता।"),
     ]
 
     n = len(planets)
@@ -914,9 +952,17 @@ def _calculate_kp_aspects(planets: list[KPPlanetDetail]) -> list[KPAspectItem]:
             if diff > 180.0:
                 diff = 360.0 - diff
 
-            for asp_name, asp_sym, target_angle, orb, nature, sig in aspect_defs:
+            for item in aspect_defs:
+                asp_name, asp_sym, target_angle, orb, nature, sig_en, sig_bn, sig_hi = item
                 actual_orb = abs(diff - target_angle)
                 if actual_orb <= orb:
+                    if language == "bn":
+                        sig = f"{p1.name} ও {p2.name} {asp_name} ({asp_sym}) দৃষ্টিতে আবদ্ধ। {sig_bn}"
+                    elif language == "hi":
+                        sig = f"{p1.name} और {p2.name} {asp_name} ({asp_sym}) दृष्टि में स्थित हैं। {sig_hi}"
+                    else:
+                        sig = f"{p1.name} and {p2.name} in {asp_name} ({asp_sym}). {sig_en}"
+
                     aspects.append(
                         KPAspectItem(
                             planet_1=p1.name,
@@ -926,7 +972,7 @@ def _calculate_kp_aspects(planets: list[KPPlanetDetail]) -> list[KPAspectItem]:
                             angle_degrees=round(diff, 2),
                             orb_degrees=round(actual_orb, 2),
                             nature=nature,
-                            significance=f"{p1.name} and {p2.name} in {asp_name} ({asp_sym}). {sig}",
+                            significance=sig,
                         )
                     )
                     break
@@ -1669,7 +1715,7 @@ def calculate_kp(payload: KPCalculateRequest) -> KPCalculateResponse:
 
     # 8. Advanced KP Modules (Significators, Life Events, Aspects, Badhaka/Maraka, Remedies)
     planet_sigs, house_sigs = _calculate_significators(planets_table, cusps_table)
-    badhaka_maraka = _calculate_badhaka_maraka(asc_sign_idx, cusps_table, planets_table)
+    badhaka_maraka = _calculate_badhaka_maraka(asc_sign_idx, cusps_table, planets_table, language=payload.language)
     life_events = _calculate_kp_life_events(
         cusps=cusps_table,
         planet_sigs=planet_sigs,
@@ -1677,7 +1723,7 @@ def calculate_kp(payload: KPCalculateRequest) -> KPCalculateResponse:
         badhaka_house=badhaka_maraka.badhaka_house,
         language=payload.language,
     )
-    aspects = _calculate_kp_aspects(planets_table)
+    aspects = _calculate_kp_aspects(planets_table, language=payload.language)
     remedies = _calculate_kp_remedies(
         planets=planets_table,
         cusps=cusps_table,

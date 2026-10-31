@@ -454,9 +454,12 @@ def describe(
         out["cost_coins"] = cost
         out["is_free"] = cost == 0
 
-    if platform is not None and feature.enabled_field:
-        if getattr(platform, feature.enabled_field, True) is False:
-            out["currently_unavailable"] = True
+    if (
+        platform is not None
+        and feature.enabled_field
+        and getattr(platform, feature.enabled_field, True) is False
+    ):
+        out["currently_unavailable"] = True
 
     if balance is None:
         out["wallet"] = "not signed in"
