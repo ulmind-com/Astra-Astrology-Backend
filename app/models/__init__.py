@@ -15,6 +15,7 @@ from app.models.review import Review
 from app.models.ai_astrologer import (
     AIChatFeedback,
     AIChatSession,
+    AIUserMemory,
     AICustomRule,
     AIKnowledgeDoc,
 )
@@ -55,6 +56,7 @@ DOCUMENT_MODELS: list[type[Document]] = [
     AIKnowledgeDoc,
     AICustomRule,
     AIChatSession,
+    AIUserMemory,
     AIChatFeedback,
 ]
 

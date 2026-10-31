@@ -79,6 +79,25 @@ class AIChatSession(TimestampedDocument):
         ]
 
 
+class AIUserMemory(TimestampedDocument):
+    """What the assistant remembers about one person between visits.
+
+    Deliberately small. It is prepended to the system context on every request,
+    so it is capped on write as well as on read — see `services/ai/memory.py`.
+    """
+
+    user_id: PydanticObjectId
+    #: [{"fact": str, "at": datetime}], oldest first, newest kept.
+    facts: list[dict] = Field(default_factory=list)
+    last_seen_at: datetime | None = None
+
+    class Settings:
+        name = "ai_user_memory"
+        indexes = [
+            pymongo.IndexModel([("user_id", pymongo.ASCENDING)], unique=True),
+        ]
+
+
 class AIChatFeedback(TimestampedDocument):
     """User feedback on AI responses for continuous self-learning & Human-in-the-Loop review."""
 

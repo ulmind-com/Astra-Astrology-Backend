@@ -15,6 +15,7 @@ from app.schemas.astrology import (
     KundliMatchingPersonInput,
     KundliMatchingRequest,
 )
+from app.services.ai import memory as ai_memory
 from app.services.ai import product_guide, retrieval
 from app.services.ai.knowledge_service import (
     corpus_vocabulary,
@@ -57,8 +58,12 @@ TOOLS — match the question, don't default to the birth chart
 - "how will today/this week go" → get_daily_horoscope_tool, then calculate_kundli_tool for the running dasha.
 - "when will I get a job/married/a child" → calculate_kundli_tool, answer from the running dasha.
 - compatibility → calculate_matchmaking_tool · numbers/names → calculate_numerology_tool · classical rules, vastu, palmistry, remedies → search_vedic_rules_tool.
+- wants to talk to a real astrologer, or a question that genuinely needs one → find_astrologer_tool. Offer it once, naturally, at the end of your own answer — "I read it this way; X specialises in this and is online now at N coins a minute, shall I point you there?" Never lead with it, never push, never offer it twice in a conversation, and always give your own reading first.
 - "how do I use X", "where is X", "what does X cost", "what can you do", anything about coins, wallet or recharge → app_guide_tool. You are this app's guide as well as its astrologer: give the steps in order, say what it costs, and check their balance. If they cannot afford it, say how many coins short they are and point them to /account/wallet — warmly, not as a sales pitch. If they are not signed in, ask them to sign in rather than telling them to recharge.
 Use what is in [USER STORED BIRTH DETAILS] silently; never ask for details you already have. Never print tool names, JSON, field names, or a sign as a bare number.
+
+MEMORY
+If something is worth knowing next time — what they are worried about, a decision they are weighing, a date you quoted them, their line of work — add a line `[REMEMBER: one short fact]`. Write it as a note to yourself, in English, one fact per tag, at most two per reply. Never record passwords, OTPs, card or ID numbers. Do not announce that you are remembering; the tag is stripped before they see it. If [WHAT YOU REMEMBER ABOUT THIS USER] is above, use it naturally — refer back to it the way a person would, do not recite it.
 
 End with 2-3 short follow-ups:
 [FOLLOW_UP: ...]
@@ -237,6 +242,23 @@ ASTRO_TOOLS = [
                     "boy_day", "boy_month", "boy_year",
                     "girl_day", "girl_month", "girl_year",
                 ],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "find_astrologer_tool",
+            "description": "Human astrologers who are online right now, with their rate per minute. Use when the user wants to talk to a real person, or when a question genuinely needs one.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "skill": {
+                        "type": "string",
+                        "description": "Optional speciality, e.g. career, marriage, vastu, numerology, palmistry",
+                    }
+                },
+                "required": [],
             },
         },
     },
@@ -624,6 +646,46 @@ async def _execute_local_tool(
             })
             return json.dumps(summary, ensure_ascii=False), tool_citations
 
+        elif func_name == "find_astrologer_tool":
+            from app.services import astrologer as astrologer_service
+            from app.schemas.astrologer import AstrologerFilters
+
+            # Online only, and presence is re-judged against the clock inside
+            # the service: an astrologer whose panel closed without a clean
+            # disconnect still has is_online set in MongoDB, and offering
+            # someone a consultation with a person who is not there is worse
+            # than offering nothing.
+            page = await astrologer_service.list_public(
+                AstrologerFilters(online_only=True, skill=None), page=1, limit=5
+            )
+            listed = []
+            for a in page.items:
+                rate = (a.rates.chat_coins_per_minute if a.rates else None) or 0
+                listed.append({
+                    "name": a.display_name,
+                    "profile": f"/astrologers/{a.slug or a.id}",
+                    "speciality": a.tagline or "",
+                    "skills": [str(sk) for sk in (a.skills or [])][:3],
+                    "languages": (a.languages or [])[:3],
+                    "experience_years": a.experience_years,
+                    "rating": round(a.rating.average, 2) if a.rating else None,
+                    "chat_coins_per_minute": rate,
+                    "takes_calls": "call" in [str(m) for m in (a.modes_enabled or [])],
+                })
+
+            payload = {"online_now": listed, "count": len(listed)}
+            if not listed:
+                payload["note"] = (
+                    "Nobody is online this minute. They can browse /astrologers "
+                    "and book a time at /appointments."
+                )
+            tool_citations.append({
+                "source": "Astra Astrology — astrologers online now",
+                "category": "astrologers",
+                "snippet": f"{len(listed)} astrologer(s) available.",
+            })
+            return json.dumps(payload, ensure_ascii=False), tool_citations
+
         elif func_name == "app_guide_tool":
             from app.services import settings as settings_service
 
@@ -682,6 +744,67 @@ async def _execute_local_tool(
         return json.dumps({"error": f"Tool execution failed: {str(e)}"}), tool_citations
 
     return json.dumps({"status": "unknown_tool"}), tool_citations
+
+
+#: Page markers and the debris of a bad PDF extraction.
+_PAGE_MARKER = re.compile(r"=+\s*PAGE\s*\d+\s*=+", re.IGNORECASE)
+
+#: Symbols that appear *inside* a word only when an extraction has gone wrong.
+_INWORD_JUNK = re.compile(r"[!@#$%^&*|\\~`<>{}\[\]+=()\"]")
+
+#: Share of a line's words that may look broken before the line is dropped.
+_GARBLE_RATIO = 0.12
+
+_VOWELS = set("aeiouAEIOU")
+
+
+def _word_looks_broken(word: str) -> bool:
+    """Whether a word shows the marks of a failed text extraction.
+
+    Two signs, because the failure mode in this corpus is not random noise. A
+    bad extract substitutes symbols for letters — "t!elve", "#rts" — and it
+    drops vowels outright: "Zodic", "clssified", "degrees" becoming "degree".
+    Counting odd punctuation alone misses the second kind entirely, which is
+    most of it.
+
+    Native scripts are exempt: the vowel test is meaningless for them.
+    """
+    if _INWORD_JUNK.search(word):
+        return True
+    letters = [c for c in word if c.isalpha()]
+    if len(letters) < 4 or not all(ord(c) < 128 for c in letters):
+        return False
+    return not any(c in _VOWELS for c in letters)
+
+
+def _readable(text: str, limit: int) -> str:
+    """A passage fit to show a reader, or nothing.
+
+    The local fallback used to paste a retrieved passage straight into the
+    reply. Several of the client's PDFs extracted badly — "The division of
+    Zodic into t!elve e\"ul #rts of $0 degree" is a real line from the live
+    corpus — so a user whose question arrived during a rate limit was shown a
+    page marker and a paragraph of mangled characters.
+
+    Lines that look broken are dropped, page markers go, and if too little
+    survives to be worth reading, nothing is returned rather than something
+    embarrassing.
+    """
+    if not text:
+        return ""
+    kept: list[str] = []
+    for line in _PAGE_MARKER.sub("", text).splitlines():
+        words = line.split()
+        if len(words) < 3:
+            continue
+        broken = sum(1 for w in words if _word_looks_broken(w))
+        if broken / len(words) > _GARBLE_RATIO:
+            continue
+        kept.append(line.strip())
+    out = " ".join(kept).strip()
+    if len(out) < 80:
+        return ""
+    return out[:limit].rsplit(" ", 1)[0] + "…"
 
 
 async def _local_astrological_fallback(
@@ -792,7 +915,7 @@ async def _local_astrological_fallback(
                     }
                 reply_parts.append(
                     f"নমস্কার। শাস্ত্রীয় বৈদিক নথি ও ক্লায়েন্টের নির্দেশিকা অনুযায়ী আপনার প্রশ্নের সমাধান:\n\n"
-                    f"{docs[0]['content'][:600]}...\n\n"
+                    f"{_readable(docs[0]['content'], 600)}\n\n"
                     f"**শাস্ত্রীয় পরামর্শ:** কোনো শুভ কাজ সূচনার পূর্বে অনুকূল গ্রহের হোরা ও শুভ নক্ষত্র বল বিবেচনা করে পদক্ষেপ নেওয়া শ্রেয়।"
                 )
         except Exception:
@@ -826,13 +949,23 @@ async def _local_astrological_fallback(
     }
 
 
-async def generate_astrology_response(
+async def _prepare(
     messages: list[dict[str, Any]],
     user_birth_details: dict[str, Any] | None = None,
     preferred_language: str = "bn",
     stream: bool = False,
     user_id: Any = None,
 ) -> dict[str, Any]:
+    """Everything both the streaming and non-streaming paths need.
+
+    Extracted so the two cannot drift. The gate, the memory, the
+    precomputed chart and the prompt assembly are identical either way;
+    only the delivery differs, and a second copy of this would be a second
+    place for a rule to be forgotten.
+
+    Returns `{"refusal": {...}}` when the question is not ours, otherwise
+    the assembled request.
+    """
     """Sends prompt & conversation history to Groq (openai/gpt-oss-120b),
 
     executes tool calls deterministically, and produces a 100% verified astrological synthesis.
@@ -872,23 +1005,27 @@ async def generate_astrology_response(
             "AI question refused ({}): {!r}", verdict.reason, latest_user_text[:120]
         )
         return {
-            "reply": retrieval.refusal_text(preferred_language),
-            "tools_called": [],
-            "citations": [],
-            "suggested_followups": _REFUSAL_FOLLOWUPS.get(
-                preferred_language, _REFUSAL_FOLLOWUPS["en"]
-            ),
-            "answered": False,
-            "refusal_reason": verdict.reason,
+            "refusal": {
+                "reply": retrieval.refusal_text(preferred_language),
+                "tools_called": [],
+                "citations": [],
+                "suggested_followups": _REFUSAL_FOLLOWUPS.get(
+                    preferred_language, _REFUSAL_FOLLOWUPS["en"]
+                ),
+                "answered": False,
+                "refusal_reason": verdict.reason,
+            }
         }
 
     custom_rules = await match_custom_rules(latest_user_text)
 
     # If Groq API key is not configured, gracefully fallback to local authoritative astrology synthesis
     if not settings.GROQ_API_KEY:
-        return await _local_astrological_fallback(
-            latest_user_text, custom_rules, user_birth_details, preferred_language
-        )
+        return {
+            "refusal": await _local_astrological_fallback(
+                latest_user_text, custom_rules, user_birth_details, preferred_language
+            )
+        }
 
     headers = {
         "Authorization": f"Bearer {settings.GROQ_API_KEY}",
@@ -897,6 +1034,11 @@ async def generate_astrology_response(
 
     tools_called: list[str] = []
     citations_map: dict[str, dict[str, str]] = {}
+
+    # What we already know about this person. Bounded hard — see memory.py —
+    # because this rides along on every request against the token budget.
+    remembered, last_seen = await ai_memory.load(user_id)
+    memory_context = ai_memory.to_context(remembered, last_seen)
 
     custom_rules_context = ""
     if custom_rules:
@@ -958,7 +1100,11 @@ async def generate_astrology_response(
     )
 
     full_system_prompt = (
-        ASTROLOGER_SYSTEM_PROMPT + birth_context + custom_rules_context + lang_instruction
+        ASTROLOGER_SYSTEM_PROMPT
+        + memory_context
+        + birth_context
+        + custom_rules_context
+        + lang_instruction
     )
 
     api_messages: list[dict[str, Any]] = [
@@ -980,7 +1126,50 @@ async def generate_astrology_response(
             "snippet": r.response_bn[:160] + "...",
         }
 
-    model_to_use = settings.GROQ_DEFAULT_MODEL or "openai/gpt-oss-120b"
+    return {
+        "api_messages": api_messages,
+        "model": settings.GROQ_DEFAULT_MODEL or "openai/gpt-oss-120b",
+        "headers": headers,
+        "tools_called": tools_called,
+        "citations_map": citations_map,
+        "remembered": remembered,
+        "language": preferred_language,
+        "latest_user_text": latest_user_text,
+        "custom_rules": custom_rules,
+        "user_birth_details": user_birth_details,
+        "user_id": user_id,
+    }
+
+
+async def generate_astrology_response(
+    messages: list[dict[str, Any]],
+    user_birth_details: dict[str, Any] | None = None,
+    preferred_language: str = "bn",
+    stream: bool = False,
+    user_id: Any = None,
+) -> dict[str, Any]:
+    """A complete reply, waited for.
+
+    The whole answer arrives at once. `stream_astrology_response` is the
+    same conversation delivered as it is written; both share `_prepare`.
+    """
+    prepared = await _prepare(
+        messages, user_birth_details, preferred_language, stream, user_id
+    )
+    if "refusal" in prepared:
+        return prepared["refusal"]
+
+    api_messages = prepared["api_messages"]
+    headers = prepared["headers"]
+    model_to_use = prepared["model"]
+    tools_called = prepared["tools_called"]
+    citations_map = prepared["citations_map"]
+    remembered = prepared["remembered"]
+    preferred_language = prepared["language"]
+    latest_user_text = prepared["latest_user_text"]
+    custom_rules = prepared["custom_rules"]
+    user_birth_details = prepared["user_birth_details"]
+    user_id = prepared["user_id"]
 
     async with httpx.AsyncClient(timeout=45.0) as client:
         payload = {
@@ -990,6 +1179,7 @@ async def generate_astrology_response(
             "tool_choice": "auto",
             "temperature": 0.3,
             "max_tokens": MAX_REPLY_TOKENS,
+            **_reasoning(model_to_use),
         }
 
         try:
@@ -1074,6 +1264,7 @@ async def generate_astrology_response(
                         "tool_choice": "auto",
                         "temperature": 0.3,
                         "max_tokens": MAX_REPLY_TOKENS,
+                        **_reasoning(payload["model"]),
                     },
                 )
                 if next_resp.status_code >= 400:
@@ -1117,6 +1308,13 @@ async def generate_astrology_response(
 
     final_content = "\n".join(clean_lines).strip()
 
+    # [REMEMBER: …] is an instruction to us, never something a reader sees.
+    # Writing facts this way costs nothing: they come back inside the reply the
+    # model was already producing, rather than from a second call.
+    final_content, new_facts = ai_memory.extract(final_content)
+    if user_id and new_facts:
+        await ai_memory.save(user_id, ai_memory.merge(remembered, new_facts))
+
     if not followups:
         followups = [
             "আমার কুন্ডলীতে কোন কোন রাজযোগ আছে?",
@@ -1139,3 +1337,292 @@ async def generate_astrology_response(
         "citations": list(citations_map.values()),
         "suggested_followups": followups[:3],
     }
+
+
+# ---------------------------------------------------------------------------
+# Streaming
+# ---------------------------------------------------------------------------
+class AIStreamError(RuntimeError):
+    """Groq refused a streamed round."""
+
+
+#: What a status event says while the tools run. The user is looking at an
+#: empty bubble for those seconds, and "consulting your chart" is both true and
+#: far better than a spinner.
+_TOOL_STATUS = {
+    "calculate_kundli_tool": "Reading your chart…",
+    "get_daily_horoscope_tool": "Checking today's sky…",
+    "calculate_numerology_tool": "Working out your numbers…",
+    "calculate_matchmaking_tool": "Matching the two charts…",
+    "search_vedic_rules_tool": "Looking it up in the classics…",
+    "find_astrologer_tool": "Seeing who is online…",
+    "app_guide_tool": "Checking how that works…",
+}
+
+
+def _reasoning(model: str) -> dict[str, str]:
+    """Keep gpt-oss's thinking short.
+
+    gpt-oss reasons before it answers, and by default it reasons at length —
+    measured here, 2,232 characters of it on a simple question. That thinking
+    is charged against the same `max_tokens` as the reply, so with a 900-token
+    cap the model used the entire budget deliberating and emitted **no answer
+    at all**: a stream of 855 chunks containing nothing a reader could see.
+
+    At "low" the same question reasoned 118 characters and went straight to
+    calling the tool it needed. Shorter thinking, an actual answer, and fewer
+    tokens against the free tier's 8,000 a minute.
+
+    Only gpt-oss takes this parameter, so it is only sent to gpt-oss.
+    """
+    return {"reasoning_effort": "low"} if "gpt-oss" in (model or "") else {}
+
+
+def _merge_tool_call_deltas(
+    accumulated: dict[int, dict[str, Any]], deltas: list[dict[str, Any]]
+) -> None:
+    """Stitch streamed tool calls back together.
+
+    A tool call does not arrive whole. The name comes in one chunk and the
+    JSON arguments dribble in across many, keyed by `index`, so they have to be
+    concatenated before anything can be parsed. Treating each chunk as a call
+    in its own right is the classic way to end up executing nothing.
+    """
+    for delta in deltas:
+        index = delta.get("index", 0)
+        slot = accumulated.setdefault(
+            index, {"id": "", "function": {"name": "", "arguments": ""}}
+        )
+        if delta.get("id"):
+            slot["id"] = delta["id"]
+        function = delta.get("function") or {}
+        if function.get("name"):
+            slot["function"]["name"] = function["name"]
+        if function.get("arguments"):
+            slot["function"]["arguments"] += function["arguments"]
+
+
+async def stream_astrology_response(
+    messages: list[dict[str, Any]],
+    user_birth_details: dict[str, Any] | None = None,
+    preferred_language: str = "bn",
+    user_id: Any = None,
+):
+    """The same reply, delivered as it is written.
+
+    Yields dicts the endpoint turns into server-sent events:
+
+        {"type": "status", "message": …}   while a tool runs
+        {"type": "delta",  "text": …}      a piece of the answer
+        {"type": "done",   …}              citations, follow-ups, tools used
+        {"type": "error",  "message": …}   something the reader can act on
+
+    The tool rounds stream too. Groq sends tool calls as deltas like anything
+    else, so there is no need to make an unstreamed call first and then a
+    second one to stream the answer — which would cost a whole extra round
+    against a budget of 8,000 tokens a minute.
+
+    Control tags are held back by `TagShield`: `[REMEMBER: …]` is a note the
+    assistant writes to itself about the reader, and streaming it raw would put
+    it on their screen.
+    """
+    prepared = await _prepare(
+        messages, user_birth_details, preferred_language, True, user_id
+    )
+    if "refusal" in prepared:
+        refusal = prepared["refusal"]
+        yield {"type": "delta", "text": refusal["reply"]}
+        yield {
+            "type": "done",
+            "reply": refusal["reply"],
+            "tools_called": refusal.get("tools_called", []),
+            "citations": refusal.get("citations", []),
+            "suggested_followups": refusal.get("suggested_followups", []),
+            "answered": refusal.get("answered", False),
+        }
+        return
+
+    api_messages = prepared["api_messages"]
+    headers = prepared["headers"]
+    model = prepared["model"]
+    tools_called = prepared["tools_called"]
+    citations_map = prepared["citations_map"]
+    remembered = prepared["remembered"]
+    language = prepared["language"]
+
+    shield = ai_memory.TagShield()
+    raw_reply = ""
+
+    try:
+        async with httpx.AsyncClient(timeout=90.0) as client:
+            for _ in range(MAX_TOOL_ROUNDS):
+                payload = {
+                    "model": model,
+                    "messages": api_messages,
+                    "tools": ASTRO_TOOLS,
+                    "tool_choice": "auto",
+                    "temperature": 0.3,
+                    "max_tokens": MAX_REPLY_TOKENS,
+                    "stream": True,
+                    **_reasoning(model),
+                }
+
+                tool_calls: dict[int, dict[str, Any]] = {}
+                content_this_round = ""
+
+                # `_post_groq`'s retry cannot be reused here — that helper
+                # buffers a whole response — so the same wait-out is done
+                # inline. Without it a streamed answer fell back to canned
+                # text on a rate limit that Groq said to wait four seconds for.
+                attempt = 0
+                while True:
+                    stream_cm = client.stream(
+                        "POST", GROQ_CHAT_URL, headers=headers, json=payload
+                    )
+                    response = await stream_cm.__aenter__()
+                    if response.status_code != 429 or attempt:
+                        break
+                    body = (await response.aread()).decode("utf-8", "replace")
+                    await stream_cm.__aexit__(None, None, None)
+                    match = _RETRY_AFTER.search(body)
+                    delay = float(match.group(1)) if match else 1.0
+                    if delay > MAX_RATE_LIMIT_WAIT:
+                        logger.warning("Rate limited for {:.0f}s; not waiting", delay)
+                        raise AIStreamError(429)
+                    logger.info("Stream rate limited; waiting {:.1f}s", delay)
+                    yield {"type": "status", "message": "Just a moment…"}
+                    await asyncio.sleep(delay + 0.3)
+                    attempt += 1
+
+                try:
+                    if response.status_code >= 400:
+                        body = (await response.aread()).decode("utf-8", "replace")
+                        logger.error(
+                            "Groq rejected a streamed round ({}): {}",
+                            response.status_code,
+                            body[:400],
+                        )
+                        raise AIStreamError(response.status_code)
+
+                    async for line in response.aiter_lines():
+                        if not line.startswith("data:"):
+                            continue
+                        data = line[5:].strip()
+                        if not data or data == "[DONE]":
+                            continue
+                        try:
+                            chunk = json.loads(data)
+                        except json.JSONDecodeError:
+                            continue
+                        choices = chunk.get("choices") or []
+                        if not choices:
+                            continue
+                        delta = choices[0].get("delta") or {}
+
+                        piece = delta.get("content")
+                        if piece:
+                            content_this_round += piece
+                            raw_reply += piece
+                            safe = shield.feed(piece)
+                            if safe:
+                                yield {"type": "delta", "text": safe}
+
+                        if delta.get("tool_calls"):
+                            _merge_tool_call_deltas(tool_calls, delta["tool_calls"])
+                finally:
+                    await stream_cm.__aexit__(None, None, None)
+
+                if not tool_calls:
+                    break
+
+                ordered = [tool_calls[i] for i in sorted(tool_calls)]
+                api_messages.append(
+                    {
+                        "role": "assistant",
+                        "content": content_this_round or None,
+                        "tool_calls": [
+                            {
+                                "id": c["id"] or f"call_{i}",
+                                "type": "function",
+                                "function": c["function"],
+                            }
+                            for i, c in enumerate(ordered)
+                        ],
+                    }
+                )
+
+                for i, call in enumerate(ordered):
+                    name = call["function"]["name"]
+                    yield {
+                        "type": "status",
+                        "message": _TOOL_STATUS.get(name, "Working on it…"),
+                    }
+                    try:
+                        args = json.loads(call["function"]["arguments"] or "{}")
+                    except json.JSONDecodeError:
+                        args = {}
+                    result, cites = await _execute_local_tool(name, args, language, user_id)
+                    tools_called.append(name)
+                    for c in cites:
+                        citations_map[c["source"]] = c
+                    api_messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": call["id"] or f"call_{i}",
+                            "name": name,
+                            "content": result,
+                        }
+                    )
+
+    except Exception as exc:  # noqa: BLE001 - the reader gets the local reading
+        logger.warning("Streaming failed, falling back to local synthesis: {}", exc)
+        fallback = await _local_astrological_fallback(
+            prepared["latest_user_text"],
+            prepared["custom_rules"],
+            prepared["user_birth_details"],
+            language,
+        )
+        # Nothing has been shown yet unless text had already started arriving;
+        # send the fallback as one piece rather than leaving a half sentence.
+        if not raw_reply:
+            yield {"type": "delta", "text": fallback["reply"]}
+        yield {
+            "type": "done",
+            "reply": fallback["reply"] if not raw_reply else raw_reply,
+            "tools_called": fallback.get("tools_called", []),
+            "citations": fallback.get("citations", []),
+            "suggested_followups": fallback.get("suggested_followups", []),
+            "answered": False,
+        }
+        return
+
+    tail = shield.flush()
+    if tail:
+        yield {"type": "delta", "text": tail}
+
+    # The tags are parsed from the accumulated raw text, not from what was
+    # shown: the shield removed them from the stream precisely so they would
+    # still be here to read.
+    followups: list[str] = []
+    clean_lines: list[str] = []
+    for line in raw_reply.splitlines():
+        if "[FOLLOW_UP:" in line:
+            extracted = line.replace("[FOLLOW_UP:", "").replace("]", "").strip()
+            if extracted:
+                followups.append(extracted)
+        else:
+            clean_lines.append(line)
+
+    final_content, new_facts = ai_memory.extract("\n".join(clean_lines).strip())
+    if user_id and new_facts:
+        await ai_memory.save(user_id, ai_memory.merge(remembered, new_facts))
+
+    yield {
+        "type": "done",
+        "reply": final_content,
+        "tools_called": list(set(tools_called)),
+        "citations": list(citations_map.values()),
+        "suggested_followups": followups[:3],
+        "answered": True,
+    }
+
