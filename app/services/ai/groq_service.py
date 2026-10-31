@@ -300,12 +300,22 @@ ASTRO_TOOLS = [
 
 
 #: Longest we will wait out a rate limit before giving the reader something.
+#: Generous because the streaming path shows a status line while it waits —
+#: the reader sees "just a moment" rather than a frozen screen — and a
+#: real answer twenty seconds late beats canned text immediately.
 #: Groq's free tier allows 8,000 tokens a minute and a reading with chart data
 #: attached is most of that, so a second question inside the same minute is
 #: refused with a 429 that says exactly how long to wait. Waiting is far better
 #: than what used to happen — the canned fallback was served instead, so the
 #: reader got a generic chart dump in place of an answer to their question.
-MAX_RATE_LIMIT_WAIT = 12.0
+MAX_RATE_LIMIT_WAIT = 22.0
+
+#: Never retry sooner than this, whatever the reset header says.
+MIN_RATE_LIMIT_WAIT = 3.0
+
+#: And never more than this many times, so a reader is not kept waiting
+#: through a queue of one-second retries that were never going to succeed.
+MAX_RATE_LIMIT_RETRIES = 3
 
 #: "Please try again in 8.6025s"
 _RETRY_AFTER = re.compile(r"try again in ([0-9.]+)\s*s", re.IGNORECASE)
@@ -332,7 +342,9 @@ async def _post_groq(
 ) -> httpx.Response:
     """POST to Groq, waiting out a rate limit once if it is short enough."""
     response = await client.post(GROQ_CHAT_URL, headers=headers, json=payload)
-    delay = _retry_delay(response)
+    delay = _reset_seconds(response) if response.status_code == 429 else None
+    if delay is None:
+        delay = _retry_delay(response)
     if delay is not None and delay <= MAX_RATE_LIMIT_WAIT:
         logger.info("Groq rate limited; waiting {:.1f}s and retrying", delay)
         await asyncio.sleep(delay + 0.3)
@@ -1360,6 +1372,29 @@ _TOOL_STATUS = {
 }
 
 
+#: "577ms", "1.5s", "2m59.56s" — the shape of Groq's reset headers.
+_DURATION = re.compile(r"(?:(\d+)m)?([\d.]+)(ms|s)$")
+
+
+def _reset_seconds(response: httpx.Response) -> float | None:
+    """How long until the token bucket refills, from the response headers.
+
+    More reliable than reading the delay out of the error prose: the header is
+    always present, including on the successful responses that precede the
+    limit. Parsing the message text alone defaulted to a one-second wait and
+    the retry hit the same limit immediately.
+    """
+    raw = response.headers.get("x-ratelimit-reset-tokens") or ""
+    match = _DURATION.match(raw.strip())
+    if not match:
+        return None
+    minutes, value, unit = match.groups()
+    seconds = float(value) / 1000 if unit == "ms" else float(value)
+    if minutes:
+        seconds += int(minutes) * 60
+    return seconds
+
+
 def _reasoning(model: str) -> dict[str, str]:
     """Keep gpt-oss's thinking short.
 
@@ -1474,25 +1509,46 @@ async def stream_astrology_response(
                 # buffers a whole response — so the same wait-out is done
                 # inline. Without it a streamed answer fell back to canned
                 # text on a rate limit that Groq said to wait four seconds for.
-                attempt = 0
+                waited = 0.0
+                attempts = 0
                 while True:
                     stream_cm = client.stream(
                         "POST", GROQ_CHAT_URL, headers=headers, json=payload
                     )
                     response = await stream_cm.__aenter__()
-                    if response.status_code != 429 or attempt:
+                    if response.status_code != 429:
                         break
+
                     body = (await response.aread()).decode("utf-8", "replace")
+                    delay = _reset_seconds(response)
+                    if delay is None:
+                        match = _RETRY_AFTER.search(body)
+                        delay = float(match.group(1)) if match else 2.0
                     await stream_cm.__aexit__(None, None, None)
-                    match = _RETRY_AFTER.search(body)
-                    delay = float(match.group(1)) if match else 1.0
-                    if delay > MAX_RATE_LIMIT_WAIT:
-                        logger.warning("Rate limited for {:.0f}s; not waiting", delay)
+
+                    # Never retry faster than this. The reset header reports
+                    # when the bucket next refills, which during sustained use
+                    # is a fraction of a second — and retrying that fast simply
+                    # burns the allowance again. Left uncapped this spun 55
+                    # times in one request, sending the reader a status line
+                    # for each.
+                    delay = max(delay, MIN_RATE_LIMIT_WAIT)
+                    attempts += 1
+
+                    if attempts > MAX_RATE_LIMIT_RETRIES or waited + delay > MAX_RATE_LIMIT_WAIT:
+                        logger.warning(
+                            "Still rate limited after {} attempt(s) and {:.1f}s; giving up",
+                            attempts,
+                            waited,
+                        )
                         raise AIStreamError(429)
-                    logger.info("Stream rate limited; waiting {:.1f}s", delay)
+
+                    logger.info(
+                        "Stream rate limited; waiting {:.1f}s (attempt {})", delay, attempts
+                    )
                     yield {"type": "status", "message": "Just a moment…"}
-                    await asyncio.sleep(delay + 0.3)
-                    attempt += 1
+                    await asyncio.sleep(delay)
+                    waited += delay
 
                 try:
                     if response.status_code >= 400:
