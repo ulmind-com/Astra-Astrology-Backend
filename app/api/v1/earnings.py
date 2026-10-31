@@ -59,29 +59,38 @@ async def my_recent_earnings(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> ApiResponse[list[EarningRow]]:
     rows = await earnings_service.recent_for_astrologer(user.id, limit)
-
     user_ids = [r["user_id"] for r in rows if r.get("user_id")]
     user_map = {}
     if user_ids:
         users = await User.find({"_id": {"$in": user_ids}}).to_list()
         user_map = {u.id: u for u in users}
 
-    return ApiResponse(
-        message=f"{len(rows)} consultation{'' if len(rows) == 1 else 's'}.",
-        data=[
+    data: list[EarningRow] = []
+    for r in rows:
+        uid = r.get("user_id")
+        u = user_map.get(uid) if uid else None
+        uname = u.full_name if u else None
+        uavatar = u.avatar_url if u else None
+
+        data.append(
             EarningRow(
                 id=str(r["_id"]),
                 mode=r["mode"],
                 minutes=r["minutes"],
                 earning_paise=r["earning_paise"],
                 created_at=r["created_at"],
-                user_id=str(r["user_id"]) if r.get("user_id") else None,
-                user_name=user_map[r["user_id"]].full_name if r.get("user_id") in user_map else None,
-                user_image_url=user_map[r["user_id"]].avatar_url if r.get("user_id") in user_map else None,
+                user_id=str(uid) if uid else None,
+                user_name=uname,
+                user_avatar=uavatar,
+                user_image_url=uavatar,
                 coins_charged=r.get("coins_charged"),
+                gross_paise=r.get("gross_paise"),
             )
-            for r in rows
-        ],
+        )
+
+    return ApiResponse(
+        message=f"{len(rows)} consultation{'' if len(rows) == 1 else 's'}.",
+        data=data,
     )
 
 
@@ -127,9 +136,13 @@ async def recent_platform_earnings(
         users = await User.find({"_id": {"$in": user_ids}}).to_list()
         user_map = {u.id: u for u in users}
 
-    return ApiResponse(
-        message=f"{len(rows)} consultation{'' if len(rows) == 1 else 's'}.",
-        data=[
+    admin_data: list[AdminEarningRow] = []
+    for r in rows:
+        uid = r.get("user_id")
+        u = user_map.get(uid) if uid else None
+        uname = u.full_name if u else None
+        uavatar = u.avatar_url if u else None
+        admin_data.append(
             AdminEarningRow(
                 id=str(r["_id"]),
                 mode=r["mode"],
@@ -142,10 +155,14 @@ async def recent_platform_earnings(
                 gross_paise=r["gross_paise"],
                 commission_percent=r["commission_percent"],
                 commission_paise=r["commission_paise"],
-                user_id=str(r["user_id"]) if r.get("user_id") else None,
-                user_name=user_map[r["user_id"]].full_name if r.get("user_id") in user_map else None,
-                user_image_url=user_map[r["user_id"]].avatar_url if r.get("user_id") in user_map else None,
+                user_id=str(uid) if uid else None,
+                user_name=uname,
+                user_avatar=uavatar,
+                user_image_url=uavatar,
             )
-            for r in rows
-        ],
+        )
+
+    return ApiResponse(
+        message=f"{len(rows)} consultation{'' if len(rows) == 1 else 's'}.",
+        data=admin_data,
     )

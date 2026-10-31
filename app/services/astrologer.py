@@ -30,7 +30,7 @@ from app.schemas.astrologer import (
     ServiceDurationOut,
 )
 from app.schemas.common import Paginated, build_page
-from app.services import firebase, storage
+from app.services import firebase, realtime, storage
 from app.services.email import send_astrologer_welcome_email
 from app.services.storage import ALLOWED_IMAGE_TYPES
 
@@ -624,6 +624,20 @@ async def remove_banner_image(profile: Astrologer) -> Astrologer:
     return profile
 
 
+async def _upload_gallery_image(file, folder: str, user_id) -> storage.UploadResult:  # noqa: ANN001
+    return await storage.upload_file(
+        file,
+        folder=folder,
+        allowed_types=ALLOWED_IMAGE_TYPES,
+        tags=[f"astrologer:{user_id}", "gallery"],
+        transformation=[
+            {"width": 1600, "height": 1600, "crop": "limit"},
+            {"quality": "auto"},
+        ],
+        image_format="webp",
+    )
+
+
 async def add_gallery_image(user: User, profile: Astrologer, file):  # noqa: ANN001
     from app.core.exceptions import BadRequestError
     from app.models.astrologer import GalleryImage
@@ -635,10 +649,11 @@ async def add_gallery_image(user: User, profile: Astrologer, file):  # noqa: ANN
             error_code="gallery_full",
         )
 
-    result = await _upload_image(file, "astrologers/gallery", user.id)
+    result = await _upload_gallery_image(file, "astrologers/gallery", user.id)
     image = GalleryImage(url=result.url, public_id=result.public_id)
     profile.gallery.append(image)
     await profile.save()
+    await realtime.publish_astrologer(profile)
     return image, profile
 
 
@@ -651,5 +666,6 @@ async def remove_gallery_image(profile: Astrologer, public_id: str) -> Astrologe
 
     profile.gallery = [g for g in profile.gallery if g.public_id != public_id]
     await profile.save()
+    await realtime.publish_astrologer(profile)
     await storage.delete_file(public_id)
     return profile

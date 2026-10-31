@@ -31,6 +31,7 @@ class ReviewOut(BaseModel):
     text: str | None = None
     author_name: str | None = None
     author_avatar_url: str | None = None
+    author_avatar: str | None = None
     session_id: str | None = None
     created_at: datetime
 

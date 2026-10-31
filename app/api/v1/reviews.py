@@ -33,6 +33,7 @@ def _out(review: Review, author_avatar: str | None = None) -> ReviewOut:
         text=review.text,
         author_name=review.author_name,
         author_avatar_url=author_avatar,
+        author_avatar=author_avatar,
         session_id=str(review.session_id) if review.session_id else None,
         created_at=review.created_at,
     )
@@ -59,8 +60,7 @@ async def my_astrologer_reviews(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> ApiResponse[ReviewPage]:
-    profile = astrologer.profile
-    items, total = await service.for_astrologer(profile.id, skip=skip, limit=limit)
+    items, total = await service.for_astrologer(astrologer.id, skip=skip, limit=limit)
     enriched = await _enrich_reviews(items)
     return ApiResponse(
         message=f"{total} review(s) received.",
@@ -68,9 +68,9 @@ async def my_astrologer_reviews(
             items=enriched,
             total=total,
             summary=ReviewSummary(
-                average=profile.rating.average,
-                count=profile.rating.count,
-                breakdown=await service.breakdown(profile.id),
+                average=astrologer.rating.average,
+                count=astrologer.rating.count,
+                breakdown=await service.breakdown(astrologer.id),
             ),
         ),
     )
