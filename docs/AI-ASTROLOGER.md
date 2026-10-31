@@ -579,6 +579,15 @@ rather than falling back.
 
 Three models is three times the free daily capacity, at no cost.
 
+
+### The streaming path needs the same treatment
+
+`stream_astrology_response` builds its own request rather than going through
+`_post_groq`, so the daily-limit handling had to be repeated there. Without it
+the **website** — which streams — kept falling back for the rest of the day
+while the non-streaming endpoint had already moved to another model. Two code
+paths, one rule; forgetting the second is how a fix looks applied and is not.
+
 ### Do not offer a tool whose answer is already in the context
 
 The chart is precomputed into the system context *and* `calculate_kundli_tool`

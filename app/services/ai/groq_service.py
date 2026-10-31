@@ -1648,6 +1648,10 @@ async def stream_astrology_response(
                 waited = 0.0
                 attempts = 0
                 while True:
+                    payload["model"] = model
+                    payload.pop("reasoning_effort", None)
+                    payload.update(_reasoning(model))
+
                     stream_cm = client.stream(
                         "POST", GROQ_CHAT_URL, headers=headers, json=payload
                     )
@@ -1656,11 +1660,29 @@ async def stream_astrology_response(
                         break
 
                     body = (await response.aread()).decode("utf-8", "replace")
+                    await stream_cm.__aexit__(None, None, None)
+
+                    # A day's allowance does not come back by waiting. This
+                    # path builds its own request rather than going through
+                    # `_post_groq`, so without this the website — which streams
+                    # — kept falling back for the rest of the day while the
+                    # non-streaming endpoint had already moved to another
+                    # model.
+                    if _is_daily_limit(body):
+                        _mark_exhausted(model)
+                        remaining = [
+                            m for m in _available_models(model) if m != model
+                        ]
+                        if not remaining:
+                            raise AIStreamError(429)
+                        model = remaining[0]
+                        yield {"type": "status", "message": "Just a moment…"}
+                        continue
+
                     delay = _reset_seconds(response)
                     if delay is None:
                         match = _RETRY_AFTER.search(body)
                         delay = float(match.group(1)) if match else 2.0
-                    await stream_cm.__aexit__(None, None, None)
 
                     # Never retry faster than this. The reset header reports
                     # when the bucket next refills, which during sustained use
