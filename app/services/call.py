@@ -265,7 +265,7 @@ async def _close(
 
             astro = await Astrologer.get(session.astrologer_id)
             if astro:
-                minutes = max(1, session.duration_seconds // 60)
+                minutes = max(1, round(session.duration_seconds / 60)) if session.duration_seconds > 0 else 1
                 if not hasattr(astro, "service_duration") or astro.service_duration is None:
                     astro.service_duration = ServiceDuration()
                 if session.mode == ConsultationMode.VIDEO:

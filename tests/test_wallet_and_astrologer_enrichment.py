@@ -146,3 +146,49 @@ async def test_earning_entry_user_aggregation(client: AsyncClient):
     assert session_row["minutes"] == 2
     assert session_row["coins_charged"] == 40
     assert session_row["earning_paise"] == 3200
+
+
+@pytest.mark.asyncio
+async def test_dynamic_realtime_service_duration_tracking():
+    from types import SimpleNamespace
+    from app.models.astrologer import ServiceDuration
+    from app.services.astrologer import _format_service_duration
+
+    astro = SimpleNamespace(service_duration=None, experience_years=10)
+
+    # 1. Brand new astrologer: MUST NOT have fake 1440 hours!
+    sd_init = _format_service_duration(astro)
+    assert sd_init.chat_minutes == 0
+    assert sd_init.call_minutes == 0
+    assert sd_init.video_minutes == 0
+    assert sd_init.total_minutes == 0
+    assert sd_init.total_hours == 0
+    assert sd_init.formatted_total == "0 mins"
+
+    # 2. User chats with astrologer for 5 minutes
+    astro.service_duration = ServiceDuration(chat_minutes=5, call_minutes=0, video_minutes=0)
+    sd_chat = _format_service_duration(astro)
+    assert sd_chat.chat_minutes == 5
+    assert sd_chat.call_minutes == 0
+    assert sd_chat.video_minutes == 0
+    assert sd_chat.total_minutes == 5
+    assert sd_chat.formatted_chat == "5 mins"
+
+    # 3. Another user calls astrologer for 12 minutes
+    astro.service_duration.call_minutes += 12
+    sd_call = _format_service_duration(astro)
+    assert sd_call.chat_minutes == 5
+    assert sd_call.call_minutes == 12
+    assert sd_call.video_minutes == 0
+    assert sd_call.total_minutes == 17
+    assert sd_call.formatted_total == "17 mins"
+
+    # 4. Another user does a video call for 30 minutes
+    astro.service_duration.video_minutes += 30
+    sd_video = _format_service_duration(astro)
+    assert sd_video.chat_minutes == 5
+    assert sd_video.call_minutes == 12
+    assert sd_video.video_minutes == 30
+    assert sd_video.total_minutes == 47
+    assert sd_video.formatted_total == "47 mins"
+
