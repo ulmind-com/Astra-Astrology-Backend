@@ -371,7 +371,15 @@ async def update_availability(profile: Astrologer, payload: AvailabilityUpdate) 
         profile.availability.last_online_at = utcnow()
         profile.availability.last_seen_at = utcnow()
 
-    await profile.save()
+    await Astrologer.get_pymongo_collection().update_one(
+        {"_id": profile.id},
+        {
+            "$set": {
+                "availability": profile.availability.model_dump(),
+                "updated_at": utcnow(),
+            }
+        },
+    )
     await realtime.publish_astrologer(profile)
     return profile
 
@@ -689,16 +697,17 @@ async def add_gallery_image(user: User, profile: Astrologer, file):  # noqa: ANN
     result = await _upload_gallery_image(file, "astrologers/gallery", user.id)
     raw_item = {"url": result.url, "public_id": result.public_id}
 
-    # Build updated gallery list and atomically set on MongoDB collection
-    # Using $set avoids MongoDB errors if gallery was previously null
-    existing_items = [
-        {"url": g.url, "public_id": g.public_id}
-        for g in (profile.gallery or [])
-    ]
-    new_gallery = [*existing_items, raw_item]
+    # Fetch latest profile from DB to prevent race conditions
+    latest = await Astrologer.get_pymongo_collection().find_one(
+        {"$or": [{"_id": profile.id}, {"user_id": profile.user_id}]}
+    )
+    current_gallery = (latest.get("gallery") if latest else None) or []
+    
+    # Filter out any duplicates and append new item
+    new_gallery = [g for g in current_gallery if g.get("public_id") != result.public_id] + [raw_item]
 
-    await Astrologer.get_pymongo_collection().update_one(
-        {"_id": profile.id},
+    res = await Astrologer.get_pymongo_collection().update_one(
+        {"$or": [{"_id": profile.id}, {"user_id": profile.user_id}]},
         {
             "$set": {
                 "gallery": new_gallery,
@@ -706,6 +715,7 @@ async def add_gallery_image(user: User, profile: Astrologer, file):  # noqa: ANN
             }
         },
     )
+    logger.info("MongoDB gallery update: matched={}, modified={}", res.matched_count, res.modified_count)
 
     image = GalleryImage(url=result.url, public_id=result.public_id)
     profile.gallery = [GalleryImage(**item) for item in new_gallery]
@@ -730,15 +740,14 @@ async def remove_gallery_image(profile: Astrologer, public_id: str) -> Astrologe
     if image is None:
         raise NotFoundError("That image is not in the gallery.", error_code="image_not_found")
 
-    # Direct atomic $set on MongoDB collection guarantees immediate persistence
-    remaining_items = [
-        {"url": g.url, "public_id": g.public_id}
-        for g in (profile.gallery or [])
-        if g.public_id != public_id
-    ]
+    latest = await Astrologer.get_pymongo_collection().find_one(
+        {"$or": [{"_id": profile.id}, {"user_id": profile.user_id}]}
+    )
+    current_gallery = (latest.get("gallery") if latest else None) or []
+    remaining_items = [g for g in current_gallery if g.get("public_id") != public_id]
 
-    await Astrologer.get_pymongo_collection().update_one(
-        {"_id": profile.id},
+    res = await Astrologer.get_pymongo_collection().update_one(
+        {"$or": [{"_id": profile.id}, {"user_id": profile.user_id}]},
         {
             "$set": {
                 "gallery": remaining_items,
@@ -746,6 +755,7 @@ async def remove_gallery_image(profile: Astrologer, public_id: str) -> Astrologe
             }
         },
     )
+    logger.info("MongoDB gallery remove: matched={}, modified={}", res.matched_count, res.modified_count)
 
     profile.gallery = [GalleryImage(**item) for item in remaining_items]
 
