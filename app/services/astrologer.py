@@ -6,6 +6,7 @@ neither" rule as registration applies here, with the same rollback.
 """
 
 import secrets
+from datetime import UTC, datetime
 from typing import Any
 
 from loguru import logger
@@ -653,10 +654,36 @@ async def add_gallery_image(user: User, profile: Astrologer, file):  # noqa: ANN
         )
 
     result = await _upload_gallery_image(file, "astrologers/gallery", user.id)
+    raw_item = {"url": result.url, "public_id": result.public_id}
+
+    # Build updated gallery list and atomically set on MongoDB collection
+    # Using $set avoids MongoDB errors if gallery was previously null
+    existing_items = [
+        {"url": g.url, "public_id": g.public_id}
+        for g in (profile.gallery or [])
+    ]
+    new_gallery = [*existing_items, raw_item]
+
+    await Astrologer.get_pymongo_collection().update_one(
+        {"_id": profile.id},
+        {
+            "$set": {
+                "gallery": new_gallery,
+                "updated_at": datetime.now(UTC),
+            }
+        },
+    )
+
     image = GalleryImage(url=result.url, public_id=result.public_id)
-    profile.gallery.append(image)
-    await profile.save()
-    await realtime.publish_astrologer(profile)
+    profile.gallery = [GalleryImage(**item) for item in new_gallery]
+
+    try:
+        from app.services import realtime
+        await realtime.publish_astrologer(profile)
+    except Exception as exc:
+        logger.warning("Realtime publish failed (non-fatal): {}", exc)
+
+    logger.info("Astrologer gallery photo added for {} ({} bytes)", user.email, result.bytes)
     return image, profile
 
 
@@ -670,8 +697,31 @@ async def remove_gallery_image(profile: Astrologer, public_id: str) -> Astrologe
     if image is None:
         raise NotFoundError("That image is not in the gallery.", error_code="image_not_found")
 
-    profile.gallery = [g for g in profile.gallery if g.public_id != public_id]
-    await profile.save()
-    await realtime.publish_astrologer(profile)
+    # Direct atomic $set on MongoDB collection guarantees immediate persistence
+    remaining_items = [
+        {"url": g.url, "public_id": g.public_id}
+        for g in (profile.gallery or [])
+        if g.public_id != public_id
+    ]
+
+    await Astrologer.get_pymongo_collection().update_one(
+        {"_id": profile.id},
+        {
+            "$set": {
+                "gallery": remaining_items,
+                "updated_at": datetime.now(UTC),
+            }
+        },
+    )
+
+    profile.gallery = [GalleryImage(**item) for item in remaining_items]
+
+    try:
+        from app.services import realtime
+        await realtime.publish_astrologer(profile)
+    except Exception as exc:
+        logger.warning("Realtime publish failed (non-fatal): {}", exc)
+
     await storage.delete_file(public_id)
+    logger.info("Astrologer gallery photo removed: {}", public_id)
     return profile
