@@ -173,13 +173,15 @@ class ServiceDurationOut(BaseModel):
     chat_minutes: int = 0
     call_minutes: int = 0
     video_minutes: int = 0
-    chat_hours: int = 0
-    call_hours: int = 0
-    video_hours: int = 0
-    total_hours: int = 0
-    formatted_chat: str = "0 hrs chat"
-    formatted_call: str = "0 hrs call"
-    formatted_video: str = "0 hrs video"
+    total_minutes: int = 0
+    chat_hours: float = 0.0
+    call_hours: float = 0.0
+    video_hours: float = 0.0
+    total_hours: float = 0.0
+    formatted_chat: str = "0 mins"
+    formatted_call: str = "0 mins"
+    formatted_video: str = "0 mins"
+    formatted_total: str = "0 mins"
 
 
 # ---------------------------------------------------------------- output

@@ -57,48 +57,42 @@ async def _unique_slug(display_name: str) -> str:
 
 
 def _format_service_duration(profile: Astrologer) -> ServiceDurationOut:
-    """Calculates hours and formatted badges per mode.
-
-    If the astrologer doesn't have real minutes accumulated yet, dynamically derives
-    realistic baseline Astrotalk-style hours from their consultations & experience.
-    """
+    """Calculates hours and human-readable badges purely from actual real session minutes."""
     sd = getattr(profile, "service_duration", None)
-    c_min = sd.chat_minutes if sd else 0
-    cl_min = sd.call_minutes if sd else 0
-    v_min = sd.video_minutes if sd else 0
+    c_min = int(sd.chat_minutes) if sd and sd.chat_minutes else 0
+    cl_min = int(sd.call_minutes) if sd and sd.call_minutes else 0
+    v_min = int(sd.video_minutes) if sd and sd.video_minutes else 0
 
-    # If no service duration tracked yet, derive realistic Astrotalk-style figures
-    if c_min == 0 and cl_min == 0 and v_min == 0:
-        base_hours = max(
-            25,
-            (profile.total_consultations * 22) // 60
-            if profile.total_consultations > 0
-            else (profile.experience_years * 140) + 40,
-        )
-        # distribute ~35% video, ~40% chat, ~25% call
-        v_hr = max(5, int(base_hours * 0.35))
-        c_hr = max(5, int(base_hours * 0.40))
-        cl_hr = max(3, base_hours - v_hr - c_hr)
-        v_min = v_hr * 60
-        c_min = c_hr * 60
-        cl_min = cl_hr * 60
-    else:
-        v_hr = round(v_min / 60)
-        c_hr = round(c_min / 60)
-        cl_hr = round(cl_min / 60)
+    tot_min = c_min + cl_min + v_min
 
-    tot_hr = v_hr + c_hr + cl_hr
+    v_hr = round(v_min / 60, 1) if v_min > 0 else 0.0
+    c_hr = round(c_min / 60, 1) if c_min > 0 else 0.0
+    cl_hr = round(cl_min / 60, 1) if cl_min > 0 else 0.0
+    tot_hr = round(tot_min / 60, 1) if tot_min > 0 else 0.0
+
+    def _fmt(mins: int) -> str:
+        if mins <= 0:
+            return "0 mins"
+        if mins < 60:
+            return f"{mins} mins"
+        h = round(mins / 60, 1)
+        if h == int(h):
+            return f"{int(h)} hrs"
+        return f"{h} hrs"
+
     return ServiceDurationOut(
         chat_minutes=c_min,
         call_minutes=cl_min,
         video_minutes=v_min,
+        total_minutes=tot_min,
         chat_hours=c_hr,
         call_hours=cl_hr,
         video_hours=v_hr,
         total_hours=tot_hr,
-        formatted_chat=f"{c_hr} hrs chat",
-        formatted_call=f"{cl_hr} hrs call",
-        formatted_video=f"{v_hr} hrs video",
+        formatted_chat=_fmt(c_min),
+        formatted_call=_fmt(cl_min),
+        formatted_video=_fmt(v_min),
+        formatted_total=_fmt(tot_min),
     )
 
 
@@ -420,6 +414,45 @@ async def to_public(profile: Astrologer, platform: Any = None) -> AstrologerPubl
         ).coins_per_minute,
     )
     public.availability.is_online = presence.is_effectively_online(profile.availability)
+
+    sd = getattr(profile, "service_duration", None)
+    if not sd or (sd.chat_minutes == 0 and sd.call_minutes == 0 and sd.video_minutes == 0):
+        try:
+            from app.models.astrologer import ServiceDuration
+            from app.models.call import CallSession
+            from app.models.chat import ChatSession
+            from app.models.enums import CallStatus, ChatStatus
+
+            chats = await ChatSession.find(
+                ChatSession.astrologer_id == profile.id,
+                ChatSession.status == ChatStatus.ENDED,
+            ).to_list()
+            calls = await CallSession.find(
+                CallSession.astrologer_id == profile.id,
+                CallSession.status == CallStatus.ENDED,
+            ).to_list()
+
+            c_mins = sum(max(1, round(c.duration_seconds / 60)) for c in chats if c.duration_seconds > 0)
+            v_mins = sum(
+                max(1, round(c.duration_seconds / 60))
+                for c in calls
+                if c.mode == ConsultationMode.VIDEO and c.duration_seconds > 0
+            )
+            cl_mins = sum(
+                max(1, round(c.duration_seconds / 60))
+                for c in calls
+                if c.mode != ConsultationMode.VIDEO and c.duration_seconds > 0
+            )
+            if c_mins > 0 or v_mins > 0 or cl_mins > 0:
+                profile.service_duration = ServiceDuration(
+                    chat_minutes=c_mins,
+                    call_minutes=cl_mins,
+                    video_minutes=v_mins,
+                )
+                await profile.save()
+        except Exception:
+            pass
+
     public.service_duration = _format_service_duration(profile)
     return public
 
