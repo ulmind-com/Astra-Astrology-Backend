@@ -1,6 +1,7 @@
 """Groq AI Astrologer reasoning engine with Swiss Ephemeris Tool Calling & RAG Grounding."""
 
 import asyncio
+from datetime import datetime, timezone, timedelta
 import json
 import re
 import time
@@ -50,7 +51,7 @@ CONVERSATIONAL_PROMPT = """You are "Astra Vedic Astrologer", a classical Vedic a
 
 Reply in the same language AND script the user wrote in — Bengali→Bengali, Tamil→Tamil, romanised Hinglish→romanised Hinglish. Never answer in a language they did not use.
 
-This is small talk, not a reading. Answer in one or two warm sentences, the way an astrologer would in a chat. Do not introduce yourself again, do not list what you can do, do not give a reading nobody asked for. If they greet you, greet them back and invite their question.
+This is small talk, not a reading. Answer in one or two warm sentences, the way an astrologer would in a chat. Do not introduce yourself again, do not list what you can do, do not give a reading nobody asked for. If they greet you, greet them back and invite their question. If asked for today's date, day, or time, answer directly and accurately using the [REAL-TIME CLOCK CONTEXT] provided.
 
 End with 2-3 short follow-ups:
 [FOLLOW_UP: ...]
@@ -69,7 +70,7 @@ HOW TO TALK — an astrologer on WhatsApp, not a report generator
 Short paragraphs. No headings for a small question. Match the answer to the question: "আজ কেমন যাবে?" wants a few friendly sentences, not four sections. Greetings get a greeting, not a reading. On follow-ups continue the conversation — never re-introduce yourself or repeat the whole chart. Kind about hard things; never frighten, never promise. No medical, legal or financial instructions — speak of tendencies and timing.
 
 ACCURACY
-Name the planet, house or dasha behind what you say, even briefly — that is what makes it a reading. Never invent a degree, date or citation; positions come from the tools. Quote only dasha dates the tools returned (runs_from/runs_until); beyond them say a fuller dasha chart is needed. If a tool did not return what you need, say so and name the one missing detail.
+Name the planet, house or dasha behind what you say, even briefly — that is what makes it a reading. Never invent a degree, date or citation; positions come from the tools. Quote only dasha dates the tools returned (runs_from/runs_until); beyond them say a fuller dasha chart is needed. If a tool did not return what you need, say so and name the one missing detail. When asked for today's date, day of week, or current time, always accurately quote the exact [REAL-TIME CLOCK CONTEXT] provided.
 
 TOOLS — match the question, don't default to the birth chart
 - "how will today/this week go" → get_daily_horoscope_tool, then calculate_kundli_tool for the running dasha.
@@ -653,7 +654,9 @@ async def _execute_local_tool(
             resp = calculate_daily_horoscope(req)
             r_idx = int(arguments["rashi_index"])
             horo = resp.signs[r_idx] if 0 <= r_idx < len(resp.signs) else resp.signs[0]
+            now_ist_tool = datetime.now(timezone(timedelta(hours=5, minutes=30)))
             summary = {
+                "date": now_ist_tool.strftime("%Y-%m-%d"),
                 "sign_name": horo.sign_name,
                 "sign_name_sanskrit": horo.sign_name_sanskrit,
                 "overall_score": horo.overall_score,
@@ -1258,8 +1261,49 @@ async def _prepare(
         ]
     base_prompt = ASTROLOGER_SYSTEM_PROMPT if (chosen_tools or chart_block) else CONVERSATIONAL_PROMPT
 
+    # Real-time clock in Indian Standard Time (IST, UTC+5:30)
+    now_ist = datetime.now(timezone(timedelta(hours=5, minutes=30)))
+    weekday_bn = {
+        "Monday": "সোমবার",
+        "Tuesday": "মঙ্গলবার",
+        "Wednesday": "বুধবার",
+        "Thursday": "বৃহস্পতিবার",
+        "Friday": "শুক্রবার",
+        "Saturday": "শনিবার",
+        "Sunday": "রবিবার",
+    }.get(now_ist.strftime("%A"), now_ist.strftime("%A"))
+
+    month_bn = {
+        "January": "জানুয়ারি",
+        "February": "ফেব্রুয়ারি",
+        "March": "মার্চ",
+        "April": "এপ্রিল",
+        "May": "মে",
+        "June": "জুন",
+        "July": "জুলাই",
+        "August": "আগস্ট",
+        "September": "সেপ্টেম্বর",
+        "October": "অক্টোবর",
+        "November": "নভেম্বর",
+        "December": "ডিসেম্বর",
+    }.get(now_ist.strftime("%B"), now_ist.strftime("%B"))
+
+    today_str_en = now_ist.strftime("%A, %d %B %Y")
+    today_iso = now_ist.strftime("%Y-%m-%d")
+    current_time_str = now_ist.strftime("%I:%M %p")
+
+    temporal_context = (
+        f"\n[REAL-TIME CLOCK CONTEXT]:\n"
+        f"Today's Real-time Date: {today_str_en} ({today_iso})\n"
+        f"Bengali Date / Day: {now_ist.day} {month_bn} {now_ist.year} ({weekday_bn})\n"
+        f"Current Time (IST): {current_time_str} IST\n"
+        f"CRITICAL TEMPORAL ACCURACY: Today is definitely {now_ist.day} {now_ist.strftime('%B')} {now_ist.year} ({weekday_bn} / {now_ist.strftime('%A')}). "
+        f"If the user asks what date or day it is today, always state this exact real-time date accurately. Never guess or hallucinate past dates.\n"
+    )
+
     full_system_prompt = (
         base_prompt
+        + temporal_context
         + memory_context
         + birth_context
         + custom_rules_context
