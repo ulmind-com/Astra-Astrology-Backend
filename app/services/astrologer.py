@@ -29,7 +29,7 @@ from app.schemas.astrologer import (
     ResolvedRates,
 )
 from app.schemas.common import Paginated, build_page
-from app.services import firebase, storage
+from app.services import firebase, realtime, storage
 from app.services.email import send_astrologer_welcome_email
 from app.services.storage import ALLOWED_IMAGE_TYPES
 
