@@ -706,9 +706,57 @@ _LATIN_OTHER = {
     "keberuntungan", "masa", "depan", "nasib", "batu",
 }
 
+#: The app itself — its features, its money, its screens.
+#:
+#: Added because the gate had no idea the product existed. "How do I use the
+#: kundli feature?" squeaked through on the word kundli, but "I want to know
+#: how I can add more coins to my account balance" was refused outright: no
+#: astrology term, no life topic, so off-topic. Asking how to use the thing you
+#: are using is the most reasonable question there is, and it was the one
+#: question the assistant would not take.
+_APP_TERMS = {
+    # Money
+    "coin", "coins", "wallet", "balance", "recharge", "topup", "top-up",
+    "credit", "credits", "payment", "cost", "costs", "price",
+    "charge", "charges", "fee", "refund", "subscription",
+    # The product
+    "app", "application", "website", "site", "feature", "features", "option",
+    "options", "tool", "tools", "service", "services", "page", "screen",
+    "menu", "button", "section", "steps", "step", "guide", "tutorial",
+    # "how", "where", "work", "use" and "free" are deliberately absent. They
+    # are question words and they appear in everything: with "how" in the list
+    # the gate accepted "Explain how a car engine works in detail". The noun
+    # carries the subject — feature, wallet, kundli — so the noun is what is
+    # matched. The native-script question words below are kept, because an
+    # off-topic question in Bengali or Hindi is rare enough that the trade
+    # runs the other way.
+    # Account and flow
+    "account", "profile", "signin", "sign-in", "login", "signup", "register",
+    "session", "book", "booking", "appointment", "slot", "schedule",
+    "history", "saved", "settings", "camera", "upload", "scan",
+    "password", "forgot", "forgotten", "reset", "security", "otp", "verify",
+    "address", "delivery", "shipping", "notification", "language",
+    "review", "rating", "rate", "feedback", "support", "contact",
+    # Native script
+    "কয়েন", "ওয়ালেট", "ব্যালেন্স", "রিচার্জ", "টাকা", "মূল্য", "খরচ",
+    "ফিচার", "ফিচারস", "অপশন", "অ্যাপ", "অ্যাপে", "ওয়েবসাইট", "পেজ",
+    "অ্যাকাউন্ট", "প্রোফাইল", "বুকিং", "অ্যাপয়েন্টমেন্ট", "সেশন",
+    "কীভাবে", "কিভাবে", "কোথায়", "ব্যবহার", "সাহায্য", "নিয়ম", "ধাপ",
+    "পাসওয়ার্ড", "নিরাপত্তা", "ভুলে", "রিসেট", "ঠিকানা", "রিভিউ", "রেটিং",
+    "ওটিপি", "যাচাই", "নোটিফিকেশন", "সাপোর্ট", "যোগাযোগ",
+    "सिक्का", "कॉयन", "वॉलेट", "बैलेंस", "रिचार्ज", "कीमत", "खर्च",
+    "फीचर", "ऐप", "ऐप्लिकेशन", "वेबसाइट", "अकाउंट", "प्रोफाइल",
+    "बुकिंग", "अपॉइंटमेंट", "कैसे", "कहाँ", "इस्तेमाल", "मदद", "तरीका",
+    "पासवर्ड", "सुरक्षा", "भूल", "रीसेट", "पता", "समीक्षा", "रेटिंग",
+    "ओटीपी", "सत्यापन", "सूचना", "सहायता", "संपर्क",
+    # Romanised
+    "coin", "wallet", "kivabe", "kibhabe", "kemne", "kothay", "kaise",
+    "kahan", "byabohar", "istemal", "shahajjo", "madad", "niyom", "tarika",
+}
+
 #: Everything the gate accepts, as one set.
 SUBJECT_TERMS: frozenset[str] = frozenset(
-    _DISCIPLINES | _LIFE_TOPICS | _TIMING | _LATIN_OTHER
+    _DISCIPLINES | _LIFE_TOPICS | _TIMING | _LATIN_OTHER | _APP_TERMS
 )
 
 #: Attempts to reset the assistant's instructions rather than ask it something.

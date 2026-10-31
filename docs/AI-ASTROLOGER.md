@@ -352,6 +352,84 @@ reader and unreadable for everyone else. For any other language it now returns
 a short note in that language saying the astrologer is busy and to ask again.
 Translating the whole local synthesis is the better fix and a larger one.
 
+## The assistant is also the product's guide
+
+A user who cannot find a feature does not file a bug — they leave. The
+assistant is the one place they will ask "how do I get my kundli?", and until
+`product_guide.py` existed it could not answer, because nothing told it the
+product exists.
+
+`app_guide_tool` answers "how do I use X", "where is X", "what does X cost",
+"what can you do", and anything about coins or recharging. It returns the
+feature's steps, its **live** price and this user's **live** wallet balance in
+one call — one call on purpose, because every extra tool round costs ~1,500
+tokens against the free tier's 8,000 a minute.
+
+### What the catalogue covers
+
+All 22 user-facing things, checked against the API routers and the web routes
+rather than remembered: every calculator, the live chat and call flows,
+appointments, reviews, the wallet, saved birth details, password and security,
+addresses, the assistant itself, and a "how billing works" entry for the
+questions that are about money rather than a page.
+`test_every_user_facing_route_is_covered` fails if a route has no feature
+explaining it, so a new screen cannot ship without the assistant learning about
+it.
+
+### `notes` is what makes it a guide rather than a menu
+
+Steps tell a user where to click. `notes` answers "why did it not work", and
+the facts in it come from the code: the palm scan's failure modes are its
+actual quality gates, the live-session rule ("you need rate × requested
+minutes up front, and are billed for the minutes used") is what
+`billing.check_can_start` enforces, and the warning to pick a birth place from
+the suggestions is the bug that shifts a whole chart.
+
+Verified live: *"amar palm scan bar bar fail hochhe keno?"* comes back with the
+real causes — palm not flat, fingers bent, glare, too far, blurred.
+
+### What is and is not stored in the catalogue
+
+Steps and routes are in `FEATURES`. Prices and on/off switches are **not**:
+they live in platform settings where an admin changes them, and are merged in
+when the question is asked. A guide that quotes a stale price is worse than no
+guide.
+
+The steps are written in English only. The model translates into the user's
+language better than ten hand-kept translations would, and translations are
+what silently rot when a screen is renamed.
+
+### Signed out is not the same as broke
+
+`describe()` takes `balance=None` for a visitor and a number for a signed-in
+user, and they get different answers: one is asked to sign in, the other is
+told how many coins short they are and pointed at `/account/wallet`. Telling a
+visitor to top up an account they do not have is the kind of thing that makes
+an assistant feel broken.
+
+### The gate had never heard of the product
+
+Adding the guide was pointless until the gate would let the questions through.
+"How do I use the kundli feature?" squeaked past on the word *kundli*, but
+*"I want to know how I can add more coins to my account balance"* was refused
+as off-topic — no astrology term, no life topic. The most reasonable question a
+user can ask was the one question the assistant would not take. `_APP_TERMS`
+fixes it.
+
+Note what is deliberately **absent** from that list: "how", "where", "work",
+"use", "free". They are question words that appear in everything, and with
+"how" in the list the gate accepted *"Explain how a car engine works in
+detail"*. The noun carries the subject, so the noun is what is matched. The
+native-script question words are kept, because an off-topic question in Bengali
+or Hindi is rare enough that the trade runs the other way.
+
+### Aliases must cover the scripts people type in
+
+`find()` matched romanised and English aliases only at first, so *"আমার
+কুন্ডলী কীভাবে বানাবো"* found nothing — most of the audience missed. Every
+feature now carries Bengali and Hindi aliases, and the longest alias wins so
+"kundli matching" is not answered with the kundli page.
+
 ## Not done yet
 
 - **Embeddings.** Dense retrieval with reciprocal-rank fusion would fix

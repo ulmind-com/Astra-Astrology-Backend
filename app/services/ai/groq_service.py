@@ -15,7 +15,7 @@ from app.schemas.astrology import (
     KundliMatchingPersonInput,
     KundliMatchingRequest,
 )
-from app.services.ai import retrieval
+from app.services.ai import product_guide, retrieval
 from app.services.ai.knowledge_service import (
     corpus_vocabulary,
     match_custom_rules,
@@ -57,6 +57,7 @@ TOOLS — match the question, don't default to the birth chart
 - "how will today/this week go" → get_daily_horoscope_tool, then calculate_kundli_tool for the running dasha.
 - "when will I get a job/married/a child" → calculate_kundli_tool, answer from the running dasha.
 - compatibility → calculate_matchmaking_tool · numbers/names → calculate_numerology_tool · classical rules, vastu, palmistry, remedies → search_vedic_rules_tool.
+- "how do I use X", "where is X", "what does X cost", "what can you do", anything about coins, wallet or recharge → app_guide_tool. You are this app's guide as well as its astrologer: give the steps in order, say what it costs, and check their balance. If they cannot afford it, say how many coins short they are and point them to /account/wallet — warmly, not as a sales pitch. If they are not signed in, ask them to sign in rather than telling them to recharge.
 Use what is in [USER STORED BIRTH DETAILS] silently; never ask for details you already have. Never print tool names, JSON, field names, or a sign as a bare number.
 
 End with 2-3 short follow-ups:
@@ -242,6 +243,23 @@ ASTRO_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "app_guide_tool",
+            "description": "How to use a feature of this app, its coin cost, and whether this user's wallet can afford it. Use for 'how do I use X', 'where is X', 'what does X cost', 'what can you do', wallet and recharge questions.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic": {
+                        "type": "string",
+                        "description": "What they asked about, e.g. 'kundli', 'palm reading', 'wallet'. Leave empty to list every feature.",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "search_vedic_rules_tool",
             "description": "Search the client's classical texts for rules: doshas, remedies, vastu, palmistry, nakshatra techniques.",
             "parameters": {
@@ -376,7 +394,10 @@ def _named(english: str | None, language: str) -> str | None:
 
 
 async def _execute_local_tool(
-    func_name: str, arguments: dict[str, Any], language: str = "bn"
+    func_name: str,
+    arguments: dict[str, Any],
+    language: str = "bn",
+    user_id: Any = None,
 ) -> tuple[str, list[dict[str, str]]]:
     """Executes local astrology calculations or RAG knowledge search and returns (result_json, citations)."""
     tool_citations: list[dict[str, str]] = []
@@ -603,6 +624,46 @@ async def _execute_local_tool(
             })
             return json.dumps(summary, ensure_ascii=False), tool_citations
 
+        elif func_name == "app_guide_tool":
+            from app.services import settings as settings_service
+
+            platform = None
+            try:
+                platform = await settings_service.get_settings()
+            except Exception as exc:  # noqa: BLE001 - steps are useful without prices
+                logger.warning("Could not read platform settings for the guide: {}", exc)
+
+            # None means signed out, which is a different answer from zero
+            # coins: one needs to sign in, the other needs to recharge.
+            balance: int | None = None
+            if user_id:
+                try:
+                    from app.services import wallet as wallet_service
+
+                    wallet = await wallet_service.get_or_create_wallet(user_id)
+                    balance = wallet.balance_coins
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Could not read the wallet for the guide: {}", exc)
+
+            topic = (arguments.get("topic") or "").strip()
+            feature = product_guide.find(topic) if topic else None
+            if feature is None:
+                payload: dict[str, Any] = {
+                    "features": product_guide.index(platform),
+                    "wallet_balance_coins": balance,
+                }
+                if balance is None:
+                    payload["wallet"] = "not signed in"
+            else:
+                payload = product_guide.describe(feature, platform, balance)
+
+            tool_citations.append({
+                "source": "Astra Astrology — how the app works",
+                "category": "app_guide",
+                "snippet": payload.get("what_it_does", "Feature guide and wallet status."),
+            })
+            return json.dumps(payload, ensure_ascii=False), tool_citations
+
         elif func_name == "search_vedic_rules_tool":
             query = arguments.get("query", "")
             cat = arguments.get("category")
@@ -770,6 +831,7 @@ async def generate_astrology_response(
     user_birth_details: dict[str, Any] | None = None,
     preferred_language: str = "bn",
     stream: bool = False,
+    user_id: Any = None,
 ) -> dict[str, Any]:
     """Sends prompt & conversation history to Groq (openai/gpt-oss-120b),
 
@@ -863,7 +925,7 @@ async def generate_astrology_response(
         chart_block = ""
         try:
             chart_json, chart_cites = await _execute_local_tool(
-                "calculate_kundli_tool", user_birth_details, preferred_language
+                "calculate_kundli_tool", user_birth_details, preferred_language, user_id
             )
             chart_block = f"\n[THIS USER'S CHART, already calculated]:\n{chart_json}\n"
             for c in chart_cites:
@@ -983,7 +1045,7 @@ async def generate_astrology_response(
                     args = {}
 
                 tool_result_str, retrieved_cites = await _execute_local_tool(
-                    func_name, args, preferred_language
+                    func_name, args, preferred_language, user_id
                 )
                 tools_called.append(func_name)
 

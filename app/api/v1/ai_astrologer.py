@@ -136,6 +136,7 @@ async def send_ai_chat_message(
     # Generate AI synthesis via Groq + Swiss Ephemeris
     result = await generate_astrology_response(
         messages=history_to_send,
+        user_id=user.id if user else None,
         user_birth_details=effective_birth,
         preferred_language=payload.preferred_language or "bn",
     )

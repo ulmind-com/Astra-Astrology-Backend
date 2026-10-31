@@ -530,6 +530,21 @@ SHOULD_ANSWER = [
  "kundli milan kore din","shoni sade sati",
  # conversational
  "নমস্কার","ধন্যবাদ","আর কিছু বলুন","tell me more","ok",
+
+    # Questions about the app itself. The gate had no vocabulary for the
+    # product, so "how do I add coins to my account balance" was refused as
+    # off-topic — the one question an in-app assistant must always take.
+    "Kundli features ta kivabe use korbo?",
+    "I want to know how I can add more coins to my account balance please",
+    "can you explain what features this application actually offers me",
+    "tell me the steps to book a session with somebody on here",
+    "how much does it cost to get a reading here",
+    "how do I recharge my wallet",
+    "what does palm reading cost",
+    "আমি কীভাবে এই অ্যাপের ফিচারগুলো ব্যবহার করব বলুন তো",
+    "ওয়ালেট রিচার্জ কীভাবে করব",
+    "মেরা কয়েন ব্যালেন্স কত আছে দেখুন",
+    "मेरे अकाउंट में कितने कॉयन हैं",
 ]
 
 SHOULD_REFUSE = [
