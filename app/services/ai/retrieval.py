@@ -38,15 +38,38 @@ import re
 import unicodedata
 from bisect import bisect_left
 from collections import Counter, OrderedDict
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Sequence
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Tokenising
 # ---------------------------------------------------------------------------
 #: Bengali, Devanagari and Latin letters plus digits. Split on everything else,
 #: which keeps "D9" and "7th" whole while dropping punctuation.
-_WORD = re.compile(r"[0-9A-Za-zऀ-ॿঀ-৿]+")
+#: Any Unicode letter or digit. It used to list Latin, Devanagari and
+#: Bengali only, which meant a Tamil or Gujarati question tokenised to
+#: nothing at all: it slipped past the gate as a "short message" by
+#: accident, and retrieval had no terms to search with. Every script a user
+#: might write in now produces words.
+_WORD = re.compile(
+    "[0-9A-Za-z"
+    "\u00C0-\u024F"   # Latin with diacritics
+    "\u0400-\u04FF"   # Cyrillic
+    "\u0590-\u05FF"   # Hebrew
+    "\u0600-\u06FF\u0750-\u077F"   # Arabic, Urdu
+    "\u0900-\u0DFF"   # every Indic block: Devanagari, Bengali, Gurmukhi,
+                       # Gujarati, Odia, Tamil, Telugu, Kannada, Malayalam,
+                       # Sinhala — including their combining vowel marks,
+                       # which `\\w` leaves out and which splitting on would
+                       # tear আমার into আম
+    "\u0E00-\u0E7F"   # Thai
+    "\u1000-\u109F"   # Myanmar
+    "\u3040-\u30FF"   # Japanese kana
+    "\u4E00-\u9FFF"   # CJK
+    "\uAC00-\uD7AF"   # Hangul
+    "]+"
+)
 
 #: Devanagari or Bengali. Marks the words that compound without spaces, and
 #: so need the containment test the Latin ones must not have.
@@ -378,7 +401,7 @@ def _idf(n_docs: int, n_containing: int) -> float:
 #: Bounded and FIFO: a knowledge base is allowed to grow without this growing
 #: with it. The key includes the text length so an edited passage cannot be
 #: served from a stale entry.
-_INDEX_CACHE: "OrderedDict[tuple[Any, int], _Index]" = OrderedDict()
+_INDEX_CACHE: OrderedDict[tuple[Any, int], _Index] = OrderedDict()
 _INDEX_CACHE_MAX = 8192
 
 
@@ -523,7 +546,7 @@ _DISCIPLINES = {
     "mantra", "puja", "pooja", "donation", "daan", "fasting", "vrat",
     "rudraksha", "yantra",
     # Romanised multi-word terms arrive as separate tokens.
-    "sade", "saadhe", "sati", "saturn", "dhaiya",
+    "sade", "saadhe", "sati", "dhaiya",
     # Native script
     "জন্মছক", "ছক", "প্রবেশদ্বার", "দ্বার", "মুখমণ্ডল", "মুখ", "রুদ্রাক্ষ",
     "জন্মপত্রিকা", "পত্রিকা", "গ্রহণ", "অমাবস্যা", "পূর্ণিমা", "একাদশী",
@@ -557,6 +580,13 @@ _TIMING = {
     "day", "date", "hour", "moment", "period", "season", "start", "begin",
     "work", "success", "successful", "progress", "colour", "color", "lucky",
     "suitable", "best",
+    # Romanised — how people actually type on a phone keyboard.
+    "aaj", "aj", "ajke", "ajker", "din", "raat", "rat", "subah", "sokal",
+    "shaam", "sondha", "samay", "somoy", "waqt", "kal", "parso", "hafta",
+    "saptah", "mahina", "mash", "saal", "bachar", "bochor", "varsh",
+    "shubho", "bhalo", "kharap", "accha", "bura",
+    "muhurat", "muhurta", "kaj", "kaam", "shuru", "safal", "safalta",
+    "unnati", "rang", "rong",
     "শুভ", "অশুভ", "শুভাশুভ", "সময়", "দিন", "তারিখ", "ক্ষণ", "বেলা",
     "আজ", "আজকে", "আজকের", "কাল", "আগামী", "কাজ", "শুরু", "সফল",
     "সাফল্য", "উন্নতি", "রং", "রঙ", "ভালো", "খারাপ", "উপযুক্ত", "অনুকূল",
@@ -588,8 +618,146 @@ _LIFE_TOPICS = {
     "शत्रु", "प्रेम", "तलाक", "भविष्य", "भाग्य", "जीवन", "उन्नति",
 }
 
+# ---------------------------------------------------------------------------
+# Which language is this, and can we judge it?
+# ---------------------------------------------------------------------------
+#: Script ranges, in the order they are tested. A message is attributed to
+#: whichever script most of its letters belong to.
+_SCRIPTS: tuple[tuple[str, tuple[tuple[int, int], ...]], ...] = (
+    ("bn", ((0x0980, 0x09FF),)),
+    ("hi", ((0x0900, 0x097F),)),        # Devanagari: Hindi, Marathi, Nepali
+    ("pa", ((0x0A00, 0x0A7F),)),
+    ("gu", ((0x0A80, 0x0AFF),)),
+    ("or", ((0x0B00, 0x0B7F),)),
+    ("ta", ((0x0B80, 0x0BFF),)),
+    ("te", ((0x0C00, 0x0C7F),)),
+    ("kn", ((0x0C80, 0x0CFF),)),
+    ("ml", ((0x0D00, 0x0D7F),)),
+    ("si", ((0x0D80, 0x0DFF),)),
+    ("ur", ((0x0600, 0x06FF), (0x0750, 0x077F))),
+    ("he", ((0x0590, 0x05FF),)),
+    ("ru", ((0x0400, 0x04FF),)),
+    ("th", ((0x0E00, 0x0E7F),)),
+    ("my", ((0x1000, 0x109F),)),
+    ("ja", ((0x3040, 0x30FF),)),
+    ("zh", ((0x4E00, 0x9FFF),)),
+    ("ko", ((0xAC00, 0xD7AF),)),
+)
+
+#: The languages SUBJECT_TERMS actually covers. A question in anything else
+#: cannot be judged off-subject here, because we hold none of its vocabulary.
+JUDGEABLE = frozenset({"bn", "hi", "en"})
+
+
+def detect_language(text: str) -> str:
+    """Which language this message is written in, by script.
+
+    Script is a coarse signal and a deliberate one: it needs no model, no
+    network and no training data, and it is right about exactly the thing that
+    matters here — whether we hold any vocabulary for this language.
+
+    Latin script is reported as "en". It cannot distinguish English from
+    Spanish or from romanised Bengali, and it does not need to: the model is
+    told to answer in whatever language the user wrote, and the gate treats
+    Latin as judgeable because its English lexicon applies.
+    """
+    counts: dict[str, int] = {}
+    latin = 0
+    for char in text:
+        code = ord(char)
+        if not char.isalpha():
+            continue
+        if code < 0x0250:
+            latin += 1
+            continue
+        for name, ranges in _SCRIPTS:
+            if any(lo <= code <= hi for lo, hi in ranges):
+                counts[name] = counts.get(name, 0) + 1
+                break
+    if not counts:
+        return "en"
+    best, best_count = max(counts.items(), key=lambda kv: kv[1])
+    # A few stray native characters in an otherwise Latin message (a name, a
+    # quoted term) should not change the language of the whole message.
+    return best if best_count >= latin else "en"
+
+
+#: Astrology vocabulary in the Latin-script languages people are most likely to
+#: write in besides English. Small on purpose: enough that a real question is
+#: recognised, not an attempt at a dictionary.
+_LATIN_OTHER = {
+    # Spanish / Portuguese
+    "astrologia", "astrología", "horoscopo", "horóscopo", "horoscópo",
+    "signo", "carta", "astral", "natal", "luna", "lua", "planeta",
+    "casamento", "matrimonio", "matrimônio", "boda", "trabajo", "trabalho",
+    "empleo", "emprego", "dinero", "dinheiro", "salud", "saúde", "amor",
+    "suerte", "sorte", "futuro", "destino", "piedra", "pedra",
+    # French
+    "astrologie", "horoscope", "thème", "theme", "lune", "planète", "planete",
+    "mariage", "travail", "emploi", "argent", "santé", "sante", "amour",
+    "chance", "avenir", "destin", "pierre",
+    # German
+    "horoskop", "sternzeichen", "geburtshoroskop", "mond",
+    "planet", "hochzeit", "heirat", "arbeit", "beruf", "geld", "gesundheit",
+    "liebe", "glück", "gluck", "zukunft", "schicksal", "stein",
+    # Indonesian / Malay
+    "astrologi", "zodiak", "bulan", "pernikahan",
+    "jodoh", "pekerjaan", "kerja", "uang", "kesehatan", "cinta",
+    "keberuntungan", "masa", "depan", "nasib", "batu",
+}
+
+#: The app itself — its features, its money, its screens.
+#:
+#: Added because the gate had no idea the product existed. "How do I use the
+#: kundli feature?" squeaked through on the word kundli, but "I want to know
+#: how I can add more coins to my account balance" was refused outright: no
+#: astrology term, no life topic, so off-topic. Asking how to use the thing you
+#: are using is the most reasonable question there is, and it was the one
+#: question the assistant would not take.
+_APP_TERMS = {
+    # Money
+    "coin", "coins", "wallet", "balance", "recharge", "topup", "top-up",
+    "credit", "credits", "payment", "cost", "costs", "price",
+    "charge", "charges", "fee", "refund", "subscription",
+    # The product
+    "app", "application", "website", "site", "feature", "features", "option",
+    "options", "tool", "tools", "service", "services", "page", "screen",
+    "menu", "button", "section", "steps", "step", "guide", "tutorial",
+    # "how", "where", "work", "use" and "free" are deliberately absent. They
+    # are question words and they appear in everything: with "how" in the list
+    # the gate accepted "Explain how a car engine works in detail". The noun
+    # carries the subject — feature, wallet, kundli — so the noun is what is
+    # matched. The native-script question words below are kept, because an
+    # off-topic question in Bengali or Hindi is rare enough that the trade
+    # runs the other way.
+    # Account and flow
+    "account", "profile", "signin", "sign-in", "login", "signup", "register",
+    "session", "book", "booking", "appointment", "slot", "schedule",
+    "history", "saved", "settings", "camera", "upload", "scan",
+    "password", "forgot", "forgotten", "reset", "security", "otp", "verify",
+    "address", "delivery", "shipping", "notification", "language",
+    "review", "rating", "rate", "feedback", "support", "contact",
+    # Native script
+    "কয়েন", "ওয়ালেট", "ব্যালেন্স", "রিচার্জ", "টাকা", "মূল্য", "খরচ",
+    "ফিচার", "ফিচারস", "অপশন", "অ্যাপ", "অ্যাপে", "ওয়েবসাইট", "পেজ",
+    "অ্যাকাউন্ট", "প্রোফাইল", "বুকিং", "অ্যাপয়েন্টমেন্ট", "সেশন",
+    "কীভাবে", "কিভাবে", "কোথায়", "ব্যবহার", "সাহায্য", "নিয়ম", "ধাপ",
+    "পাসওয়ার্ড", "নিরাপত্তা", "ভুলে", "রিসেট", "ঠিকানা", "রিভিউ", "রেটিং",
+    "ওটিপি", "যাচাই", "নোটিফিকেশন", "সাপোর্ট", "যোগাযোগ",
+    "सिक्का", "कॉयन", "वॉलेट", "बैलेंस", "रिचार्ज", "कीमत", "खर्च",
+    "फीचर", "ऐप", "ऐप्लिकेशन", "वेबसाइट", "अकाउंट", "प्रोफाइल",
+    "बुकिंग", "अपॉइंटमेंट", "कैसे", "कहाँ", "इस्तेमाल", "मदद", "तरीका",
+    "पासवर्ड", "सुरक्षा", "भूल", "रीसेट", "पता", "समीक्षा", "रेटिंग",
+    "ओटीपी", "सत्यापन", "सूचना", "सहायता", "संपर्क",
+    # Romanised
+    "coin", "wallet", "kivabe", "kibhabe", "kemne", "kothay", "kaise",
+    "kahan", "byabohar", "istemal", "shahajjo", "madad", "niyom", "tarika",
+}
+
 #: Everything the gate accepts, as one set.
-SUBJECT_TERMS: frozenset[str] = frozenset(_DISCIPLINES | _LIFE_TOPICS | _TIMING)
+SUBJECT_TERMS: frozenset[str] = frozenset(
+    _DISCIPLINES | _LIFE_TOPICS | _TIMING | _LATIN_OTHER | _APP_TERMS
+)
 
 #: Attempts to reset the assistant's instructions rather than ask it something.
 #: These are refused outright: there is no legitimate question that needs them,
@@ -614,6 +782,7 @@ _INJECTION = re.compile(
 def looks_like_injection(question: str) -> bool:
     """Whether this is an attempt to rewrite the assistant rather than ask it."""
     return bool(_INJECTION.search(question))
+
 
 
 #: Subject words written in an Indic script, long enough to be distinctive.
@@ -740,6 +909,16 @@ def is_answerable(question: str, *, extra_vocabulary: Iterable[str] = ()) -> Ver
     if len(terms) < _SHORT_QUESTION:
         return Verdict(True, "short")
 
+    # Written in a language we hold no vocabulary for, so there is nothing to
+    # judge it against. Refusing here would mean refusing every Tamil, Telugu,
+    # Gujarati, Punjabi, Malayalam, Odia and Urdu speaker on the grounds that
+    # we cannot read them, which is the worst possible reason. The model still
+    # has the tools and the passages behind it, and it answers in whatever
+    # language it was asked in.
+    language = detect_language(question)
+    if language not in JUDGEABLE:
+        return Verdict(True, "unjudged_language", [language])
+
     return Verdict(False, "off_topic")
 
 
@@ -764,4 +943,10 @@ REFUSALS = {
 
 
 def refusal_text(language: str) -> str:
+    """The refusal, in the reader's language where we have it written.
+
+    Only reached for bn, hi and en in practice: a question in any other
+    language is never refused for being off-subject, because `is_answerable`
+    cannot judge a language it holds no vocabulary for.
+    """
     return REFUSALS.get(language, REFUSALS["en"])

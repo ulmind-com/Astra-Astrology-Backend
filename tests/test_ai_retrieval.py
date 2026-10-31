@@ -530,6 +530,21 @@ SHOULD_ANSWER = [
  "kundli milan kore din","shoni sade sati",
  # conversational
  "নমস্কার","ধন্যবাদ","আর কিছু বলুন","tell me more","ok",
+
+    # Questions about the app itself. The gate had no vocabulary for the
+    # product, so "how do I add coins to my account balance" was refused as
+    # off-topic — the one question an in-app assistant must always take.
+    "Kundli features ta kivabe use korbo?",
+    "I want to know how I can add more coins to my account balance please",
+    "can you explain what features this application actually offers me",
+    "tell me the steps to book a session with somebody on here",
+    "how much does it cost to get a reading here",
+    "how do I recharge my wallet",
+    "what does palm reading cost",
+    "আমি কীভাবে এই অ্যাপের ফিচারগুলো ব্যবহার করব বলুন তো",
+    "ওয়ালেট রিচার্জ কীভাবে করব",
+    "মেরা কয়েন ব্যালেন্স কত আছে দেখুন",
+    "मेरे अकाउंट में कितने कॉयन हैं",
 ]
 
 SHOULD_REFUSE = [
@@ -572,3 +587,101 @@ def test_a_long_question_is_not_a_pleasantry():
     """"explain" and "detail" mean "go on" only when they are the whole message."""
     assert is_answerable("tell me more").answerable
     assert not is_answerable("Explain how a car engine works in detail").answerable
+
+
+# ---------------------------------------------------------------------------
+# Any language
+#
+# The tokenizer listed Latin, Devanagari and Bengali only, so a Tamil or
+# Gujarati question produced no words at all. It slipped past the gate as a
+# "short message" by accident and retrieval had nothing to search with.
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "language,question",
+    [
+        ("bn", "আমার বিয়ে কবে হবে"),
+        ("hi", "मेरी शादी कब होगी"),
+        ("ta", "என் திருமணம் எப்போது நடக்கும்"),
+        ("te", "నా వివాహం ఎప్పుడు జరుగుతుంది"),
+        ("gu", "મારા લગ્ન ક્યારે થશે"),
+        ("pa", "ਮੇਰਾ ਵਿਆਹ ਕਦੋਂ ਹੋਵੇਗਾ"),
+        ("ml", "എന്റെ വിവാഹം എപ്പോൾ നടക്കും"),
+        ("or", "ମୋର ବିବାହ କେବେ ହେବ"),
+        ("ur", "میری شادی کب ہوگی"),
+    ],
+)
+def test_every_script_produces_words(language, question):
+    # Stopwords kept: this is testing that the script tokenises at all, and in
+    # Hindi "मेरी", "कब" and "होगी" are all stopwords, leaving one real word.
+    terms = tokenize(question, keep_stopwords=True)
+    assert len(terms) >= 3, f"{language} tokenised to {terms}"
+    # And the words must be whole: splitting on combining vowel marks tears
+    # আমার into আম, which matches nothing.
+    assert all(len(t) > 1 for t in terms)
+
+
+@pytest.mark.parametrize(
+    "expected,question",
+    [
+        ("bn", "আমার বিয়ে কবে হবে"),
+        ("hi", "मेरी शादी कब होगी"),
+        ("ta", "என் திருமணம் எப்போது நடக்கும்"),
+        ("gu", "મારા લગ્ન ક્યારે થશે"),
+        ("ur", "میری شادی کب ہوگی"),
+        ("en", "when will I get married"),
+        ("en", "Cuando me casare segun mi carta astral"),
+    ],
+)
+def test_language_detection(expected, question):
+    assert retrieval.detect_language(question) == expected
+
+
+def test_a_few_native_characters_do_not_change_the_language():
+    # An English question quoting one Bengali term is still English.
+    assert retrieval.detect_language("What does মঙ্গল mean in my chart?") == "en"
+
+
+def test_romanised_and_mixed_is_treated_as_the_native_language():
+    assert retrieval.detect_language("আমার job কবে হবে") == "bn"
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "என் திருமணம் எப்போது நடக்கும் என்று சொல்லுங்கள்",
+        "నా ఉద్యోగం ఎప్పుడు వస్తుంది అని చెప్పండి",
+        "મારા લગ્ન ક્યારે થશે તે કહો",
+        "ਮੇਰਾ ਵਿਆਹ ਕਦੋਂ ਹੋਵੇਗਾ ਦੱਸੋ",
+        "എന്റെ വിവാഹം എപ്പോൾ നടക്കും എന്ന് പറയൂ",
+        "میری شادی کب ہوگی بتائیں",
+        "ମୋର ବିବାହ କେବେ ହେବ କୁହନ୍ତୁ",
+    ],
+)
+def test_languages_we_cannot_read_are_never_refused(question):
+    """Refusing someone because we hold no vocabulary for their language is the
+    worst possible reason to refuse them."""
+    verdict = is_answerable(question)
+    assert verdict.answerable
+    assert verdict.reason == "unjudged_language"
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Cuando me casare segun mi carta astral",
+        "Quand vais-je trouver un travail selon mon horoscope",
+        "Wann werde ich laut meinem Horoskop heiraten",
+        "Kapan saya menikah menurut horoskop saya",
+    ],
+)
+def test_latin_script_languages_are_recognised(question):
+    assert is_answerable(question).answerable
+
+
+def test_english_off_topic_is_still_refused_in_a_multilingual_gate():
+    for q in [
+        "Who will win the cricket world cup final",
+        "Give me a recipe for chocolate cake with eggs",
+        "Write a Python function that sorts a list",
+    ]:
+        assert not is_answerable(q).answerable, q
