@@ -32,6 +32,15 @@ class TransactionRefOut(BaseModel):
     session_id: str | None = None
 
 
+class ConsultationMetadataOut(BaseModel):
+    session_id: str | None = None
+    astrologer_id: str | None = None
+    astrologer_name: str | None = None
+    astrologer_avatar: str | None = None
+    mode: str | None = None
+    duration_seconds: int | None = None
+
+
 class TransactionOut(BaseModel):
     id: str
     direction: TransactionDirection
@@ -44,6 +53,7 @@ class TransactionOut(BaseModel):
     amount_paise: int | None = None
     coins_per_rupee: int | None = None
     ref: TransactionRefOut = Field(default_factory=TransactionRefOut)
+    consultation: ConsultationMetadataOut | None = None
     created_at: datetime
 
 
@@ -361,6 +371,11 @@ class EarningRow(BaseModel):
     minutes: int
     earning_paise: int
     created_at: datetime
+    user_id: str | None = None
+    user_name: str | None = None
+    user_avatar: str | None = None
+    coins_charged: int | None = None
+    gross_paise: int | None = None
 
 
 class AdminEarningRow(EarningRow):

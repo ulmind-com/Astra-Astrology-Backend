@@ -69,6 +69,7 @@ _SESSION_GROUP = {
     "_id": "$session_id",
     "mode": {"$first": "$mode"},
     "astrologer_id": {"$first": "$astrologer_id"},
+    "user_id": {"$first": "$user_id"},
     "minutes": {"$sum": 1},
     "coins_charged": {"$sum": "$coins_charged"},
     "gross_paise": {"$sum": "$gross_paise"},

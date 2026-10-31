@@ -13,6 +13,7 @@ from app.api.dependencies import AstrologerUser, CurrentAstrologer, CurrentUser
 from app.core.exceptions import NotFoundError
 from app.models.astrologer import Astrologer
 from app.models.enums import ConsultationMode, Skill
+from app.models.user import User
 from app.schemas.astrologer import (
     AstrologerFilters,
     AstrologerProfile,
@@ -22,9 +23,11 @@ from app.schemas.astrologer import (
     GalleryUploadResult,
 )
 from app.schemas.common import ApiResponse, MessageResponse, Paginated
+from app.schemas.review import ReviewOut, ReviewPage, ReviewSummary
 from app.schemas.wallet import ConsultationQuote
 from app.services import astrologer as astrologer_service
 from app.services import billing
+from app.services import reviews as review_service
 from app.services import settings as settings_service
 from app.services import wallet as wallet_service
 
@@ -38,6 +41,50 @@ async def get_my_profile(
 ) -> ApiResponse[AstrologerProfile]:
     return ApiResponse(
         message="Profile fetched.", data=astrologer_service.to_profile(user, profile)
+    )
+
+
+@router.get("/me/reviews", response_model=ApiResponse[ReviewPage], summary="My client reviews")
+async def get_my_reviews(
+    _: AstrologerUser,
+    profile: CurrentAstrologer,
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> ApiResponse[ReviewPage]:
+    items, total = await review_service.for_astrologer(profile.id, skip=skip, limit=limit)
+    user_ids = [r.user_id for r in items if r.user_id]
+    user_map = {}
+    if user_ids:
+        users = await User.find({"_id": {"$in": user_ids}}).to_list()
+        user_map = {u.id: u for u in users}
+
+    review_outs = [
+        ReviewOut(
+            id=str(r.id),
+            astrologer_id=str(r.astrologer_id),
+            kind=r.kind,
+            stars=r.stars,
+            text=r.text,
+            author_name=r.author_name,
+            author_avatar=user_map.get(r.user_id).avatar_url
+            if user_map.get(r.user_id)
+            else None,
+            session_id=str(r.session_id) if r.session_id else None,
+            created_at=r.created_at,
+        )
+        for r in items
+    ]
+    return ApiResponse(
+        message="Reviews fetched.",
+        data=ReviewPage(
+            items=review_outs,
+            total=total,
+            summary=ReviewSummary(
+                average=profile.rating.average,
+                count=profile.rating.count,
+                breakdown=await review_service.breakdown(profile.id),
+            ),
+        ),
     )
 
 

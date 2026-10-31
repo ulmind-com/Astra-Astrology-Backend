@@ -5,10 +5,11 @@ from typing import Annotated
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Query, status
 
-from app.api.dependencies import AdminUser, CurrentUser
+from app.api.dependencies import AdminUser, CurrentAstrologer, CurrentUser
 from app.core.exceptions import BadRequestError, NotFoundError
 from app.models.astrologer import Astrologer
 from app.models.review import Review
+from app.models.user import User
 from app.schemas.common import ApiResponse
 from app.schemas.review import (
     HideReviewRequest,
@@ -23,7 +24,7 @@ from app.services import reviews as service
 router = APIRouter(prefix="/reviews", tags=["reviews"])
 
 
-def _out(review: Review) -> ReviewOut:
+def _out(review: Review, author_avatar: str | None = None) -> ReviewOut:
     return ReviewOut(
         id=str(review.id),
         astrologer_id=str(review.astrologer_id),
@@ -31,6 +32,8 @@ def _out(review: Review) -> ReviewOut:
         stars=review.stars,
         text=review.text,
         author_name=review.author_name,
+        author_avatar=author_avatar,
+        session_id=str(review.session_id) if review.session_id else None,
         created_at=review.created_at,
     )
 
@@ -87,6 +90,46 @@ async def my_reviews(user: CurrentUser) -> ApiResponse[list[ReviewOut]]:
 
 
 @router.get(
+    "/astrologer/me",
+    response_model=ApiResponse[ReviewPage],
+    summary="All client reviews and feedback left for me as an astrologer",
+)
+async def my_astrologer_reviews(
+    astrologer: CurrentAstrologer,
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> ApiResponse[ReviewPage]:
+    items, total = await service.for_astrologer(astrologer.id, skip=skip, limit=limit)
+    user_ids = [r.user_id for r in items if r.user_id]
+    user_map = {}
+    if user_ids:
+        users = await User.find({"_id": {"$in": user_ids}}).to_list()
+        user_map = {u.id: u for u in users}
+
+    review_outs = [
+        _out(
+            r,
+            author_avatar=user_map.get(r.user_id).avatar_url
+            if user_map.get(r.user_id)
+            else None,
+        )
+        for r in items
+    ]
+    return ApiResponse(
+        message="Reviews fetched.",
+        data=ReviewPage(
+            items=review_outs,
+            total=total,
+            summary=ReviewSummary(
+                average=astrologer.rating.average,
+                count=astrologer.rating.count,
+                breakdown=await service.breakdown(astrologer.id),
+            ),
+        ),
+    )
+
+
+@router.get(
     "/astrologers/{astrologer_id}",
     response_model=ApiResponse[ReviewPage],
     summary="What people said about an astrologer",
@@ -105,10 +148,25 @@ async def for_astrologer(
         raise NotFoundError("Astrologer not found.", error_code="astrologer_not_found")
 
     items, total = await service.for_astrologer(profile.id, skip=skip, limit=limit)
+    user_ids = [r.user_id for r in items if r.user_id]
+    user_map = {}
+    if user_ids:
+        users = await User.find({"_id": {"$in": user_ids}}).to_list()
+        user_map = {u.id: u for u in users}
+
+    review_outs = [
+        _out(
+            r,
+            author_avatar=user_map.get(r.user_id).avatar_url
+            if user_map.get(r.user_id)
+            else None,
+        )
+        for r in items
+    ]
     return ApiResponse(
         message="Reviews fetched.",
         data=ReviewPage(
-            items=[_out(r) for r in items],
+            items=review_outs,
             total=total,
             summary=ReviewSummary(
                 average=profile.rating.average,
