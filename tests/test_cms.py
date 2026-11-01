@@ -42,3 +42,9 @@ async def test_cms_homepage_public_endpoint(client):
     assert data["data"]["hero_title_highlight"] == "ASTROLOGY"
     assert len(data["data"]["hero_cards"]) == 4
     assert len(data["data"]["trust_stats"]) == 3
+
+    admin_res = await client.get("/api/v1/admin/cms/homepage")
+    assert admin_res.status_code == 200
+    admin_data = admin_res.json()
+    assert admin_data["success"] is True
+    assert admin_data["data"]["hero_title_highlight"] == "ASTROLOGY"

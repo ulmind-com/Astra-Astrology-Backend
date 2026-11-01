@@ -25,8 +25,13 @@ router = APIRouter(tags=["cms"])
     response_model=ApiResponse[HomePageCMSOut],
     summary="Get homepage CMS configuration",
 )
+@router.get(
+    "/admin/cms/homepage",
+    response_model=ApiResponse[HomePageCMSOut],
+    summary="Get homepage CMS configuration (Admin)",
+)
 async def get_homepage_cms() -> ApiResponse[HomePageCMSOut]:
-    """Public endpoint: fetches homepage text and image settings."""
+    """Public and admin endpoint: fetches homepage text and image settings."""
     doc = await cms_service.get_or_create_homepage()
     return ApiResponse(
         success=True,
@@ -43,6 +48,11 @@ async def get_homepage_cms() -> ApiResponse[HomePageCMSOut]:
     summary="Update homepage CMS configuration (Admin only)",
 )
 @router.patch(
+    "/admin/cms/homepage",
+    response_model=ApiResponse[HomePageCMSOut],
+    summary="Update homepage CMS configuration (Admin only)",
+)
+@router.post(
     "/admin/cms/homepage",
     response_model=ApiResponse[HomePageCMSOut],
     summary="Update homepage CMS configuration (Admin only)",
