@@ -22,6 +22,7 @@ from app.models.ai_astrologer import (
 )
 from app.models.settings import CoinRateChange, PlatformSettings
 from app.models.cms import HomePageCMS
+from app.models.passkey import PasskeyChallenge, PasskeyCredential
 from app.models.user import User
 from app.models.wallet import (
     PaymentOrder,
@@ -37,6 +38,8 @@ DOCUMENT_MODELS: list[type[Document]] = [
     PendingRegistration,
     PlatformSettings,
     HomePageCMS,
+    PasskeyCredential,
+    PasskeyChallenge,
     CoinRateChange,
     Wallet,
     WalletTransaction,
@@ -91,6 +94,8 @@ __all__ = [
     "PendingRegistration",
     "PlatformSettings",
     "HomePageCMS",
+    "PasskeyCredential",
+    "PasskeyChallenge",
     "User",
     "Wallet",
     "WalletTransaction",
