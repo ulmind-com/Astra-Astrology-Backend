@@ -25,3 +25,4 @@ class PasskeyInfoOut(BaseModel):
     transports: list[str] = []
     created_at: datetime
     last_used_at: Optional[datetime] = None
+

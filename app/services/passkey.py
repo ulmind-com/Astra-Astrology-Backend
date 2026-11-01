@@ -278,3 +278,4 @@ async def delete_user_passkey(user_id: PydanticObjectId, passkey_id: PydanticObj
         raise NotFoundError("Passkey not found.")
     await cred.delete()
     return True
+

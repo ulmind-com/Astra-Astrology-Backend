@@ -47,3 +47,4 @@ class PasskeyChallenge(TimestampedDocument):
                 expireAfterSeconds=300,  # 5 minutes TTL
             ),
         ]
+

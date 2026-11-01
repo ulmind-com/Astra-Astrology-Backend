@@ -39,3 +39,4 @@ def test_passkey_schemas():
 
     auth_in = PasskeyAuthenticationOptionsIn(email="admin@astra.com")
     assert auth_in.email == "admin@astra.com"
+
