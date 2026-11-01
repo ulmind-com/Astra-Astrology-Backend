@@ -23,6 +23,7 @@ from app.api.v1 import (
     ai_astrologer,
     numerology,
     vastu,
+    cms,
 )
 
 api_router = APIRouter()
@@ -56,3 +57,4 @@ api_router.include_router(earnings.admin_router)
 api_router.include_router(wallet.webhook_router)
 api_router.include_router(numerology.router)
 api_router.include_router(vastu.router)
+api_router.include_router(cms.router)
