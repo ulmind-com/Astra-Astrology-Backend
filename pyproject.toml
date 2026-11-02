@@ -36,6 +36,7 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi>=0.48b0",
     "opentelemetry-instrumentation-system-metrics>=0.48b0",
     "opentelemetry-instrumentation-pymongo>=0.66b1",
+    "webauthn>=3.0.1",
 ]
 
 [project.optional-dependencies]

@@ -160,6 +160,8 @@ def create_app() -> FastAPI:
     register_middleware(app)
     register_exception_handlers(app)
     init_telemetry(app)
+    from app.api.v1.health import router as health_router
+    app.include_router(health_router, include_in_schema=False)
     app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
     @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
