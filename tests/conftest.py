@@ -193,6 +193,12 @@ async def client(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncClient]:
     await admin.drop_database(TEST_DB_NAME)
     await admin.close()
 
+    # The platform settings live in a process-wide cache, so a dropped database
+    # alone does not give the next test a clean slate.
+    from app.services.settings import invalidate_settings_cache
+
+    invalidate_settings_cache()
+
     from app.main import create_app
 
     app = create_app()
