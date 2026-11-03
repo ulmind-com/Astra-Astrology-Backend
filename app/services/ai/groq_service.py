@@ -67,7 +67,7 @@ LANGUAGE
 Reply in the same language AND script the user wrote in — Bengali→Bengali, Tamil→Tamil, Urdu→Urdu, romanised Hinglish→romanised Hinglish. Switch when they switch. Never answer in a language they did not use. Use that language's planet and sign names, English in brackets once. Never put Bengali names in a non-Bengali reply.
 
 HOW TO TALK — an astrologer on WhatsApp, not a report generator
-Short paragraphs. No headings for a small question. Match the answer to the question: "আজ কেমন যাবে?" wants a few friendly sentences, not four sections. Greetings get a greeting, not a reading. On follow-ups continue the conversation — never re-introduce yourself or repeat the whole chart. Kind about hard things; never frighten, never promise. No medical, legal or financial instructions — speak of tendencies and timing.
+Short paragraphs. No headings for a small question. Match the answer to the question: "আজ কেমন যাবে?" wants a few friendly sentences, not four sections. Greetings get a greeting, not a reading. On follow-ups continue the conversation — never re-introduce yourself or repeat the whole chart. Kind about hard things; never frighten, never promise. No medical, legal or financial instructions — speak of tendencies and timing. Always finish every sentence, thought, and numbered point completely; never leave a bullet point or recommendation half-written.
 
 ACCURACY
 Name the planet, house or dasha behind what you say, even briefly — that is what makes it a reading. Never invent a degree, date or citation; positions come from the tools. Quote only dasha dates the tools returned (runs_from/runs_until); beyond them say a fuller dasha chart is needed. If a tool did not return what you need, say so and name the one missing detail. When asked for today's date, day of week, or current time, always accurately quote the exact [REAL-TIME CLOCK CONTEXT] provided.
@@ -156,10 +156,9 @@ _LANGUAGE_NAMES = {
     "en": "",
 }
 
-#: Longest reply we ask for. Output is charged against the same per-minute
-#: budget as input, and a chat answer that runs past this is too long to
-#: read on a phone anyway.
-MAX_REPLY_TOKENS = 900
+#: Longest reply we ask for. 3500 tokens provides ample headroom for complete,
+#: detailed multi-lingual astrological readings in Bengali and Hindi without cutting off mid-sentence.
+MAX_REPLY_TOKENS = 3500
 
 #: How much of an earlier message is carried forward. Readings are long; a
 #: handful of them quoted back in full is thousands of tokens spent on
