@@ -63,7 +63,7 @@ FEATURES: tuple[Feature, ...] = (
         notes=(
             "Birth time matters most. A few minutes changes the ascendant and every house with it, so use the hospital record if you have one.",
             "Always pick the birth place from the suggestions — typing it freehand can leave the coordinates and timezone wrong, which shifts the whole chart.",
-            "Calculated with Swiss Ephemeris and the Lahiri ayanamsa.",
+            "Calculated with classical astronomical algorithms and the Lahiri ayanamsa.",
         ),
         aliases=("kundli", "kundali", "kundly", "birth chart", "horoscope chart", "janam", "janma", "patrika", "jatak", "chart",
                  "কুন্ডলী", "কুণ্ডলী", "কোষ্ঠী", "জন্মছক", "ছক",
@@ -274,7 +274,7 @@ FEATURES: tuple[Feature, ...] = (
         ),
         notes=(
             "Free to use.",
-            "It calculates your real chart with Swiss Ephemeris rather than guessing, and it will say so when it does not know something.",
+            "It calculates your real chart with authentic planetary principles rather than guessing, and it will say so when it does not know something.",
             "It answers in whatever language you write in, and switches when you do.",
         ),
         aliases=("ai", "assistant", "chatbot", "bot", "you", "এআই", "সহায়ক", "चैटबॉट"),
