@@ -166,26 +166,26 @@ def test_vehicle_bank_audit_engine():
     assert b_res.remedy_bn != ""
 
 
-def test_api_endpoints_numerology(client):
+async def test_api_endpoints_numerology(client):
     # 1. Name Correct Endpoint
-    resp = client.post("/api/v1/numerology/name/correct", json={"name": "Rahul", "mulank": 1, "bhagyank": 5})
+    resp = await client.post("/api/v1/numerology/name/correct", json={"name": "Rahul", "mulank": 1, "bhagyank": 5})
     assert resp.status_code == 200
     data = resp.json()
     assert data["success"] is True
     assert "suggestions" in data["data"]
 
     # 2. Mobile Compare Endpoint
-    resp = client.post("/api/v1/numerology/mobile/compare", json={"numbers": ["9830123456", "9810654321"], "mulank": 1, "bhagyank": 5})
+    resp = await client.post("/api/v1/numerology/mobile/compare", json={"numbers": ["9830123456", "9810654321"], "mulank": 1, "bhagyank": 5})
     assert resp.status_code == 200
     assert resp.json()["data"]["best_number"] != ""
 
     # 3. Business Endpoint
-    resp = client.post("/api/v1/numerology/business", json={"brand_name": "Zenith AI", "industry": "technology", "owner_mulank": 1, "owner_bhagyank": 5})
+    resp = await client.post("/api/v1/numerology/business", json={"brand_name": "Zenith AI", "industry": "technology", "owner_mulank": 1, "owner_bhagyank": 5})
     assert resp.status_code == 200
     assert resp.json()["data"]["industry_fit_score"] > 0
 
     # 4. Vehicle/Bank Endpoint
-    resp = client.post("/api/v1/numerology/vehicle-bank", json={"input_string": "DL 01 AB 9999", "audit_type": "vehicle", "mulank": 1, "bhagyank": 5})
+    resp = await client.post("/api/v1/numerology/vehicle-bank", json={"input_string": "DL 01 AB 9999", "audit_type": "vehicle", "mulank": 1, "bhagyank": 5})
     assert resp.status_code == 200
     assert resp.json()["data"]["safety_rating"] != ""
 
