@@ -79,7 +79,7 @@ TOOLS — match the question, don't default to the birth chart
 - compatibility → calculate_matchmaking_tool · numbers/names → calculate_numerology_tool · classical rules, vastu, palmistry, remedies → search_vedic_rules_tool.
 - wants to talk to a real astrologer, or a question that genuinely needs one → find_astrologer_tool. Offer it once, naturally, at the end of your own answer — "I read it this way; X specialises in this and is online now at N coins a minute, shall I point you there?" Never lead with it, never push, never offer it twice in a conversation, and always give your own reading first.
 - "how do I use X", "where is X", "what does X cost", "what can you do", anything about coins, wallet or recharge → app_guide_tool. You are this app's guide as well as its astrologer: give the steps in order, say what it costs, and check their balance. If they cannot afford it, say how many coins short they are and point them to /account/wallet — warmly, not as a sales pitch. If they are not signed in, ask them to sign in rather than telling them to recharge.
-Use what is in [USER STORED BIRTH DETAILS] silently; never ask for details you already have. Never print tool names, JSON, field names, or a sign as a bare number.
+Use what is in [USER STORED BIRTH DETAILS] silently; never ask for details you already have. Never print tool names, JSON, field names, or a sign as a bare number. Never mention internal calculation engines, Swiss Ephemeris, document names, RAG knowledge sources, or software tools in your answer. Present all insights purely as astrological calculations and Vedic wisdom directly from your reading.
 
 MEMORY
 If something is worth knowing next time — what they are worried about, a decision they are weighing, a date you quoted them, their line of work — add a line `[REMEMBER: one short fact]`. Write it as a note to yourself, in English, one fact per tag, at most two per reply. Never record passwords, OTPs, card or ID numbers. Do not announce that you are remembering; the tag is stripped before they see it. If [WHAT YOU REMEMBER ABOUT THIS USER] is above, use it naturally — refer back to it the way a person would, do not recite it.
@@ -634,13 +634,13 @@ async def _execute_local_tool(
                 ),
             }
             tool_citations.append({
-                "source": "সুইস এফিমেরিস বৈদিক কুন্ডলী এনজিন (Swiss Ephemeris 2.10)",
+                "source": "বৈদিক জন্মকুণ্ডলী বিচার",
                 "category": "kundli",
                 "snippet": (
                     f"লগ্ন: {_sign_name(resp.d1_asc_sign, language) or resp.d1_asc_sign}, "
                     f"চন্দ্র রাশি: {resp.planetary_info.rasi}, "
                     f"নক্ষত্র: {resp.planetary_info.nakshatra}। "
-                    "নির্ভুল লাহিড়ী অয়নাংশ গণনা সম্পন্ন।"
+                    "লাহিড়ী অয়নাংশ গণনা সম্পন্ন।"
                 ),
             })
             return json.dumps(summary, ensure_ascii=False), tool_citations
@@ -981,7 +981,7 @@ async def _local_astrological_fallback(
             tools_called.append("calculate_kundli_tool")
 
             citations_map["kundli_engine"] = {
-                "source": "সুইস এফিমেরিস বৈদিক কুন্ডলী এনজিন",
+                "source": "বৈদিক জন্মকুণ্ডলী বিচার",
                 "category": "kundli",
                 "snippet": (
                     f"লগ্ন: {_sign_name(kundli.d1_asc_sign, preferred_language) or kundli.d1_asc_sign}, "
@@ -991,7 +991,7 @@ async def _local_astrological_fallback(
             }
 
             reply_parts.append(
-                f"নমস্কার {user_birth_details.get('name', '')}। সুইস এফিমেরিসের নিখুঁত লাহিড়ী অয়নাংশ গণনা অনুযায়ী আপনার জন্মকুন্ডলীর প্রধান জ্যোতিষীয় চিত্র:\n\n"
+                f"নমস্কার {user_birth_details.get('name', '')}। আপনার জন্মকুন্ডলীর গ্রহাবস্থান ও গণনা অনুযায়ী প্রধান জ্যোতিষীয় চিত্র:\n\n"
                 # Named, not numbered. This path builds its own text and so
                 # missed the fix made for the tool payload — it was still
                 # opening every offline reading with "জন্ম লগ্ন: 11".
