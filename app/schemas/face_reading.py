@@ -211,6 +211,32 @@ class FaceScanResponse(BaseModel):
     tri_zone_analysis: TriZoneAnalysisOut | None = None
     pancha_mahabhuta: PanchaMahabhutaOut | None = None
     kundli_sync: KundliFaceSyncOut | None = None
+    detected_moles: list[dict[str, Any]] = Field(default_factory=list)
+    ayurvedic_prakriti: dict[str, Any] | None = None
+    timeline_100_summary: dict[str, Any] | None = None
+    birth_rectification: dict[str, Any] | None = None
+
+
+class CoupleFaceMatchRequest(BaseModel):
+    partner_a_image: str | None = None
+    partner_b_image: str | None = None
+    partner_a_measurements: dict[str, float] | None = None
+    partner_b_measurements: dict[str, float] | None = None
+    partner_a_name: str = "Partner 1"
+    partner_b_name: str = "Partner 2"
+
+
+class CoupleFaceMatchResponse(BaseModel):
+    overall_compatibility_score: float
+    is_harmonious: bool
+    communication_harmony_score: float
+    destiny_alignment_score: float
+    strengths_en: list[str] = Field(default_factory=list)
+    strengths_bn: list[str] = Field(default_factory=list)
+    strengths_hi: list[str] = Field(default_factory=list)
+    harmonizing_advice_en: str = ""
+    harmonizing_advice_bn: str = ""
+    harmonizing_advice_hi: str = ""
 
 
 class FaceScanBase64Request(BaseModel):

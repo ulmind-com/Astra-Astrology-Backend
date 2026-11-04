@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from app.services.face_cv.config import DEFAULT_CONFIG, FaceScanConfig
+from app.services.face_cv.depth_volumetric import calculate_3d_volumetric_measurements
 from app.services.face_cv.detector import get_landmarker
 from app.services.face_cv.forehead_analyzer import analyze_forehead_lines
 from app.services.face_cv.landmarks import LandmarkIndex as P
@@ -16,6 +17,9 @@ from app.services.face_cv.measurements import (
     canonicalize_landmarks_3d,
     extract_measurements,
 )
+from app.services.face_cv.moles import detect_facial_moles
+from app.services.face_cv.ayurveda import analyze_ayurvedic_prakriti
+from app.services.face_cv.timeline_100 import get_timeline_forecast_for_age
 from app.services.face_cv.quality import (
     QualityStatus,
     assess_quality,
@@ -42,6 +46,10 @@ class ScanPipelineResult:
     forehead_lines_shastra: dict[str, str] = field(default_factory=dict)
     tri_zone_analysis: dict[str, Any] = field(default_factory=dict)
     pancha_mahabhuta: dict[str, Any] = field(default_factory=dict)
+    volumetric_3d: dict[str, float] = field(default_factory=dict)
+    detected_moles: list[dict[str, Any]] = field(default_factory=list)
+    ayurvedic_prakriti: dict[str, Any] = field(default_factory=dict)
+    timeline_100_summary: dict[str, Any] = field(default_factory=dict)
     landmark_mapping_version: str = "canonical_478_v1"
     model_version: str = "mediapipe_tasks_vision_1.1.1"
 
@@ -149,6 +157,19 @@ def execute_scan_pipeline(
     canonical_landmarks = canonicalize_landmarks_3d(detection.landmarks_norm, rot_mat)
     measurements, details = extract_measurements(canonical_landmarks)
 
+    # 3D Volumetric Depth Calculations
+    volumetric_3d = calculate_3d_volumetric_measurements(canonical_landmarks)
+    for vk, vv in volumetric_3d.items():
+        measurements[vk] = vv
+        details[vk] = MeasurementDetail(
+            name=f"3D {vk.replace('_', ' ').title()}",
+            value=vv,
+            description="3D volumetric depth and projection coordinate ratio",
+            formula="MediaPipe Z-axis normalized projection",
+            landmarks_used=[],
+            status="available",
+        )
+
     # --- Stage F: Biometric Forehead Wrinkle & Planetary Line Analysis ---
     assert detection.landmarks_px is not None
     forehead_analysis = analyze_forehead_lines(img_rgb, detection.landmarks_px)
@@ -198,6 +219,11 @@ def execute_scan_pipeline(
     )
     mahabhuta_res = calculate_pancha_mahabhuta(measurements)
 
+    # AI Mole detection, Ayurvedic Tridosha & 100-Year Life Timeline
+    detected_moles_res = detect_facial_moles(img_rgb, detection.landmarks_px)
+    ayurveda_res = analyze_ayurvedic_prakriti(measurements, img_rgb)
+    timeline_res = get_timeline_forecast_for_age(28, measurements)
+
     duration_ms = round((time.perf_counter() - start_time) * 1000.0, 1)
 
     pose_dict = _format_pose(quality_assessment.checks.head_pose)
@@ -238,6 +264,10 @@ def execute_scan_pipeline(
         forehead_lines_shastra=forehead_analysis.shastra_interpretation,
         tri_zone_analysis=tri_zone_res,
         pancha_mahabhuta=mahabhuta_res,
+        volumetric_3d=volumetric_3d,
+        detected_moles=detected_moles_res,
+        ayurvedic_prakriti=ayurveda_res,
+        timeline_100_summary=timeline_res,
         landmark_mapping_version=config.landmark_mapping_version,
         model_version=config.model_version,
     )

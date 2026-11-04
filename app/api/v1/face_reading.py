@@ -6,12 +6,14 @@ from beanie import PydanticObjectId
 from fastapi import APIRouter, Query, Request, status
 from loguru import logger
 
-from app.api.dependencies import AdminUser, CurrentUser
+from app.api.dependencies import AdminUser, CurrentUser, OptionalUser
 from app.core.exceptions import BadRequestError, NotFoundError, ServiceUnavailableError
 from app.models.enums import TransactionReason
 from app.models.face_reading import Condition, FaceReading, FaceRule
 from app.schemas.common import ApiResponse
 from app.schemas.face_reading import (
+    CoupleFaceMatchRequest,
+    CoupleFaceMatchResponse,
     FaceReadingAvailability,
     FaceReadingOut,
     FaceScanResponse,
@@ -29,6 +31,9 @@ from app.schemas.face_reading import (
     TriZoneEraDetail,
 )
 from app.services import face_reading as service
+from app.services.face_cv.birth_rectification import evaluate_birth_time_rectification
+from app.services.face_cv.couple_matching import calculate_couple_face_compatibility
+from app.services.face_cv.timeline_100 import get_timeline_forecast_for_age
 from app.services.face_reading_kundli import synchronize_face_with_kundli
 
 router = APIRouter(prefix="/face-reading", tags=["face reading"])
@@ -257,6 +262,7 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[FaceScanRespo
         )
 
     kundli_sync_dict = None
+    birth_rect_dict = None
     if birth_details:
         kundli_sync_dict = synchronize_face_with_kundli(
             birth_data=birth_details,
@@ -264,6 +270,13 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[FaceScanRespo
             tri_zone=cv_result.tri_zone_analysis,
             mahabhuta=cv_result.pancha_mahabhuta,
         )
+        if kundli_sync_dict:
+            birth_rect_dict = evaluate_birth_time_rectification(
+                birth_lagna_sign=kundli_sync_dict.get("ascendant_sign", "Aries"),
+                lagna_lord=kundli_sync_dict.get("ascendant_lord", "Mars"),
+                measurements=cv_result.measurements,
+                birth_time_str=str(birth_details.get("tob", "12:00")),
+            )
 
     reading = FaceReading(
         user_id=user.id,
@@ -328,6 +341,10 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[FaceScanRespo
             tri_zone_analysis=tri_zone_out,
             pancha_mahabhuta=mahabhuta_out,
             kundli_sync=kundli_sync_out,
+            detected_moles=cv_result.detected_moles,
+            ayurvedic_prakriti=cv_result.ayurvedic_prakriti,
+            timeline_100_summary=cv_result.timeline_100_summary,
+            birth_rectification=birth_rect_dict,
             landmark_mapping_version=cv_result.landmark_mapping_version,
             model_version=cv_result.model_version,
             processing_duration_ms=cv_result.processing_duration_ms,
@@ -335,6 +352,68 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[FaceScanRespo
             error_message=None,
         ),
     )
+
+
+@router.get(
+    "/timeline-age",
+    response_model=ApiResponse[dict],
+    summary="Get 100-year timeline forecast for a specific age",
+)
+async def get_timeline_age(
+    age: int = Query(..., ge=1, le=100, description="Age in years (1 to 100)"),
+    gender: str = Query(default="male", description="Gender for ear and eye polarity"),
+) -> ApiResponse[dict]:
+    """Resolves specific facial coordinate and classical Samudrika forecast for any age from 1 to 100."""
+    forecast = get_timeline_forecast_for_age(age=age, measurements={}, gender=gender)
+    return ApiResponse(message=f"Timeline forecast for age {age} resolved", data=forecast)
+
+
+@router.post(
+    "/couple-match",
+    response_model=ApiResponse[CoupleFaceMatchResponse],
+    summary="Calculate Samudrika Shastra compatibility between two partner faces",
+)
+async def couple_match(
+    payload: CoupleFaceMatchRequest,
+    user: OptionalUser = None,
+) -> ApiResponse[CoupleFaceMatchResponse]:
+    """Compares two partner faces for Pancha Mahabhuta, Tri-zone, and Shiva-Shakti balance."""
+    m_a = payload.partner_a_measurements or {}
+    m_b = payload.partner_b_measurements or {}
+
+    if payload.partner_a_image:
+        try:
+            val_a = payload.partner_a_image
+            if "," in val_a:
+                val_a = val_a.split(",", 1)[1]
+            raw_a = base64.b64decode(val_a)
+            from app.services.face_cv import execute_scan_pipeline
+            res_a = execute_scan_pipeline(raw_a)
+            if res_a.measurements:
+                m_a = res_a.measurements
+        except Exception as e:
+            logger.warning(f"Partner A image scan failed: {e}")
+
+    if payload.partner_b_image:
+        try:
+            val_b = payload.partner_b_image
+            if "," in val_b:
+                val_b = val_b.split(",", 1)[1]
+            raw_b = base64.b64decode(val_b)
+            from app.services.face_cv import execute_scan_pipeline
+            res_b = execute_scan_pipeline(raw_b)
+            if res_b.measurements:
+                m_b = res_b.measurements
+        except Exception as e:
+            logger.warning(f"Partner B image scan failed: {e}")
+
+    result = calculate_couple_face_compatibility(
+        partner_a_measurements=m_a,
+        partner_b_measurements=m_b,
+        partner_a_name=payload.partner_a_name,
+        partner_b_name=payload.partner_b_name,
+    )
+    return ApiResponse(message="Couple face compatibility calculated.", data=CoupleFaceMatchResponse(**result))
 
 
 
