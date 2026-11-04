@@ -49,18 +49,16 @@ SECONDARY_LABELS: dict[str, str] = {
 }
 
 
-def _smooth_crease_points(pts: np.ndarray, window: int = 5) -> np.ndarray:
+def _smooth_crease_points(pts: np.ndarray, window: int = 9) -> np.ndarray:
     """Smooth crease polyline using moving average window to eliminate pixel stepping."""
     if len(pts) < window:
         return pts
     kernel = np.ones(window, dtype=np.float32) / float(window)
-    x = np.convolve(pts[:, 0].astype(np.float32), kernel, mode="same")
-    y = np.convolve(pts[:, 1].astype(np.float32), kernel, mode="same")
     half = window // 2
-    x[:half] = pts[:half, 0]
-    x[-half:] = pts[-half:, 0]
-    y[:half:] = pts[:half, 1]
-    y[-half:] = pts[-half:, 1]
+    pad_x = np.pad(pts[:, 0].astype(np.float32), half, mode="edge")
+    pad_y = np.pad(pts[:, 1].astype(np.float32), half, mode="edge")
+    x = np.convolve(pad_x, kernel, mode="valid")
+    y = np.convolve(pad_y, kernel, mode="valid")
     return np.round(np.stack([x, y], axis=1)).astype(np.int32)
 
 

@@ -96,6 +96,11 @@ class TarotDrawResponse(BaseModel):
     actionable_guidance: str
     prescribed_remedy: str
     vedic_mantra: str
+    predicted_timeframe: str | None = None
+    divine_verdict: str | None = None
+    favorable_score: int | None = None
+    auspicious_day: str | None = None
+    auspicious_color: str | None = None
 
 
 class DailyTarotRequest(BaseModel):

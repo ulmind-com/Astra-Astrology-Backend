@@ -782,24 +782,36 @@ def trace_creases(
     )
     results["head"] = finish("head", head_path)
 
-    # --- 3. life (earth) line: physiological thenar corridor ----------------
-    # Starts at radial junction with head line and wraps smoothly around the ball
-    # of the thumb (thenar eminence) down to the wrist, strictly within the thenar column bound.
+    # --- 3. life (earth) line: physiological polar thenar arc ----------------
+    # Sweeps from the radial index-thumb junction smoothly around the thenar
+    # eminence (ball of thumb) all the way down to the wrist base.
     resp_life = response.copy()
     if head_path:
         head_mask = np.zeros_like(response, dtype=np.uint8)
         cv2.polylines(head_mask, [np.array(head_path, dtype=np.int32)], False, 255, 16)
         resp_life[head_mask > 0] = 0.0
 
-    ix = palm.knuckles_canonical.get("index", (0.35, 0.11))[0]
-    tx = palm.thumb_canonical[0]
-    life_col_lo = int(max(0.12, tx * 0.9) * size)
-    life_col_hi = int(min(0.38, max(0.32, ix * 1.05)) * size)
-    life_row_lo = int(0.26 * size)
-    life_row_hi = int(0.86 * size)
-    life_path, _ = _trace_vertical(
-        resp_life, life_col_lo, life_col_hi, life_row_lo, life_row_hi, config
+    thenar_x = palm.thumb_canonical[0] * 0.40 + palm.thumb_base_canonical[0] * 0.60
+    thenar_y = palm.thumb_canonical[1] * 0.30 + palm.thumb_base_canonical[1] * 0.70
+    centre = (float(thenar_x * size), float(thenar_y * size))
+    angle_from = -np.pi * 0.45
+    angle_to = np.pi * 0.35
+    radius_from = float(0.12 * size)
+    radius_to = float(0.42 * size)
+    life_path = _trace_polar(
+        resp_life, centre, angle_from, angle_to, radius_from, radius_to, config
     )
+    if not life_path:
+        # Resilient fallback if polar center was off-frame
+        ix = palm.knuckles_canonical.get("index", (0.35, 0.11))[0]
+        tx = palm.thumb_canonical[0]
+        life_col_lo = int(max(0.12, tx * 0.9) * size)
+        life_col_hi = int(min(0.38, max(0.32, ix * 1.05)) * size)
+        life_row_lo = int(0.26 * size)
+        life_row_hi = int(0.86 * size)
+        life_path, _ = _trace_vertical(
+            resp_life, life_col_lo, life_col_hi, life_row_lo, life_row_hi, config
+        )
     results["life"] = finish("life", life_path)
 
     # --- 4. fate (fire) line: central Saturn axis ---------------------------

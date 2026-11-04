@@ -6,6 +6,7 @@ Implements world-class 78-card Tarot reading engine with:
 - Elemental Dignities & Harmonic balance calculation
 - Multi-pillar interpretations (General, Love, Career, Finance, Spiritual)
 - Trilingual synthesis: English, Bengali (বাংলা), Hindi (हिन्दी)
+- High-precision Chrono-Elemental Timing Window predictions
 - Interactive tactile draws or planetary dasha-weighted draws
 - Comprehensive karmic synthesis and Vedic remedial guidance
 """
@@ -54,17 +55,17 @@ GRAHA_MANTRAS_I18N: dict[str, dict[str, str]] = {
     },
     "Guru": {
         "en": "ॐ गुरवे नमः (Om Guruve Namaha) — Chanted for divine wisdom, spiritual expansion, and cosmic grace.",
-        "bn": "ॐ गुरवे नमः (ওঁ গুরবে নমঃ) — পরম প্রজ্ঞা, সৌভাগ্য, আধ্যাত্মিক উত্তরণ ও ঐশ্বরিক কৃপার জন্য জপ করুন।",
+        "bn": "ॐ गुरवे नमঃ (ওঁ গুরবে নমঃ) — পরম প্রজ্ঞা, সৌভাগ্য, আধ্যাত্মিক উত্তরণ ও ঐশ্বরিক কৃপার জন্য জপ করুন।",
         "hi": "ॐ गुरवे नमः (ॐ गुरवे नमः) — परम ज्ञान, गुरु कृपा और आध्यात्मिक समृद्धि हेतु जपें।",
     },
     "Shukra": {
         "en": "ॐ शुक्राय नमः (Om Shukraya Namaha) — Chanted for harmony, creative magnetism, and deep love.",
-        "bn": "ॐ शुक्राय नमः (ওঁ শুক্রায় নমঃ) — প্রেম, দাম্পত্য সুখ, শিল্পকলা ও ধনৈশ্বর্য আকর্ষণের জন্য জপ করুন।",
+        "bn": "ॐ शुक्राय नमঃ (ওঁ শুক্রায় নমঃ) — প্রেম, দাম্পত্য সুখ, শিল্পকলা ও ধনৈশ্বর্য আকর্ষণের জন্য জপ করুন।",
         "hi": "ॐ शुक्राय नमः (ॐ शुक्राय नमः) — प्रेम, दांपत्य सुख, कला और आकर्षण ऊर्जा हेतु जपें।",
     },
     "Shani": {
         "en": "ॐ शं शनैश्चराय नमः (Om Sham Shanaishcharaya Namaha) — Chanted for patience, discipline, and karmic liberation.",
-        "bn": "ॐ शं शनैश्चराय नमः (ওঁ শং শনৈশ্চরায় নমঃ) — ধৈর্য, সুবিচার, নিষ্ঠা ও অশুভ কর্মবন্ধন মুক্তির জন্য জপ করুন।",
+        "bn": "ॐ शं शनैश्चराय नमঃ (ওঁ শং শনৈশ্চরায় নমঃ) — ধৈর্য, সুবিচার, নিষ্ঠা ও অশুভ কর্মবন্ধন মুক্তির জন্য জপ করুন।",
         "hi": "ॐ शं शनैश्चराय नमः (ॐ शं शनैश्चराय नमः) — धैर्य, कर्म निष्ठा और शनि शांति हेतु जपें।",
     },
     "Rahu": {
@@ -79,54 +80,133 @@ GRAHA_MANTRAS_I18N: dict[str, dict[str, str]] = {
     },
 }
 
-CARD_NAMES_BN: dict[str, str] = {
-    "the_fool": "দ্য ফুল (অবোধ পরিব্রাজক)",
-    "the_magician": "দ্য ম্যাজিশিয়ান (মায়াবী সাধক)",
-    "the_high_priestess": "দ্য হাই প্রিস্টেস (রহস্যময়ী দেবী)",
-    "the_empress": "দ্য এমপ্রেস (মাতৃরূপিণী প্রকৃতি)",
-    "the_emperor": "দ্য এম্পেরর (সার্বভৌম সম্রাট)",
-    "the_hierophant": "দ্য হায়ারোফ্যান্ট (মহাগুরু)",
-    "the_lovers": "দ্য লাভার্স (পবিত্র প্রণয়ী)",
-    "the_chariot": "দ্য চ্যারিয়ট (বিজয়ী রথ)",
-    "strength": "স্ট্রেন্থ (আত্মিক শক্তি)",
-    "the_hermit": "দ্য হার্মিট (তপস্বী সাধক)",
-    "wheel_of_fortune": "হুইল অফ ফরচুন (ভাগ্যচক্র)",
-    "justice": "জাস্টিস (ন্যায়দণ্ড)",
-    "the_hanged_man": "দ্য হ্যাংড ম্যান (সমর্পিত আত্মা)",
-    "death": "ডেথ (মহাজাগতিক রূপান্তর)",
-    "temperance": "টেম্পারেন্স (সংযম ও ভারসাম্য)",
-    "the_devil": "দ্য ডেভিল (মোহ ও আসক্তি)",
-    "the_tower": "দ্য টাওয়ার (ভ্রান্তিভঙ্গ ও নবসূচনা)",
-    "the_star": "দ্য স্টার (আশার আলোকবর্তিকা)",
-    "the_moon": "দ্য মুন (স্বপ্ন ও অন্তর্লোক)",
-    "the_sun": "দ্য সান (প্রদীপ্ত সূর্য ও বিজয়)",
-    "judgement": "জাজমেন্ট (আত্মজাগরণ ও মুক্তি)",
-    "the_world": "দ্য ওয়ার্ল্ড (পূর্ণতা ও সিদ্ধি)",
-}
-
-CARD_NAMES_HI: dict[str, str] = {
-    "the_fool": "द फूल (निश्चल यात्री)",
-    "the_magician": "द मैजिशियन (जादूगर)",
-    "the_high_priestess": "द हाई प्रीस्टेस (गूढ़ साध्वी)",
-    "the_empress": "द एम्प्रेस (सृजन दात्री)",
-    "the_emperor": "द एम्परर (सम्राट)",
-    "the_hierophant": "द हायरोफैंट (धर्मगुरु)",
-    "the_lovers": "द लवर्स (प्रेमी युगल)",
-    "the_chariot": "द चेरियट (विजय रथ)",
-    "strength": "स्ट्रेंथ (आत्मबल)",
-    "the_hermit": "द हर्मिट (एकांत साधक)",
-    "wheel_of_fortune": "व्हील ऑफ फॉर्च्यून (भाग्य चक्र)",
-    "justice": "जस्टिस (न्याय चक्र)",
-    "the_hanged_man": "द हैंग्ड मैन (समर्पित आत्मा)",
-    "death": "डेथ (महा-रूपांतरण)",
-    "temperance": "टेम्परेंस (संयम संतुलन)",
-    "the_devil": "द डेविल (माया बंधन)",
-    "the_tower": "द टॉवर (भ्रम ध्वंस)",
-    "the_star": "द स्टार (दिव्य आशा)",
-    "the_moon": "द मून (अंतर्मन रहस्य)",
-    "the_sun": "द सन (दिव्य सूर्य तेज)",
-    "judgement": "जजमेंट (आत्मजागरण)",
-    "the_world": "द वर्ल्ड (परम सिद्धि)",
+SPREAD_POSITIONS_I18N: dict[str, dict[str, list[dict[str, str]]]] = {
+    "daily_guidance": {
+        "bn": [{"title": "দৈনিক মহাজাগতিক পরিবেশ", "role": "মুখ্য শক্তি"}],
+        "hi": [{"title": "दैनिक ब्रह्मांडीय ऊर्जा", "role": "प्रमुख ऊर्जा"}],
+        "en": [{"title": "Daily Cosmic Atmosphere", "role": "Core Energy"}],
+    },
+    "past_present_future": {
+        "bn": [
+            {"title": "ভিত্তিপ্রস্তর (অতীত)", "role": "পরিস্থিতির অতীত উৎস ও কারণ"},
+            {"title": "বর্তমান অবস্থান (বর্তমান)", "role": "বর্তমান সক্রিয় মহাজাগতিক শক্তি"},
+            {"title": "সম্ভাব্য দিগন্ত (ভবিষ্যৎ)", "role": "ভবিষ্যতের অবশ্যম্ভাবী গতিপ্রবাহ"},
+        ],
+        "hi": [
+            {"title": "मूल आधार (भूत)", "role": "अतीत का मूल कारण"},
+            {"title": "वर्तमान चक्र (वर्तमान)", "role": "वर्तमान सक्रिय ऊर्जा"},
+            {"title": "भावी क्षितिज (भविष्य)", "role": "भविष्य की संभावित दिशा"},
+        ],
+        "en": [
+            {"title": "The Foundation (Past)", "role": "Root genesis & cause"},
+            {"title": "The Crucible (Present)", "role": "Active energy right now"},
+            {"title": "The Horizon (Future)", "role": "Projected outcome & horizon"},
+        ],
+    },
+    "two_choices": {
+        "bn": [
+            {"title": "মূল অন্তর্নিহিত অবস্থা", "role": "সিদ্ধান্তের পেছনের মূল পরিস্থিতি"},
+            {"title": "প্রথম পথ (বিকল্প ক)", "role": "প্রথম সিদ্ধান্তের ফলাফল ও দিক"},
+            {"title": "দ্বিতীয় পথ (বিকল্প খ)", "role": "দ্বিতীয় সিদ্ধান্তের ফলাফল ও দিক"},
+            {"title": "সারসংক্ষেপ ও সঠিক পরামর্শ", "role": "পরম কল্যাণকর পদক্ষেপ"},
+        ],
+        "hi": [
+            {"title": "मूल स्थिति", "role": "निर्णय का केंद्रीय आधार"},
+            {"title": "प्रथम मार्ग (विकल्प क)", "role": "पहले विकल्प का परिणाम"},
+            {"title": "द्वितीय मार्ग (विकल्प ख)", "role": "दूसरे विकल्प का परिणाम"},
+            {"title": "मार्गदर्शन व निष्कर्ष", "role": "सर्वश्रेष्ठ कल्याणकारी मार्ग"},
+        ],
+        "en": [
+            {"title": "The Core Dilemma", "role": "Underlying situation"},
+            {"title": "Path A: First Option", "role": "Energy of option A"},
+            {"title": "Path B: Second Option", "role": "Energy of option B"},
+            {"title": "The Harmonizing Factor", "role": "Higher spiritual resolution"},
+        ],
+    },
+    "love_soulmate": {
+        "bn": [
+            {"title": "আপনার আন্তরিক মনোভাব", "role": "আপনার গভীরতম অনুভূতি"},
+            {"title": "সঙ্গীর মানসিক অবস্থা", "role": "সঙ্গীর ভাবনা ও দৃষ্টিভঙ্গি"},
+            {"title": "সম্পর্কের অভ্যন্তরীণ টান", "role": "পারস্পরিক বন্ধনের প্রকৃতি"},
+            {"title": "লুকানো অন্তরায়", "role": "যেখানে সতর্ক থাকা প্রয়োজন"},
+            {"title": "মিলন ও ভবিষ্যৎ ঐক্য", "role": "সম্পর্কের পরম সম্ভাবনা"},
+        ],
+        "hi": [
+            {"title": "आपकी आंतरिक भावनाएं", "role": "हृदय की सच्ची स्थिति"},
+            {"title": "साथी का दृष्टिकोण", "role": "साथी की मानसिक स्थिति"},
+            {"title": "संबंधों की अंतर्धारा", "role": "आपसी ऊर्जा व जुड़ाव"},
+            {"title": "गुप्त चुनौती", "role": "सावधानी का मुख्य बिंदु"},
+            {"title": "भविष्य का मिलन", "role": "संबंधों की परम दिशा"},
+        ],
+        "en": [
+            {"title": "Your True Emotional Energy", "role": "Your subconscious feeling"},
+            {"title": "Partner's Perception & Energy", "role": "Their thoughts & state"},
+            {"title": "The Relationship Crucible", "role": "Dynamics of the bond"},
+            {"title": "The Hidden Blockage", "role": "Vulnerability to heal"},
+            {"title": "The Higher Destiny", "role": "Potential union & future"},
+        ],
+    },
+    "career_wealth": {
+        "bn": [
+            {"title": "বর্তমান পেশাগত স্থিতি", "role": "আপনার বর্তমান কর্মক্ষেত্রের শক্তি ও অবস্থান"},
+            {"title": "অপ্রকাশিত সুযোগ ও সম্পদ", "role": "লুকানো সম্ভাবনা ও সহায়ক শক্তি"},
+            {"title": "কর্মক্ষেত্রের মূল অন্তরায়", "role": "যেখানে সতর্ক থাকা অত্যন্ত জরুরি"},
+            {"title": "কৌশলগত কার্যকরী পদক্ষেপ", "role": "সাফল্য নিশ্চিত করার নির্ভুল পদক্ষেপ"},
+            {"title": "চূড়ান্ত ফল ও সমৃদ্ধি", "role": "অর্থনৈতিক ও পেশাগত উজ্জ্বল ভবিষ্যৎ"},
+        ],
+        "hi": [
+            {"title": "वर्तमान कार्य स्थिति", "role": "आपकी वर्तमान व्यावसायिक ऊर्जा"},
+            {"title": "अप्रत्याशित धन अवसर", "role": "छिपी हुई संभावनाएं व शक्ति"},
+            {"title": "कार्यक्षेत्र की मुख्य बाधा", "role": "सावधानी का मुख्य केंद्र"},
+            {"title": "सटीक रणनीतिक कदम", "role": "सफलता का अचूक मार्ग"},
+            {"title": "अंतिम उपलब्धि व समृद्धि", "role": "आर्थिक व करियर उन्नति"},
+        ],
+        "en": [
+            {"title": "Current Professional Stance", "role": "Current career standing & authority"},
+            {"title": "Hidden Asset & Opportunity", "role": "Unseen talent or advantage"},
+            {"title": "The Career Obstacle", "role": "Obstacle requiring vigilance"},
+            {"title": "The Strategic Action", "role": "Bold move to shift momentum"},
+            {"title": "Financial & Career Harvest", "role": "Long-term reward & authority"},
+        ],
+    },
+    "celtic_cross": {
+        "bn": [
+            {"title": "১. বর্তমান সার্বিক অবস্থা", "role": "জীবনের মূল কেন্দ্রবিন্দু"},
+            {"title": "২. তাৎক্ষণিক বাধা বা চ্যালেঞ্জ", "role": "সরাসরি মুখোমুখি হওয়া শক্তি"},
+            {"title": "৩. দূরবর্তী অতীত উৎস", "role": "সমস্যার প্রাচীন ভিত্তি"},
+            {"title": "৪. সাম্প্রতিক অতীতের প্রভাব", "role": "যে শক্তির প্রভাব কমছে"},
+            {"title": "৫. সর্বোচ্চ প্রাপ্তি ও উচ্চাকাঙ্ক্ষা", "role": "আপনার চেতনার চূড়া"},
+            {"title": "৬. নিকট ভবিষ্যৎ দিগন্ত", "role": "আসন্ন কয়েক সপ্তাহের প্রবাহ"},
+            {"title": "৭. নিজস্ব মনোভাব ও শক্তি", "role": "আপনার আত্মবিশ্বাস ও ক্ষমতা"},
+            {"title": "৮. পরিবেশ ও পারিপার্শ্বিক প্রভাব", "role": "অন্যদের মতামত ও সহায়তা"},
+            {"title": "৯. অন্তরের আশা ও ভীতি", "role": "মনস্তাত্ত্বিক প্রত্যাশা"},
+            {"title": "১০. চূড়ান্ত কার্মিক পরিণতি", "role": "মহাজাগতিক চূড়ান্ত ফল"},
+        ],
+        "hi": [
+            {"title": "1. वर्तमान स्थिति", "role": "जीवन का मुख्य केंद्र"},
+            {"title": "2. तात्कालिक चुनौती", "role": "सीधा अवरोध"},
+            {"title": "3. सुदूर अतीत", "role": "प्राचीन जड़ें"},
+            {"title": "4. हाल का अतीत", "role": "समाप्त होती ऊर्जा"},
+            {"title": "5. सर्वोच्च लक्ष्य", "role": "उच्चतम संभावना"},
+            {"title": "6. निकट भविष्य", "role": "आगामी कुछ सप्ताह"},
+            {"title": "7. आपका आत्मबल", "role": "आपकी आंतरिक शक्ति"},
+            {"title": "8. परिवेशीय प्रभाव", "role": "बाहरी सहयोग व माहौल"},
+            {"title": "9. आशाएं व भय", "role": "मनोवैज्ञानिक अपेक्षाएं"},
+            {"title": "10. अंतिम परिणाम", "role": "ब्रह्मांडीय अंतिम फल"},
+        ],
+        "en": [
+            {"title": "1. The Present Stance", "role": "The central core energy"},
+            {"title": "2. Immediate Challenge", "role": "Cross & obstacle"},
+            {"title": "3. The Distant Past", "role": "Root foundation"},
+            {"title": "4. The Recent Past", "role": "Receding influence"},
+            {"title": "5. Highest Potential", "role": "Crown of aspiration"},
+            {"title": "6. The Immediate Future", "role": "Upcoming horizon"},
+            {"title": "7. The Self & Attitude", "role": "Your personal agency"},
+            {"title": "8. External Environment", "role": "Surrounding influences"},
+            {"title": "9. Hopes and Fears", "role": "Psychological driver"},
+            {"title": "10. Karmic Culmination", "role": "Final divine outcome"},
+        ],
+    },
 }
 
 ELEMENT_NAMES_I18N: dict[str, dict[str, str]] = {
@@ -134,7 +214,7 @@ ELEMENT_NAMES_I18N: dict[str, dict[str, str]] = {
     "Water": {"en": "Water", "bn": "জল (আপঃ)", "hi": "जल तत्व"},
     "Air": {"en": "Air", "bn": "বায়ু (মরুৎ)", "hi": "वायु तत्व"},
     "Earth": {"en": "Earth", "bn": "পৃথিবী (ক্ষিতি)", "hi": "पृथ्वी तत्व"},
-    "Spirit": {"en": "Spirit", "bn": "ব্যোম (আকাশ/আত্মা)", "hi": "आकाश तत्व"},
+    "Spirit": {"en": "Spirit", "bn": "ব্যোম (আকাশ)", "hi": "आकाश तत्व"},
 }
 
 SPREAD_NAMES_I18N: dict[str, dict[str, str]] = {
@@ -228,17 +308,13 @@ def _compute_card_weights(
     weights: list[float] = []
     for c in cards:
         w = 1.0
-        # Astrological sign harmonic
         if user_moon_sign and c.get("astrology"):
             if user_moon_sign.lower() in c["astrology"].lower():
                 w += 0.8
-
-        # Vedic Graha harmonic
         if active_dasha_lord and c.get("vedic_graha"):
             if active_dasha_lord.lower() in c["vedic_graha"].lower():
                 w += 1.0
 
-        # Suit category affinity
         suit = c.get("suit")
         if category == "love" and suit == "cups":
             w += 0.3
@@ -253,8 +329,130 @@ def _compute_card_weights(
     return weights
 
 
+def _calculate_timing_and_verdict(
+    drawn_cards: list[DrawnCardDetail],
+    dominant_elem: str,
+    lang: str,
+    category: str,
+) -> tuple[str, str, int, str, str]:
+    """Calculate precise timing window, divine verdict score, and astrological day/color."""
+    upright_count = sum(1 for c in drawn_cards if c.orientation == "upright")
+    total = len(drawn_cards)
+    ratio = upright_count / total if total > 0 else 0.5
+
+    base_score = int(60 + (ratio * 35))
+    if base_score > 96:
+        base_score = 96
+    elif base_score < 55:
+        base_score = 55
+
+    last_card = drawn_cards[-1].card
+    last_elem = last_card.element
+
+    if lang == "bn":
+        if last_card.arcana == "major":
+            timeframe = "আসন্ন ৩ থেকে ৬ মাসের মধ্যে (মহাজাগতিক গ্রহ ট্রানজিট ও শুভ গোচরে নিশ্চিত রূপান্তর)"
+        elif last_elem == "Fire":
+            timeframe = "আগামী ২ থেকে ৪ সপ্তাহের মধ্যে (অত্যন্ত দ্রুত গতিতে অগ্রগতি ও সুযোগ প্রাপ্তি)"
+        elif last_elem == "Water":
+            timeframe = "আগামী ১ থেকে ৩ চান্দ্রমাসের মধ্যে (মানসিক স্থিতি ও অনুকূল সংযোগ সৃষ্টি)"
+        elif last_elem == "Air":
+            timeframe = "আগামী ৩ থেকে ৫ মাসের মধ্যে (কৌশলগত পরিকল্পনা ও আলোচনা সফল হবে)"
+        else:
+            timeframe = "আগামী ৫ থেকে ৮ মাসের মধ্যে (দীর্ঘমেয়াদী ও স্থায়ী ভিত্তি লাভ)"
+
+        if base_score >= 80:
+            verdict = f"অত্যন্ত অনুকূল ও শুভ সংকেত ({base_score}% ইতিবাচক সম্ভাবনা)"
+        elif base_score >= 65:
+            verdict = f"অনুকূল কিন্তু সচেতন প্রচেষ্টা আবশ্যক ({base_score}% সম্ভাবনা)"
+        else:
+            verdict = f"সতর্কতা ও আত্মশুদ্ধি প্রয়োজন ({base_score}% সম্ভাবনা)"
+
+        graha_colors_bn = {
+            "Surya": ("রবিবার", "সোনালী / প্রদীপ্ত লাল"),
+            "Chandra": ("সোমবার", "দুধসাদা / রূপালী"),
+            "Mangal": ("মঙ্গলবার", "উজ্জ্বল রক্তিম / প্রবাল"),
+            "Budha": ("বুধবার", "পান্না সবুজ"),
+            "Guru": ("বৃহস্পতিবার", "উজ্জ্বল হলুদ / কাঁচা সোনা"),
+            "Shukra": ("শুক্রবার", "সিল্ক হোয়াইট / হালকা গোলাপী"),
+            "Shani": ("শনিবার", "গাঢ় নীল / আসমানি"),
+            "Rahu": ("শনিবার", "ধূসর / গাঢ় বাদামী"),
+            "Ketu": ("মঙ্গলবার", "বহুবর্ণ / গৈরিক"),
+        }
+        lead_graha = drawn_cards[0].card.vedic_graha
+        day, color = graha_colors_bn.get(lead_graha, ("বৃহস্পতিবার", "সোনালী হলুদ"))
+
+    elif lang == "hi":
+        if last_card.arcana == "major":
+            timeframe = "आगामी 3 से 6 माह में (ब्रह्मांडीय ग्रह गोचर द्वारा निश्चित फल)"
+        elif last_elem == "Fire":
+            timeframe = "आगामी 2 से 4 सप्ताह में (अत्यंत तीव्र गति से अवसर प्राप्ति)"
+        elif last_elem == "Water":
+            timeframe = "आगामी 1 से 3 चंद्र मास में (सकारात्मक बदलाव)"
+        elif last_elem == "Air":
+            timeframe = "आगामी 3 से 5 माह में (योजनाबद्ध सफलता)"
+        else:
+            timeframe = "आगामी 5 से 8 माह में (स्थिर व दीर्घकालिक लाभ)"
+
+        if base_score >= 80:
+            verdict = f"अत्यंत शुभ व सकारात्मक संकेत ({base_score}% संभावना)"
+        elif base_score >= 65:
+            verdict = f"सकारात्मक किंतु निरंतर प्रयास आवश्यक ({base_score}% संभावना)"
+        else:
+            verdict = f"सावधानी व आत्म-मंथन आवश्यक ({base_score}% संभावना)"
+
+        graha_colors_hi = {
+            "Surya": ("रविवार", "सुनहरा / लाल"),
+            "Chandra": ("सोमवार", "सफेद / चांदी"),
+            "Mangal": ("मंगलवार", "लाल / मूंगा"),
+            "Budha": ("बुधवार", "पन्ना हरा"),
+            "Guru": ("गुरुवार", "पीला / सुनहरा"),
+            "Shukra": ("शुक्रवार", "चमकीला सफेद / गुलाबी"),
+            "Shani": ("शनिवार", "गहरा नीला / काला"),
+            "Rahu": ("शनिवार", "धूम्र वर्ण"),
+            "Ketu": ("मंगलवार", "चितकबरा / पीला"),
+        }
+        lead_graha = drawn_cards[0].card.vedic_graha
+        day, color = graha_colors_hi.get(lead_graha, ("गुरुवार", "पीला सुनहरा"))
+
+    else:
+        if last_card.arcana == "major":
+            timeframe = "Within 3 to 6 months (Catalyzed by planetary transit & cosmic alignment)"
+        elif last_elem == "Fire":
+            timeframe = "Within 2 to 4 weeks (Rapid momentum & immediate breakthrough)"
+        elif last_elem == "Water":
+            timeframe = "Within 1 to 3 lunar cycles (Emotional readiness & new avenues)"
+        elif last_elem == "Air":
+            timeframe = "Within 3 to 5 months (Strategic negotiations & clear vision)"
+        else:
+            timeframe = "Within 5 to 8 months (Enduring material foundation & authority)"
+
+        if base_score >= 80:
+            verdict = f"Strongly Favorable & Auspicious ({base_score}% positive likelihood)"
+        elif base_score >= 65:
+            verdict = f"Promising with Deliberate Action ({base_score}% likelihood)"
+        else:
+            verdict = f"Requires Vigilance & Cleansing ({base_score}% likelihood)"
+
+        graha_colors_en = {
+            "Surya": ("Sunday", "Golden Yellow / Sunburst Orange"),
+            "Chandra": ("Monday", "Pearl White / Lunar Silver"),
+            "Mangal": ("Tuesday", "Crimson Red / Coral"),
+            "Budha": ("Wednesday", "Emerald Green"),
+            "Guru": ("Thursday", "Royal Yellow / Radiant Gold"),
+            "Shukra": ("Friday", "Diamond White / Rose Pink"),
+            "Shani": ("Saturday", "Sapphire Navy / Charcoal"),
+            "Rahu": ("Saturday", "Smoky Topaz / Slate"),
+            "Ketu": ("Tuesday", "Ochre / Variegated Gold"),
+        }
+        lead_graha = drawn_cards[0].card.vedic_graha
+        day, color = graha_colors_en.get(lead_graha, ("Thursday", "Royal Gold"))
+
+    return timeframe, verdict, base_score, day, color
+
+
 def draw_tarot_spread(request: TarotDrawRequest) -> TarotDrawResponse:
-    """Perform a comprehensive tarot draw with multilingual synthesis."""
+    """Perform a comprehensive tarot draw with multilingual synthesis and timing predictions."""
     lang = request.language or "en"
     spread_data = SPREADS_BY_ID.get(request.spread_id)
     if not spread_data:
@@ -263,12 +461,13 @@ def draw_tarot_spread(request: TarotDrawRequest) -> TarotDrawResponse:
     card_count = spread_data["card_count"]
     positions = spread_data["positions"]
 
-    # Seed RNG if intention_seed provided
+    # Localized position lookups
+    localized_pos_list = SPREAD_POSITIONS_I18N.get(spread_data["id"], {}).get(lang, [])
+
     rng = random.Random()
     if request.intention_seed is not None:
         rng.seed(request.intention_seed)
 
-    # Determine drawn card indices
     deck = ALL_TAROT_CARDS
     deck_size = len(deck)
 
@@ -282,7 +481,6 @@ def draw_tarot_spread(request: TarotDrawRequest) -> TarotDrawResponse:
                 if len(selected_indices) >= card_count:
                     break
 
-    # If seeker provided partial or no indices, sample the rest
     if len(selected_indices) < card_count:
         remaining_indices = [i for i in range(deck_size) if i not in selected_indices]
         weights = _compute_card_weights(
@@ -311,14 +509,22 @@ def draw_tarot_spread(request: TarotDrawRequest) -> TarotDrawResponse:
 
     for pos_idx, card_idx in enumerate(selected_indices):
         raw_card = deck[card_idx]
-        pos_info = positions[pos_idx] if pos_idx < len(positions) else {
+        pos_raw = positions[pos_idx] if pos_idx < len(positions) else {
             "index": pos_idx + 1,
             "title": f"Position {pos_idx + 1}",
             "role": "insight",
             "description": "Cosmic perspective",
         }
 
-        # Orientation: 28% chance of reversed
+        # Human-friendly localized position title and role
+        if pos_idx < len(localized_pos_list):
+            loc_p = localized_pos_list[pos_idx]
+            pos_title = loc_p["title"]
+            pos_role = loc_p["role"]
+        else:
+            pos_title = pos_raw["title"]
+            pos_role = pos_raw["description"]
+
         is_reversed = rng.random() < 0.28
         orientation: OrientationType = "reversed" if is_reversed else "upright"
 
@@ -336,21 +542,18 @@ def draw_tarot_spread(request: TarotDrawRequest) -> TarotDrawResponse:
         if graha and graha not in grahas_present:
             grahas_present.append(graha)
 
-        # Advice formulation by language
         card_name = raw_card["name"]
         if lang == "bn":
-            loc_card = CARD_NAMES_BN.get(raw_card["id"], card_name)
             advice = (
-                f"{loc_card}-এর জাগ্রত শক্তিকে গ্রহণ করুন এবং আপনার কর্মে প্রতিফলিত করুন।"
+                f"{card_name}-এর জাগ্রত শক্তিকে গ্রহণ করুন এবং আপনার কর্মে প্রতিফলিত করুন।"
                 if orientation == "upright"
-                else f"{loc_card}-এর উল্টো শক্তির কারণে ভেতরের দ্বিধা ও বাধা দূর করে আত্মশুদ্ধি বজায় রাখুন।"
+                else f"{card_name}-এর উল্টো শক্তির কারণে ভেতরের দ্বিধা ও বাধা দূর করে আত্মশুদ্ধি বজায় রাখুন।"
             )
         elif lang == "hi":
-            loc_card = CARD_NAMES_HI.get(raw_card["id"], card_name)
             advice = (
-                f"{loc_card} की सकारात्मक ऊर्जा को अपनाएं और कर्म में उतारें।"
+                f"{card_name} की सकारात्मक ऊर्जा को अपनाएं और कर्म में उतारें।"
                 if orientation == "upright"
-                else f"{loc_card} की उल्टी स्थिति में आंतरिक संशय और नकारात्मकता को दूर करें।"
+                else f"{card_name} की उल्टी स्थिति में आंतरिक संशय और नकारात्मकता को दूर करें।"
             )
         else:
             advice = (
@@ -363,10 +566,10 @@ def draw_tarot_spread(request: TarotDrawRequest) -> TarotDrawResponse:
 
         drawn_cards_details.append(
             DrawnCardDetail(
-                position_index=pos_info["index"],
-                position_title=pos_info["title"],
-                position_role=pos_info["role"],
-                position_description=pos_info["description"],
+                position_index=pos_raw["index"],
+                position_title=pos_title,
+                position_role=pos_role,
+                position_description=pos_raw["description"],
                 card=card_schema,
                 orientation=orientation,
                 relevant_interpretation=relevant_interp,
@@ -375,7 +578,6 @@ def draw_tarot_spread(request: TarotDrawRequest) -> TarotDrawResponse:
             )
         )
 
-    # Compute Elemental Harmony between adjacent cards
     for i in range(len(drawn_cards_details)):
         curr_elem = drawn_cards_details[i].card.element
         if i + 1 < len(drawn_cards_details):
@@ -422,48 +624,57 @@ def draw_tarot_spread(request: TarotDrawRequest) -> TarotDrawResponse:
         "aligned_with_active_dasha": bool(request.active_dasha_lord),
     }
 
-    # Generate Holistic Karmic Synthesis by Language
+    # High-precision Timing Window and Verdict
+    timeframe, verdict, score, auspicious_day, auspicious_color = _calculate_timing_and_verdict(
+        drawn_cards_details, dominant_elem, lang, request.category
+    )
+
     first_card = drawn_cards_details[0]
-    first_name_bn = CARD_NAMES_BN.get(first_card.card.id, first_card.card.name)
-    first_name_hi = CARD_NAMES_HI.get(first_card.card.id, first_card.card.name)
+    lead_name = f"{first_card.card.name} ({first_card.orientation})"
+
+    # Detect user intent from question (e.g. Job, Love, Marriage)
+    q_lower = (request.question or "").lower()
+    is_job_query = any(k in q_lower for k in ["job", "chakri", "kobe", "career", "interview", "চাকরি", "পাবো"])
 
     if lang == "bn":
         spread_display_name = SPREAD_NAMES_I18N.get(spread_data["id"], {}).get("bn", spread_data["name"])
         orient_bn = "জাগ্রত শক্তি" if first_card.orientation == "upright" else "অন্তর্মুখী রূপান্তর"
 
+        job_prefix = ""
+        if is_job_query:
+            job_prefix = f"আপনার কর্মপ্রাপ্তি এবং জীবিকার ভবিষ্যৎ সম্পর্কে এই স্প্রেড সুস্পষ্ট ইতিবাচক সংকেত বহন করছে। "
+
         if len(drawn_cards_details) == 1:
             synthesis = (
-                f"আজকের দিনে আপনার মুখ্য মহাজাগতিক স্পটলাইট পড়েছে {first_name_bn} ({orient_bn})-এর ওপর। "
-                f"এই কার্ডটি নির্দেশ করছে: {first_card.relevant_interpretation} "
-                f"প্রধান উপাদান '{dominant_elem_loc}' আপনাকে আত্মবিশ্বাসের সাথে স্থির লক্ষ্যে অগ্রসর হতে পরামর্শ দিচ্ছে।"
+                f"{job_prefix}আজকের দিনে আপনার মুখ্য মহাজাগতিক স্পটলাইট পড়েছে {first_card.card.name} ({orient_bn})-এর ওপর। "
+                f"আপনার {first_card.position_title} অবস্থান অনুযায়ী: {first_card.relevant_interpretation} "
+                f"প্রধান উপাদান '{dominant_elem_loc}' নির্দেশ করে যে প্রত্যাশিত ফলপ্রাপ্তির সম্ভাব্য সময়: {timeframe}।"
             )
         elif len(drawn_cards_details) == 3:
-            past_c = drawn_cards_details[0]
-            pres_c = drawn_cards_details[1]
-            fut_c = drawn_cards_details[2]
-            p_name = CARD_NAMES_BN.get(past_c.card.id, past_c.card.name)
-            pr_name = CARD_NAMES_BN.get(pres_c.card.id, pres_c.card.name)
-            f_name = CARD_NAMES_BN.get(fut_c.card.id, fut_c.card.name)
+            p_c = drawn_cards_details[0]
+            pr_c = drawn_cards_details[1]
+            f_c = drawn_cards_details[2]
             synthesis = (
-                f"আপনার অতীত ভিত্তিপ্রস্তর উন্মোচিত হয়েছে {p_name} ({past_c.orientation})-এর মাধ্যমে: {past_c.relevant_interpretation} "
-                f"বর্তমানে পরিস্থিতির কেন্দ্রে অবস্থান করছে {pr_name} ({pres_c.orientation}): {pres_c.relevant_interpretation} "
-                f"এবং আগামী দিনে ঘটনার গতিপ্রবাহ পরিচালিত হবে {f_name} ({fut_c.orientation})-এর নির্দেশনায়: {fut_c.relevant_interpretation}"
+                f"{job_prefix}আপনার অতীত ভিত্তিপ্রস্তর উন্মোচিত হয়েছে {p_c.card.name} ({p_c.orientation})-এর মাধ্যমে: {p_c.relevant_interpretation} "
+                f"বর্তমানে পরিস্থিতির কেন্দ্রে অবস্থান করছে {pr_c.card.name} ({pr_c.orientation}): {pr_c.relevant_interpretation} "
+                f"এবং আগামী দিনে ঘটনার গতিপ্রবাহ পরিচালিত হবে {f_c.card.name} ({f_c.orientation})-এর নির্দেশনায়: {f_c.relevant_interpretation} "
+                f"ফলাফল প্রকাশের প্রত্যাশিত সময়কাল: {timeframe}।"
             )
         else:
-            cards_str = ", ".join(f"{CARD_NAMES_BN.get(c.card.id, c.card.name)}" for c in drawn_cards_details[:3])
+            cards_summary = ", ".join(f"{c.position_title}: {c.card.name}" for c in drawn_cards_details[:3])
             synthesis = (
-                f"এই গভীর মহাজাগতিক স্প্রেডের মূল ভিত্তি আবর্তিত হচ্ছে {cards_str}-এর মাধ্যমে। "
+                f"{job_prefix}এই গভীর মহাজাগতিক স্প্রেডের মূল চক্র আবর্তিত হচ্ছে {cards_summary}-এর মাধ্যমে। "
                 f"প্রধান উপাদান '{dominant_elem_loc}' এবং {karmic_momentum} "
-                f"নির্দেশ করছে যে আপনার {request.category} ক্ষেত্রে দূরদর্শী ও সত্যনিষ্ঠ সিদ্ধান্ত নেওয়া আবশ্যক। "
-                f"মুখ্য শিক্ষা: {first_card.relevant_interpretation}"
+                f"নির্দেশ করছে যে আপনার {request.category} ক্ষেত্রে সঠিক পরিকল্পনা ও একাগ্রতা থাকলে নিশ্চিত সাফল্য আসবে। "
+                f"মূল শিক্ষা: {first_card.relevant_interpretation}। "
+                f"প্রত্যাশিত সময়সীমা: {timeframe}।"
             )
 
         last_c = drawn_cards_details[-1]
-        last_name_bn = CARD_NAMES_BN.get(last_c.card.id, last_c.card.name)
         actionable_guidance = (
-            f"{first_name_bn}-এর সর্বোচ্চ সম্ভাবনাকে নিজের কর্মে রূপায়িত করুন। "
-            f"{last_name_bn}-সংক্রান্ত কোনো ক্ষণস্থায়ী ভীতি বা উত্তেজনায় হঠকারী সিদ্ধান্ত এড়িয়ে চলুন। "
-            f"'{dominant_elem_loc}' উপাদানের শান্ত গুণাবলি ধারণ করলে আগামী এক চান্দ্রমাস আপনার সার্বিক স্থিতি বজায় থাকবে।"
+            f"{first_card.card.name}-এর সর্বোচ্চ সম্ভাবনাকে নিজের কর্মে রূপায়িত করুন। "
+            f"{last_c.card.name}-সংক্রান্ত কোনো ক্ষণস্থায়ী ভীতি বা উত্তেজনায় হঠকারী সিদ্ধান্ত এড়িয়ে চলুন। "
+            f"'{dominant_elem_loc}' উপাদানের শান্ত গুণাবলি ধারণ করলে আগামী সময়ে আপনার সার্বিক স্থিতি বজায় থাকবে।"
         )
 
     elif lang == "hi":
@@ -472,67 +683,65 @@ def draw_tarot_spread(request: TarotDrawRequest) -> TarotDrawResponse:
 
         if len(drawn_cards_details) == 1:
             synthesis = (
-                f"आज के दिन आपका मुख्य ब्रह्मांडीय ध्यान {first_name_hi} ({orient_hi}) पर केंद्रित है। "
+                f"आज के दिन आपका मुख्य ब्रह्मांडीय ध्यान {first_card.card.name} ({orient_hi}) पर केंद्रित है। "
                 f"यह कार्ड संकेत देता है: {first_card.relevant_interpretation} "
-                f"प्रमुख '{dominant_elem_loc}' आपको आत्मबल व स्पष्टता के साथ आगे बढ़ने की प्रेरणा देता है।"
+                f"प्रमुख तत्व '{dominant_elem_loc}' के अनुसार अपेक्षित समय सीमा: {timeframe}।"
             )
         elif len(drawn_cards_details) == 3:
-            past_c = drawn_cards_details[0]
-            pres_c = drawn_cards_details[1]
-            fut_c = drawn_cards_details[2]
-            p_name = CARD_NAMES_HI.get(past_c.card.id, past_c.card.name)
-            pr_name = CARD_NAMES_HI.get(pres_c.card.id, pres_c.card.name)
-            f_name = CARD_NAMES_HI.get(fut_c.card.id, fut_c.card.name)
+            p_c = drawn_cards_details[0]
+            pr_c = drawn_cards_details[1]
+            f_c = drawn_cards_details[2]
             synthesis = (
-                f"आपकी स्थिति का मूल आधार {p_name} ({past_c.orientation}) से प्रकट होता है: {past_c.relevant_interpretation} "
-                f"वर्तमान में घटनाक्रम के केंद्र में {pr_name} ({pres_c.orientation}) स्थित है: {pres_c.relevant_interpretation} "
-                f"तथा भविष्य की दिशा {f_name} ({fut_c.orientation}) द्वारा प्रशस्त होगी: {fut_c.relevant_interpretation}"
+                f"आपकी स्थिति का मूल आधार {p_c.card.name} ({p_c.orientation}) से प्रकट होता है: {p_c.relevant_interpretation} "
+                f"वर्तमान में घटनाक्रम के केंद्र में {pr_c.card.name} ({pr_c.orientation}) स्थित है: {pr_c.relevant_interpretation} "
+                f"तथा भविष्य की दिशा {f_c.card.name} ({f_c.orientation}) द्वारा प्रशस्त होगी: {f_c.relevant_interpretation} "
+                f"अपेक्षित समय काल: {timeframe}।"
             )
         else:
-            cards_str = ", ".join(f"{CARD_NAMES_HI.get(c.card.id, c.card.name)}" for c in drawn_cards_details[:3])
+            cards_summary = ", ".join(f"{c.position_title}: {c.card.name}" for c in drawn_cards_details[:3])
             synthesis = (
-                f"इस दिव्य स्प्रेड का मुख्य आधार {cards_str} द्वारा संचालित है। "
-                f"प्रमुख '{dominant_elem_loc}' एवं {karmic_momentum} "
+                f"इस दिव्य स्प्रेड का मुख्य आधार {cards_summary} द्वारा संचालित है। "
+                f"प्रमुख तत्व '{dominant_elem_loc}' एवं {karmic_momentum} "
                 f"बताते हैं कि आपके {request.category} क्षेत्र में विवेकपूर्ण निर्णय आवश्यक हैं। "
-                f"मुख्य संदेश: {first_card.relevant_interpretation}"
+                f"मुख्य संदेश: {first_card.relevant_interpretation}। "
+                f"अपेक्षित समयावधि: {timeframe}।"
             )
 
         last_c = drawn_cards_details[-1]
-        last_name_hi = CARD_NAMES_HI.get(last_c.card.id, last_c.card.name)
         actionable_guidance = (
-            f"{first_name_hi} के सकारात्मक प्रभाव को जीवन में उतारें। "
-            f"{last_name_hi} से संबंधित किसी भी जल्दबाजी या भय से बचें। "
-            f"'{dominant_elem_loc}' का संतुलन बनाए रखने से आगामी समय में मनोवांछित स्थिरता प्राप्त होगी।"
+            f"{first_card.card.name} के सकारात्मक प्रभाव को जीवन में उतारें। "
+            f"{last_c.card.name} से संबंधित किसी भी जल्दबाजी या भय से बचें। "
+            f"'{dominant_elem_loc}' का संतुलन बनाए रखने से मनोवांछित स्थिरता प्राप्त होगी।"
         )
 
     else:
         spread_display_name = spread_data["name"]
-        lead_card_name = f"{first_card.card.name} ({first_card.orientation.capitalize()})"
+        job_prefix = "Regarding your career and vocational breakthrough, this spread reveals clear momentum. " if is_job_query else ""
+
         if len(drawn_cards_details) == 1:
             synthesis = (
-                f"The cosmic spotlight falls squarely upon {lead_card_name}. "
+                f"{job_prefix}The cosmic spotlight falls squarely upon {lead_name}. "
                 f"As your {first_card.position_title}, this presence indicates that {first_card.relevant_interpretation} "
-                f"The primary element of {dominant_elem} asks you to anchor clarity and act with deliberate intention."
+                f"The primary element of {dominant_elem} indicates expected culmination: {timeframe}."
             )
         elif len(drawn_cards_details) == 3:
             past_card = drawn_cards_details[0]
             pres_card = drawn_cards_details[1]
             fut_card = drawn_cards_details[2]
             synthesis = (
-                f"Your timeline unfolds from the energetic genesis of {past_card.card.name} ({past_card.orientation}), "
-                f"revealing that {past_card.relevant_interpretation} "
+                f"{job_prefix}Your timeline unfolds from the energetic genesis of {past_card.card.name} ({past_card.orientation}): {past_card.relevant_interpretation} "
                 f"Presently, {pres_card.card.name} ({pres_card.orientation}) stands at the vortex: {pres_card.relevant_interpretation} "
-                f"The forward trajectory crystallizes through {fut_card.card.name} ({fut_card.orientation}), promising that {fut_card.relevant_interpretation}"
+                f"The forward trajectory crystallizes through {fut_card.card.name} ({fut_card.orientation}): {fut_card.relevant_interpretation} "
+                f"Predicted Manifestation Window: {timeframe}."
             )
         else:
-            key_cards_summary = ", ".join(
-                f"{c.position_title}: {c.card.name} ({c.orientation})" for c in drawn_cards_details[:3]
-            )
+            key_cards_summary = ", ".join(f"{c.position_title}: {c.card.name}" for c in drawn_cards_details[:3])
             synthesis = (
-                f"This profound spread anchors through {key_cards_summary}. "
+                f"{job_prefix}This profound spread anchors through {key_cards_summary}. "
                 f"The dominant elemental frequency of {dominant_elem} combined with {karmic_momentum.lower()} "
                 f"calls for unwavering discernment in your {request.category} affairs. "
-                f"Core takeaway: {first_card.relevant_interpretation} Moving forward, align your actions with truth and elevated conscious intent."
+                f"Core takeaway: {first_card.relevant_interpretation} "
+                f"Expected Window of Culmination: {timeframe}."
             )
 
         primary_challenge_card = drawn_cards_details[-1]
@@ -542,7 +751,6 @@ def draw_tarot_spread(request: TarotDrawRequest) -> TarotDrawResponse:
             f"Meditation on {dominant_elem.lower()} qualities will provide strategic equilibrium over the next lunar cycle."
         )
 
-    # Vedic Remedy & Mantra selection
     chosen_card_for_remedy = next((c.card for c in drawn_cards_details if c.card.arcana == "major"), drawn_cards_details[-1].card)
     prescribed_remedy = chosen_card_for_remedy.remedy
     chosen_graha = chosen_card_for_remedy.vedic_graha
@@ -575,6 +783,11 @@ def draw_tarot_spread(request: TarotDrawRequest) -> TarotDrawResponse:
         actionable_guidance=actionable_guidance,
         prescribed_remedy=prescribed_remedy,
         vedic_mantra=vedic_mantra,
+        predicted_timeframe=timeframe,
+        divine_verdict=verdict,
+        favorable_score=score,
+        auspicious_day=auspicious_day,
+        auspicious_color=auspicious_color,
     )
 
 
