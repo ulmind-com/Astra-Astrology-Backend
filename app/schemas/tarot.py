@@ -1,0 +1,102 @@
+"""Schemas for Tarot Card Reading Engine."""
+
+from __future__ import annotations
+
+from typing import Any, Literal
+from pydantic import BaseModel, Field
+
+
+ArcanaType = Literal["major", "minor"]
+SuitType = Literal["wands", "cups", "swords", "pentacles"]
+OrientationType = Literal["upright", "reversed"]
+QuestionCategory = Literal["general", "love", "career", "finance", "spiritual"]
+
+
+class CardAspectInterpretation(BaseModel):
+    general: str
+    love: str
+    career: str
+    finance: str
+    spiritual: str
+    keywords: list[str] = Field(default_factory=list)
+
+
+class TarotCardSchema(BaseModel):
+    id: str
+    name: str
+    arcana: ArcanaType
+    suit: SuitType | None = None
+    number: int
+    element: str  # "Fire", "Water", "Air", "Earth", "Spirit"
+    astrology: str  # e.g. "Aries", "Uranus", "Venus"
+    vedic_graha: str  # e.g. "Surya", "Chandra", "Mangal"
+    upright: CardAspectInterpretation
+    reversed: CardAspectInterpretation
+    remedy: str
+    affirmation: str
+    image_slug: str
+
+
+class SpreadPosition(BaseModel):
+    index: int
+    title: str
+    role: str
+    description: str
+
+
+class SpreadConfig(BaseModel):
+    id: str
+    name: str
+    category: str
+    card_count: int
+    description: str
+    ideal_for: str
+    positions: list[SpreadPosition]
+
+
+class DrawnCardDetail(BaseModel):
+    position_index: int
+    position_title: str
+    position_role: str
+    position_description: str
+    card: TarotCardSchema
+    orientation: OrientationType
+    relevant_interpretation: str
+    keywords: list[str]
+    advice: str
+    elemental_harmony: str | None = None
+
+
+class TarotDrawRequest(BaseModel):
+    spread_id: str = Field(default="past_present_future", description="Spread identifier")
+    category: QuestionCategory = Field(default="general", description="Focus area of the question")
+    question: str | None = Field(default=None, max_length=500, description="User question or intention")
+    user_moon_sign: str | None = Field(default=None, description="Optional Moon sign for astrological alignment")
+    active_dasha_lord: str | None = Field(default=None, description="Optional active Dasha planet for planetary resonance")
+    selected_indices: list[int] | None = Field(
+        default=None, description="Optional specific card indices picked interactively by user"
+    )
+    intention_seed: int | None = Field(default=None, description="Optional tactile timestamp or entropy seed")
+
+
+class TarotDrawResponse(BaseModel):
+    draw_id: str
+    timestamp: str
+    spread_id: str
+    spread_name: str
+    category: QuestionCategory
+    question: str | None = None
+    drawn_cards: list[DrawnCardDetail]
+    elemental_breakdown: dict[str, int]
+    dominant_element: str
+    astrological_resonance: dict[str, Any]
+    karmic_synthesis: str
+    actionable_guidance: str
+    prescribed_remedy: str
+    vedic_mantra: str
+
+
+class DailyTarotRequest(BaseModel):
+    category: QuestionCategory = Field(default="general")
+    date_str: str | None = Field(default=None, description="YYYY-MM-DD or None for today")
+    moon_sign: str | None = None

@@ -25,6 +25,7 @@ from app.api.v1 import (
     vastu,
     cms,
     passkeys,
+    tarot,
 )
 
 api_router = APIRouter()
@@ -60,3 +61,4 @@ api_router.include_router(numerology.router)
 api_router.include_router(vastu.router)
 api_router.include_router(cms.router)
 api_router.include_router(passkeys.router)
+api_router.include_router(tarot.router)
