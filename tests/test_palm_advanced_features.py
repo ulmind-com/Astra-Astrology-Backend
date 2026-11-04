@@ -62,3 +62,13 @@ def test_fingers_thumb_and_nails():
     assert res["lunula_score"] >= 75
     assert len(res["nail_health_bn"]) > 0
 
+
+def test_palm_reading_router_import():
+    from app.api.v1.palm_reading import router
+
+    assert router is not None
+    route_paths = [r.path for r in router.routes]
+    assert "/palm-reading/timeline-age" in route_paths
+    assert "/palm-reading/dual-match" in route_paths
+
+

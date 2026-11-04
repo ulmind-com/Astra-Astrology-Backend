@@ -9,6 +9,7 @@ easiest way to lose a user's trust, and the hardest to argue with.
 from __future__ import annotations
 
 import base64
+from typing import Any
 
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Request
