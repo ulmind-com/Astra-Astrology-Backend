@@ -756,57 +756,65 @@ def trace_creases(
     else:
         knuckle_y = np.full(size, 0.20 * size, dtype=np.float32)
 
-    # --- heart (water) line: sub-knuckle furrow from index to percussion -----
+    # --- 1. heart (water) line: sub-knuckle furrow from index to percussion ---
     heart_lo = knuckle_y + int(0.04 * size)
     heart_hi = knuckle_y + int(0.20 * size)
-    col_start = int(0.20 * size)
-    col_end = int(0.96 * size)
-    heart_path, _ = _trace_horizontal(response, heart_lo, heart_hi, col_start, col_end, config)
+    heart_col_start = int(0.22 * size)
+    heart_col_end = int(0.95 * size)
+    heart_path, _ = _trace_horizontal(response, heart_lo, heart_hi, heart_col_start, heart_col_end, config)
     results["heart"] = finish("heart", heart_path)
 
-    # --- life (earth) line: polar arc wrapping around thenar eminence -------
-    # Centered dynamically on the ball of the thumb, sweeping from the radial
-    # index-thumb junction smoothly down around the thenar base to the wrist.
-    thenar_x = palm.thumb_canonical[0] * 0.40 + palm.thumb_base_canonical[0] * 0.60
-    thenar_y = palm.thumb_canonical[1] * 0.30 + palm.thumb_base_canonical[1] * 0.70
-    centre = (float(thenar_x * size), float(thenar_y * size))
-    angle_from = -np.pi * 0.45
-    angle_to = np.pi * 0.35
-    radius_from = float(0.10 * size)
-    radius_to = float(0.40 * size)
-    life_path = _trace_polar(response, centre, angle_from, angle_to, radius_from, radius_to, config)
-    results["life"] = finish("life", life_path)
-
-    # --- head (air) line: mid palm, across from radial webbing to percussion ---
-    # Suppress the heart line furrow so head trace never hops onto or merges with heart.
+    # --- 2. head (air) line: mid palm, transverse corridor ------------------
+    # Suppress the heart line furrow so head trace never hops onto heart.
     resp_no_heart = response.copy()
     if heart_path:
         heart_mask = np.zeros_like(response, dtype=np.uint8)
-        cv2.polylines(heart_mask, [np.array(heart_path, dtype=np.int32)], False, 255, 20)
+        cv2.polylines(heart_mask, [np.array(heart_path, dtype=np.int32)], False, 255, 22)
         resp_no_heart[heart_mask > 0] = 0.0
 
-    head_lo = knuckle_y + int(0.20 * size)
-    head_hi = knuckle_y + int(0.42 * size)
-    head_col_start = int(0.12 * size)
-    head_col_end = int(0.88 * size)
+    # Dynamic transverse corridor from radial junction across to percussion
+    head_lo = np.interp(cols_all, [int(0.22 * size), int(0.86 * size)], [int(0.20 * size), int(0.38 * size)])
+    head_hi = np.interp(cols_all, [int(0.22 * size), int(0.86 * size)], [int(0.34 * size), int(0.55 * size)])
+    head_col_start = int(0.24 * size)
+    head_col_end = int(0.86 * size)
     head_path, _ = _trace_horizontal(
         resp_no_heart, head_lo, head_hi, head_col_start, head_col_end, config
     )
     results["head"] = finish("head", head_path)
 
-    # --- fate (fire) line: central Saturn axis -------------------------------
+    # --- 3. life (earth) line: physiological thenar corridor ----------------
+    # Starts at radial junction with head line and wraps smoothly around the ball
+    # of the thumb (thenar eminence) down to the wrist, strictly within the thenar column bound.
+    resp_life = response.copy()
+    if head_path:
+        head_mask = np.zeros_like(response, dtype=np.uint8)
+        cv2.polylines(head_mask, [np.array(head_path, dtype=np.int32)], False, 255, 16)
+        resp_life[head_mask > 0] = 0.0
+
+    ix = palm.knuckles_canonical.get("index", (0.35, 0.11))[0]
+    tx = palm.thumb_canonical[0]
+    life_col_lo = int(max(0.12, tx * 0.9) * size)
+    life_col_hi = int(min(0.38, max(0.32, ix * 1.05)) * size)
+    life_row_lo = int(0.26 * size)
+    life_row_hi = int(0.86 * size)
+    life_path, _ = _trace_vertical(
+        resp_life, life_col_lo, life_col_hi, life_row_lo, life_row_hi, config
+    )
+    results["life"] = finish("life", life_path)
+
+    # --- 4. fate (fire) line: central Saturn axis ---------------------------
     # Mask out heart, head, and life lines so fate search never steals another crease.
     resp_saturn = response.copy()
     for p in (heart_path, head_path, life_path):
         if p:
             mask_p = np.zeros_like(response, dtype=np.uint8)
-            cv2.polylines(mask_p, [np.array(p, dtype=np.int32)], False, 255, 20)
+            cv2.polylines(mask_p, [np.array(p, dtype=np.int32)], False, 255, 22)
             resp_saturn[mask_p > 0] = 0.0
 
-    mid_knuckle = palm.knuckles_canonical.get("middle", (0.50, 0.17))
+    mid_knuckle = palm.knuckles_canonical.get("middle", (0.52, 0.14))
     mx = mid_knuckle[0]
-    fate_col_lo = int(max(0.35, mx - 0.08) * size)
-    fate_col_hi = int(min(0.65, mx + 0.08) * size)
+    fate_col_lo = int(max(0.40, mx - 0.08) * size)
+    fate_col_hi = int(min(0.68, mx + 0.08) * size)
     fate_row_lo = int(0.25 * size)
     fate_row_hi = int(0.90 * size)
     fate_path, _ = _trace_vertical(

@@ -86,7 +86,7 @@ def trace_secondary_lines(
     sun_col_hi = int(min(0.85, ring_x + 0.06) * size)
     sun_band = (int(0.25 * size), int(0.75 * size), sun_col_lo, sun_col_hi)
     sun_path, _ = _trace_vertical(resp_secondary, sun_band[2], sun_band[3], sun_band[0], sun_band[1], config)
-    secondary["sun"] = finish_secondary("sun", sun_path, min_contrast=1.75, min_str=0.14, min_cont=0.30)
+    secondary["sun"] = finish_secondary("sun", sun_path, min_contrast=2.20, min_str=0.20, min_cont=0.35)
 
     # 2. Mercury Line (Budha Rekha / Health / Hepatica) - under Pinky finger (Mercury mount)
     # Diagonally ascends towards Mercury mount; governs business acumen, eloquence, and gut vitality.
@@ -95,15 +95,15 @@ def trace_secondary_lines(
     merc_col_hi = int(min(0.98, pinky_x + 0.04) * size)
     merc_band = (int(0.35 * size), int(0.85 * size), merc_col_lo, merc_col_hi)
     merc_path, _ = _trace_vertical(resp_secondary, merc_band[2], merc_band[3], merc_band[0], merc_band[1], config)
-    secondary["mercury"] = finish_secondary("mercury", merc_path, min_contrast=1.70, min_str=0.12, min_cont=0.25)
+    secondary["mercury"] = finish_secondary("mercury", merc_path, min_contrast=2.20, min_str=0.18, min_cont=0.30)
 
     # 3. Mars Line (Mangal Rekha / Sanjeevani Rekha / Sister Life Line) - inner Venus mount
     # Parallel to Life line on the radial side; denotes divine protection, resilient constitution, and defense against accidents.
     thenar_x = palm.thumb_canonical[0] * 0.40 + palm.thumb_base_canonical[0] * 0.60
-    mars_col_hi = int(min(0.28 * size, max(0.14 * size, thenar_x * size)))
+    mars_col_hi = int(min(0.25 * size, max(0.12 * size, thenar_x * 0.85 * size)))
     mars_band = (int(0.40 * size), int(0.85 * size), int(0.06 * size), mars_col_hi)
     mars_path, _ = _trace_vertical(resp_secondary, mars_band[2], mars_band[3], mars_band[0], mars_band[1], config)
-    secondary["mars"] = finish_secondary("mars", mars_path, min_contrast=1.80, min_str=0.15, min_cont=0.30)
+    secondary["mars"] = finish_secondary("mars", mars_path, min_contrast=2.40, min_str=0.22, min_cont=0.35)
 
     return secondary
 

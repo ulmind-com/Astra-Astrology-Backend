@@ -164,10 +164,10 @@ def draw_overlay(
 
         placed_boxes: list[tuple[int, int, int, int]] = []
 
-        # 1. Render Secondary Creases (Sun, Mercury, Mars) first as subtle underlay
+        # 1. Render Secondary Creases (Sun, Mercury, Mars) only when authenticated with high confidence
         if secondary_creases:
             for name, crease in secondary_creases.items():
-                if not crease.found or len(crease.path) < 2:
+                if not crease.found or len(crease.path) < 2 or crease.contrast < 3.2 or crease.strength < 0.28:
                     continue
                 colour = SECONDARY_COLOURS.get(name, (200, 200, 200))
                 can_pts = []
