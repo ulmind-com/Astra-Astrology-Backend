@@ -34,3 +34,4 @@ async def test_geo_search_api_endpoint(client: AsyncClient):
     data = body["data"]
     assert len(data) > 0
     assert any("Deulia" in item["place"] for item in data)
+

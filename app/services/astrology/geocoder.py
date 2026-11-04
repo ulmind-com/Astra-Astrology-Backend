@@ -1019,3 +1019,4 @@ async def geocode_place(
     _CACHE[cache_key] = (now, merged)
 
     return merged
+
