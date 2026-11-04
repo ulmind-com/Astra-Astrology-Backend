@@ -70,6 +70,7 @@ class DrawnCardDetail(BaseModel):
 class TarotDrawRequest(BaseModel):
     spread_id: str = Field(default="past_present_future", description="Spread identifier")
     category: QuestionCategory = Field(default="general", description="Focus area of the question")
+    language: Literal["en", "bn", "hi"] = Field(default="en", description="Language: 'en', 'bn', or 'hi'")
     question: str | None = Field(default=None, max_length=500, description="User question or intention")
     user_moon_sign: str | None = Field(default=None, description="Optional Moon sign for astrological alignment")
     active_dasha_lord: str | None = Field(default=None, description="Optional active Dasha planet for planetary resonance")
@@ -85,6 +86,7 @@ class TarotDrawResponse(BaseModel):
     spread_id: str
     spread_name: str
     category: QuestionCategory
+    language: Literal["en", "bn", "hi"] = "en"
     question: str | None = None
     drawn_cards: list[DrawnCardDetail]
     elemental_breakdown: dict[str, int]
@@ -98,6 +100,7 @@ class TarotDrawResponse(BaseModel):
 
 class DailyTarotRequest(BaseModel):
     category: QuestionCategory = Field(default="general")
+    language: Literal["en", "bn", "hi"] = Field(default="en")
     date_str: str | None = Field(default=None, description="YYYY-MM-DD or None for today")
     moon_sign: str | None = None
 
