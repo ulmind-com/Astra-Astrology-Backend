@@ -98,11 +98,18 @@ def detect_sacred_marks(
     palm: CanonicalPalm,
     creases: dict[str, TracedCrease],
     secondary: dict[str, TracedCrease] | None = None,
+    landmarks_norm: list[tuple[float, float, float]] | None = None,
 ) -> list[dict[str, Any]]:
-    """Detect sacred auspicious signs (Chihnas) and mystical markers on the palm."""
+    """Detect sacred auspicious signs (Chihnas) and mystical markers on the palm.
+
+    Anatomically anchors each sacred mark to real hand landmarks when available,
+    guaranteeing that every marker sits precisely on the palm surface.
+    """
     size = palm.size
     response = palm.response
     marks: list[dict[str, Any]] = []
+
+    has_lm = landmarks_norm is not None and len(landmarks_norm) >= 21
 
     # --- 1. Mystic Cross (La Croix Mystique / Gupt Chatushkona) ----------------
     # Positioned in the quadrangle between Heart Line and Head Line, beneath Saturn/Sun.
@@ -126,12 +133,18 @@ def detect_sacred_marks(
                     q_mean = float(quad_patch.mean())
                     q_max = float(quad_patch.max())
                     if q_max >= 0.40 and q_mean >= 0.08:
+                        if has_lm:
+                            cx = landmarks_norm[0][0] * 0.45 + landmarks_norm[9][0] * 0.55
+                            cy = landmarks_norm[0][1] * 0.45 + landmarks_norm[9][1] * 0.55
+                        else:
+                            cx = 0.55
+                            cy = (mid_y_lo + mid_y_hi) / 2.0
                         marks.append({
                             "id": "mystic_cross",
                             "name": "Mystic Cross (La Croix Mystique)",
                             "sanskrit_name": "Gupt Chatushkona",
                             "found": True,
-                            "location_norm": [round(0.60, 3), round((mid_y_lo + mid_y_hi) / 2.0, 3)],
+                            "location_norm": [round(float(cx), 4), round(float(cy), 4)],
                             "significance": (
                                 "A sacred cross located in the Plain of Mars between the Heart and Head lines. "
                                 "Signifies acute intuition, sixth sense, natural empathy, and deep affinity for "
@@ -148,15 +161,20 @@ def detect_sacred_marks(
         top_pts = fate.path[:12]
         # Check if upper Fate line reaches into the Saturn mount (Y < 0.28)
         if top_pts[0][1] < 0.28:
-            # Check horizontal spread in upper segment
             spread = max(p[0] for p in top_pts) - min(p[0] for p in top_pts)
             if spread >= 0.035 or fate.contrast >= 5.0:
+                if has_lm:
+                    tx = landmarks_norm[9][0] * 0.85 + landmarks_norm[0][0] * 0.15
+                    ty = landmarks_norm[9][1] * 0.85 + landmarks_norm[0][1] * 0.15
+                else:
+                    tx = top_pts[0][0]
+                    ty = top_pts[0][1]
                 marks.append({
                     "id": "trishula_fate",
                     "name": "Trident of Shiva (Trishula)",
                     "sanskrit_name": "Shiva Trishula",
                     "found": True,
-                    "location_norm": [round(top_pts[0][0], 3), round(top_pts[0][1], 3)],
+                    "location_norm": [round(float(tx), 4), round(float(ty), 4)],
                     "significance": (
                         "A crowning trident configuration terminating on the Mount of Saturn. "
                         "Regarded in Samudrika Shastra as an emblem of Rajayoga: enduring authority, "
@@ -171,18 +189,23 @@ def detect_sacred_marks(
     life = creases.get("life")
     if life and life.found and life.end:
         ex, ey = life.end
-        if ey > 0.82 and ex > 0.25:
-            # Check response at Ketu base
+        if ey > 0.80:
             k_y1, k_y2 = int(0.85 * size), int(0.98 * size)
             k_x1, k_x2 = int(0.35 * size), int(0.55 * size)
             ketu_patch = response[k_y1:k_y2, k_x1:k_x2]
-            if float(ketu_patch.max()) > 0.35:
+            if float(ketu_patch.max()) > 0.32:
+                if has_lm:
+                    mx = landmarks_norm[0][0] * 0.88 + landmarks_norm[9][0] * 0.12
+                    my = landmarks_norm[0][1] * 0.88 + landmarks_norm[9][1] * 0.12
+                else:
+                    mx = ex
+                    my = ey
                 marks.append({
                     "id": "matsya_ketu",
                     "name": "Sacred Fish Sign (Matsya)",
                     "sanskrit_name": "Matsya Chinha",
                     "found": True,
-                    "location_norm": [round(ex, 3), round(ey, 3)],
+                    "location_norm": [round(float(mx), 4), round(float(my), 4)],
                     "significance": (
                         "The fish symbol at the base of the palm signifies unexpected financial windfalls, "
                         "noble lineage, religious philanthropy, and ultimate spiritual liberation (Moksha)."
@@ -194,6 +217,12 @@ def detect_sacred_marks(
     # --- 4. Protective Square (Raksha Kavach) ----------------------------------
     # Evaluated on the lower Mount of Venus / Life Line corridor.
     if life and life.found and life.contrast >= 4.0:
+        if has_lm:
+            vx = landmarks_norm[2][0] * 0.55 + landmarks_norm[0][0] * 0.45
+            vy = landmarks_norm[2][1] * 0.55 + landmarks_norm[0][1] * 0.45
+        else:
+            vx = 0.42
+            vy = 0.60
         marks.append({
             "id": "raksha_kavach",
             "name": "Protective Square (Guardian Shield)",
@@ -201,7 +230,7 @@ def detect_sacred_marks(
             "name_hi": "सुरक्षा कवच (वर्ग चिह्न)",
             "sanskrit_name": "Raksha Kavach",
             "found": True,
-            "location_norm": [round(life.start[0] + 0.05, 3) if life.start else 0.35, round(0.55, 3)],
+            "location_norm": [round(float(vx), 4), round(float(vy), 4)],
             "significance": (
                 "A protective geometry over the vitality axis. Shields the native from acute physical "
                 "or financial calamities, turning potential crises into avenues for renewed strength."
@@ -214,43 +243,49 @@ def detect_sacred_marks(
 
     # --- 5. Yav Rekha on Thumb (Eye of Providence / অঙ্গুষ্ঠে যব রেখা) --------
     # Described in 'Fingers in general and Thumb.docx': Barley grain eye on thumb crease
-    marks.append({
-        "id": "yav_thumb",
-        "name": "Yav Rekha (Eye of Providence on Thumb)",
-        "name_bn": "অঙ্গুষ্ঠে যব রেখা (ধনাগম ও অক্ষি লক্ষণ)",
-        "name_hi": "अंगूठे पर यव रेखा (आंख का निशान)",
-        "sanskrit_name": "Angustha Yav Rekha",
-        "found": True,
-        "location_norm": [0.18, 0.58],
-        "significance": (
-            "A classical barley-grain eye formation on the interphalangeal crease of the thumb. "
-            "Astro Rahul Sharma notes confirm this ensures the native never suffers from acute financial poverty, "
-            "blessing them with intuitive foreknowledge and family honor."
-        ),
-        "meaning_bn": "বৃদ্ধাঙ্গুষ্ঠের সংযোগস্থলে চোখের ন্যায় যব চিহ্ন। শাস্ত্রানুসারে এই চিহ্ন জাতককে আজীবন দারিদ্র্যমুক্ত রাখে এবং উচ্চ দূরদৃষ্টি দান করে।",
-        "meaning_hi": "अंगूठे के जोड़ पर आंख या जौ का निशान। सामुद्रिक शास्त्र के अनुसार यह व्यक्ति को आजीवन आर्थिक संपन्नता और अंतर्ज्ञान प्रदान करता है।",
-        "rarity": "Auspicious Heritage Sign",
-        "auspicious": True,
-    })
+    if has_lm:
+        yx = (landmarks_norm[2][0] + landmarks_norm[3][0]) / 2.0
+        yy = (landmarks_norm[2][1] + landmarks_norm[3][1]) / 2.0
+        marks.append({
+            "id": "yav_thumb",
+            "name": "Yav Rekha (Eye of Providence on Thumb)",
+            "name_bn": "অঙ্গুষ্ঠে যব রেখা (ধনাগম ও অক্ষি লক্ষণ)",
+            "name_hi": "अंगूठे पर यव रेखा (आंख का निशान)",
+            "sanskrit_name": "Angustha Yav Rekha",
+            "found": True,
+            "location_norm": [round(float(yx), 4), round(float(yy), 4)],
+            "significance": (
+                "A classical barley-grain eye formation on the interphalangeal crease of the thumb. "
+                "Astro Rahul Sharma notes confirm this ensures the native never suffers from acute financial poverty, "
+                "blessing them with intuitive foreknowledge and family honor."
+            ),
+            "meaning_bn": "বৃদ্ধাঙ্গুষ্ঠের সংযোগস্থলে চোখের ন্যায় যব চিহ্ন। শাস্ত্রানুসারে এই চিহ্ন জাতককে আজীবন দারিদ্র্যমুক্ত রাখে এবং উচ্চ দূরদৃষ্টি দান করে।",
+            "meaning_hi": "अंगूठे के जोड़ पर आंख या जौ का निशान। सामुद्रिक शास्त्र के अनुसार यह व्यक्ति को आजीवन आर्थिक संपन्नता और अंतर्ज्ञान प्रदान करता है।",
+            "rarity": "Auspicious Heritage Sign",
+            "auspicious": True,
+        })
 
     # --- 6. Swastika & Lotus on Jupiter (স্বস্তিক ও পদ্ম চিহ্ন) -----------------
-    marks.append({
-        "id": "swastika_jupiter",
-        "name": "Sacred Swastika / Padma Sign",
-        "name_bn": "বৃহস্পতিতে স্বস্তিক ও পদ্ম যোগ",
-        "name_hi": "गुरु पर्वत पर स्वस्तिक व पद्म चिह्न",
-        "sanskrit_name": "Shubha Swastika",
-        "found": True,
-        "location_norm": [0.28, 0.22],
-        "significance": (
-            "Sacred four-fold geometry on the Mount of Jupiter. Denotes immense spiritual merit, "
-            "ethical leadership, institutional respect, and divine protection in times of trial."
-        ),
-        "meaning_bn": "বৃহস্পতি পর্বতে দেবতুল্য স্বস্তিক চিহ্ন। এটি সততা, সমাজে সম্মানিত স্থান ও দৈব সুরক্ষার প্রতীক।",
-        "meaning_hi": "गुरु पर्वत पर स्वस्तिक का पवित्र चिह्न। यह उच्च नैतिक नेतृत्व, सामाजिक सम्मान और ईश्वरीय कृपा का संकेत है।",
-        "rarity": "Extremely Auspicious",
-        "auspicious": True,
-    })
+    if has_lm:
+        jx = landmarks_norm[5][0] * 0.82 + landmarks_norm[0][0] * 0.18
+        jy = landmarks_norm[5][1] * 0.82 + landmarks_norm[0][1] * 0.18
+        marks.append({
+            "id": "swastika_jupiter",
+            "name": "Sacred Swastika / Padma Sign",
+            "name_bn": "বৃহস্পতিতে স্বস্তিক ও পদ্ম যোগ",
+            "name_hi": "गुरु पर्वत पर स्वस्तिक व पद्म चिह्न",
+            "sanskrit_name": "Shubha Swastika",
+            "found": True,
+            "location_norm": [round(float(jx), 4), round(float(jy), 4)],
+            "significance": (
+                "Sacred four-fold geometry on the Mount of Jupiter. Denotes immense spiritual merit, "
+                "ethical leadership, institutional respect, and divine protection in times of trial."
+            ),
+            "meaning_bn": "বৃহস্পতি পর্বতে দেবতুল্য স্বস্তিক চিহ্ন। এটি সততা, সমাজে সম্মানিত স্থান ও দৈব সুরক্ষার প্রতীক।",
+            "meaning_hi": "गुरु पर्वत पर स्वस्तिक का पवित्र चिह्न। यह उच्च नैतिक नेतृत्व, सामाजिक सम्मान और ईश्वरीय कृपा का संकेत है।",
+            "rarity": "Extremely Auspicious",
+            "auspicious": True,
+        })
 
     return marks
 

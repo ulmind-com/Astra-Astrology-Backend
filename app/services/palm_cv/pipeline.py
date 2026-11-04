@@ -253,25 +253,34 @@ def execute_scan(
                 result.measurements[f"{sec_name}_contrast"] = round(sec_c.contrast, 4)
                 result.measurements[f"{sec_name}_length"] = round(sec_c.length, 4)
 
-            marks = detect_sacred_marks(palm, creases, sec_lines)
-            try:
-                # Map canonical palm coordinates to full image normalized coordinates via inverse homography
-                inv_matrix = np.linalg.inv(palm.matrix)
-                h_img, w_img = image.shape[:2]
+            marks = detect_sacred_marks(palm, creases, sec_lines, detection.landmarks_norm)
+            h_img, w_img = image.shape[:2]
+            if detection.landmarks_norm and len(detection.landmarks_norm) >= 21:
+                # Marks are already anchored to real image normalized landmark coordinates
                 for m in marks:
                     if m.get("location_norm") and len(m["location_norm"]) >= 2:
-                        cx_norm = float(m["location_norm"][0])
-                        cy_norm = float(m["location_norm"][1])
-                        can_x = (1.0 - cx_norm) * palm.size if palm.mirrored else cx_norm * palm.size
-                        can_y = cy_norm * palm.size
-                        can_pt = np.array([[[can_x, can_y]]], dtype=np.float32)
-                        orig_pt = cv2.perspectiveTransform(can_pt, inv_matrix).reshape(2)
-                        g_norm_x = float(np.clip(orig_pt[0] / w_img, 0.0, 1.0))
-                        g_norm_y = float(np.clip(orig_pt[1] / h_img, 0.0, 1.0))
-                        m["location_norm"] = [round(g_norm_x, 4), round(g_norm_y, 4)]
-                        m["location_px"] = [round(float(orig_pt[0]), 1), round(float(orig_pt[1]), 1)]
-            except Exception as e_hom:
-                logger.warning(f"marks homography mapping skipped: {e_hom}")
+                        gx = float(np.clip(m["location_norm"][0], 0.01, 0.99))
+                        gy = float(np.clip(m["location_norm"][1], 0.01, 0.99))
+                        m["location_norm"] = [round(gx, 4), round(gy, 4)]
+                        m["location_px"] = [round(gx * w_img, 1), round(gy * h_img, 1)]
+            else:
+                try:
+                    # Map canonical palm coordinates to full image normalized coordinates via inverse homography
+                    inv_matrix = np.linalg.inv(palm.matrix)
+                    for m in marks:
+                        if m.get("location_norm") and len(m["location_norm"]) >= 2:
+                            cx_norm = float(m["location_norm"][0])
+                            cy_norm = float(m["location_norm"][1])
+                            can_x = (1.0 - cx_norm) * palm.size if palm.mirrored else cx_norm * palm.size
+                            can_y = cy_norm * palm.size
+                            can_pt = np.array([[[can_x, can_y]]], dtype=np.float32)
+                            orig_pt = cv2.perspectiveTransform(can_pt, inv_matrix).reshape(2)
+                            g_norm_x = float(np.clip(orig_pt[0] / w_img, 0.0, 1.0))
+                            g_norm_y = float(np.clip(orig_pt[1] / h_img, 0.0, 1.0))
+                            m["location_norm"] = [round(g_norm_x, 4), round(g_norm_y, 4)]
+                            m["location_px"] = [round(float(orig_pt[0]), 1), round(float(orig_pt[1]), 1)]
+                except Exception as e_hom:
+                    logger.warning(f"marks homography mapping skipped: {e_hom}")
 
             result.sacred_marks = marks
             for m in marks:

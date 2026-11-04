@@ -99,12 +99,38 @@ class HandLandmarkerManager:
         result = self._landmarker.detect(mp_image)
 
         if not result.hand_landmarks:
-            # Fallback for wide/selfie shots where hand occupies a sub-region
-            candidate_boxes = [
-                (0.0, 0.90, 0.35, 1.0),   # Right side (common for selfie right hand)
-                (0.0, 0.90, 0.0, 0.65),   # Left side (common for selfie left hand)
-                (0.0, 0.85, 0.15, 0.85),  # Upper center
-            ]
+            # Multi-pass sub-region detection:
+            # 1. Skin-tone saliency segmentation to locate hand bounding boxes dynamically
+            # 2. Quadrant fallbacks for typical camera/selfie compositions
+            candidate_boxes: list[tuple[float, float, float, float]] = []
+
+            try:
+                ycrcb = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2YCrCb)
+                skin_mask = cv2.inRange(ycrcb, np.array([0, 133, 77]), np.array([255, 173, 127]))
+                k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
+                skin_mask = cv2.morphologyEx(skin_mask, cv2.MORPH_CLOSE, k)
+                cnts, _ = cv2.findContours(skin_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                for c in cnts:
+                    area = cv2.contourArea(c)
+                    if area > (height * width * 0.03):
+                        bx, by, bw, bh = cv2.boundingRect(c)
+                        pad_x = int(bw * 0.16)
+                        pad_y = int(bh * 0.16)
+                        x0 = max(0, bx - pad_x)
+                        y0 = max(0, by - pad_y)
+                        x1 = min(width, bx + bw + pad_x)
+                        y1 = min(height, by + bh + pad_y)
+                        candidate_boxes.append((y0 / height, y1 / height, x0 / width, x1 / width))
+            except Exception:
+                pass
+
+            # Standard fallback quadrants
+            candidate_boxes.extend([
+                (0.0, 0.95, 0.30, 1.0),   # Right half
+                (0.0, 0.95, 0.0, 0.70),   # Left half
+                (0.05, 0.90, 0.15, 0.85), # Center
+            ])
+
             for y0_f, y1_f, x0_f, x1_f in candidate_boxes:
                 x0 = int(round(x0_f * width))
                 x1 = int(round(x1_f * width))
@@ -112,7 +138,7 @@ class HandLandmarkerManager:
                 y1 = int(round(y1_f * height))
                 cw = x1 - x0
                 ch = y1 - y0
-                if cw < 120 or ch < 120:
+                if cw < 100 or ch < 100:
                     continue
 
                 crop = image_rgb[y0:y1, x0:x1]
@@ -124,18 +150,25 @@ class HandLandmarkerManager:
                 sub_res = self._landmarker.detect(mp_sub)
                 if sub_res.hand_landmarks:
                     sub_pts = sub_res.hand_landmarks[0]
+                    # Verify detected hand is actually inside the crop, not the zero-padded margin
+                    valid_pts = 0
                     norm = []
                     px = []
                     for p in sub_pts:
                         pt_x_crop = p.x * max_d
                         pt_y_crop = p.y * max_d
+                        if 0 <= pt_x_crop <= cw + 5 and 0 <= pt_y_crop <= ch + 5:
+                            valid_pts += 1
                         g_px_x = x0 + pt_x_crop
                         g_px_y = y0 + pt_y_crop
-                        g_norm_x = g_px_x / width
-                        g_norm_y = g_px_y / height
+                        g_norm_x = np.clip(g_px_x / width, 0.0, 1.0)
+                        g_norm_y = np.clip(g_px_y / height, 0.0, 1.0)
                         g_norm_z = p.z * (max_d / width)
                         norm.append((float(g_norm_x), float(g_norm_y), float(g_norm_z)))
                         px.append((float(g_px_x), float(g_px_y), float(g_norm_z * width)))
+
+                    if valid_pts < 15:
+                        continue
 
                     world = None
                     if sub_res.hand_world_landmarks and sub_res.hand_world_landmarks[0]:
