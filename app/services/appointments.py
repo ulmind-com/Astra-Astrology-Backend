@@ -16,6 +16,7 @@ moves rather than after.
 """
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from beanie import PydanticObjectId
 from beanie.operators import GTE, LT, And, In, Or
@@ -48,6 +49,124 @@ def slot_starts(starts_at: datetime, minutes: int) -> list[datetime]:
     """Every five-minute unit a booking of this length occupies."""
     count = minutes // SLOT_MINUTES
     return [starts_at + timedelta(minutes=SLOT_MINUTES * i) for i in range(count)]
+
+
+# ------------------------------------------------ Vedic Choghadiya & Muhurat
+DAY_CHOGHADIYA = [
+    # 0 = Monday
+    ["amrit", "kaal", "shubh", "rog", "udveg", "char", "labh", "amrit"],
+    # 1 = Tuesday
+    ["rog", "udveg", "char", "labh", "amrit", "kaal", "shubh", "rog"],
+    # 2 = Wednesday
+    ["labh", "amrit", "kaal", "shubh", "rog", "udveg", "char", "labh"],
+    # 3 = Thursday
+    ["shubh", "rog", "udveg", "char", "labh", "amrit", "kaal", "shubh"],
+    # 4 = Friday
+    ["char", "labh", "amrit", "kaal", "shubh", "rog", "udveg", "char"],
+    # 5 = Saturday
+    ["kaal", "shubh", "rog", "udveg", "char", "labh", "amrit", "kaal"],
+    # 6 = Sunday
+    ["udveg", "char", "labh", "amrit", "kaal", "shubh", "rog", "udveg"],
+]
+
+NIGHT_CHOGHADIYA = [
+    # 0 = Monday
+    ["char", "rog", "kaal", "labh", "udveg", "shubh", "amrit", "char"],
+    # 1 = Tuesday
+    ["kaal", "labh", "udveg", "shubh", "amrit", "char", "rog", "kaal"],
+    # 2 = Wednesday
+    ["udveg", "shubh", "amrit", "char", "rog", "kaal", "labh", "udveg"],
+    # 3 = Thursday
+    ["amrit", "char", "rog", "kaal", "labh", "udveg", "shubh", "amrit"],
+    # 4 = Friday
+    ["rog", "kaal", "labh", "udveg", "shubh", "amrit", "char", "rog"],
+    # 5 = Saturday
+    ["labh", "udveg", "shubh", "amrit", "char", "rog", "kaal", "labh"],
+    # 6 = Sunday
+    ["shubh", "amrit", "char", "rog", "kaal", "labh", "udveg", "shubh"],
+]
+
+RAHU_KAAL_WINDOWS = {
+    0: (7.5, 9.0),    # Mon 07:30 - 09:00
+    1: (15.0, 16.5),  # Tue 15:00 - 16:30
+    2: (12.0, 13.5),  # Wed 12:00 - 13:30
+    3: (13.5, 15.0),  # Thu 13:30 - 15:00
+    4: (10.5, 12.0),  # Fri 10:30 - 12:00
+    5: (9.0, 10.5),   # Sat 09:00 - 10:30
+    6: (16.5, 18.0),  # Sun 16:30 - 18:00
+}
+
+
+def calculate_slot_muhurat(moment_utc: datetime) -> dict[str, Any]:
+    """Computes Vedic Choghadiya, Hora & Rahu Kaal quality for any time slot."""
+    # Convert UTC to Indian Standard Time (+05:30)
+    ist = moment_utc + timedelta(hours=5, minutes=30)
+    weekday = ist.weekday()  # Monday = 0, Sunday = 6
+    hour_decimal = ist.hour + ist.minute / 60.0
+
+    is_rahu = False
+    if weekday in RAHU_KAAL_WINDOWS:
+        r_start, r_end = RAHU_KAAL_WINDOWS[weekday]
+        if r_start <= hour_decimal < r_end:
+            is_rahu = True
+
+    is_abhijit = 11.75 <= hour_decimal < 12.55  # ~11:45 AM - 12:35 PM
+
+    # Day Choghadiya: 06:00 to 18:00 (8 parts of 1.5h = 90m)
+    # Night Choghadiya: 18:00 to 06:00
+    if 6.0 <= hour_decimal < 18.0:
+        part_idx = int((hour_decimal - 6.0) / 1.5)
+        part_idx = max(0, min(7, part_idx))
+        choghadiya = DAY_CHOGHADIYA[weekday][part_idx]
+    else:
+        night_hours = (hour_decimal - 18.0) if hour_decimal >= 18.0 else (hour_decimal + 6.0)
+        part_idx = int(night_hours / 1.5)
+        part_idx = max(0, min(7, part_idx))
+        choghadiya = NIGHT_CHOGHADIYA[weekday][part_idx]
+
+    if is_abhijit:
+        quality = "super_auspicious"
+        badge_bn = "অভিজিৎ মুহূর্ত (সর্বাধিক শুভ)"
+        badge_hi = "अभिजित मुहूर्त (परम शुभ)"
+        badge_en = "Abhijit Muhurat (Highest Auspicious)"
+    elif choghadiya == "amrit":
+        quality = "super_auspicious"
+        badge_bn = "অমৃত মুহূর্ত (পরম শুভ)"
+        badge_hi = "अमृत मुहूर्त (परम शुभ)"
+        badge_en = "Amrit Muhurat (Divine Best)"
+    elif choghadiya in ("shubh", "labh"):
+        quality = "auspicious"
+        name_bn = "শুভ" if choghadiya == "shubh" else "লাভ"
+        name_hi = "शुभ" if choghadiya == "shubh" else "लाभ"
+        name_en = "Shubh" if choghadiya == "shubh" else "Labh"
+        badge_bn = f"{name_bn} চোঘড়িয়া (কল্যাণকর)"
+        badge_hi = f"{name_hi} मुहूर्त (शुभ)"
+        badge_en = f"{name_en} Muhurat (Auspicious)"
+    elif choghadiya == "char":
+        quality = "neutral"
+        badge_bn = "চর মুহূর্ত (গতিশীল)"
+        badge_hi = "चर मुहूर्त (गतिशील)"
+        badge_en = "Char Muhurat (Active)"
+    elif is_rahu:
+        quality = "remedial"
+        badge_bn = "রাহু কাল (প্রতিকার অনুকূল)"
+        badge_hi = "राहु काल (उपाय चर्चा)"
+        badge_en = "Rahu Kaal (Remedial Focus)"
+    else:
+        quality = "normal"
+        badge_bn = "সাধারণ সময়"
+        badge_hi = "सामान्य समय"
+        badge_en = "Standard Slot"
+
+    return {
+        "choghadiya": choghadiya,
+        "quality": quality,
+        "is_rahu_kaal": is_rahu,
+        "is_abhijit": is_abhijit,
+        "badge_bn": badge_bn,
+        "badge_hi": badge_hi,
+        "badge_en": badge_en,
+    }
 
 
 # ----------------------------------------------------------------- pricing
@@ -120,19 +239,24 @@ async def booked_between(
 async def day_view(
     *, astrologer: Astrologer, day_start: datetime, day_end: datetime
 ) -> dict:
-    """What a user needs to pick a time: the open hours, and what is gone.
-
-    Both halves are returned rather than only the free gaps, because someone
-    choosing a time is helped by seeing that 6–7 is taken — a calendar that
-    silently omits it looks like a calendar with nothing on it.
-    """
+    """What a user needs to pick a time: the open hours, what is gone, and Vedic Muhurat ratings."""
     assert astrologer.id is not None
     windows = await _windows_for(astrologer.id, day_start, day_end)
     taken = await booked_between(astrologer.id, day_start, day_end)
 
+    # Pre-calculate Vedic Muhurat ratings for windows
+    muhurat_ratings: dict[str, dict] = {}
+    for w in windows:
+        cur = w.starts_at
+        while cur < w.ends_at:
+            time_key = cur.isoformat()
+            muhurat_ratings[time_key] = calculate_slot_muhurat(cur)
+            cur += timedelta(minutes=15)
+
     return {
         "windows": [{"starts_at": w.starts_at, "ends_at": w.ends_at} for w in windows],
         "booked": [{"starts_at": a.starts_at, "ends_at": a.ends_at} for a in taken],
+        "muhurat_ratings": muhurat_ratings,
     }
 
 
@@ -156,6 +280,9 @@ async def book(
     starts_at: datetime,
     minutes: int,
     note: str | None = None,
+    consultation_pillar: str | None = None,
+    kundli_id: PydanticObjectId | None = None,
+    birth_details: dict[str, Any] | None = None,
 ) -> Appointment:
     """Takes a slot, takes the deposit, and writes the booking."""
     from app.services import settings as settings_service
@@ -214,6 +341,10 @@ async def book(
     deposit_paise = deposit_for(price_paise, commission)
     deposit_coins = coins_for_paise(deposit_paise, platform.coins_per_rupee)
 
+    # Calculate Vedic Muhurat
+    muhurat_data = calculate_slot_muhurat(starts_at)
+    muhurat_type = muhurat_data.get("quality", "normal")
+
     # --- claim the time ---------------------------------------------------
     # Before the wallet, because a clash is the ordinary failure and nobody's
     # money should move for it.
@@ -269,6 +400,10 @@ async def book(
         coins_per_rupee=platform.coins_per_rupee,
         balance_due_paise=max(price_paise - deposit_paise, 0),
         user_note=note,
+        consultation_pillar=consultation_pillar,
+        kundli_id=kundli_id,
+        birth_details=birth_details,
+        muhurat_type=muhurat_type,
     )
     try:
         await appointment.insert()
@@ -287,6 +422,26 @@ async def book(
         deposit_coins,
     )
     await _notify(appointment)
+
+    # Realtime notification to both client and astrologer
+    try:
+        from app.services import realtime
+        appointment_data = {
+            "id": str(appointment_id),
+            "status": "booked",
+            "starts_at": starts_at.isoformat(),
+            "ends_at": ends_at.isoformat(),
+            "minutes": minutes,
+            "consultation_pillar": consultation_pillar,
+            "muhurat_type": muhurat_type,
+            "client_name": getattr(user, "display_name", None) or getattr(user, "name", None) or "Client",
+        }
+        await realtime.publish_appointment_event(
+            user.id, astrologer.user_id, "booked", appointment_data
+        )
+    except Exception as exc:
+        logger.debug("Realtime booking publish skipped: {}", exc)
+
     return appointment
 
 
@@ -344,6 +499,60 @@ async def cancel(
 
     logger.info("Appointment {} cancelled by {}", appointment.id, by.email)
     await _notify(appointment)
+
+    # Realtime notification to both client and astrologer
+    try:
+        from app.services import realtime
+        await realtime.publish_appointment_event(
+            appointment.user_id,
+            appointment.astrologer_user_id,
+            "cancelled",
+            {
+                "id": str(appointment.id),
+                "status": "cancelled",
+                "cancel_reason": reason,
+            },
+        )
+    except Exception as exc:
+        logger.debug("Realtime cancel publish skipped: {}", exc)
+
+    return appointment
+
+
+# ------------------------------------------------------------------ prescription
+async def update_prescription(
+    *,
+    appointment: Appointment,
+    astrologer_user_id: PydanticObjectId,
+    prescription_data: dict,
+) -> Appointment:
+    """Saves the astrologer's sacred prescription and pushes it to client in realtime."""
+    if appointment.astrologer_user_id != astrologer_user_id:
+        raise ForbiddenError(
+            "Only the consulting astrologer can write a prescription.",
+            error_code="not_consulting_astrologer",
+        )
+
+    appointment.prescription = {
+        **prescription_data,
+        "updated_at": utcnow().isoformat(),
+    }
+    await appointment.save()
+
+    try:
+        from app.services import realtime
+        await realtime.publish_appointment_event(
+            appointment.user_id,
+            appointment.astrologer_user_id,
+            "prescription_updated",
+            {
+                "id": str(appointment.id),
+                "prescription": appointment.prescription,
+            },
+        )
+    except Exception as exc:
+        logger.debug("Realtime prescription publish skipped: {}", exc)
+
     return appointment
 
 

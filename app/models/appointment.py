@@ -106,6 +106,17 @@ class Appointment(TimestampedDocument):
 
     user_note: str | None = Field(default=None, max_length=1000)
 
+    # Consultation focus area (e.g. marriage, career, wealth, health, dosha, spiritual)
+    consultation_pillar: str | None = Field(default=None, max_length=50)
+    kundli_id: PydanticObjectId | None = None
+    birth_details: dict | None = None
+
+    # Astrologer's sacred prescription & remedial advice (gemstone, mantra, rudraksha, notes)
+    prescription: dict | None = None
+
+    # Vedic Muhurat classification calculated for the slot (amrit, shubh, labh, char, etc.)
+    muhurat_type: str | None = Field(default=None, max_length=50)
+
     class Settings:
         name = "appointments"
         indexes = [

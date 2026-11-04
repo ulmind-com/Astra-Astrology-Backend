@@ -330,3 +330,40 @@ async def publish_chat(user_id: Any, message: dict[str, Any]) -> None:
     does not have to be open for the message to arrive.
     """
     _broadcast(message, to_user=str(user_id))
+
+
+# ------------------------------------------------------------ appointments
+async def publish_appointment_event(
+    user_id: Any,
+    astrologer_user_id: Any,
+    event_type: str,
+    appointment_data: dict[str, Any],
+) -> None:
+    """Live synchronization for scheduled consultations.
+
+    Broadcasts immediately to both the client and the astrologer so calendars,
+    notifications, and audio cues trigger without polling.
+    """
+    msg = {
+        "type": "appointment_event",
+        "data": {
+            "event": event_type,
+            "appointment": appointment_data,
+        },
+    }
+    _broadcast(msg, to_user=str(user_id))
+    if str(astrologer_user_id) != str(user_id):
+        _broadcast(msg, to_user=str(astrologer_user_id))
+
+
+async def publish_availability_event(astrologer_id: Any, day: str) -> None:
+    """Tells all active booking visitors that an astrologer's open slots changed."""
+    _broadcast(
+        {
+            "type": "availability_event",
+            "data": {
+                "astrologer_id": str(astrologer_id),
+                "day": str(day),
+            },
+        }
+    )

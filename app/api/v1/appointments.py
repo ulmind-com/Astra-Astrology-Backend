@@ -20,6 +20,7 @@ from app.schemas.appointment import (
     BookRequest,
     CancelRequest,
     DayView,
+    PrescriptionUpdateRequest,
     QuoteRequest,
     Range,
     WindowInput,
@@ -64,6 +65,11 @@ async def _out(appointment: Appointment, viewer: User) -> AppointmentOut:
         cancelled_at=appointment.cancelled_at,
         cancel_reason=appointment.cancel_reason,
         user_note=appointment.user_note,
+        consultation_pillar=appointment.consultation_pillar,
+        kundli_id=str(appointment.kundli_id) if appointment.kundli_id else None,
+        birth_details=appointment.birth_details,
+        prescription=appointment.prescription,
+        muhurat_type=appointment.muhurat_type,
         peer=await _peer_for(appointment, viewer),
     )
 
@@ -184,6 +190,13 @@ async def add_window(
         astrologer_id=profile.id, day=starts.date(), starts_at=starts, ends_at=ends
     )
     await window.insert()
+
+    try:
+        from app.services import realtime
+        await realtime.publish_availability_event(profile.id, str(window.day))
+    except Exception as exc:
+        logger.debug("Realtime availability publish skipped: {}", exc)
+
     return ApiResponse(
         message="Hours opened.",
         data=WindowOut(
@@ -212,7 +225,15 @@ async def remove_window(
             error_code="window_has_bookings",
         )
 
+    day_str = str(window.day)
     await window.delete()
+
+    try:
+        from app.services import realtime
+        await realtime.publish_availability_event(profile.id, day_str)
+    except Exception as exc:
+        logger.debug("Realtime availability delete publish skipped: {}", exc)
+
     return MessageResponse(message="Hours closed.")
 
 
@@ -325,8 +346,30 @@ async def book(payload: BookRequest, user: CurrentUser) -> ApiResponse[Appointme
         starts_at=payload.starts_at,
         minutes=payload.minutes,
         note=payload.note,
+        consultation_pillar=payload.consultation_pillar,
+        kundli_id=PydanticObjectId(payload.kundli_id) if payload.kundli_id else None,
+        birth_details=payload.birth_details,
     )
     return ApiResponse(message="Booked.", data=await _out(appointment, user))
+
+
+@router.patch(
+    "/{appointment_id}/prescription",
+    response_model=ApiResponse[AppointmentOut],
+    summary="Update astrological remedy prescription",
+)
+async def update_prescription_endpoint(
+    appointment_id: PydanticObjectId,
+    payload: PrescriptionUpdateRequest,
+    user: CurrentUser,
+) -> ApiResponse[AppointmentOut]:
+    appointment = await service.get(appointment_id)
+    updated = await service.update_prescription(
+        appointment=appointment,
+        astrologer_user_id=user.id,
+        prescription_data=payload.model_dump(exclude_unset=True),
+    )
+    return ApiResponse(message="Prescription saved.", data=await _out(updated, user))
 
 
 @router.get(

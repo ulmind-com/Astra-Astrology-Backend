@@ -55,6 +55,7 @@ class DayView(BaseModel):
     slot_minutes: int
     min_minutes: int
     max_minutes: int
+    muhurat_ratings: dict[str, dict] | None = None
 
 
 # ------------------------------------------------------------------ booking
@@ -63,6 +64,9 @@ class BookRequest(BaseModel):
     starts_at: datetime
     minutes: int = Field(ge=5, le=600)
     note: str | None = Field(default=None, max_length=1000)
+    consultation_pillar: str | None = Field(default=None, max_length=50)
+    kundli_id: str | None = None
+    birth_details: dict | None = None
 
 
 class QuoteRequest(BaseModel):
@@ -108,8 +112,23 @@ class AppointmentOut(BaseModel):
     cancel_reason: str | None = None
     user_note: str | None = None
 
+    consultation_pillar: str | None = None
+    kundli_id: str | None = None
+    birth_details: dict | None = None
+    prescription: dict | None = None
+    muhurat_type: str | None = None
+
     peer: AppointmentPeer | None = None
 
 
 class CancelRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=300)
+
+
+class PrescriptionUpdateRequest(BaseModel):
+    gemstone: str | None = Field(default=None, max_length=200)
+    rudraksha: str | None = Field(default=None, max_length=200)
+    mantra: str | None = Field(default=None, max_length=500)
+    mantra_count: int | None = Field(default=108, ge=1)
+    daan_remedy: str | None = Field(default=None, max_length=300)
+    astrologer_notes: str | None = Field(default=None, max_length=2000)
