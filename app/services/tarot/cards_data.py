@@ -811,3 +811,4 @@ def _build_minor_arcana() -> list[dict[str, Any]]:
 # Compile the master canonical 78-card dictionary
 ALL_TAROT_CARDS: list[dict[str, Any]] = MAJOR_ARCANA + _build_minor_arcana()
 TAROT_DECK_BY_ID: dict[str, dict[str, Any]] = {card["id"]: card for card in ALL_TAROT_CARDS}
+

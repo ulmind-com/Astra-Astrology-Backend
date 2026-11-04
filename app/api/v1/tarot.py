@@ -143,3 +143,4 @@ async def get_daily_tarot_endpoint(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Daily tarot calculation failed: {str(exc)}",
         )
+

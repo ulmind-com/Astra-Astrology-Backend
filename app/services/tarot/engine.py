@@ -394,3 +394,4 @@ def get_daily_tarot_card(request: DailyTarotRequest) -> TarotDrawResponse:
     )
 
     return draw_tarot_spread(draw_req)
+

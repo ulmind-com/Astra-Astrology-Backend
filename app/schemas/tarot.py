@@ -100,3 +100,4 @@ class DailyTarotRequest(BaseModel):
     category: QuestionCategory = Field(default="general")
     date_str: str | None = Field(default=None, description="YYYY-MM-DD or None for today")
     moon_sign: str | None = None
+

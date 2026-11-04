@@ -23,3 +23,4 @@ __all__ = [
     "draw_tarot_spread",
     "get_daily_tarot_card",
 ]
+
