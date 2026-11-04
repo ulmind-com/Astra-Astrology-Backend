@@ -104,6 +104,9 @@ class PalmScanResponse(BaseModel):
     temperament_archetype: dict[str, Any] = Field(default_factory=dict)
     medical_constitution: dict[str, Any] = Field(default_factory=dict)
     kundli_palm_sync: dict[str, Any] = Field(default_factory=dict)
+    fingers_thumb_analysis: dict[str, Any] = Field(default_factory=dict)
+    timeline_1year_summary: dict[str, Any] = Field(default_factory=dict)
+    dual_hand_synastry: dict[str, Any] = Field(default_factory=dict)
 
     #: The traced overlay, so the reading can be checked against what was read.
     overlay_image: str | None = None
@@ -141,12 +144,43 @@ class PalmReadingOut(BaseModel):
     temperament_archetype: dict[str, Any] = Field(default_factory=dict)
     medical_constitution: dict[str, Any] = Field(default_factory=dict)
     kundli_palm_sync: dict[str, Any] = Field(default_factory=dict)
+    fingers_thumb_analysis: dict[str, Any] = Field(default_factory=dict)
+    timeline_1year_summary: dict[str, Any] = Field(default_factory=dict)
+    dual_hand_synastry: dict[str, Any] = Field(default_factory=dict)
 
     overlay_image: str | None = None
     coins_charged: int = 0
     quality_score: float = 1.0
     warnings: list[str] = Field(default_factory=list)
     created_at: datetime
+
+
+class DualHandMatchRequest(BaseModel):
+    left_hand_image: str | None = None
+    right_hand_image: str | None = None
+    left_hand_measurements: dict[str, Any] | None = None
+    right_hand_measurements: dict[str, Any] | None = None
+    primary_handedness: str = "Right"
+
+
+class DualHandMatchResponse(BaseModel):
+    is_harmonious: bool = True
+    karma_evolution_score: int
+    prarabdha_score: int
+    purushartha_score: int
+    dominant_hand: str
+    prarabdha_summary_en: str
+    prarabdha_summary_bn: str
+    prarabdha_summary_hi: str
+    purushartha_summary_en: str
+    purushartha_summary_bn: str
+    purushartha_summary_hi: str
+    transformation_strengths_en: list[str] = Field(default_factory=list)
+    transformation_strengths_bn: list[str] = Field(default_factory=list)
+    transformation_strengths_hi: list[str] = Field(default_factory=list)
+    karma_advice_en: str
+    karma_advice_bn: str
+    karma_advice_hi: str
 
 
 class PalmRuleOut(BaseModel):

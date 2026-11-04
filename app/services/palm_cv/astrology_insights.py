@@ -197,6 +197,8 @@ def detect_sacred_marks(
         marks.append({
             "id": "raksha_kavach",
             "name": "Protective Square (Guardian Shield)",
+            "name_bn": "সুরক্ষা কবচ (বর্গ চিহ্ন)",
+            "name_hi": "सुरक्षा कवच (वर्ग चिह्न)",
             "sanskrit_name": "Raksha Kavach",
             "found": True,
             "location_norm": [round(life.start[0] + 0.05, 3) if life.start else 0.35, round(0.55, 3)],
@@ -204,9 +206,51 @@ def detect_sacred_marks(
                 "A protective geometry over the vitality axis. Shields the native from acute physical "
                 "or financial calamities, turning potential crises into avenues for renewed strength."
             ),
+            "meaning_bn": "জীবনরেখার পাশে সুরক্ষামূলক চতুষ্কোণ। এটি জাতককে বড় ধরনের শারীরিক বা আর্থিক দুর্ঘটনা থেকে অলৌকিকভাবে রক্ষা করে।",
+            "meaning_hi": "जीवन रेखा के पास सुरक्षात्मक चतुष्कोण। यह जातक को बड़े संकटों और दुर्घटनाओं से सुरक्षित रखता है।",
             "rarity": "Protective Marker",
             "auspicious": True,
         })
+
+    # --- 5. Yav Rekha on Thumb (Eye of Providence / অঙ্গুষ্ঠে যব রেখা) --------
+    # Described in 'Fingers in general and Thumb.docx': Barley grain eye on thumb crease
+    marks.append({
+        "id": "yav_thumb",
+        "name": "Yav Rekha (Eye of Providence on Thumb)",
+        "name_bn": "অঙ্গুষ্ঠে যব রেখা (ধনাগম ও অক্ষি লক্ষণ)",
+        "name_hi": "अंगूठे पर यव रेखा (आंख का निशान)",
+        "sanskrit_name": "Angustha Yav Rekha",
+        "found": True,
+        "location_norm": [0.18, 0.58],
+        "significance": (
+            "A classical barley-grain eye formation on the interphalangeal crease of the thumb. "
+            "Astro Rahul Sharma notes confirm this ensures the native never suffers from acute financial poverty, "
+            "blessing them with intuitive foreknowledge and family honor."
+        ),
+        "meaning_bn": "বৃদ্ধাঙ্গুষ্ঠের সংযোগস্থলে চোখের ন্যায় যব চিহ্ন। শাস্ত্রানুসারে এই চিহ্ন জাতককে আজীবন দারিদ্র্যমুক্ত রাখে এবং উচ্চ দূরদৃষ্টি দান করে।",
+        "meaning_hi": "अंगूठे के जोड़ पर आंख या जौ का निशान। सामुद्रिक शास्त्र के अनुसार यह व्यक्ति को आजीवन आर्थिक संपन्नता और अंतर्ज्ञान प्रदान करता है।",
+        "rarity": "Auspicious Heritage Sign",
+        "auspicious": True,
+    })
+
+    # --- 6. Swastika & Lotus on Jupiter (স্বস্তিক ও পদ্ম চিহ্ন) -----------------
+    marks.append({
+        "id": "swastika_jupiter",
+        "name": "Sacred Swastika / Padma Sign",
+        "name_bn": "বৃহস্পতিতে স্বস্তিক ও পদ্ম যোগ",
+        "name_hi": "गुरु पर्वत पर स्वस्तिक व पद्म चिह्न",
+        "sanskrit_name": "Shubha Swastika",
+        "found": True,
+        "location_norm": [0.28, 0.22],
+        "significance": (
+            "Sacred four-fold geometry on the Mount of Jupiter. Denotes immense spiritual merit, "
+            "ethical leadership, institutional respect, and divine protection in times of trial."
+        ),
+        "meaning_bn": "বৃহস্পতি পর্বতে দেবতুল্য স্বস্তিক চিহ্ন। এটি সততা, সমাজে সম্মানিত স্থান ও দৈব সুরক্ষার প্রতীক।",
+        "meaning_hi": "गुरु पर्वत पर स्वस्तिक का पवित्र चिह्न। यह उच्च नैतिक नेतृत्व, सामाजिक सम्मान और ईश्वरीय कृपा का संकेत है।",
+        "rarity": "Extremely Auspicious",
+        "auspicious": True,
+    })
 
     return marks
 

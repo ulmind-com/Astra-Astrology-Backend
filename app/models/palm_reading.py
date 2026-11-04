@@ -277,6 +277,9 @@ class PalmReading(TimestampedDocument):
     temperament_archetype: dict = Field(default_factory=dict)
     medical_constitution: dict = Field(default_factory=dict)
     kundli_palm_sync: dict = Field(default_factory=dict)
+    fingers_thumb_analysis: dict = Field(default_factory=dict)
+    timeline_1year_summary: dict = Field(default_factory=dict)
+    dual_hand_synastry: dict = Field(default_factory=dict)
 
     sections: list[ReadingSection] = Field(default_factory=list)
     skipped: list[SkippedFeature] = Field(default_factory=list)

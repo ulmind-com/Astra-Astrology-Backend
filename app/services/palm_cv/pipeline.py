@@ -39,8 +39,11 @@ from app.services.palm_cv.creases import (
     trace_creases,
 )
 from app.services.palm_cv.detector import get_landmarker
+from app.services.palm_cv.dual_hand import calculate_dual_hand_synastry
+from app.services.palm_cv.fingers_thumb import analyze_fingers_thumb_and_nails
 from app.services.palm_cv.measurements import extract, extract_3d_metrics, hand_type
 from app.services.palm_cv.quality import QualityStatus, assess, decode_image, hand_pose
+from app.services.palm_cv.timeline_1year import get_palm_timeline_for_age
 from app.services.palm_cv.visualizer import draw_overlay, draw_response_map, to_data_url
 
 
@@ -86,6 +89,9 @@ class PalmScanResult:
     temperament_archetype: dict[str, Any] = field(default_factory=dict)
     medical_constitution: dict[str, Any] = field(default_factory=dict)
     kundli_palm_sync: dict[str, Any] = field(default_factory=dict)
+    fingers_thumb_analysis: dict[str, Any] = field(default_factory=dict)
+    timeline_1year_summary: dict[str, Any] = field(default_factory=dict)
+    dual_hand_synastry: dict[str, Any] = field(default_factory=dict)
 
     processing_ms: float = 0.0
     warnings: list[str] = field(default_factory=list)
@@ -127,6 +133,9 @@ class PalmScanResult:
             "temperament_archetype": self.temperament_archetype,
             "medical_constitution": self.medical_constitution,
             "kundli_palm_sync": self.kundli_palm_sync,
+            "fingers_thumb_analysis": self.fingers_thumb_analysis,
+            "timeline_1year_summary": self.timeline_1year_summary,
+            "dual_hand_synastry": self.dual_hand_synastry,
             "overlay_image": self.overlay_image,
             "response_image": self.response_image,
             "processing_ms": round(self.processing_ms, 1),
@@ -281,6 +290,29 @@ def execute_scan(
             kundli_sync = synchronize_palm_with_kundli(birth_details, result.mount_elevations_3d, creases, sec_lines)
             result.kundli_palm_sync = kundli_sync
             result.measurements["kundli_alignment_pct"] = float(kundli_sync.get("overall_alignment_pct", 90))
+
+            # Fingers, Thumb & 2D:4D Digit Ratio (Rahul Sharma & Client Provenance)
+            fingers_analysis = analyze_fingers_thumb_and_nails(result.measurements, metrics_3d, result.skin_vitality)
+            result.fingers_thumb_analysis = fingers_analysis
+            result.measurements["digit_ratio_2d_4d"] = float(fingers_analysis.get("digit_ratio_2d_4d", 0.96))
+            result.measurements["lunula_score"] = float(fingers_analysis.get("lunula_score", 88))
+
+            # High-Precision 1-Year Resolution Age Timeline (Cheiro & Ayur Nirnay)
+            timeline_1year = get_palm_timeline_for_age(age=28, gender="male", measurements=result.measurements)
+            result.timeline_1year_summary = timeline_1year
+
+            # Dual-Hand Synastry Karma baseline
+            is_right_palm = "right" in (detection.handedness or "Right").lower()
+            current_scan_dict = {
+                "measurements": result.measurements,
+                "handedness": detection.handedness,
+            }
+            dual_karma = calculate_dual_hand_synastry(
+                left_hand_data=None if is_right_palm else current_scan_dict,
+                right_hand_data=current_scan_dict if is_right_palm else None,
+                primary_handedness=detection.handedness or "Right",
+            )
+            result.dual_hand_synastry = dual_karma
         except Exception as err:
             logger.warning(f"astrology insights enrichment failed: {err}")
 

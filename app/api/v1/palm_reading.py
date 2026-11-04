@@ -14,12 +14,14 @@ from beanie import PydanticObjectId
 from fastapi import APIRouter, Request
 from loguru import logger
 
-from app.api.dependencies import CurrentUser
+from app.api.dependencies import CurrentUser, OptionalUser
 from app.core.exceptions import BadRequestError, NotFoundError, ServiceUnavailableError
 from app.models.palm_reading import PalmReading, PalmRule
 from app.schemas.common import ApiResponse
 from app.schemas.palm_reading import (
     CreaseOut,
+    DualHandMatchRequest,
+    DualHandMatchResponse,
     PalmReadingAvailability,
     PalmReadingOut,
     PalmRuleOut,
@@ -30,6 +32,8 @@ from app.schemas.palm_reading import (
     SkippedFeatureOut,
 )
 from app.services import palm_reading as palm_service
+from app.services.palm_cv.dual_hand import calculate_dual_hand_synastry
+from app.services.palm_cv.timeline_1year import get_palm_timeline_for_age
 
 router = APIRouter(prefix="/palm-reading", tags=["palm-reading"])
 
@@ -67,6 +71,9 @@ def _reading_out(reading: PalmReading) -> PalmReadingOut:
         temperament_archetype=getattr(reading, "temperament_archetype", {}),
         medical_constitution=getattr(reading, "medical_constitution", {}),
         kundli_palm_sync=getattr(reading, "kundli_palm_sync", {}),
+        fingers_thumb_analysis=getattr(reading, "fingers_thumb_analysis", {}),
+        timeline_1year_summary=getattr(reading, "timeline_1year_summary", {}),
+        dual_hand_synastry=getattr(reading, "dual_hand_synastry", {}),
         overlay_image=reading.overlay_image,
         coins_charged=reading.coins_charged,
         quality_score=reading.quality_score,
@@ -285,6 +292,9 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[PalmScanRespo
         temperament_archetype=result.temperament_archetype,
         medical_constitution=result.medical_constitution,
         kundli_palm_sync=result.kundli_palm_sync,
+        fingers_thumb_analysis=result.fingers_thumb_analysis,
+        timeline_1year_summary=result.timeline_1year_summary,
+        dual_hand_synastry=result.dual_hand_synastry,
         sections=sections,
         skipped=skipped,
         overlay_image=result.overlay_image,
@@ -327,6 +337,9 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[PalmScanRespo
             temperament_archetype=result.temperament_archetype,
             medical_constitution=result.medical_constitution,
             kundli_palm_sync=result.kundli_palm_sync,
+            fingers_thumb_analysis=result.fingers_thumb_analysis,
+            timeline_1year_summary=result.timeline_1year_summary,
+            dual_hand_synastry=result.dual_hand_synastry,
             overlay_image=result.overlay_image,
             response_image=result.response_image,
             coins_charged=charged,
@@ -366,3 +379,43 @@ async def one(reading_id: PydanticObjectId, user: CurrentUser) -> ApiResponse[Pa
     if reading is None or reading.user_id != user.id:
         raise NotFoundError("That reading could not be found.", error_code="reading_not_found")
     return ApiResponse(message="Palm reading", data=_reading_out(reading))
+
+
+@router.get(
+    "/timeline-age",
+    response_model=ApiResponse[dict[str, Any]],
+    summary="High-precision 1-year resolution age timeline forecast",
+)
+async def timeline_age(
+    age: int = 28,
+    gender: str = "male",
+) -> ApiResponse[dict[str, Any]]:
+    forecast = get_palm_timeline_for_age(age=age, gender=gender)
+    return ApiResponse(
+        message=f"Ayur Nirnay 1-Year Timeline forecast for age {age}",
+        data=forecast,
+    )
+
+
+@router.post(
+    "/dual-match",
+    response_model=ApiResponse[DualHandMatchResponse],
+    summary="Bilateral dual-hand synastry (Prarabdha vs Purushartha Karma Evolution)",
+)
+async def dual_match(
+    payload: DualHandMatchRequest,
+    user: OptionalUser = None,
+) -> ApiResponse[DualHandMatchResponse]:
+    left_dict = {"measurements": payload.left_hand_measurements or {}}
+    right_dict = {"measurements": payload.right_hand_measurements or {}}
+
+    res = calculate_dual_hand_synastry(
+        left_hand_data=left_dict,
+        right_hand_data=right_dict,
+        primary_handedness=payload.primary_handedness,
+    )
+    return ApiResponse(
+        message="Bilateral dual-hand synastry completed successfully",
+        data=DualHandMatchResponse(**res),
+    )
+
