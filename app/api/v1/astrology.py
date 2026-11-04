@@ -27,6 +27,7 @@ from app.services.astrology.calculator import (
     calculate_nakshatra,
     calculate_rashi,
 )
+from app.services.astrology.geocoder import geocode_place
 from app.services.astrology.timezone_resolver import (
     offset_for_zone_at,
     zone_for_coordinates,
@@ -397,93 +398,11 @@ async def search_city(
 ) -> ApiResponse[list[dict]]:
     """Geocode a birth place and attach the timezone it really belongs to.
 
-    This endpoint previously derived the offset arithmetically from longitude,
-    `round(lon / 15 * 2) / 2`, with a hard-coded override forcing anything inside a
-    68E-97.5E / 6N-37N box to +05:30. That produced offsets that exist nowhere
-    (London, Ontario came back as UTC-5.5) and silently placed every birth in
-    Bangladesh, Nepal, Bhutan, Pakistan and Myanmar in Indian Standard Time. It also
-    had no concept of daylight saving or of historical zone changes.
-
-    Each result now carries the IANA zone name its coordinates fall in, resolved
-    offline from a polygon set, plus the exact offset in force at the birth date when
-    one is supplied. The zone name is what callers should send back to the
-    calculators as `timezone_name`, because that is what lets the offset be resolved
-    at the birth instant rather than at the time of the search.
+    Uses a multi-tier resilient engine: curated local directory (instant 0ms lookup for
+    West Bengal localities like Deulia/Kolaghat and Indian cities), supplemented with
+    Open-Meteo, Photon and Nominatim in parallel, with in-memory TTL caching.
     """
-    headers = {"User-Agent": "AstraAstrology/1.0 (info@astraastrology.com)"}
-    params = {"q": q, "format": "json", "addressdetails": "1", "limit": "6"}
-
-    items: list[dict] = []
-    raw_data: list[dict] = []
-    try:
-        async with httpx.AsyncClient(timeout=6.0) as client:
-            resp = await client.get(
-                "https://nominatim.openstreetmap.org/search",
-                params=params,
-                headers=headers,
-            )
-            if resp.status_code == 200:
-                raw_data = resp.json() or []
-    except Exception as exc:
-        # A geocoder outage must not take the calculator down: the caller can still
-        # enter coordinates and a timezone by hand.
-        logger.warning(f"geocoding lookup failed for {q!r}: {exc}")
-
-    for d in raw_data:
-        try:
-            lat = float(d.get("lat"))
-            lon = float(d.get("lon"))
-        except (TypeError, ValueError):
-            continue
-
-        zone_name = zone_for_coordinates(lat, lon)
-        offset_hours: float | None = None
-        offset_label: str | None = None
-        abbreviation: str | None = None
-        is_dst = False
-
-        if zone_name:
-            try:
-                resolved = offset_for_zone_at(
-                    zone_name,
-                    year or 2000,
-                    month or 1,
-                    day or 1,
-                    12,
-                )
-                offset_hours = round(resolved.offset_hours, 6)
-                offset_label = resolved.offset_label
-                abbreviation = resolved.abbreviation
-                is_dst = resolved.is_dst
-            except ValueError:
-                zone_name = None
-
-        address = d.get("address") or {}
-        city = (
-            address.get("city")
-            or address.get("town")
-            or address.get("village")
-            or address.get("municipality")
-            or address.get("county")
-            or ""
-        )
-        items.append(
-            {
-                "display_name": d.get("display_name", ""),
-                "place": city or (d.get("display_name", "").split(",")[0]),
-                "latitude": lat,
-                "longitude": lon,
-                "timezone_name": zone_name,
-                "timezone": offset_hours,
-                "timezone_label": offset_label,
-                "timezone_abbreviation": abbreviation,
-                "is_dst": is_dst,
-                "country": address.get("country", ""),
-                "state": address.get("state", ""),
-                "city": city,
-            }
-        )
-
+    items = await geocode_place(query=q, year=year, month=month, day=day)
     return ApiResponse(message=f"Found {len(items)} location(s)", data=items)
 
 
