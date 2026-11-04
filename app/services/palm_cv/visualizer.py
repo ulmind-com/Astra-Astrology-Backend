@@ -70,30 +70,21 @@ def _draw_luminous_crease(
     colour: tuple[int, int, int],
     is_primary: bool = True,
 ) -> None:
-    """Render a multi-pass bioluminescent glowing ray (energy nadi) along crease path."""
+    """Render a clean, high-contrast luminous energy line along crease path."""
     if len(pts) < 2:
         return
 
     pts_smooth = _smooth_crease_points(pts, window=5 if len(pts) >= 6 else 3)
-    light_colour = tuple(min(255, int(c * 0.45 + 225 * 0.55)) for c in colour)
 
-    # 1. Soft Ambient Halo Glow (wide, transparent)
-    glow_width = 10 if is_primary else 7
-    glow_layer = canvas.copy()
-    cv2.polylines(glow_layer, [pts_smooth], False, colour, glow_width, cv2.LINE_AA)
-    cv2.addWeighted(canvas, 1.0, glow_layer, 0.32 if is_primary else 0.22, 0, canvas)
+    # 1. Outer radiant glow
+    glow_width = 5 if is_primary else 3
+    cv2.polylines(canvas, [pts_smooth], False, colour, glow_width, cv2.LINE_AA)
 
-    # 2. Focused Radiant Energy Beam
-    mid_width = 4 if is_primary else 3
-    mid_layer = canvas.copy()
-    cv2.polylines(mid_layer, [pts_smooth], False, light_colour, mid_width, cv2.LINE_AA)
-    cv2.addWeighted(canvas, 1.0, mid_layer, 0.60 if is_primary else 0.45, 0, canvas)
-
-    # 3. Brilliant Super-Fine Photon Core
-    core_colour = (255, 255, 255) if is_primary else light_colour
+    # 2. Super-fine bright core
+    core_colour = (255, 255, 255) if is_primary else tuple(min(255, c + 75) for c in colour)
     cv2.polylines(canvas, [pts_smooth], False, core_colour, 1, cv2.LINE_AA)
 
-    # 4. Terminal Luminous Pearls
+    # 3. Terminal pearls
     for pt in (pts_smooth[0], pts_smooth[-1]):
         cv2.circle(canvas, (int(pt[0]), int(pt[1])), 4 if is_primary else 3, colour, -1, cv2.LINE_AA)
         cv2.circle(canvas, (int(pt[0]), int(pt[1])), 2, (255, 255, 255), -1, cv2.LINE_AA)
@@ -124,18 +115,12 @@ def _draw_minimalist_badge(
     x1_c, y1_c = max(0, x1), max(0, y1)
     x2_c, y2_c = min(w, x2), min(h, y2)
 
-    # Thin luminous leader line connecting crease point to outer badge
-    leader_sub = canvas.copy()
-    cv2.line(leader_sub, anchor_pt, ((x1 + x2) // 2, (y1 + y2) // 2), colour, 1, cv2.LINE_AA)
-    cv2.addWeighted(canvas, 1.0, leader_sub, 0.40, 0, canvas)
+    # Thin leader line directly to badge center
+    cv2.line(canvas, anchor_pt, ((x1 + x2) // 2, (y1 + y2) // 2), colour, 1, cv2.LINE_AA)
 
-    # Translucent rounded glass backdrop
+    # Dark badge backdrop (solid, crisp, zero canvas bleaching)
     if x2_c > x1_c and y2_c > y1_c:
-        sub = canvas[y1_c:y2_c, x1_c:x2_c]
-        dark = np.full_like(sub, (12, 14, 20))
-        cv2.addWeighted(sub, 0.22, dark, 0.78, 0, sub)
-
-        # Micro neon border
+        canvas[y1_c:y2_c, x1_c:x2_c] = (15, 23, 42)
         cv2.rectangle(canvas, (x1_c, y1_c), (x2_c, y2_c), colour, 1, cv2.LINE_AA)
 
     dot_x = x1 + 6
