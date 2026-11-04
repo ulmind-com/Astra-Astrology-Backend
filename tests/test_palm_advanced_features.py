@@ -61,3 +61,4 @@ def test_fingers_thumb_and_nails():
     assert res["willpower_pct"] > 0
     assert res["lunula_score"] >= 75
     assert len(res["nail_health_bn"]) > 0
+

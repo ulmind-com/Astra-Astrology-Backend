@@ -203,3 +203,4 @@ def analyze_fingers_thumb_and_nails(
         "nail_health_bn": nail_desc_bn,
         "nail_health_hi": nail_desc_hi,
     }
+

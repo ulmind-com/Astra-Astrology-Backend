@@ -200,3 +200,4 @@ def get_palm_timeline_for_age(
         "norm_coord": [norm_x, norm_y],
         "vitality_index": int(max(70, min(99, 100 - clamped_age * 0.28))),
     }
+
