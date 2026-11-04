@@ -488,6 +488,84 @@ async def search_city(
 
 
 @router.get(
+    "/geo-reverse",
+    response_model=ApiResponse[dict],
+    summary="Reverse geocode GPS coordinates to a structured postal address",
+)
+async def reverse_geocode_city(
+    lat: float = Query(..., ge=-90.0, le=90.0, description="Latitude coordinate"),
+    lon: float = Query(..., ge=-180.0, le=180.0, description="Longitude coordinate"),
+) -> ApiResponse[dict]:
+    """Reverse geocodes latitude/longitude into a structured street address, city, state, and postal code."""
+    headers = {"User-Agent": "AstraAstrology/1.0 (info@astraastrology.com)"}
+    params = {"lat": lat, "lon": lon, "format": "json", "addressdetails": "1"}
+
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(
+                "https://nominatim.openstreetmap.org/reverse",
+                params=params,
+                headers=headers,
+            )
+            if resp.status_code == 200:
+                data = resp.json() or {}
+                addr = data.get("address", {})
+
+                road_parts = []
+                if addr.get("house_number"):
+                    road_parts.append(addr["house_number"])
+                if addr.get("road"):
+                    road_parts.append(addr["road"])
+                elif addr.get("pedestrian"):
+                    road_parts.append(addr["pedestrian"])
+                elif addr.get("street"):
+                    road_parts.append(addr["street"])
+                elif addr.get("neighbourhood"):
+                    road_parts.append(addr["neighbourhood"])
+
+                line1 = " ".join(road_parts) or addr.get("suburb") or addr.get("residential") or data.get("name") or ""
+                line2 = addr.get("suburb") if line1 != addr.get("suburb") else (addr.get("city_district") or "")
+                city = addr.get("city") or addr.get("town") or addr.get("village") or addr.get("municipality") or addr.get("county") or ""
+                state = addr.get("state") or addr.get("state_district") or ""
+                postal_code = addr.get("postcode") or ""
+                country = addr.get("country") or "India"
+
+                return ApiResponse(
+                    message="Location resolved",
+                    data={
+                        "display_name": data.get("display_name", ""),
+                        "line1": line1,
+                        "line2": line2,
+                        "landmark": addr.get("neighbourhood") or "",
+                        "city": city,
+                        "state": state,
+                        "postal_code": postal_code,
+                        "country": country,
+                        "latitude": lat,
+                        "longitude": lon,
+                    },
+                )
+    except Exception as exc:
+        logger.warning(f"reverse geocoding failed for lat={lat}, lon={lon}: {exc}")
+
+    return ApiResponse(
+        message="Coordinates recorded",
+        data={
+            "display_name": f"{lat:.4f}, {lon:.4f}",
+            "line1": "",
+            "line2": "",
+            "landmark": "",
+            "city": "",
+            "state": "",
+            "postal_code": "",
+            "country": "India",
+            "latitude": lat,
+            "longitude": lon,
+        },
+    )
+
+
+@router.get(
     "/timezone",
     response_model=ApiResponse[dict],
     summary="Exact UTC offset for a coordinate at a given birth date",
