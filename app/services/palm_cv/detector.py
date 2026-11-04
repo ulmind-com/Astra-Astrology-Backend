@@ -99,6 +99,64 @@ class HandLandmarkerManager:
         result = self._landmarker.detect(mp_image)
 
         if not result.hand_landmarks:
+            # Fallback for wide/selfie shots where hand occupies a sub-region
+            candidate_boxes = [
+                (0.0, 0.90, 0.35, 1.0),   # Right side (common for selfie right hand)
+                (0.0, 0.90, 0.0, 0.65),   # Left side (common for selfie left hand)
+                (0.0, 0.85, 0.15, 0.85),  # Upper center
+            ]
+            for y0_f, y1_f, x0_f, x1_f in candidate_boxes:
+                x0 = int(round(x0_f * width))
+                x1 = int(round(x1_f * width))
+                y0 = int(round(y0_f * height))
+                y1 = int(round(y1_f * height))
+                cw = x1 - x0
+                ch = y1 - y0
+                if cw < 120 or ch < 120:
+                    continue
+
+                crop = image_rgb[y0:y1, x0:x1]
+                max_d = max(cw, ch)
+                square = np.zeros((max_d, max_d, 3), dtype=np.uint8)
+                square[:ch, :cw] = crop
+
+                mp_sub = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(square))
+                sub_res = self._landmarker.detect(mp_sub)
+                if sub_res.hand_landmarks:
+                    sub_pts = sub_res.hand_landmarks[0]
+                    norm = []
+                    px = []
+                    for p in sub_pts:
+                        pt_x_crop = p.x * max_d
+                        pt_y_crop = p.y * max_d
+                        g_px_x = x0 + pt_x_crop
+                        g_px_y = y0 + pt_y_crop
+                        g_norm_x = g_px_x / width
+                        g_norm_y = g_px_y / height
+                        g_norm_z = p.z * (max_d / width)
+                        norm.append((float(g_norm_x), float(g_norm_y), float(g_norm_z)))
+                        px.append((float(g_px_x), float(g_px_y), float(g_norm_z * width)))
+
+                    world = None
+                    if sub_res.hand_world_landmarks and sub_res.hand_world_landmarks[0]:
+                        world = [(p.x, p.y, p.z) for p in sub_res.hand_world_landmarks[0]]
+
+                    handedness = None
+                    confidence = 0.0
+                    if sub_res.handedness and sub_res.handedness[0]:
+                        top = sub_res.handedness[0][0]
+                        handedness = top.category_name
+                        confidence = float(top.score)
+
+                    return HandDetection(
+                        hand_count=len(sub_res.hand_landmarks),
+                        landmarks_norm=norm,
+                        landmarks_px=px,
+                        handedness=handedness,
+                        handedness_confidence=confidence,
+                        landmarks_world=world,
+                    )
+
             return HandDetection(0, None, None, None, 0.0)
 
         points = result.hand_landmarks[0]

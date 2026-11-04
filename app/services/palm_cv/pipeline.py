@@ -254,6 +254,20 @@ def execute_scan(
                 result.measurements[f"{sec_name}_length"] = round(sec_c.length, 4)
 
             marks = detect_sacred_marks(palm, creases, sec_lines)
+            # Map canonical palm coordinates to full image normalized coordinates via inverse homography
+            inv_matrix = np.linalg.inv(palm.matrix)
+            h_img, w_img = image.shape[:2]
+            for m in marks:
+                if m.get("location_norm"):
+                    cx_norm, cy_norm = m["location_norm"]
+                    can_x = (1.0 - cx_norm) * palm.size if palm.mirrored else cx_norm * palm.size
+                    can_y = cy_norm * palm.size
+                    can_pt = np.array([[[can_x, can_y]]], dtype=np.float32)
+                    orig_pt = cv2.perspectiveTransform(can_pt, inv_matrix).reshape(2)
+                    g_norm_x = float(np.clip(orig_pt[0] / w_img, 0.0, 1.0))
+                    g_norm_y = float(np.clip(orig_pt[1] / h_img, 0.0, 1.0))
+                    m["location_norm"] = [round(g_norm_x, 4), round(g_norm_y, 4)]
+                    m["location_px"] = [round(float(orig_pt[0]), 1), round(float(orig_pt[1]), 1)]
             result.sacred_marks = marks
             for m in marks:
                 result.measurements[f"mark_{m['id']}"] = 1.0
