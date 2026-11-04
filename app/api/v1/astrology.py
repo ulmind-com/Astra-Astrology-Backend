@@ -1,7 +1,7 @@
 """Astrology public endpoints: Rashi (Moon Sign) calculator and geocoding helper."""
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from loguru import logger
 from app.api.dependencies import OptionalUser
 from app.models.user import User
@@ -487,19 +487,10 @@ async def search_city(
     return ApiResponse(message=f"Found {len(items)} location(s)", data=items)
 
 
-@router.get(
-    "/geo-reverse",
-    response_model=ApiResponse[dict],
-    summary="Reverse geocode GPS coordinates to a structured postal address",
-)
-async def reverse_geocode_city(
-    lat: float = Query(..., ge=-90.0, le=90.0, description="Latitude coordinate"),
-    lon: float = Query(..., ge=-180.0, le=180.0, description="Longitude coordinate"),
-) -> ApiResponse[dict]:
-    """Reverse geocodes latitude/longitude into a structured street address, city, state, and postal code."""
+async def _reverse_geocode(lat: float, lon: float) -> dict | None:
+    """Helper that queries Nominatim for lat/lon address details."""
     headers = {"User-Agent": "AstraAstrology/1.0 (info@astraastrology.com)"}
     params = {"lat": lat, "lon": lon, "format": "json", "addressdetails": "1"}
-
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
             resp = await client.get(
@@ -530,23 +521,36 @@ async def reverse_geocode_city(
                 postal_code = addr.get("postcode") or ""
                 country = addr.get("country") or "India"
 
-                return ApiResponse(
-                    message="Location resolved",
-                    data={
-                        "display_name": data.get("display_name", ""),
-                        "line1": line1,
-                        "line2": line2,
-                        "landmark": addr.get("neighbourhood") or "",
-                        "city": city,
-                        "state": state,
-                        "postal_code": postal_code,
-                        "country": country,
-                        "latitude": lat,
-                        "longitude": lon,
-                    },
-                )
+                return {
+                    "display_name": data.get("display_name", ""),
+                    "line1": line1,
+                    "line2": line2,
+                    "landmark": addr.get("neighbourhood") or "",
+                    "city": city,
+                    "state": state,
+                    "postal_code": postal_code,
+                    "country": country,
+                    "latitude": lat,
+                    "longitude": lon,
+                }
     except Exception as exc:
         logger.warning(f"reverse geocoding failed for lat={lat}, lon={lon}: {exc}")
+    return None
+
+
+@router.get(
+    "/geo-reverse",
+    response_model=ApiResponse[dict],
+    summary="Reverse geocode GPS coordinates to a structured postal address",
+)
+async def reverse_geocode_city(
+    lat: float = Query(..., ge=-90.0, le=90.0, description="Latitude coordinate"),
+    lon: float = Query(..., ge=-180.0, le=180.0, description="Longitude coordinate"),
+) -> ApiResponse[dict]:
+    """Reverse geocodes latitude/longitude into a structured street address, city, state, and postal code."""
+    resolved = await _reverse_geocode(lat, lon)
+    if resolved:
+        return ApiResponse(message="Location resolved", data=resolved)
 
     return ApiResponse(
         message="Coordinates recorded",
@@ -561,6 +565,113 @@ async def reverse_geocode_city(
             "country": "India",
             "latitude": lat,
             "longitude": lon,
+        },
+    )
+
+
+@router.get(
+    "/geo-detect",
+    response_model=ApiResponse[dict],
+    summary="Detect user location via network IP address with reverse geocoding fallback",
+)
+async def detect_ip_location(request: Request) -> ApiResponse[dict]:
+    """Detects client IP and resolves approximate postal location (city, state, country, pincode)."""
+    client_ip = (
+        request.headers.get("cf-connecting-ip")
+        or request.headers.get("x-real-ip")
+        or (request.headers.get("x-forwarded-for", "").split(",")[0].strip())
+        or (request.client.host if request.client else "")
+    )
+
+    is_private = (
+        not client_ip
+        or client_ip in ("127.0.0.1", "::1", "localhost", "testclient")
+        or client_ip.startswith((
+            "10.", "192.168.", "172.16.", "172.17.", "172.18.", "172.19.",
+            "172.20.", "172.21.", "172.22.", "172.23.", "172.24.", "172.25.",
+            "172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31.",
+            "fc00:", "fe80:"
+        ))
+    )
+
+    detected: dict = {}
+    lat: float | None = None
+    lon: float | None = None
+
+    # 1. Primary lookup via ipwho.is (fast, HTTPS, free)
+    try:
+        url = "https://ipwho.is/" if is_private else f"https://ipwho.is/{client_ip}"
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(url, headers={"User-Agent": "AstraAstrology/1.0"})
+            if resp.status_code == 200:
+                data = resp.json() or {}
+                if data.get("success") is not False:
+                    lat = float(data.get("latitude") or 0.0)
+                    lon = float(data.get("longitude") or 0.0)
+                    detected = {
+                        "city": data.get("city") or "",
+                        "state": data.get("region") or "",
+                        "postal_code": data.get("postal") or "",
+                        "country": data.get("country") or "India",
+                    }
+    except Exception as exc:
+        logger.warning(f"ipwho.is lookup failed: {exc}")
+
+    # 2. Secondary fallback via ip-api.com
+    if not detected.get("city"):
+        try:
+            url = "http://ip-api.com/json/" if is_private else f"http://ip-api.com/json/{client_ip}"
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(url, headers={"User-Agent": "AstraAstrology/1.0"})
+                if resp.status_code == 200:
+                    data = resp.json() or {}
+                    if data.get("status") == "success":
+                        lat = float(data.get("lat") or 0.0)
+                        lon = float(data.get("lon") or 0.0)
+                        detected = {
+                            "city": data.get("city") or "",
+                            "state": data.get("regionName") or "",
+                            "postal_code": data.get("zip") or "",
+                            "country": data.get("country") or "India",
+                        }
+        except Exception as exc:
+            logger.warning(f"ip-api lookup failed: {exc}")
+
+    # 3. If lat/lon discovered, enrich with high quality street/suburb details
+    if lat and lon and (lat != 0.0 or lon != 0.0):
+        geo_enriched = await _reverse_geocode(lat, lon)
+        if geo_enriched:
+            return ApiResponse(
+                message="Location detected via network",
+                data={
+                    "display_name": geo_enriched.get("display_name", "") or f"{detected.get('city')}, {detected.get('state')}",
+                    "line1": geo_enriched.get("line1", "") or detected.get("city", ""),
+                    "line2": geo_enriched.get("line2", ""),
+                    "landmark": geo_enriched.get("landmark", ""),
+                    "city": geo_enriched.get("city") or detected.get("city", ""),
+                    "state": geo_enriched.get("state") or detected.get("state", ""),
+                    "postal_code": geo_enriched.get("postal_code") or detected.get("postal_code", ""),
+                    "country": geo_enriched.get("country") or detected.get("country", "India"),
+                    "latitude": lat,
+                    "longitude": lon,
+                },
+            )
+
+    city = detected.get("city", "")
+    state = detected.get("state", "")
+    return ApiResponse(
+        message="Location detected via network",
+        data={
+            "display_name": f"{city}, {state}".strip(", "),
+            "line1": city,
+            "line2": "",
+            "landmark": "",
+            "city": city,
+            "state": state,
+            "postal_code": detected.get("postal_code", ""),
+            "country": detected.get("country", "India"),
+            "latitude": lat or 0.0,
+            "longitude": lon or 0.0,
         },
     )
 
