@@ -360,58 +360,123 @@ def _valley_response(canonical_rgb: np.ndarray, config: PalmScanConfig) -> np.nd
 
 def _trace_horizontal(
     response: np.ndarray,
-    row_lo: int,
-    row_hi: int,
+    row_lo: int | list[int] | np.ndarray,
+    row_hi: int | list[int] | np.ndarray,
     col_lo: int,
     col_hi: int,
     config: PalmScanConfig,
 ) -> tuple[list[tuple[int, int]], float]:
     """Best left-to-right path through a band, by dynamic programming.
 
-    At each column the path may move at most `trace_max_step` rows, and paying a
+    At each column the path may move at most `trace_max_step` rows, paying a
     `trace_smoothness` penalty per row moved. That keeps it on one crease instead
     of hopping between neighbouring ones whenever the next is marginally brighter.
+
+    Supports both fixed rectangular bands (scalar int row bounds) and anatomically
+    curved corridors (column-wise int arrays for row bounds).
     """
-    row_lo = max(0, row_lo)
-    row_hi = min(response.shape[0], row_hi)
     col_lo = max(0, col_lo)
     col_hi = min(response.shape[1], col_hi)
-    if row_hi - row_lo < 3 or col_hi - col_lo < 8:
+    cols = col_hi - col_lo
+    if cols < 8:
         return [], 0.0
 
-    band = response[row_lo:row_hi, col_lo:col_hi]
-    rows, cols = band.shape
+    h, w = response.shape
+    is_dynamic = isinstance(row_lo, (list, tuple, np.ndarray)) or isinstance(row_hi, (list, tuple, np.ndarray))
 
-    cost = np.full((rows, cols), -np.inf, dtype=np.float32)
-    back = np.zeros((rows, cols), dtype=np.int32)
-    cost[:, 0] = band[:, 0]
+    if not is_dynamic:
+        r_lo = max(0, int(row_lo))  # type: ignore[call-overload]
+        r_hi = min(h, int(row_hi))  # type: ignore[call-overload]
+        if r_hi - r_lo < 3:
+            return [], 0.0
+
+        band = response[r_lo:r_hi, col_lo:col_hi]
+        rows, _ = band.shape
+
+        cost = np.full((rows, cols), -np.inf, dtype=np.float32)
+        back = np.zeros((rows, cols), dtype=np.int32)
+        cost[:, 0] = band[:, 0]
+
+        step = config.trace_max_step
+        penalty = config.trace_smoothness
+
+        for col in range(1, cols):
+            for offset in range(-step, step + 1):
+                shifted = np.roll(cost[:, col - 1], offset)
+                if offset > 0:
+                    shifted[:offset] = -np.inf
+                elif offset < 0:
+                    shifted[offset:] = -np.inf
+                candidate = shifted - penalty * abs(offset)
+                better = candidate > cost[:, col]
+                cost[better, col] = candidate[better]
+                back[better, col] = offset
+            cost[:, col] += band[:, col]
+
+        end_row = int(np.argmax(cost[:, cols - 1]))
+        path: list[tuple[int, int]] = []
+        row = end_row
+        for col in range(cols - 1, -1, -1):
+            path.append((col + col_lo, row + r_lo))
+            row = int(np.clip(row - back[row, col], 0, rows - 1))
+        path.reverse()
+
+        total = float(np.mean([band[min(rows - 1, max(0, y - r_lo)), x - col_lo] for x, y in path]))
+        return path, total
+
+    # Column-dependent row bounds for anatomically curved crease corridors
+    lo_arr = [int(row_lo[c]) if hasattr(row_lo, "__getitem__") else int(row_lo) for c in range(col_lo, col_hi)]  # type: ignore[index]
+    hi_arr = [int(row_hi[c]) if hasattr(row_hi, "__getitem__") else int(row_hi) for c in range(col_lo, col_hi)]  # type: ignore[index]
+
+    cost_dict: dict[int, dict[int, float]] = {}
+    back_dict: dict[int, dict[int, int]] = {}
+
+    r0_lo = max(0, lo_arr[0])
+    r0_hi = min(h, hi_arr[0])
+    if r0_hi <= r0_lo:
+        return [], 0.0
+    cost_dict[0] = {r: float(response[r, col_lo]) for r in range(r0_lo, r0_hi)}
 
     step = config.trace_max_step
     penalty = config.trace_smoothness
 
-    for col in range(1, cols):
-        for offset in range(-step, step + 1):
-            shifted = np.roll(cost[:, col - 1], offset)
-            if offset > 0:
-                shifted[:offset] = -np.inf
-            elif offset < 0:
-                shifted[offset:] = -np.inf
-            candidate = shifted - penalty * abs(offset)
-            better = candidate > cost[:, col]
-            cost[better, col] = candidate[better]
-            back[better, col] = offset
-        cost[:, col] += band[:, col]
+    for c_idx in range(1, cols):
+        curr_col = col_lo + c_idx
+        rc_lo = max(0, lo_arr[c_idx])
+        rc_hi = min(h, hi_arr[c_idx])
+        prev_costs = cost_dict[c_idx - 1]
+        c_cost: dict[int, float] = {}
+        c_back: dict[int, int] = {}
+        for r in range(rc_lo, rc_hi):
+            best_val = -1e9
+            best_off = 0
+            for offset in range(-step, step + 1):
+                prev_r = r - offset
+                if prev_r in prev_costs:
+                    cand = prev_costs[prev_r] - penalty * abs(offset)
+                    if cand > best_val:
+                        best_val = cand
+                        best_off = offset
+            if best_val > -1e8:
+                c_cost[r] = best_val + float(response[r, curr_col])
+                c_back[r] = best_off
+        cost_dict[c_idx] = c_cost
+        back_dict[c_idx] = c_back
 
-    end_row = int(np.argmax(cost[:, cols - 1]))
-    path: list[tuple[int, int]] = []
-    row = end_row
-    for col in range(cols - 1, -1, -1):
-        path.append((col + col_lo, row + row_lo))
-        row = int(np.clip(row - back[row, col], 0, rows - 1))
-    path.reverse()
+    last_idx = cols - 1
+    if not cost_dict.get(last_idx):
+        return [], 0.0
 
-    total = float(np.mean([band[min(rows - 1, max(0, y - row_lo)), x - col_lo] for x, y in path]))
-    return path, total
+    best_end_r = max(cost_dict[last_idx].items(), key=lambda kv: kv[1])[0]
+    dyn_path: list[tuple[int, int]] = []
+    curr_r = best_end_r
+    for c_idx in range(last_idx, -1, -1):
+        dyn_path.append((col_lo + c_idx, curr_r))
+        if c_idx in back_dict and curr_r in back_dict[c_idx]:
+            curr_r = curr_r - back_dict[c_idx][curr_r]
+    dyn_path.reverse()
+    total_score = float(np.mean([response[y, x] for x, y in dyn_path]))
+    return dyn_path, total_score
 
 
 def _trace_vertical(
@@ -676,49 +741,76 @@ def trace_creases(
             notes=notes,
         )
 
-    # --- heart (water) line: upper palm, running across below the knuckles ----
-    heart_band = (int(0.14 * size), int(0.38 * size), int(0.15 * size), int(0.95 * size))
-    heart_path, _ = _trace_horizontal(
-        response, heart_band[0], heart_band[1], heart_band[2], heart_band[3], config
-    )
+    # Interpolate anatomical knuckle row across canonical columns so crease
+    # search corridors automatically conform to hand angle and physiological furrows.
+    knuckle_list = [
+        palm.knuckles_canonical[f]
+        for f in ("index", "middle", "ring", "pinky")
+        if f in palm.knuckles_canonical
+    ]
+    if knuckle_list:
+        kx = [k[0] * size for k in knuckle_list]
+        ky = [k[1] * size for k in knuckle_list]
+        cols_all = np.arange(size)
+        knuckle_y = np.interp(cols_all, kx, ky, left=ky[0], right=ky[-1])
+    else:
+        knuckle_y = np.full(size, 0.20 * size, dtype=np.float32)
+
+    # --- heart (water) line: sub-knuckle furrow from index to percussion -----
+    heart_lo = knuckle_y + int(0.04 * size)
+    heart_hi = knuckle_y + int(0.20 * size)
+    col_start = int(0.20 * size)
+    col_end = int(0.96 * size)
+    heart_path, _ = _trace_horizontal(response, heart_lo, heart_hi, col_start, col_end, config)
     results["heart"] = finish("heart", heart_path)
 
-    # --- life (earth) line: radial thenar corridor ---------------------------
-    # Starts at the radial webbing between thumb and index, arcs cleanly around
-    # the thenar eminence (ball of thumb) all the way down towards the wrist.
-    life_band = (int(0.30 * size), int(0.95 * size), int(0.10 * size), int(0.55 * size))
-    life_path, _ = _trace_vertical(
-        response, life_band[2], life_band[3], life_band[0], life_band[1], config
-    )
+    # --- life (earth) line: polar arc wrapping around thenar eminence -------
+    # Centered dynamically on the ball of the thumb, sweeping from the radial
+    # index-thumb junction smoothly down around the thenar base to the wrist.
+    thenar_x = palm.thumb_canonical[0] * 0.40 + palm.thumb_base_canonical[0] * 0.60
+    thenar_y = palm.thumb_canonical[1] * 0.30 + palm.thumb_base_canonical[1] * 0.70
+    centre = (float(thenar_x * size), float(thenar_y * size))
+    angle_from = -np.pi * 0.45
+    angle_to = np.pi * 0.35
+    radius_from = float(0.10 * size)
+    radius_to = float(0.40 * size)
+    life_path = _trace_polar(response, centre, angle_from, angle_to, radius_from, radius_to, config)
     results["life"] = finish("life", life_path)
 
     # --- head (air) line: mid palm, across from radial webbing to percussion ---
-    # Suppress the heart line valley so the head line search never hops onto or
-    # merges with the heart crease.
+    # Suppress the heart line furrow so head trace never hops onto or merges with heart.
     resp_no_heart = response.copy()
     if heart_path:
         heart_mask = np.zeros_like(response, dtype=np.uint8)
-        cv2.polylines(heart_mask, [np.array(heart_path, dtype=np.int32)], False, 255, 24)
+        cv2.polylines(heart_mask, [np.array(heart_path, dtype=np.int32)], False, 255, 20)
         resp_no_heart[heart_mask > 0] = 0.0
 
-    head_band = (int(0.35 * size), int(0.65 * size), int(0.10 * size), int(0.90 * size))
+    head_lo = knuckle_y + int(0.20 * size)
+    head_hi = knuckle_y + int(0.42 * size)
+    head_col_start = int(0.12 * size)
+    head_col_end = int(0.88 * size)
     head_path, _ = _trace_horizontal(
-        resp_no_heart, head_band[0], head_band[1], head_band[2], head_band[3], config
+        resp_no_heart, head_lo, head_hi, head_col_start, head_col_end, config
     )
     results["head"] = finish("head", head_path)
 
     # --- fate (fire) line: central Saturn axis -------------------------------
-    # Must run along the middle finger axis (Saturn mount, x ~ 0.46..0.66).
-    # Mask out the life line corridor so the fate search NEVER steals the life crease.
+    # Mask out heart, head, and life lines so fate search never steals another crease.
     resp_saturn = response.copy()
-    if life_path:
-        life_mask = np.zeros_like(response, dtype=np.uint8)
-        cv2.polylines(life_mask, [np.array(life_path, dtype=np.int32)], False, 255, 30)
-        resp_saturn[life_mask > 0] = 0.0
+    for p in (heart_path, head_path, life_path):
+        if p:
+            mask_p = np.zeros_like(response, dtype=np.uint8)
+            cv2.polylines(mask_p, [np.array(p, dtype=np.int32)], False, 255, 20)
+            resp_saturn[mask_p > 0] = 0.0
 
-    fate_band = (int(0.20 * size), int(0.95 * size), int(0.46 * size), int(0.66 * size))
+    mid_knuckle = palm.knuckles_canonical.get("middle", (0.50, 0.17))
+    mx = mid_knuckle[0]
+    fate_col_lo = int(max(0.35, mx - 0.08) * size)
+    fate_col_hi = int(min(0.65, mx + 0.08) * size)
+    fate_row_lo = int(0.25 * size)
+    fate_row_hi = int(0.90 * size)
     fate_path, _ = _trace_vertical(
-        resp_saturn, fate_band[2], fate_band[3], fate_band[0], fate_band[1], config
+        resp_saturn, fate_col_lo, fate_col_hi, fate_row_lo, fate_row_hi, config
     )
     results["fate"] = finish(
         "fate",

@@ -69,26 +69,40 @@ def trace_secondary_lines(
             end=smooth_norm[-1] if found else None,
         )
 
-    # 1. Sun Line (Surya Rekha / Apollo Line) - under Ring finger (x ~ 0.65..0.82)
+    # Suppress primary creases so secondary traces never latch onto primary furrows
+    resp_secondary = response.copy()
+    for prim_name in ("heart", "head", "life", "fate"):
+        prim = creases.get(prim_name)
+        if prim and prim.found and prim.path:
+            p_mask = np.zeros_like(response, dtype=np.uint8)
+            p_pts = np.array([[int(round(x * size)), int(round(y * size))] for x, y in prim.path], dtype=np.int32)
+            cv2.polylines(p_mask, [p_pts], False, 255, 20)
+            resp_secondary[p_mask > 0] = 0.0
+
+    # 1. Sun Line (Surya Rekha / Apollo Line) - under Ring finger (Apollo mount)
     # Rises toward the Sun mount; governs fame, public recognition, artistic talent and wealth.
-    sun_band = (int(0.20 * size), int(0.75 * size), int(0.65 * size), int(0.82 * size))
-    sun_path, _ = _trace_vertical(response, sun_band[2], sun_band[3], sun_band[0], sun_band[1], config)
+    ring_x = palm.knuckles_canonical.get("ring", (0.71, 0.30))[0]
+    sun_col_lo = int(max(0.55, ring_x - 0.06) * size)
+    sun_col_hi = int(min(0.85, ring_x + 0.06) * size)
+    sun_band = (int(0.25 * size), int(0.75 * size), sun_col_lo, sun_col_hi)
+    sun_path, _ = _trace_vertical(resp_secondary, sun_band[2], sun_band[3], sun_band[0], sun_band[1], config)
     secondary["sun"] = finish_secondary("sun", sun_path, min_contrast=1.75, min_str=0.14, min_cont=0.30)
 
-    # 2. Mercury Line (Budha Rekha / Health / Hepatica) - under Pinky finger (x ~ 0.78..0.96)
+    # 2. Mercury Line (Budha Rekha / Health / Hepatica) - under Pinky finger (Mercury mount)
     # Diagonally ascends towards Mercury mount; governs business acumen, eloquence, and gut vitality.
-    merc_band = (int(0.35 * size), int(0.85 * size), int(0.78 * size), int(0.96 * size))
-    merc_path, _ = _trace_vertical(response, merc_band[2], merc_band[3], merc_band[0], merc_band[1], config)
+    pinky_x = palm.knuckles_canonical.get("pinky", (0.92, 0.48))[0]
+    merc_col_lo = int(max(0.75, pinky_x - 0.09) * size)
+    merc_col_hi = int(min(0.98, pinky_x + 0.04) * size)
+    merc_band = (int(0.35 * size), int(0.85 * size), merc_col_lo, merc_col_hi)
+    merc_path, _ = _trace_vertical(resp_secondary, merc_band[2], merc_band[3], merc_band[0], merc_band[1], config)
     secondary["mercury"] = finish_secondary("mercury", merc_path, min_contrast=1.70, min_str=0.12, min_cont=0.25)
 
     # 3. Mars Line (Mangal Rekha / Sanjeevani Rekha / Sister Life Line) - inner Venus mount
     # Parallel to Life line on the radial side; denotes divine protection, resilient constitution, and defense against accidents.
-    life = creases.get("life")
-    mars_col_hi = int(0.28 * size)
-    if life and life.found and life.start:
-        mars_col_hi = min(int(0.30 * size), max(int(0.18 * size), int(life.start[0] * size * 0.85)))
-    mars_band = (int(0.40 * size), int(0.85 * size), int(0.08 * size), mars_col_hi)
-    mars_path, _ = _trace_vertical(response, mars_band[2], mars_band[3], mars_band[0], mars_band[1], config)
+    thenar_x = palm.thumb_canonical[0] * 0.40 + palm.thumb_base_canonical[0] * 0.60
+    mars_col_hi = int(min(0.28 * size, max(0.14 * size, thenar_x * size)))
+    mars_band = (int(0.40 * size), int(0.85 * size), int(0.06 * size), mars_col_hi)
+    mars_path, _ = _trace_vertical(resp_secondary, mars_band[2], mars_band[3], mars_band[0], mars_band[1], config)
     secondary["mars"] = finish_secondary("mars", mars_path, min_contrast=1.80, min_str=0.15, min_cont=0.30)
 
     return secondary
