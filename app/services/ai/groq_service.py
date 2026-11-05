@@ -1260,6 +1260,16 @@ async def _prepare(
         ]
     base_prompt = ASTROLOGER_SYSTEM_PROMPT if (chosen_tools or chart_block) else CONVERSATIONAL_PROMPT
 
+    # If the astrologer system prompt is active (an astrological inquiry, not casual greetings),
+    # ensure chosen_tools is never empty. If tools were empty, the model reading
+    # ASTROLOGER_SYSTEM_PROMPT could call a tool not declared in the request,
+    # causing Groq to reject with 'Tool choice is none, but model called a tool' (400).
+    if base_prompt == ASTROLOGER_SYSTEM_PROMPT and not chosen_tools:
+        available = ASTRO_TOOLS
+        if chart_block:
+            available = [t for t in available if t.get("function", {}).get("name") != "calculate_kundli_tool"]
+        chosen_tools = available
+
     # Real-time clock in Indian Standard Time (IST, UTC+5:30)
     now_ist = datetime.now(timezone(timedelta(hours=5, minutes=30)))
     weekday_bn = {
@@ -1469,10 +1479,8 @@ async def generate_astrology_response(
                     },
                 )
                 if next_resp.status_code >= 400:
-                    # Logged rather than swallowed. Silent failure here is how a
-                    # 400 on every two-tool question went unnoticed for so long.
-                    logger.error(
-                        "Groq rejected a tool round ({}): {}",
+                    logger.warning(
+                        "Groq rejected a tool round ({}); fallback will be used: {}",
                         next_resp.status_code,
                         next_resp.text[:600],
                     )
@@ -1764,8 +1772,8 @@ async def stream_astrology_response(
                 try:
                     if response.status_code >= 400:
                         body = (await response.aread()).decode("utf-8", "replace")
-                        logger.error(
-                            "Groq rejected a streamed round ({}): {}",
+                        logger.warning(
+                            "Groq rejected a streamed round ({}); fallback will be used: {}",
                             response.status_code,
                             body[:400],
                         )

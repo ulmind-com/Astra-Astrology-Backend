@@ -51,9 +51,13 @@ async def _identify(token: str | None) -> tuple[str | None, str | None]:
 
 async def _pump(connection: realtime.Connection) -> None:
     """Sends whatever has been queued for this client, in order."""
-    while True:
-        message = await connection.queue.get()
-        await connection.websocket.send_json(message)
+    try:
+        while True:
+            message = await connection.queue.get()
+            await connection.websocket.send_json(message)
+    except (WebSocketDisconnect, RuntimeError, Exception):
+        # A disconnected client or cancelled task is a normal end of the stream
+        pass
 
 
 @router.websocket("/live")
@@ -101,7 +105,7 @@ async def live(websocket: WebSocket, token: str | None = Query(default=None)) ->
         logger.debug("Live socket ended: {}", exc)
     finally:
         sender.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
+        with contextlib.suppress(asyncio.CancelledError, WebSocketDisconnect, Exception):
             await sender
         realtime.unregister(connection)
         # Only the *last* tab closing takes them offline — an astrologer with
@@ -139,11 +143,19 @@ async def _set_presence(profile: Any, *, online: bool) -> None:
 
 
 async def _touch_presence(profile: Any) -> None:
-    """Refreshes the stamp, so the read-time TTL keeps agreeing they are here."""
+    """Refreshes the stamp, so the read-time TTL keeps agreeing they are here.
+
+    Throttled to only write to MongoDB every 25 seconds instead of every ping.
+    """
     if profile is None:
         return
     try:
+        from app.models.base import utcnow
         from app.services import presence
+
+        last_seen = getattr(profile.availability, "last_seen_at", None)
+        if last_seen and (utcnow() - last_seen).total_seconds() < 25:
+            return
 
         await presence.beat(profile)
     except Exception as exc:  # noqa: BLE001
