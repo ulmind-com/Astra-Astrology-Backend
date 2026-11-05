@@ -153,6 +153,18 @@ class AppointmentOut(BaseModel):
     brahma_pause_until: datetime | None = None
     rescue_deadline: datetime | None = None
 
+    # Client Screening & Abuse Shield
+    abuse_flagged: bool = False
+    abuse_reason: str | None = None
+    abuse_flagged_at: datetime | None = None
+
+    # Birth Time Rectification (BTR) Authority
+    btr_requested: bool = False
+    btr_request_note: str | None = None
+    btr_requested_at: datetime | None = None
+    btr_fulfilled: bool = False
+    btr_updated_at: datetime | None = None
+
     peer: AppointmentPeer | None = None
 
 
@@ -187,3 +199,50 @@ class PrescriptionUpdateRequest(BaseModel):
     mantra_count: int | None = Field(default=108, ge=1)
     daan_remedy: str | None = Field(default=None, max_length=300)
     astrologer_notes: str | None = Field(default=None, max_length=2000)
+
+
+class RedFlagRequest(BaseModel):
+    reason: str = Field(min_length=2, max_length=150)
+    notes: str | None = Field(default=None, max_length=1000)
+    blacklist_client: bool = True
+    terminate_call: bool = True
+
+
+class RequestBTRRequest(BaseModel):
+    note: str | None = Field(default=None, max_length=500)
+
+
+class UpdateBTRRequest(BaseModel):
+    birth_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    birth_time: str = Field(min_length=4, max_length=15)
+    birth_place: str = Field(min_length=2, max_length=150)
+    latitude: float | None = None
+    longitude: float | None = None
+    timezone_offset: float | None = None
+    notes: str | None = Field(default=None, max_length=500)
+
+
+class BlacklistedClientOut(BaseModel):
+    user_id: str
+    name: str
+    email_masked: str | None = None
+    phone_masked: str | None = None
+    avatar_url: str | None = None
+    blacklisted_at: datetime | None = None
+    last_reason: str | None = None
+    notes: str | None = None
+    total_reports: int = 1
+
+
+class AbuseReportOut(BaseModel):
+    id: str
+    astrologer_id: str
+    astrologer_name: str | None = None
+    client_user_id: str
+    client_name: str | None = None
+    appointment_id: str | None = None
+    reason: str
+    notes: str | None = None
+    action_taken: str
+    status: str
+    created_at: datetime

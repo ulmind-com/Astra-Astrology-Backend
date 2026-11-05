@@ -387,6 +387,13 @@ async def _book_locked(
             error_code="beyond_horizon",
         )
 
+    # --- Client Screening & Abuse Shield: Blacklist enforcement -------
+    if user.id in (getattr(astrologer, "blacklisted_user_ids", None) or []):
+        raise BadRequestError(
+            "This astrologer is currently unavailable for your account. Please select another certified astrologer from our directory.",
+            error_code="client_blacklisted",
+        )
+
     # --- Rule 1: Single active appointment limit -------------------------
     active_count = await Appointment.find(
         And(
@@ -1585,4 +1592,355 @@ async def handle_brahma_pause_rescue_action(
         return appointment
     else:
         raise BadRequestError(f"Invalid action '{action}'. Must be 'reschedule' or 'refund'.", error_code="invalid_action")
+
+
+async def red_flag_appointment(
+    *,
+    appointment_id: PydanticObjectId,
+    by: User,
+    reason: str,
+    notes: str | None = None,
+    blacklist_client: bool = True,
+    terminate_call: bool = True,
+) -> Appointment:
+    """Terminates session on misconduct, captures escrow fee, files an AbuseReport, and optionally blacklists client."""
+    from app.models.abuse_report import AbuseReport
+    from app.models.call import CallSession
+    from app.models.enums import CallParty, CallStatus
+    from app.services import wallet as wallet_service
+
+    appointment = await Appointment.get(appointment_id)
+    if appointment is None:
+        raise NotFoundError("Appointment not found.", error_code="appointment_not_found")
+
+    astrologer_prof = await Astrologer.get(appointment.astrologer_id)
+    if astrologer_prof is None:
+        raise NotFoundError("Astrologer not found.", error_code="astrologer_not_found")
+
+    if by.id not in (appointment.astrologer_user_id, astrologer_prof.user_id):
+        if getattr(by, "role", None) != "admin":
+            raise ForbiddenError("Not authorized to red-flag this appointment.")
+
+    # 1. Update appointment abuse state
+    appointment.abuse_flagged = True
+    appointment.abuse_reason = reason
+    appointment.abuse_flagged_at = utcnow()
+    appointment.abuse_notes = notes
+
+    # If currently booked, complete the session and capture compensation
+    if appointment.status == AppointmentStatus.BOOKED:
+        appointment.status = AppointmentStatus.COMPLETED
+        appointment.completed_at = utcnow()
+
+        # Release claimed slot so calendar isn't blocked
+        await AppointmentSlot.find({"appointment_id": appointment.id}).delete()
+
+        # Capture escrow coins as earned session compensation for astrologer
+        if getattr(appointment, "held_coins", 0) > 0 and getattr(appointment, "held_status", "") == "held":
+            try:
+                await wallet_service.capture_held_coins(
+                    user_id=appointment.user_id,
+                    amount_coins=appointment.held_coins,
+                    appointment_id=appointment.id,
+                    astrologer_user_id=appointment.astrologer_user_id,
+                    note=f"Consultation ended due to client policy violation: {reason}",
+                )
+                appointment.held_status = "captured"
+            except Exception as exc:
+                logger.error("Failed to capture held coins on red-flag for appointment {}: {}", appointment.id, exc)
+
+    await appointment.save()
+
+    # 2. Terminate live call room if active
+    if terminate_call and getattr(appointment, "call_session_id", None):
+        try:
+            call = await CallSession.get(appointment.call_session_id)
+            if call and call.status in (CallStatus.RINGING, CallStatus.ACCEPTED, CallStatus.ACTIVE):
+                call.status = CallStatus.ENDED
+                call.ended_at = utcnow()
+                call.ended_by = CallParty.ASTROLOGER
+                call.end_reason = f"terminated_due_to_misconduct: {reason}"
+                await call.save()
+        except Exception as call_err:
+            logger.error("Failed to terminate call session {}: {}", appointment.call_session_id, call_err)
+
+    # 3. Add to astrologer's personal blacklist
+    if blacklist_client:
+        existing_blacklist = getattr(astrologer_prof, "blacklisted_user_ids", None) or []
+        if appointment.user_id not in existing_blacklist:
+            existing_blacklist.append(appointment.user_id)
+            astrologer_prof.blacklisted_user_ids = existing_blacklist
+            await astrologer_prof.save()
+            logger.info("Client {} blacklisted by astrologer {}", appointment.user_id, astrologer_prof.id)
+
+    # 4. File an official AbuseReport for platform trust & safety audit
+    try:
+        report = AbuseReport(
+            astrologer_id=astrologer_prof.id,
+            astrologer_user_id=appointment.astrologer_user_id,
+            client_user_id=appointment.user_id,
+            appointment_id=appointment.id,
+            call_id=appointment.call_session_id,
+            reason=reason,
+            notes=notes,
+            action_taken="blacklisted" if blacklist_client else "flagged_only",
+            status="pending",
+        )
+        await report.save()
+    except Exception as rep_err:
+        logger.error("Failed to log AbuseReport: {}", rep_err)
+
+    # 5. Realtime event
+    try:
+        from app.services import realtime
+        await realtime.publish_appointment_event(
+            appointment.user_id,
+            appointment.astrologer_user_id,
+            "abuse_flagged",
+            {
+                "id": str(appointment.id),
+                "status": appointment.status,
+                "abuse_reason": reason,
+                "blacklisted": blacklist_client,
+            },
+        )
+    except Exception as exc:
+        logger.debug("Realtime abuse event push skipped: {}", exc)
+
+    return appointment
+
+
+async def get_astrologer_blacklist(
+    astrologer_user: User,
+) -> list[dict[str, Any]]:
+    """Fetches the list of clients blacklisted by this astrologer with incident summary."""
+    from app.models.abuse_report import AbuseReport
+
+    prof = await Astrologer.find_one(Astrologer.user_id == astrologer_user.id)
+    if prof is None:
+        raise NotFoundError("Astrologer profile not found.", error_code="astrologer_not_found")
+
+    blacklisted_ids = getattr(prof, "blacklisted_user_ids", None) or []
+    if not blacklisted_ids:
+        return []
+
+    users = await User.find(In(User.id, blacklisted_ids)).to_list()
+    user_map = {u.id: u for u in users}
+
+    # Fetch latest abuse reports for these users by this astrologer
+    reports = await AbuseReport.find(
+        And(
+            AbuseReport.astrologer_id == prof.id,
+            In(AbuseReport.client_user_id, blacklisted_ids),
+        )
+    ).sort(-AbuseReport.created_at).to_list()
+
+    report_map: dict[PydanticObjectId, AbuseReport] = {}
+    report_counts: dict[PydanticObjectId, int] = {}
+    for r in reports:
+        report_counts[r.client_user_id] = report_counts.get(r.client_user_id, 0) + 1
+        if r.client_user_id not in report_map:
+            report_map[r.client_user_id] = r
+
+    results = []
+    for uid in blacklisted_ids:
+        u = user_map.get(uid)
+        r = report_map.get(uid)
+        name = u.full_name if u else "Unknown Client"
+        email_masked = (u.email[:3] + "***@" + u.email.split("@")[1]) if (u and u.email and "@" in u.email) else None
+        phone_masked = (u.phone[:3] + "****" + u.phone[-3:]) if (u and u.phone and len(u.phone) >= 7) else None
+
+        results.append({
+            "user_id": str(uid),
+            "name": name,
+            "email_masked": email_masked,
+            "phone_masked": phone_masked,
+            "avatar_url": None,
+            "blacklisted_at": r.created_at if r else None,
+            "last_reason": r.reason if r else "Policy violation / Astrologer screening",
+            "notes": r.notes if r else None,
+            "total_reports": report_counts.get(uid, 1),
+        })
+
+    return results
+
+
+async def unblock_astrologer_client(
+    astrologer_user: User,
+    client_user_id: PydanticObjectId,
+) -> bool:
+    """Removes a client from the astrologer's personal blacklist."""
+    prof = await Astrologer.find_one(Astrologer.user_id == astrologer_user.id)
+    if prof is None:
+        raise NotFoundError("Astrologer profile not found.", error_code="astrologer_not_found")
+
+    existing = getattr(prof, "blacklisted_user_ids", None) or []
+    if client_user_id in existing:
+        prof.blacklisted_user_ids = [uid for uid in existing if uid != client_user_id]
+        await prof.save()
+        logger.info("Client {} unblocked by astrologer {}", client_user_id, prof.id)
+        return True
+    return False
+
+
+async def request_birth_time_rectification(
+    *,
+    appointment_id: PydanticObjectId,
+    by: User,
+    note: str | None = None,
+) -> Appointment:
+    """Astrologer requests exact birth time clarification/rectification from the client."""
+    from app.services import email as email_service
+    from app.services.email_templates import appointment_btr_requested_client_email_html
+
+    appointment = await Appointment.get(appointment_id)
+    if appointment is None:
+        raise NotFoundError("Appointment not found.", error_code="appointment_not_found")
+
+    if by.id != appointment.astrologer_user_id and getattr(by, "role", None) != "admin":
+        raise ForbiddenError("Not authorized to request BTR for this appointment.")
+
+    if appointment.status != AppointmentStatus.BOOKED:
+        raise BadRequestError("BTR can only be requested for active booked appointments.", error_code="appointment_not_booked")
+
+    appointment.btr_requested = True
+    appointment.btr_request_note = note
+    appointment.btr_requested_at = utcnow()
+    appointment.btr_fulfilled = False
+    await appointment.save()
+
+    # Dispatch notification email to seeker
+    try:
+        client_user = await User.get(appointment.user_id)
+        astrologer_prof = await Astrologer.get(appointment.astrologer_id)
+        if client_user and client_user.email and astrologer_prof:
+            frontend_url = settings.FRONTEND_URL.rstrip("/")
+            appts_url = f"{frontend_url}/account/appointments"
+            timing_str = appointment.starts_at.strftime("%d %b %Y, %I:%M %p UTC")
+
+            html = appointment_btr_requested_client_email_html(
+                client_name=client_user.full_name or "Seeker",
+                astrologer_name=astrologer_prof.display_name,
+                scheduled_starts_at_str=timing_str,
+                astrologer_note=note,
+                appointments_url=appts_url,
+            )
+            await email_service.send_email(
+                to=client_user.email,
+                subject=f"🧭 Action Needed: Exact Birth Time Verification with {astrologer_prof.display_name}",
+                html=html,
+            )
+    except Exception as mail_err:
+        logger.error("Failed to dispatch BTR email: {}", mail_err)
+
+    # Realtime notification
+    try:
+        from app.services import realtime
+        await realtime.publish_appointment_event(
+            appointment.user_id,
+            appointment.astrologer_user_id,
+            "btr_requested",
+            {
+                "id": str(appointment.id),
+                "btr_requested": True,
+                "note": note,
+            },
+        )
+    except Exception as exc:
+        logger.debug("Realtime BTR push skipped: {}", exc)
+
+    return appointment
+
+
+async def update_birth_time_rectification(
+    *,
+    appointment_id: PydanticObjectId,
+    by: User,
+    birth_date: str,
+    birth_time: str,
+    birth_place: str,
+    latitude: float | None = None,
+    longitude: float | None = None,
+    timezone_offset: float | None = None,
+    notes: str | None = None,
+) -> Appointment:
+    """Client submits corrected/verified exact birth time for the consultation."""
+    from app.services import email as email_service
+    from app.services.email_templates import appointment_btr_updated_astrologer_email_html
+
+    appointment = await Appointment.get(appointment_id)
+    if appointment is None:
+        raise NotFoundError("Appointment not found.", error_code="appointment_not_found")
+
+    if by.id != appointment.user_id and getattr(by, "role", None) != "admin":
+        raise ForbiddenError("Not authorized to update birth details for this appointment.")
+
+    if appointment.status != AppointmentStatus.BOOKED:
+        raise BadRequestError("Birth details can only be updated for active bookings.", error_code="appointment_not_booked")
+
+    existing_details = appointment.birth_details or {}
+    updated_details = {
+        **existing_details,
+        "date_of_birth": birth_date,
+        "time_of_birth": birth_time,
+        "place_of_birth": birth_place,
+        "latitude": latitude if latitude is not None else existing_details.get("latitude"),
+        "longitude": longitude if longitude is not None else existing_details.get("longitude"),
+        "timezone_offset": timezone_offset if timezone_offset is not None else existing_details.get("timezone_offset"),
+        "rectified_by_client": True,
+        "rectified_at": utcnow().isoformat(),
+        "client_btr_notes": notes,
+    }
+
+    appointment.birth_details = updated_details
+    appointment.btr_fulfilled = True
+    appointment.btr_updated_at = utcnow()
+    appointment.preflight_dossier = None
+    await appointment.save()
+
+    # Notify astrologer via email
+    try:
+        client_user = await User.get(appointment.user_id)
+        astrologer_user = await User.get(appointment.astrologer_user_id)
+        astrologer_prof = await Astrologer.get(appointment.astrologer_id)
+        if astrologer_user and astrologer_user.email and client_user and astrologer_prof:
+            admin_url = (getattr(settings, "ADMIN_URL", None) or "http://localhost:3001").rstrip("/")
+            dossier_url = f"{admin_url}/appointments"
+            timing_str = appointment.starts_at.strftime("%d %b %Y, %I:%M %p UTC")
+
+            html = appointment_btr_updated_astrologer_email_html(
+                astrologer_name=astrologer_prof.display_name,
+                client_name=client_user.full_name or "Seeker",
+                scheduled_starts_at_str=timing_str,
+                birth_date=birth_date,
+                birth_time=birth_time,
+                birth_place=birth_place,
+                client_notes=notes,
+                dossier_url=dossier_url,
+            )
+            await email_service.send_email(
+                to=astrologer_user.email,
+                subject=f"🌟 Birth Time Rectified: {client_user.full_name} submitted exact birth parameters",
+                html=html,
+            )
+    except Exception as mail_err:
+        logger.error("Failed to notify astrologer of BTR update: {}", mail_err)
+
+    # Realtime notification
+    try:
+        from app.services import realtime
+        await realtime.publish_appointment_event(
+            appointment.user_id,
+            appointment.astrologer_user_id,
+            "btr_fulfilled",
+            {
+                "id": str(appointment.id),
+                "btr_fulfilled": True,
+                "birth_details": updated_details,
+            },
+        )
+    except Exception as exc:
+        logger.debug("Realtime BTR update push skipped: {}", exc)
+
+    return appointment
 

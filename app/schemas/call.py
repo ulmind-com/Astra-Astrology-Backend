@@ -60,6 +60,7 @@ class CallOut(BaseModel):
     duration_seconds: int = 0
     ended_by: CallParty | None = None
     end_reason: str | None = None
+    appointment_id: str | None = None
     created_at: datetime
     billing: SessionBilling | None = None
 

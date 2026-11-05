@@ -234,6 +234,10 @@ class AstrologerProfile(BaseModel):
     )
     last_login_at: datetime | None = None
     created_at: datetime
+    brahma_pause_until: datetime | None = None
+    brahma_pause_reason: str | None = None
+    brahma_pause_activated_at: datetime | None = None
+    blacklisted_user_ids: list[str] = Field(default_factory=list)
 
 
 class AstrologerCreated(BaseModel):
