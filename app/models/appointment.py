@@ -150,6 +150,9 @@ class Appointment(TimestampedDocument):
     no_show_marked_at: datetime | None = None
     no_show_wait_minutes: int | None = None
 
+    # Dedicated CallSession ID for video chamber
+    call_session_id: PydanticObjectId | None = None
+
     class Settings:
         name = "appointments"
         indexes = [
@@ -162,6 +165,12 @@ class Appointment(TimestampedDocument):
                 name="appointment_user_recent",
             ),
             pymongo.IndexModel([("status", pymongo.ASCENDING)], name="appointment_status"),
+            pymongo.IndexModel(
+                [("user_id", pymongo.ASCENDING)],
+                unique=True,
+                partialFilterExpression={"status": "booked"},
+                name="unique_active_user_booking",
+            ),
         ]
 
 

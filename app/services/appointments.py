@@ -15,6 +15,7 @@ clash is the ordinary failure, and it should happen before anyone's money
 moves rather than after.
 """
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -273,6 +274,23 @@ def _covered_by_a_window(
 
 
 # ------------------------------------------------------------------ booking
+_USER_BOOKING_LOCKS: dict[str, asyncio.Lock] = {}
+_USER_LOCKS_MUTEX = asyncio.Lock()
+
+
+async def _get_user_booking_lock(user_id: Any) -> asyncio.Lock:
+    uid_str = str(user_id)
+    async with _USER_LOCKS_MUTEX:
+        if len(_USER_BOOKING_LOCKS) > 5000:
+            for k in list(_USER_BOOKING_LOCKS.keys()):
+                lock = _USER_BOOKING_LOCKS[k]
+                if not lock.locked():
+                    _USER_BOOKING_LOCKS.pop(k, None)
+        if uid_str not in _USER_BOOKING_LOCKS:
+            _USER_BOOKING_LOCKS[uid_str] = asyncio.Lock()
+        return _USER_BOOKING_LOCKS[uid_str]
+
+
 async def book(
     *,
     user: User,
@@ -285,6 +303,31 @@ async def book(
     birth_details: dict[str, Any] | None = None,
 ) -> Appointment:
     """Takes a slot, takes the deposit, and writes the booking."""
+    user_lock = await _get_user_booking_lock(user.id)
+    async with user_lock:
+        return await _book_locked(
+            user=user,
+            astrologer=astrologer,
+            starts_at=starts_at,
+            minutes=minutes,
+            note=note,
+            consultation_pillar=consultation_pillar,
+            kundli_id=kundli_id,
+            birth_details=birth_details,
+        )
+
+
+async def _book_locked(
+    *,
+    user: User,
+    astrologer: Astrologer,
+    starts_at: datetime,
+    minutes: int,
+    note: str | None = None,
+    consultation_pillar: str | None = None,
+    kundli_id: PydanticObjectId | None = None,
+    birth_details: dict[str, Any] | None = None,
+) -> Appointment:
     from app.services import settings as settings_service
     from app.services import wallet as wallet_service
 
@@ -490,9 +533,55 @@ async def book(
     )
     try:
         await appointment.insert()
+    except DuplicateKeyError:
+        # If user concurrently attempted to book a second appointment
+        if deposit_debited:
+            try:
+                await wallet_service.credit(
+                    user_id=user.id,
+                    amount_coins=deposit_coins,
+                    reason=TransactionReason.REFUND,
+                    idempotency_key=f"appointment:{appointment_id}:duplicate_deposit_rollback",
+                    note="Rollback duplicate booking deposit",
+                )
+            except Exception as r_err:
+                logger.error("Failed to credit deposit on duplicate abort: {}", r_err)
+        if balance_held:
+            try:
+                await wallet_service.release_held_coins(
+                    user_id=user.id,
+                    amount_coins=balance_due_coins,
+                    appointment_id=appointment_id,
+                )
+            except Exception as r_err:
+                logger.error("Failed to release held coins on duplicate abort: {}", r_err)
+        await _release(claimed)
+        raise BadRequestError(
+            "You already have an active appointment booked. Astra policy permits only one active appointment at a time.",
+            error_code="single_appointment_limit",
+        )
     except Exception:
-        # Nothing to refund yet that the ledger cannot explain, but the time
-        # must not stay claimed by a booking that does not exist.
+        # Rollback money and slots if anything fails during appointment creation
+        if deposit_debited:
+            try:
+                await wallet_service.credit(
+                    user_id=user.id,
+                    amount_coins=deposit_coins,
+                    reason=TransactionReason.REFUND,
+                    idempotency_key=f"appointment:{appointment_id}:deposit_rollback",
+                    note="Rollback failed booking deposit",
+                )
+            except Exception as r_err:
+                logger.error("Failed to credit deposit on abort: {}", r_err)
+        if balance_held:
+            try:
+                await wallet_service.release_held_coins(
+                    user_id=user.id,
+                    amount_coins=balance_due_coins,
+                    appointment_id=appointment_id,
+                )
+            except Exception as r_err:
+                logger.error("Failed to release held coins on abort: {}", r_err)
         await _release(claimed)
         raise
 
@@ -691,6 +780,38 @@ async def cancel(
         logger.debug("Realtime cancel publish skipped: {}", exc)
 
     return appointment
+
+
+async def cancel_active_for_astrologer(
+    astrologer_id: PydanticObjectId,
+    by: User,
+    reason: str = "Astrologer account suspended by administration",
+) -> int:
+    """Cancels all future active bookings for an astrologer, releasing holds and 100% refunding deposits."""
+    now = utcnow()
+    active_bookings = await Appointment.find({
+        "astrologer_id": astrologer_id,
+        "status": AppointmentStatus.BOOKED,
+        "ends_at": {"$gte": now},
+    }).to_list()
+
+    cancelled_count = 0
+    for apt in active_bookings:
+        try:
+            await cancel(appointment=apt, by=by, reason=reason)
+            cancelled_count += 1
+        except Exception as exc:
+            logger.error("Error auto-cancelling appointment {} during astrologer suspension: {}", apt.id, exc)
+
+    try:
+        await AppointmentSlot.find({
+            "astrologer_id": astrologer_id,
+            "starts_at": {"$gte": now},
+        }).delete()
+    except Exception as exc:
+        logger.error("Error clearing future slots for suspended astrologer: {}", exc)
+
+    return cancelled_count
 
 
 # -------------------------------------------------------------- completing

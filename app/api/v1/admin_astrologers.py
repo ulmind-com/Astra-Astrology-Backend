@@ -118,8 +118,19 @@ async def get_astrologer(
 async def update_astrologer(
     astrologer_id: PydanticObjectId, payload: AstrologerAdminUpdate, admin: AdminUser
 ) -> ApiResponse[AstrologerProfile]:
+    from app.models.enums import AccountStatus
+    from app.services import appointments as appointment_service
+
     user, profile = await _load(astrologer_id)
     user, profile = await astrologer_service.update_profile(user, profile, payload, by_admin=True)
+
+    if user.status != AccountStatus.ACTIVE:
+        await appointment_service.cancel_active_for_astrologer(
+            profile.id,
+            by=admin,
+            reason="Astrologer account suspended by administration",
+        )
+
     return ApiResponse(
         message="Astrologer updated.", data=astrologer_service.to_profile(user, profile)
     )
@@ -138,6 +149,7 @@ async def deactivate_astrologer(
     # The account is suspended and the listing hidden, rather than deleted — the
     # consultation history behind it has to stay.
     from app.models.enums import AccountStatus
+    from app.services import appointments as appointment_service
 
     user.status = AccountStatus.SUSPENDED
     await user.save()
@@ -147,6 +159,13 @@ async def deactivate_astrologer(
     # keep them looking present until its heartbeat lapses.
     profile.availability.last_seen_at = None
     await profile.save()
+
+    # Cancel active bookings and auto-refund seekers
+    await appointment_service.cancel_active_for_astrologer(
+        profile.id,
+        by=admin,
+        reason="Astrologer account deactivated by administration",
+    )
 
     # Taken off the live directory at once, not at the next poll.
     from app.services import realtime

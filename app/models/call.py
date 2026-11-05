@@ -57,6 +57,9 @@ class CallSession(TimestampedDocument):
     # wallet could carry on.
     requested_minutes: int = Field(default=0, ge=0)
 
+    # Optional link to scheduled Appointment (if call is conducted for an appointment)
+    appointment_id: PydanticObjectId | None = None
+
     # --- what has actually been taken ------------------------------------
     minutes_charged: int = Field(default=0, ge=0)
     coins_charged: int = Field(default=0, ge=0)

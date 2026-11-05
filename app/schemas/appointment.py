@@ -143,6 +143,7 @@ class AppointmentOut(BaseModel):
     reschedule_reason: str | None = None
     is_no_show: bool = False
     no_show_marked_at: datetime | None = None
+    call_session_id: str | None = None
 
     peer: AppointmentPeer | None = None
 

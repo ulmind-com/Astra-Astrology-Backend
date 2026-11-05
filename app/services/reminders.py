@@ -201,21 +201,92 @@ async def check_and_send_appointment_reminders() -> int:
     return reminded_count
 
 
+async def reconcile_orphaned_appointments() -> int:
+    """Finds appointments concluded > 24 hours ago that were never completed or cancelled,
+    and automatically completes them, capturing held escrow coins to the astrologer.
+    Eliminates orphaned escrow holds.
+    """
+    from app.services import wallet as wallet_service
+    from app.services.cosmic_intelligence import generate_divya_paramarsha_certificate_data
+
+    now = utcnow()
+    reconciliation_cutoff = now - timedelta(hours=24)
+
+    orphaned = await Appointment.find({
+        "status": AppointmentStatus.BOOKED,
+        "ends_at": {"$lte": reconciliation_cutoff},
+    }).limit(50).to_list()
+
+    reconciled_count = 0
+    for apt in orphaned:
+        claimed = await Appointment.get_motor_collection().find_one_and_update(
+            {
+                "_id": apt.id,
+                "status": AppointmentStatus.BOOKED,
+            },
+            {
+                "$set": {
+                    "status": AppointmentStatus.COMPLETED,
+                    "completed_at": now,
+                    "held_status": "captured",
+                }
+            },
+            return_document=True,
+        )
+        if claimed:
+            if getattr(apt, "held_coins", 0) > 0 and getattr(apt, "held_status", "") == "held":
+                try:
+                    await wallet_service.capture_held_coins(
+                        user_id=apt.user_id,
+                        amount_coins=apt.held_coins,
+                        appointment_id=apt.id,
+                        astrologer_user_id=apt.astrologer_user_id,
+                        note="Automatic 24h consultation completion & escrow capture",
+                    )
+                except Exception as exc:
+                    logger.error("Failed to capture held coins on auto-reconciliation: {}", exc)
+
+            try:
+                refreshed = Appointment(**claimed)
+                astro = await Astrologer.get(refreshed.astrologer_id)
+                client_u = await User.get(refreshed.user_id)
+                if astro and client_u and not refreshed.certificate_data:
+                    cert = generate_divya_paramarsha_certificate_data(refreshed, astro, client_u)
+                    refreshed.certificate_data = cert
+                    await refreshed.save()
+            except Exception as cert_err:
+                logger.error("Auto certificate generation failed on reconciliation: {}", cert_err)
+
+            reconciled_count += 1
+            logger.info("Auto-reconciled orphaned appointment {} after 24h", apt.id)
+
+    return reconciled_count
+
+
 async def appointment_reminder_worker_loop() -> None:
     """Continuous background worker running once per minute."""
-    logger.info("Appointment 5-minute reminder background worker started.")
+    logger.info("Appointment 5-minute reminder and reconciliation worker started.")
+    loop_tick = 0
     while True:
         try:
-            # Poll every 60 seconds
             await asyncio.sleep(60)
+            loop_tick += 1
+
+            # Check 5-min reminders every minute
             count = await check_and_send_appointment_reminders()
             if count > 0:
                 logger.info("Appointment reminder loop processed {} reminder(s).", count)
+
+            # Reconcile orphaned appointments once every 10 minutes
+            if loop_tick % 10 == 0:
+                reconciled = await reconcile_orphaned_appointments()
+                if reconciled > 0:
+                    logger.info("Appointment auto-reconciliation completed {} orphaned session(s).", reconciled)
+
         except asyncio.CancelledError:
             logger.info("Appointment reminder background worker stopped gracefully.")
             break
         except Exception as exc:
             logger.opt(exception=exc).error("Unexpected error in appointment reminder worker: {}", exc)
-            # Sleep a bit on failure before retrying
             await asyncio.sleep(15)
 

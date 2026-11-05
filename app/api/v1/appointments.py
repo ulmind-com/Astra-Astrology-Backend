@@ -157,6 +157,7 @@ async def _out(
         reschedule_reason=getattr(appointment, "reschedule_reason", None),
         is_no_show=getattr(appointment, "is_no_show", False),
         no_show_marked_at=getattr(appointment, "no_show_marked_at", None),
+        call_session_id=str(appointment.call_session_id) if getattr(appointment, "call_session_id", None) else None,
         peer=(
             peers.get(appointment.id)
             if peers is not None
@@ -587,6 +588,78 @@ async def mark_no_show(
         reason=payload.reason,
     )
     return ApiResponse(message="Appointment marked as Client No-Show.", data=await _out(marked, user))
+
+
+@router.post(
+    "/{appointment_id}/chamber",
+    response_model=ApiResponse[dict],
+    summary="Join live video chamber for a scheduled appointment",
+)
+async def join_appointment_chamber(
+    appointment_id: PydanticObjectId,
+    user: CurrentUser,
+) -> ApiResponse[dict]:
+    """Provides authorized access and ZegoCloud room credentials for this appointment."""
+    from app.models.base import utcnow
+    from app.models.call import CallSession
+    from app.models.enums import CallStatus, ConsultationMode
+    from app.services import call as call_service
+
+    appointment = await service.get(appointment_id)
+    if not service.may_see(appointment, user):
+        raise ForbiddenError("This is not your appointment.", error_code="not_yours")
+    if appointment.status != AppointmentStatus.BOOKED:
+        raise BadRequestError("This appointment is not active.", error_code="appointment_not_open")
+
+    now = utcnow()
+    earliest = appointment.starts_at - timedelta(minutes=10)
+    latest = appointment.ends_at + timedelta(minutes=15)
+    if now < earliest:
+        raise BadRequestError(
+            f"Chamber opens 10 minutes prior to session. Your session starts at {appointment.starts_at.strftime('%I:%M %p')}.",
+            error_code="chamber_not_open_yet",
+        )
+    if now > latest:
+        raise BadRequestError(
+            "This appointment window has closed.",
+            error_code="chamber_window_closed",
+        )
+
+    call_session = None
+    if getattr(appointment, "call_session_id", None):
+        call_session = await CallSession.get(appointment.call_session_id)
+        if call_session and call_session.status not in (CallStatus.ACTIVE, CallStatus.RINGING):
+            call_session = None
+
+    if not call_session:
+        call_session = CallSession(
+            user_id=appointment.user_id,
+            astrologer_id=appointment.astrologer_id,
+            astrologer_user_id=appointment.astrologer_user_id,
+            mode=ConsultationMode.VIDEO,
+            room_id=f"astra_apt_{appointment.id}_{int(now.timestamp())}",
+            status=CallStatus.ACTIVE,
+            started_at=now,
+            requested_minutes=appointment.minutes,
+            coins_per_minute=0,  # Prepaid through appointment escrow!
+            appointment_id=appointment.id,
+        )
+        await call_session.insert()
+        appointment.call_session_id = call_session.id
+        await appointment.save()
+
+    token = await call_service.token_for(call_session, user)
+    return ApiResponse(
+        message="Chamber ready.",
+        data={
+            "call_id": str(call_session.id),
+            "room_id": call_session.room_id,
+            "token": token,
+            "starts_at": appointment.starts_at.isoformat(),
+            "ends_at": appointment.ends_at.isoformat(),
+            "minutes": appointment.minutes,
+        },
+    )
 
 
 @router.get(
