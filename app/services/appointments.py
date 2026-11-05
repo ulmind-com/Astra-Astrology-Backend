@@ -497,6 +497,33 @@ async def cancel(
         AppointmentSlot.appointment_id == appointment.id
     ).delete()
 
+    # --- refund deposit if cancelled by the astrologer or platform admin ---
+    # When the astrologer cancels (or admin cancels on their behalf), the client
+    # is not at fault and must always receive a 100% refund of their deposit coins.
+    cancelled_by_provider = by.id != appointment.user_id
+    if cancelled_by_provider and appointment.deposit_coins > 0:
+        try:
+            from app.services import wallet as wallet_service
+            await wallet_service.credit(
+                user_id=appointment.user_id,
+                amount_coins=appointment.deposit_coins,
+                reason=TransactionReason.REFUND,
+                idempotency_key=f"appointment:{appointment.id}:cancelled_by_astrologer_refund",
+                note=f"Full refund for appointment cancelled by astrologer ({reason or 'Session unavailable'})",
+            )
+            logger.info(
+                "Refunded {} deposit coins to user {} for cancelled appointment {}",
+                appointment.deposit_coins,
+                appointment.user_id,
+                appointment.id,
+            )
+        except Exception as refund_err:
+            logger.error(
+                "Failed to auto-refund deposit coins for appointment {}: {}",
+                appointment.id,
+                refund_err,
+            )
+
     logger.info("Appointment {} cancelled by {}", appointment.id, by.email)
     await _notify(appointment)
 
