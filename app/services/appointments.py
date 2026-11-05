@@ -380,6 +380,15 @@ async def book(
     muhurat_data = calculate_slot_muhurat(starts_at)
     muhurat_type = muhurat_data.get("quality", "normal")
 
+    # Calculate Cosmic Synergy / Planetary Resonance
+    cosmic_synergy_score = 88
+    try:
+        from app.services.cosmic_intelligence import calculate_cosmic_synergy
+        synergy = calculate_cosmic_synergy(birth_details, astrologer.id)
+        cosmic_synergy_score = synergy.get("score", 88)
+    except Exception as syn_err:
+        logger.debug("Synergy calculation skipped: {}", syn_err)
+
     # --- claim the time ---------------------------------------------------
     # Before the wallet, because a clash is the ordinary failure and nobody's
     # money should move for it.
@@ -477,6 +486,7 @@ async def book(
         kundli_id=kundli_id,
         birth_details=birth_details,
         muhurat_type=muhurat_type,
+        cosmic_synergy_score=cosmic_synergy_score,
     )
     try:
         await appointment.insert()
@@ -647,6 +657,13 @@ async def cancel(
     logger.info("Appointment {} cancelled by {}", appointment.id, by.email)
     await _notify(appointment)
 
+    # Notify seekers waiting in Cosmic Standby Queue
+    try:
+        from app.services.cosmic_intelligence import notify_standby_waitlist
+        await notify_standby_waitlist(appointment)
+    except Exception as standby_err:
+        logger.error("Standby queue notification failed: {}", standby_err)
+
     # Realtime notification to both client and astrologer
     try:
         from app.services import realtime
@@ -698,6 +715,18 @@ async def complete(
             appointment.held_status = "captured"
         except Exception as exc:
             logger.error("Failed to capture held coins for appointment {}: {}", appointment.id, exc)
+
+    # Generate consecrated Divya Paramarsha certificate
+    try:
+        from app.services.cosmic_intelligence import generate_divya_paramarsha_certificate_data
+        astrologer_prof = await Astrologer.get(appointment.astrologer_id)
+        client_user = await User.get(appointment.user_id)
+        if astrologer_prof and client_user:
+            appointment.certificate_data = generate_divya_paramarsha_certificate_data(
+                appointment, astrologer_prof, client_user
+            )
+    except Exception as cert_err:
+        logger.error("Failed to generate Divya Paramarsha certificate: {}", cert_err)
 
     await appointment.save()
     logger.info("Appointment {} marked completed and escrow captured", appointment.id)

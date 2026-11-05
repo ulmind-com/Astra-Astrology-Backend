@@ -133,6 +133,9 @@ class AppointmentOut(BaseModel):
     birth_details: dict | None = None
     prescription: dict | None = None
     muhurat_type: str | None = None
+    preflight_dossier: dict | None = None
+    cosmic_synergy_score: int | None = None
+    certificate_data: dict | None = None
 
     peer: AppointmentPeer | None = None
 
