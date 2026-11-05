@@ -98,12 +98,22 @@ async def update_my_card(
     for field, value in changes.items():
         setattr(profile.appointment, field, value)
 
+    # If price is set (> 0) and enabled wasn't explicitly set to False, default to enabled
+    if "enabled" not in changes and profile.appointment.price_paise > 0:
+        profile.appointment.enabled = True
+
     if profile.appointment.enabled and profile.appointment.price_paise <= 0:
         raise BadRequestError(
             "Set a price before taking appointments.", error_code="price_required"
         )
 
     await profile.save()
+    try:
+        from app.services import realtime
+        await realtime.publish_astrologer(profile)
+    except Exception as exc:
+        logger.debug("Realtime astrologer publish skipped: {}", exc)
+
     return ApiResponse(
         message="Saved.", data=AppointmentCardOut(**profile.appointment.model_dump())
     )
@@ -190,6 +200,17 @@ async def add_window(
         astrologer_id=profile.id, day=starts.date(), starts_at=starts, ends_at=ends
     )
     await window.insert()
+
+    # If the astrologer has a price set, opening an availability window means they are
+    # actively taking appointments — auto-enable appointment card so users can book immediately.
+    if profile.appointment.price_paise > 0 and not profile.appointment.enabled:
+        profile.appointment.enabled = True
+        await profile.save()
+        try:
+            from app.services import realtime
+            await realtime.publish_astrologer(profile)
+        except Exception as exc:
+            logger.debug("Realtime astrologer publish skipped: {}", exc)
 
     try:
         from app.services import realtime

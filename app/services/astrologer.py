@@ -462,6 +462,22 @@ async def to_public(profile: Astrologer, platform: Any = None) -> AstrologerPubl
             pass
 
     public.service_duration = _format_service_duration(profile)
+
+    # Auto-heal: If an astrologer has configured an appointment price > 0 and has active open windows,
+    # auto-enable appointments so clients can book them immediately.
+    if profile.appointment.price_paise > 0 and not profile.appointment.enabled:
+        try:
+            from app.models.appointment import AvailabilityWindow
+            has_windows = (
+                await AvailabilityWindow.find(AvailabilityWindow.astrologer_id == profile.id).count()
+            ) > 0
+            if has_windows:
+                profile.appointment.enabled = True
+                await profile.save()
+                public.appointment.enabled = True
+        except Exception:
+            pass
+
     return public
 
 
