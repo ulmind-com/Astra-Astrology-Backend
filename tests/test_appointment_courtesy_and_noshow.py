@@ -79,3 +79,21 @@ async def test_courtesy_reschedule_forbidden_for_other_users():
             by=other_user,
             new_starts_at=datetime.now(UTC) + timedelta(days=1),
         )
+
+
+@pytest.mark.asyncio
+async def test_cancel_active_for_astrologer():
+    """Verify cancel_active_for_astrologer executes cleanly and handles active appointments."""
+    admin_user = SimpleNamespace(id=PydanticObjectId(), role="admin", email="admin@astra.com")
+    astro_id = PydanticObjectId()
+
+    mock_query = MagicMock()
+    mock_query.to_list = AsyncMock(return_value=[])
+    mock_slot_query = MagicMock()
+    mock_slot_query.delete = AsyncMock(return_value=None)
+
+    with patch.object(Appointment, "find", return_value=mock_query):
+        with patch.object(AppointmentSlot, "find", return_value=mock_slot_query):
+            cancelled = await service.cancel_active_for_astrologer(astro_id, by=admin_user)
+            assert cancelled == 0
+

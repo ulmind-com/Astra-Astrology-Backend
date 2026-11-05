@@ -242,51 +242,53 @@ async def charge_due(
 
     while charged < due:
         minute = charged + 1
-        try:
-            await wallet_service.debit(
+        if price.coins_per_minute > 0:
+            try:
+                await wallet_service.debit(
+                    user_id=user_id,
+                    amount_coins=price.coins_per_minute,
+                    reason=TransactionReason.CONSULTATION,
+                    idempotency_key=f"session:{session_id}:minute:{minute}",
+                    ref=TransactionRef(
+                        session_id=session_id,
+                        astrologer_id=astrologer_id,
+                        astrologer_name=astro_name,
+                        astrologer_image_url=astro_img,
+                        consultation_mode=mode.value,
+                    ),
+                    note=f"{mode.value.capitalize()} consultation with {astro_name or 'Astrologer'} · minute {minute}",
+                )
+            except BadRequestError as exc:
+                # The only expected failure here is an empty wallet. Stop at the
+                # last minute that was actually paid for — never deliver one that
+                # was not.
+                if exc.error_code != "insufficient_balance":
+                    raise
+                out_of_coins = True
+                break
+
+            gross = price.coins_per_minute * price.coin_value_paise
+            commission = round(gross * price.commission_percent / 100)
+            earning = gross - commission
+
+            await EarningEntry(
+                astrologer_id=astrologer_id,
+                astrologer_user_id=astrologer_user_id,
                 user_id=user_id,
-                amount_coins=price.coins_per_minute,
-                reason=TransactionReason.CONSULTATION,
-                idempotency_key=f"session:{session_id}:minute:{minute}",
-                ref=TransactionRef(
-                    session_id=session_id,
-                    astrologer_id=astrologer_id,
-                    astrologer_name=astro_name,
-                    astrologer_image_url=astro_img,
-                    consultation_mode=mode.value,
-                ),
-                note=f"{mode.value.capitalize()} consultation with {astro_name or 'Astrologer'} · minute {minute}",
-            )
-        except BadRequestError as exc:
-            # The only expected failure here is an empty wallet. Stop at the
-            # last minute that was actually paid for — never deliver one that
-            # was not.
-            if exc.error_code != "insufficient_balance":
-                raise
-            out_of_coins = True
-            break
+                mode=mode,
+                session_id=session_id,
+                minute_index=minute,
+                coins_charged=price.coins_per_minute,
+                gross_paise=gross,
+                commission_percent=price.commission_percent,
+                commission_paise=commission,
+                earning_paise=earning,
+            ).insert()
 
-        gross = price.coins_per_minute * price.coin_value_paise
-        commission = round(gross * price.commission_percent / 100)
-        earning = gross - commission
-
-        await EarningEntry(
-            astrologer_id=astrologer_id,
-            astrologer_user_id=astrologer_user_id,
-            user_id=user_id,
-            mode=mode,
-            session_id=session_id,
-            minute_index=minute,
-            coins_charged=price.coins_per_minute,
-            gross_paise=gross,
-            commission_percent=price.commission_percent,
-            commission_paise=commission,
-            earning_paise=earning,
-        ).insert()
+            coins_total += price.coins_per_minute
+            earning_total += earning
 
         charged = minute
-        coins_total += price.coins_per_minute
-        earning_total += earning
 
     wallet = await wallet_service.get_or_create_wallet(user_id)
     minutes_left = affordable_minutes(wallet.balance_coins, price.coins_per_minute)
