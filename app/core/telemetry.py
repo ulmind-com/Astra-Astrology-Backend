@@ -107,8 +107,10 @@ def init_telemetry(app: FastAPI | None = None) -> bool:
 
     # 2. Metrics (API latency, status codes, RAM & CPU)
     metric_endpoint = f"{endpoint}/v1/metrics"
-    metric_exporter = OTLPMetricExporter(endpoint=metric_endpoint, headers=headers)
-    reader = PeriodicExportingMetricReader(metric_exporter, export_interval_millis=15000)
+    metric_exporter = OTLPMetricExporter(endpoint=metric_endpoint, headers=headers, timeout=10.0)
+    reader = PeriodicExportingMetricReader(
+        metric_exporter, export_interval_millis=60000, export_timeout_millis=10000
+    )
     meter_provider = MeterProvider(resource=resource, metric_readers=[reader])
     metrics.set_meter_provider(meter_provider)
 
