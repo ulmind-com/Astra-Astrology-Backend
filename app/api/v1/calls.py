@@ -85,6 +85,7 @@ async def to_call(session: CallSession, viewer: User | None = None) -> CallOut:
         duration_seconds=session.duration_seconds,
         ended_by=session.ended_by,
         end_reason=session.end_reason,
+        appointment_id=str(session.appointment_id) if getattr(session, "appointment_id", None) else None,
         created_at=session.created_at,
         billing=await _billing_of(session),
     )

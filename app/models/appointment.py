@@ -159,6 +159,19 @@ class Appointment(TimestampedDocument):
     brahma_pause_until: datetime | None = None
     rescue_deadline: datetime | None = None
 
+    # Client Screening & Abuse Shield (Red-Flag & Call Termination)
+    abuse_flagged: bool = False
+    abuse_reason: str | None = None
+    abuse_flagged_at: datetime | None = None
+    abuse_notes: str | None = None
+
+    # Birth Time Rectification (BTR) Authority
+    btr_requested: bool = False
+    btr_request_note: str | None = None
+    btr_requested_at: datetime | None = None
+    btr_fulfilled: bool = False
+    btr_updated_at: datetime | None = None
+
     class Settings:
         name = "appointments"
         indexes = [

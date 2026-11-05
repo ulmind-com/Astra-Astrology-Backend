@@ -2,6 +2,7 @@
 
 from beanie import Document
 
+from app.models.abuse_report import AbuseReport
 from app.models.appointment import Appointment, AppointmentSlot, AvailabilityWindow
 from app.models.astrologer import Astrologer
 from app.models.call import CallSession, ZegoCallbackEvent
@@ -59,6 +60,7 @@ DOCUMENT_MODELS: list[type[Document]] = [
     PalmReading,
     PalmRule,
     Review,
+    AbuseReport,
     EarningEntry,
     AstrologerFavorite,
     AIKnowledgeDoc,
@@ -71,6 +73,7 @@ DOCUMENT_MODELS: list[type[Document]] = [
 
 __all__ = [
     "DOCUMENT_MODELS",
+    "AbuseReport",
     "SupportTicket",
     "AIKnowledgeDoc",
     "AICustomRule",

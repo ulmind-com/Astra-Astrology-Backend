@@ -1034,3 +1034,134 @@ def appointment_brahma_pause_client_email_html(
     )
 
 
+def appointment_btr_requested_client_email_html(
+    *,
+    client_name: str,
+    astrologer_name: str,
+    scheduled_starts_at_str: str,
+    astrologer_note: str | None = None,
+    appointments_url: str,
+) -> str:
+    """Email sent to seeker when an astrologer requests Birth Time Rectification (BTR)."""
+    app_name = settings.APP_NAME or "DivinLink"
+    headline = "Birth Time Rectification Request ⏳"
+    lead_text = (
+        f"Namaste {client_name}, your consulting astrologer <strong>{astrologer_name}</strong> has requested verification "
+        f"or precision correction of your birth time for the consultation on {scheduled_starts_at_str}."
+    )
+
+    content = f"""
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:16px;padding:20px;margin-bottom:24px;">
+        <tr>
+          <td>
+            <p style="margin:0 0 10px;font-size:14px;font-weight:700;color:#0369A1;">
+              🧭 Why Precise Birth Time Matters in Vedic Astrology:
+            </p>
+            <p style="margin:0 0 10px;font-size:12px;color:#334155;line-height:1.6;">
+              In Vedic Jyotish, ascendant cusps shift every few minutes. Subtle variations alter the D9 Navamsha and planetary sub-periods (Antardasha). Providing your exact hospital-recorded or family-verified birth time ensures mathematically precise astrological calculations.
+            </p>
+            {f'''
+            <div style="background:#FFFFFF;border-left:4px solid #0284C7;border-radius:8px;padding:12px 14px;margin:12px 0 0;">
+              <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#0284C7;text-transform:uppercase;">
+                Note from {astrologer_name}:
+              </p>
+              <p style="margin:0;font-size:13px;color:#0F172A;font-style:italic;line-height:1.5;">
+                "{astrologer_note}"
+              </p>
+            </div>
+            ''' if astrologer_note else ''}
+          </td>
+        </tr>
+      </table>
+
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 12px;">
+        <tr>
+          <td align="center">
+            <a href="{appointments_url}" target="_blank" class="cta-button" style="display:inline-block;background:linear-gradient(135deg,#0284C7 0%,#0369A1 100%);color:#ffffff;font-size:15px;font-weight:700;padding:14px 36px;border-radius:9999px;text-decoration:none;text-align:center;box-shadow:0 4px 14px rgba(2,132,199,0.35);">
+              Update Exact Birth Time Now
+            </a>
+          </td>
+        </tr>
+      </table>
+    """
+
+    return render_email(
+        title=f"Birth Time Rectification Request — {app_name}",
+        content_html=content,
+        preheader=f"{astrologer_name} requested birth time rectification for your session.",
+        headline=headline,
+        lead_text=lead_text,
+    )
+
+
+def appointment_btr_updated_astrologer_email_html(
+    *,
+    astrologer_name: str,
+    client_name: str,
+    scheduled_starts_at_str: str,
+    birth_date: str,
+    birth_time: str,
+    birth_place: str,
+    client_notes: str | None = None,
+    dossier_url: str,
+) -> str:
+    """Email sent to astrologer when client fulfills BTR request with updated birth data."""
+    app_name = settings.APP_NAME or "DivinLink"
+    headline = "Client Updated Birth Details 🌟"
+    lead_text = (
+        f"Namaste {astrologer_name}, your seeker <strong>{client_name}</strong> has successfully submitted their "
+        f"rectified birth details for the session on {scheduled_starts_at_str}."
+    )
+
+    content = f"""
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:16px;padding:20px;margin-bottom:24px;">
+        <tr>
+          <td>
+            <p style="margin:0 0 12px;font-size:14px;font-weight:700;color:#15803D;">
+              📋 Rectified Birth Parameters:
+            </p>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="font-size:13px;color:#1E293B;">
+              <tr>
+                <td style="padding:4px 0;font-weight:600;width:120px;">Birth Date:</td>
+                <td style="padding:4px 0;">{birth_date}</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 0;font-weight:600;">Exact Time:</td>
+                <td style="padding:4px 0;font-weight:700;color:#16A34A;">{birth_time}</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 0;font-weight:600;">Birth Place:</td>
+                <td style="padding:4px 0;">{birth_place}</td>
+              </tr>
+              {f'''
+              <tr>
+                <td style="padding:4px 0;font-weight:600;">Client Note:</td>
+                <td style="padding:4px 0;font-style:italic;">{client_notes}</td>
+              </tr>
+              ''' if client_notes else ''}
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 12px;">
+        <tr>
+          <td align="center">
+            <a href="{dossier_url}" target="_blank" class="cta-button" style="display:inline-block;background:linear-gradient(135deg,#16A34A 0%,#15803D 100%);color:#ffffff;font-size:15px;font-weight:700;padding:14px 36px;border-radius:9999px;text-decoration:none;text-align:center;box-shadow:0 4px 14px rgba(22,163,74,0.35);">
+              Review Pre-Flight Dossier
+            </a>
+          </td>
+        </tr>
+      </table>
+    """
+
+    return render_email(
+        title=f"Birth Details Rectified — {app_name}",
+        content_html=content,
+        preheader=f"{client_name} updated their exact birth time for the upcoming session.",
+        headline=headline,
+        lead_text=lead_text,
+    )
+
+
+

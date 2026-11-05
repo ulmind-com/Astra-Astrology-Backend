@@ -20,11 +20,13 @@ from app.models.appointment import (
 from app.models.astrologer import Astrologer
 from app.models.user import User
 from app.schemas.appointment import (
+    AbuseReportOut,
     AppointmentCardOut,
     AppointmentCardUpdate,
     AppointmentOut,
     AppointmentPeer,
     AppointmentQuote,
+    BlacklistedClientOut,
     BookRequest,
     BrahmaPauseActionRequest,
     BrahmaPauseRequest,
@@ -34,7 +36,10 @@ from app.schemas.appointment import (
     PrescriptionUpdateRequest,
     QuoteRequest,
     Range,
+    RedFlagRequest,
+    RequestBTRRequest,
     RescheduleRequest,
+    UpdateBTRRequest,
     WindowInput,
     WindowOut,
 )
@@ -164,6 +169,14 @@ async def _out(
         brahma_pause_reason=getattr(appointment, "brahma_pause_reason", None),
         brahma_pause_until=getattr(appointment, "brahma_pause_until", None),
         rescue_deadline=getattr(appointment, "rescue_deadline", None),
+        abuse_flagged=getattr(appointment, "abuse_flagged", False),
+        abuse_reason=getattr(appointment, "abuse_reason", None),
+        abuse_flagged_at=getattr(appointment, "abuse_flagged_at", None),
+        btr_requested=getattr(appointment, "btr_requested", False),
+        btr_request_note=getattr(appointment, "btr_request_note", None),
+        btr_requested_at=getattr(appointment, "btr_requested_at", None),
+        btr_fulfilled=getattr(appointment, "btr_fulfilled", False),
+        btr_updated_at=getattr(appointment, "btr_updated_at", None),
         peer=(
             peers.get(appointment.id)
             if peers is not None
@@ -863,4 +876,112 @@ async def join_standby_waitlist(
         message="Successfully joined Cosmic Standby Queue. You will be notified instantly if this slot opens up.",
         data={"position": len(queue)},
     )
+
+
+# ======================================================= Client Screening & Abuse Shield
+@router.post(
+    "/{appointment_id}/red-flag",
+    response_model=ApiResponse[AppointmentOut],
+    summary="Red-flag appointment for misconduct, capture compensation and blacklist client",
+)
+async def red_flag_appointment(
+    appointment_id: PydanticObjectId,
+    req: RedFlagRequest,
+    current_user: AstrologerUser,
+) -> ApiResponse[AppointmentOut]:
+    appt = await service.red_flag_appointment(
+        appointment_id=appointment_id,
+        by=current_user,
+        reason=req.reason,
+        notes=req.notes,
+        blacklist_client=req.blacklist_client,
+        terminate_call=req.terminate_call,
+    )
+    return ApiResponse(
+        message="Session terminated and red-flagged. Escrow fee captured as earned compensation.",
+        data=await _out(appt, current_user),
+    )
+
+
+@router.get(
+    "/me/blacklist",
+    response_model=ApiResponse[list[BlacklistedClientOut]],
+    summary="List clients blacklisted by this astrologer",
+)
+async def get_my_blacklist(
+    current_user: AstrologerUser,
+) -> ApiResponse[list[BlacklistedClientOut]]:
+    records = await service.get_astrologer_blacklist(current_user)
+    return ApiResponse(
+        message="Blacklist fetched.",
+        data=[BlacklistedClientOut(**r) for r in records],
+    )
+
+
+@router.post(
+    "/me/blacklist/{client_user_id}/unblock",
+    response_model=ApiResponse[MessageResponse],
+    summary="Unblock a blacklisted client",
+)
+async def unblock_client(
+    client_user_id: PydanticObjectId,
+    current_user: AstrologerUser,
+) -> ApiResponse[MessageResponse]:
+    unblocked = await service.unblock_astrologer_client(current_user, client_user_id)
+    if not unblocked:
+        raise NotFoundError("Client was not found in your blacklist.")
+    return ApiResponse(
+        message="Client has been unblocked from booking your schedule.",
+        data=MessageResponse(message="Client unblocked successfully."),
+    )
+
+
+# ======================================================= Birth Time Rectification (BTR) Authority
+@router.post(
+    "/{appointment_id}/request-btr",
+    response_model=ApiResponse[AppointmentOut],
+    summary="Request Birth Time Rectification (BTR) from the client",
+)
+async def request_btr(
+    appointment_id: PydanticObjectId,
+    req: RequestBTRRequest,
+    current_user: AstrologerUser,
+) -> ApiResponse[AppointmentOut]:
+    appt = await service.request_birth_time_rectification(
+        appointment_id=appointment_id,
+        by=current_user,
+        note=req.note,
+    )
+    return ApiResponse(
+        message="Birth Time Rectification requested from client.",
+        data=await _out(appt, current_user),
+    )
+
+
+@router.post(
+    "/{appointment_id}/update-btr",
+    response_model=ApiResponse[AppointmentOut],
+    summary="Client submits rectified exact birth time parameters",
+)
+async def update_btr(
+    appointment_id: PydanticObjectId,
+    req: UpdateBTRRequest,
+    current_user: CurrentUser,
+) -> ApiResponse[AppointmentOut]:
+    appt = await service.update_birth_time_rectification(
+        appointment_id=appointment_id,
+        by=current_user,
+        birth_date=req.birth_date,
+        birth_time=req.birth_time,
+        birth_place=req.birth_place,
+        latitude=req.latitude,
+        longitude=req.longitude,
+        timezone_offset=req.timezone_offset,
+        notes=req.notes,
+    )
+    return ApiResponse(
+        message="Birth parameters updated successfully. Astrologer has been notified.",
+        data=await _out(appt, current_user),
+    )
+
 

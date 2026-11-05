@@ -165,3 +165,142 @@ async def test_brahma_pause_rescue_action_refund():
                 assert mock_release.called
                 assert mock_credit.called
 
+
+@pytest.mark.asyncio
+async def test_red_flag_appointment_and_blacklist():
+    """Astrologer can red-flag an abusive client, capture escrow fee, and blacklist client."""
+    from app.models.abuse_report import AbuseReport
+
+    astro_user_id = PydanticObjectId()
+    astro_prof_id = PydanticObjectId()
+    client_user_id = PydanticObjectId()
+    appt_id = PydanticObjectId()
+
+    appointment = SimpleNamespace(
+        id=appt_id,
+        astrologer_id=astro_prof_id,
+        astrologer_user_id=astro_user_id,
+        user_id=client_user_id,
+        status=AppointmentStatus.BOOKED,
+        held_coins=600,
+        held_status="held",
+        call_session_id=None,
+        save=AsyncMock(),
+    )
+    astro_prof = SimpleNamespace(
+        id=astro_prof_id,
+        user_id=astro_user_id,
+        blacklisted_user_ids=[],
+        save=AsyncMock(),
+    )
+    astro_user = SimpleNamespace(id=astro_user_id, role="astrologer")
+
+    mock_slot_query = MagicMock()
+    mock_slot_query.delete = AsyncMock(return_value=None)
+
+    with patch.object(Appointment, "get", AsyncMock(return_value=appointment)):
+        with patch.object(Astrologer, "get", AsyncMock(return_value=astro_prof)):
+            with patch.object(AppointmentSlot, "find", return_value=mock_slot_query):
+                with patch("app.services.wallet.capture_held_coins", AsyncMock()) as mock_capture:
+                    with patch.object(AbuseReport, "save", AsyncMock(return_value=None)):
+                        res = await service.red_flag_appointment(
+                            appointment_id=appt_id,
+                            by=astro_user,
+                            reason="Severe verbal abuse and profanity",
+                            notes="Client began insulting during session",
+                            blacklist_client=True,
+                            terminate_call=False,
+                        )
+                        assert res.abuse_flagged is True
+                        assert res.abuse_reason == "Severe verbal abuse and profanity"
+                        assert res.status == AppointmentStatus.COMPLETED
+                        assert client_user_id in astro_prof.blacklisted_user_ids
+                        assert mock_capture.called
+
+
+@pytest.mark.asyncio
+async def test_request_and_update_birth_time_rectification():
+    """Astrologer requests BTR and client successfully submits rectified parameters."""
+    astro_user_id = PydanticObjectId()
+    astro_prof_id = PydanticObjectId()
+    client_user_id = PydanticObjectId()
+    appt_id = PydanticObjectId()
+
+    appointment = SimpleNamespace(
+        id=appt_id,
+        astrologer_id=astro_prof_id,
+        astrologer_user_id=astro_user_id,
+        user_id=client_user_id,
+        status=AppointmentStatus.BOOKED,
+        starts_at=datetime.now(UTC) + timedelta(days=2),
+        birth_details={"date_of_birth": "1992-05-14", "time_of_birth": "04:30"},
+        btr_requested=False,
+        save=AsyncMock(),
+    )
+    astro_user = SimpleNamespace(id=astro_user_id, role="astrologer")
+    client_user = SimpleNamespace(id=client_user_id, role="user", email="seeker@example.com", full_name="John Doe")
+    astro_prof = SimpleNamespace(id=astro_prof_id, display_name="Pandit Sharma")
+
+    with patch.object(Appointment, "get", AsyncMock(return_value=appointment)):
+        with patch.object(User, "get", AsyncMock(return_value=client_user)):
+            with patch.object(Astrologer, "get", AsyncMock(return_value=astro_prof)):
+                with patch("app.services.email.send_email", AsyncMock()):
+                    # Astrologer requests BTR
+                    res = await service.request_birth_time_rectification(
+                        appointment_id=appt_id,
+                        by=astro_user,
+                        note="Birth time falls on Gemini-Cancer cusp. Please confirm exact minute.",
+                    )
+                    assert res.btr_requested is True
+                    assert res.btr_request_note == "Birth time falls on Gemini-Cancer cusp. Please confirm exact minute."
+                    assert res.btr_fulfilled is False
+
+                    # Client fulfills BTR
+                    with patch.object(User, "get", AsyncMock(return_value=astro_user)):
+                        res2 = await service.update_birth_time_rectification(
+                            appointment_id=appt_id,
+                            by=client_user,
+                            birth_date="1992-05-14",
+                            birth_time="04:47 AM",
+                            birth_place="Kolkata, India",
+                            notes="Verified from hospital birth certificate.",
+                        )
+                        assert res2.btr_fulfilled is True
+                        assert res2.birth_details["time_of_birth"] == "04:47 AM"
+                        assert res2.birth_details["place_of_birth"] == "Kolkata, India"
+                        assert res2.birth_details["client_btr_notes"] == "Verified from hospital birth certificate."
+
+
+@pytest.mark.asyncio
+async def test_booking_blocked_for_blacklisted_user():
+    """Client cannot book an appointment if blacklisted by the astrologer."""
+    client_id = PydanticObjectId()
+    astro_id = PydanticObjectId()
+    client = SimpleNamespace(id=client_id, role="user")
+    astrologer = SimpleNamespace(
+        id=astro_id,
+        appointment=SimpleNamespace(enabled=True, price_paise=50000, block_minutes=30),
+        blacklisted_user_ids=[client_id],
+        brahma_pause_until=None,
+    )
+    mock_platform = SimpleNamespace(
+        min_appointment_minutes=15,
+        max_appointment_minutes=120,
+        appointment_booking_days_ahead=30,
+    )
+
+    with patch("app.services.settings.get_settings", AsyncMock(return_value=mock_platform)):
+        starts = (datetime.now(UTC) + timedelta(days=2)).replace(minute=0, second=0, microsecond=0)
+        with pytest.raises(BadRequestError) as exc_info:
+            await service._book_locked(
+                user=client,
+                astrologer=astrologer,
+                starts_at=starts,
+                minutes=30,
+            )
+
+        assert "unavailable for your account" in str(exc_info.value.message)
+        assert exc_info.value.error_code == "client_blacklisted"
+
+
+

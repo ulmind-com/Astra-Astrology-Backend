@@ -153,6 +153,9 @@ class Astrologer(TimestampedDocument):
     brahma_pause_reason: str | None = None
     brahma_pause_activated_at: datetime | None = None
 
+    # Client Screening & Abuse Shield (Blacklisted users blocked from booking)
+    blacklisted_user_ids: list[PydanticObjectId] = Field(default_factory=list)
+
     # ------------------------------------------------------------ curation
     is_listed: bool = Field(default=True, description="Shown in the public directory")
     is_featured: bool = False
