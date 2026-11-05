@@ -80,6 +80,8 @@ class AppointmentCard(BaseModel):
     block_minutes: int = Field(default=30, ge=5, le=600)
     # How many minutes after booking the client can cancel (e.g. 30 mins)
     cancellation_window_minutes: int = Field(default=30, ge=0, le=1440)
+    # Energy cleansing and meditation buffer between sessions (e.g. 5, 10, 15 mins)
+    buffer_minutes: int = Field(default=10, ge=0, le=60)
 
 
 class RatingSummary(BaseModel):
@@ -145,6 +147,11 @@ class Astrologer(TimestampedDocument):
     total_consultations: int = Field(default=0, ge=0)
     service_duration: ServiceDuration = Field(default_factory=ServiceDuration)
     followers_count: int = Field(default=0, ge=0)
+
+    # Brahma Pause (Emergency Break & Seeker Auto-Rescue Engine)
+    brahma_pause_until: datetime | None = None
+    brahma_pause_reason: str | None = None
+    brahma_pause_activated_at: datetime | None = None
 
     # ------------------------------------------------------------ curation
     is_listed: bool = Field(default=True, description="Shown in the public directory")

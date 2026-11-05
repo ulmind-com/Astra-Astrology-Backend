@@ -263,6 +263,74 @@ async def reconcile_orphaned_appointments() -> int:
     return reconciled_count
 
 
+async def reconcile_brahma_pause_timeouts() -> int:
+    """Finds appointments where astrologer is on Brahma Pause and the session time has arrived (<= 10 mins)
+    or rescue deadline passed without seeker action, and executes 100% full refund so funds are never stuck.
+    """
+    from app.services import wallet as wallet_service
+    from app.models.enums import TransactionReason
+
+    now = utcnow()
+    threshold = now + timedelta(minutes=10)
+
+    timeouts = await Appointment.find({
+        "status": AppointmentStatus.BOOKED,
+        "brahma_pause_affected": True,
+        "starts_at": {"$lte": threshold},
+    }).limit(50).to_list()
+
+    processed_count = 0
+    for apt in timeouts:
+        claimed = await Appointment.get_motor_collection().find_one_and_update(
+            {
+                "_id": apt.id,
+                "status": AppointmentStatus.BOOKED,
+                "brahma_pause_affected": True,
+            },
+            {
+                "$set": {
+                    "status": AppointmentStatus.CANCELLED,
+                    "cancelled_at": now,
+                    "cancel_reason": "Automatic 100% refund: Brahma Pause session arrival without seeker reschedule",
+                    "brahma_pause_affected": False,
+                }
+            },
+            return_document=True,
+        )
+        if claimed:
+            # Delete slots
+            await AppointmentSlot.find(AppointmentSlot.appointment_id == apt.id).delete()
+
+            # Release held coins
+            if getattr(apt, "held_coins", 0) > 0 and getattr(apt, "held_status", "") == "held":
+                try:
+                    await wallet_service.release_held_coins(
+                        user_id=apt.user_id,
+                        amount_coins=apt.held_coins,
+                        appointment_id=apt.id,
+                    )
+                except Exception as exc:
+                    logger.error("Failed to release held coins on Brahma Pause timeout: {}", exc)
+
+            # 100% refund deposit
+            if getattr(apt, "deposit_coins", 0) > 0:
+                try:
+                    await wallet_service.credit(
+                        user_id=apt.user_id,
+                        amount_coins=apt.deposit_coins,
+                        reason=TransactionReason.REFUND,
+                        idempotency_key=f"appointment:{apt.id}:brahma_pause_auto_refund",
+                        note="Automatic 100% refund for unrescheduled Brahma Pause consultation",
+                    )
+                except Exception as ref_err:
+                    logger.error("Failed to credit deposit on Brahma Pause timeout: {}", ref_err)
+
+            processed_count += 1
+            logger.info("Auto-refunded Brahma Pause appointment {} before scheduled arrival", apt.id)
+
+    return processed_count
+
+
 async def appointment_reminder_worker_loop() -> None:
     """Continuous background worker running once per minute."""
     logger.info("Appointment 5-minute reminder and reconciliation worker started.")
@@ -276,6 +344,12 @@ async def appointment_reminder_worker_loop() -> None:
             count = await check_and_send_appointment_reminders()
             if count > 0:
                 logger.info("Appointment reminder loop processed {} reminder(s).", count)
+
+            # Reconcile Brahma Pause timeouts every 2 minutes
+            if loop_tick % 2 == 0:
+                bp_refunds = await reconcile_brahma_pause_timeouts()
+                if bp_refunds > 0:
+                    logger.info("Brahma Pause reconciliation refunded {} timeout session(s).", bp_refunds)
 
             # Reconcile orphaned appointments once every 10 minutes
             if loop_tick % 10 == 0:

@@ -32,6 +32,7 @@ class AppointmentCardUpdate(BaseModel):
     price_paise: int | None = Field(default=None, ge=0, le=100_000_00)
     block_minutes: int | None = Field(default=None, ge=5, le=600)
     cancellation_window_minutes: int | None = Field(default=None, ge=0, le=1440)
+    buffer_minutes: int | None = Field(default=None, ge=0, le=60)
 
 
 class AppointmentCardOut(BaseModel):
@@ -41,6 +42,7 @@ class AppointmentCardOut(BaseModel):
     price_paise: int
     block_minutes: int
     cancellation_window_minutes: int = 30
+    buffer_minutes: int = 10
 
 
 # ------------------------------------------------------------- what is free
@@ -145,6 +147,12 @@ class AppointmentOut(BaseModel):
     no_show_marked_at: datetime | None = None
     call_session_id: str | None = None
 
+    # Brahma Pause Seeker Auto-Rescue Engine
+    brahma_pause_affected: bool = False
+    brahma_pause_reason: str | None = None
+    brahma_pause_until: datetime | None = None
+    rescue_deadline: datetime | None = None
+
     peer: AppointmentPeer | None = None
 
 
@@ -159,6 +167,17 @@ class RescheduleRequest(BaseModel):
 
 class NoShowRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
+
+
+class BrahmaPauseRequest(BaseModel):
+    duration_hours: int = Field(default=3, ge=1, le=48)
+    reason: str | None = Field(default=None, max_length=200)
+
+
+class BrahmaPauseActionRequest(BaseModel):
+    action: str = Field(description="'reschedule' or 'refund'")
+    new_starts_at: datetime | None = None
+    reason: str | None = None
 
 
 class PrescriptionUpdateRequest(BaseModel):

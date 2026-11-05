@@ -254,10 +254,28 @@ async def day_view(
             muhurat_ratings[time_key] = calculate_slot_muhurat(cur)
             cur += timedelta(minutes=15)
 
+    buffer_mins = getattr(astrologer.appointment, "buffer_minutes", 0) or 0
+    booked_ranges: list[dict] = []
+    for a in taken:
+        blocked_end = a.ends_at + timedelta(minutes=buffer_mins)
+        booked_ranges.append({"starts_at": a.starts_at, "ends_at": blocked_end})
+
+    # If astrologer is currently on Brahma Pause, block the pause interval
+    now = utcnow()
+    if astrologer.brahma_pause_until and now < astrologer.brahma_pause_until:
+        pause_start = max(day_start, astrologer.brahma_pause_activated_at or now)
+        pause_end = min(day_end, astrologer.brahma_pause_until)
+        if pause_start < pause_end:
+            booked_ranges.append({"starts_at": pause_start, "ends_at": pause_end})
+
     return {
         "windows": [{"starts_at": w.starts_at, "ends_at": w.ends_at} for w in windows],
-        "booked": [{"starts_at": a.starts_at, "ends_at": a.ends_at} for a in taken],
+        "booked": booked_ranges,
         "muhurat_ratings": muhurat_ratings,
+        "buffer_minutes": buffer_mins,
+        "is_on_brahma_pause": bool(astrologer.brahma_pause_until and now < astrologer.brahma_pause_until),
+        "brahma_pause_until": astrologer.brahma_pause_until.isoformat() if astrologer.brahma_pause_until and now < astrologer.brahma_pause_until else None,
+        "brahma_pause_reason": astrologer.brahma_pause_reason if astrologer.brahma_pause_until and now < astrologer.brahma_pause_until else None,
     }
 
 
@@ -432,13 +450,29 @@ async def _book_locked(
     except Exception as syn_err:
         logger.debug("Synergy calculation skipped: {}", syn_err)
 
+    # --- Brahma Pause check ----------------------------------------------
+    if (
+        astrologer.brahma_pause_until
+        and now < astrologer.brahma_pause_until
+        and starts_at < astrologer.brahma_pause_until
+    ):
+        pause_str = astrologer.brahma_pause_until.strftime("%I:%M %p, %d %b")
+        reason_str = f" Reason: {astrologer.brahma_pause_reason}." if astrologer.brahma_pause_reason else ""
+        raise BadRequestError(
+            f"This astrologer is currently on Brahma Pause (emergency break) until {pause_str}.{reason_str} "
+            "Please select a slot after the pause period.",
+            error_code="astrologer_on_brahma_pause",
+        )
+
     # --- claim the time ---------------------------------------------------
     # Before the wallet, because a clash is the ordinary failure and nobody's
     # money should move for it.
     appointment_id = PydanticObjectId()
     claimed: list[AppointmentSlot] = []
     try:
-        for moment in slot_starts(starts_at, minutes):
+        buffer_mins = getattr(card, "buffer_minutes", 0) or 0
+        total_blocked_minutes = minutes + buffer_mins
+        for moment in slot_starts(starts_at, total_blocked_minutes):
             slot = AppointmentSlot(
                 astrologer_id=astrologer.id,
                 appointment_id=appointment_id,
@@ -1033,6 +1067,18 @@ async def reschedule(
         )
 
     # 4. Atomic slot swap: release old slots, claim new slots
+    astro_profile = await Astrologer.get(appointment.astrologer_id)
+    if (
+        astro_profile
+        and astro_profile.brahma_pause_until
+        and now < astro_profile.brahma_pause_until
+        and new_starts_at < astro_profile.brahma_pause_until
+    ):
+        raise BadRequestError(
+            "Cannot reschedule into an active Brahma Pause emergency break.",
+            error_code="slot_during_brahma_pause",
+        )
+
     old_slots = await AppointmentSlot.find(
         AppointmentSlot.appointment_id == appointment.id
     ).to_list()
@@ -1040,9 +1086,12 @@ async def reschedule(
         AppointmentSlot.appointment_id == appointment.id
     ).delete()
 
+    buffer_mins = getattr(getattr(astro_profile, "appointment", None), "buffer_minutes", 0) or 0
+    total_blocked_minutes = appointment.minutes + buffer_mins
+
     new_claimed: list[AppointmentSlot] = []
     try:
-        for moment in slot_starts(new_starts_at, appointment.minutes):
+        for moment in slot_starts(new_starts_at, total_blocked_minutes):
             slot = AppointmentSlot(
                 astrologer_id=appointment.astrologer_id,
                 appointment_id=appointment.id,
@@ -1254,4 +1303,286 @@ async def mark_no_show(
         logger.debug("Realtime no-show push skipped: {}", exc)
 
     return appointment
+
+
+# ------------------------------------------------------------- Brahma Pause
+async def activate_brahma_pause(
+    *,
+    astrologer: Astrologer,
+    duration_hours: int,
+    reason: str | None = None,
+) -> dict:
+    """Activates Brahma Pause (emergency break), takes astrologer offline,
+    identifies affected bookings, flags them, and notifies seekers with 1-click rescue choices.
+    """
+    from app.core.config import settings
+    from app.services import email as email_service
+    from app.services.email_templates import appointment_brahma_pause_client_email_html
+    from app.services.reminders import _format_ist_timing
+    from app.services import realtime
+
+    now = utcnow()
+    pause_until = now + timedelta(hours=duration_hours)
+    astrologer.brahma_pause_until = pause_until
+    astrologer.brahma_pause_reason = reason
+    astrologer.brahma_pause_activated_at = now
+    astrologer.availability.is_online = False
+    astrologer.availability.last_seen_at = None
+    await astrologer.save()
+
+    try:
+        await realtime.publish_astrologer(astrologer)
+    except Exception as exc:
+        logger.debug("Failed to publish astrologer offline state: {}", exc)
+
+    # Find affected bookings
+    impacted = await Appointment.find({
+        "astrologer_id": astrologer.id,
+        "status": AppointmentStatus.BOOKED,
+        "starts_at": {"$lt": pause_until},
+        "ends_at": {"$gte": now},
+    }).to_list()
+
+    affected_count = 0
+    frontend_url = settings.FRONTEND_URL.rstrip("/") if settings.FRONTEND_URL else "https://astra-astrology-web.vercel.app"
+    appointments_url = f"{frontend_url}/account/appointments"
+
+    for apt in impacted:
+        apt.brahma_pause_affected = True
+        apt.brahma_pause_reason = reason
+        apt.brahma_pause_until = pause_until
+        apt.rescue_deadline = min(pause_until + timedelta(hours=24), apt.starts_at)
+        await apt.save()
+        affected_count += 1
+
+        # Send email to seeker
+        try:
+            client_u = await User.get(apt.user_id)
+            if client_u and client_u.email:
+                scheduled_str = _format_ist_timing(apt.starts_at, apt.ends_at)
+                pause_until_str = _format_ist_timing(pause_until, pause_until)
+                html = appointment_brahma_pause_client_email_html(
+                    client_name=client_u.full_name or client_u.first_name or "Valued Seeker",
+                    astrologer_name=astrologer.display_name,
+                    consultation_pillar=apt.consultation_pillar or "Vedic Astrology",
+                    scheduled_starts_at_str=scheduled_str,
+                    pause_until_str=pause_until_str,
+                    reason=reason,
+                    appointments_url=appointments_url,
+                )
+                await email_service.send_email(
+                    to=client_u.email,
+                    subject=f"🕊️ Important Notice: Pandit {astrologer.display_name} on Brahma Pause",
+                    html=html,
+                )
+        except Exception as mail_err:
+            logger.error("Failed to send Brahma Pause alert to seeker: {}", mail_err)
+
+        # Realtime event
+        try:
+            await realtime.publish_appointment_event(
+                apt.user_id,
+                apt.astrologer_user_id,
+                "brahma_pause_activated",
+                {
+                    "id": str(apt.id),
+                    "brahma_pause_affected": True,
+                    "pause_until": pause_until.isoformat(),
+                    "reason": reason,
+                },
+            )
+        except Exception as rt_err:
+            logger.debug("Realtime Brahma Pause push skipped: {}", rt_err)
+
+    logger.info(
+        "Astrologer {} activated Brahma Pause until {} ({} impacted appointments)",
+        astrologer.id,
+        pause_until,
+        affected_count,
+    )
+    return {
+        "pause_until": pause_until.isoformat(),
+        "affected_appointments_count": affected_count,
+        "reason": reason,
+    }
+
+
+async def resume_brahma_pause(*, astrologer: Astrologer) -> dict:
+    """Ends Brahma Pause early and restores normal availability."""
+    from app.services import realtime
+
+    astrologer.brahma_pause_until = None
+    astrologer.brahma_pause_reason = None
+    astrologer.brahma_pause_activated_at = None
+    await astrologer.save()
+
+    try:
+        await realtime.publish_astrologer(astrologer)
+    except Exception as exc:
+        logger.debug("Failed to publish astrologer resume state: {}", exc)
+
+    logger.info("Astrologer {} resumed from Brahma Pause early", astrologer.id)
+    return {"message": "Brahma Pause ended successfully."}
+
+
+async def handle_brahma_pause_rescue_action(
+    *,
+    appointment: Appointment,
+    user: User,
+    action: str,
+    new_starts_at: datetime | None = None,
+    reason: str | None = None,
+) -> Appointment:
+    """Processes seeker's 1-click choice during Brahma Pause:
+    Option A: 'reschedule' (100% free shift to a new open slot).
+    Option B: 'refund' (instant cancellation, held coins released, 100% deposit refunded).
+    """
+    from app.services import wallet as wallet_service
+
+    if appointment.user_id != user.id and getattr(user, "role", None) != "admin":
+        raise ForbiddenError("Not authorized to manage this appointment.")
+    if appointment.status != AppointmentStatus.BOOKED:
+        raise BadRequestError("This appointment is not active.", error_code="appointment_not_open")
+    if not getattr(appointment, "brahma_pause_affected", False):
+        raise BadRequestError(
+            "This appointment is not currently affected by Brahma Pause.",
+            error_code="not_brahma_pause_affected",
+        )
+
+    now = utcnow()
+
+    if action == "reschedule":
+        if not new_starts_at:
+            raise BadRequestError("New starts at timestamp is required for reschedule.", error_code="missing_new_starts_at")
+
+        new_starts_at = new_starts_at.astimezone(UTC).replace(second=0, microsecond=0)
+        if not _aligned(new_starts_at):
+            raise BadRequestError(f"Pick a time on a {SLOT_MINUTES}-minute mark.", error_code="unaligned_start")
+        if new_starts_at <= now:
+            raise BadRequestError("New appointment time must be in the future.", error_code="in_the_past")
+
+        astro_profile = await Astrologer.get(appointment.astrologer_id)
+        if (
+            astro_profile
+            and astro_profile.brahma_pause_until
+            and now < astro_profile.brahma_pause_until
+            and new_starts_at < astro_profile.brahma_pause_until
+        ):
+            raise BadRequestError("Cannot reschedule into active Brahma Pause emergency break.", error_code="slot_during_brahma_pause")
+
+        new_ends_at = new_starts_at + timedelta(minutes=appointment.minutes)
+        windows = await _windows_for(appointment.astrologer_id, new_starts_at, new_ends_at)
+        if not _covered_by_a_window(windows, new_starts_at, new_ends_at):
+            raise BadRequestError("Selected slot is outside the astrologer's open schedule.", error_code="outside_availability")
+
+        # Slot swap
+        old_slots = await AppointmentSlot.find({"appointment_id": appointment.id}).to_list()
+        await AppointmentSlot.find({"appointment_id": appointment.id}).delete()
+
+        buffer_mins = getattr(getattr(astro_profile, "appointment", None), "buffer_minutes", 0) or 0
+        total_blocked_minutes = appointment.minutes + buffer_mins
+
+        new_claimed: list[AppointmentSlot] = []
+        try:
+            for moment in slot_starts(new_starts_at, total_blocked_minutes):
+                slot = AppointmentSlot(
+                    astrologer_id=appointment.astrologer_id,
+                    appointment_id=appointment.id,
+                    starts_at=moment,
+                )
+                await slot.insert()
+                new_claimed.append(slot)
+        except DuplicateKeyError:
+            await _release(new_claimed)
+            for os in old_slots:
+                try:
+                    await os.insert()
+                except Exception:
+                    pass
+            raise ConflictError("That slot was just taken by another seeker. Please pick another time.", error_code="slot_taken")
+
+        appointment.previous_starts_at = appointment.starts_at
+        appointment.starts_at = new_starts_at
+        appointment.ends_at = new_ends_at
+        appointment.brahma_pause_affected = False
+        appointment.rescheduled_count = getattr(appointment, "rescheduled_count", 0) + 1
+        appointment.rescheduled_at = now
+        appointment.reschedule_reason = reason or "Seeker rescheduled during Brahma Pause"
+        await appointment.save()
+
+        # Realtime event
+        try:
+            from app.services import realtime
+            await realtime.publish_appointment_event(
+                appointment.user_id,
+                appointment.astrologer_user_id,
+                "rescheduled",
+                {
+                    "id": str(appointment.id),
+                    "starts_at": new_starts_at.isoformat(),
+                    "ends_at": new_ends_at.isoformat(),
+                },
+            )
+        except Exception as exc:
+            logger.debug("Realtime reschedule push skipped: {}", exc)
+
+        return appointment
+
+    elif action == "refund":
+        # 100% full refund
+        appointment.status = AppointmentStatus.CANCELLED
+        appointment.cancelled_at = now
+        appointment.cancelled_by = user.id
+        appointment.cancel_reason = reason or "Seeker selected 100% refund during Brahma Pause"
+        appointment.brahma_pause_affected = False
+        await appointment.save()
+
+        # Delete slots
+        await AppointmentSlot.find({"appointment_id": appointment.id}).delete()
+
+        # Release held coins
+        if getattr(appointment, "held_coins", 0) > 0 and getattr(appointment, "held_status", "") == "held":
+            try:
+                await wallet_service.release_held_coins(
+                    user_id=appointment.user_id,
+                    amount_coins=appointment.held_coins,
+                    appointment_id=appointment.id,
+                )
+                appointment.held_status = "released"
+                await appointment.save()
+            except Exception as exc:
+                logger.error("Failed to release held coins during Brahma Pause refund: {}", exc)
+
+        # Refund deposit 100%
+        if appointment.deposit_coins > 0:
+            try:
+                await wallet_service.credit(
+                    user_id=appointment.user_id,
+                    amount_coins=appointment.deposit_coins,
+                    reason=TransactionReason.REFUND,
+                    idempotency_key=f"appointment:{appointment.id}:brahma_pause_refund",
+                    note="100% refund for consultation cancelled during Brahma Pause",
+                )
+            except Exception as ref_err:
+                logger.error("Failed to credit deposit refund during Brahma Pause: {}", ref_err)
+
+        # Realtime event
+        try:
+            from app.services import realtime
+            await realtime.publish_appointment_event(
+                appointment.user_id,
+                appointment.astrologer_user_id,
+                "cancelled",
+                {
+                    "id": str(appointment.id),
+                    "status": "cancelled",
+                    "cancel_reason": appointment.cancel_reason,
+                },
+            )
+        except Exception as exc:
+            logger.debug("Realtime cancel push skipped: {}", exc)
+
+        return appointment
+    else:
+        raise BadRequestError(f"Invalid action '{action}'. Must be 'reschedule' or 'refund'.", error_code="invalid_action")
 

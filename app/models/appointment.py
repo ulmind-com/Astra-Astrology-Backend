@@ -153,6 +153,12 @@ class Appointment(TimestampedDocument):
     # Dedicated CallSession ID for video chamber
     call_session_id: PydanticObjectId | None = None
 
+    # Brahma Pause Seeker Auto-Rescue Engine
+    brahma_pause_affected: bool = False
+    brahma_pause_reason: str | None = None
+    brahma_pause_until: datetime | None = None
+    rescue_deadline: datetime | None = None
+
     class Settings:
         name = "appointments"
         indexes = [
