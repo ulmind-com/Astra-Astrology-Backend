@@ -57,3 +57,4 @@ class SupportTicket(TimestampedDocument):
             pymongo.IndexModel([("category", pymongo.ASCENDING)]),
             pymongo.IndexModel([("created_at", pymongo.DESCENDING)]),
         ]
+

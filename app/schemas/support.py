@@ -53,3 +53,4 @@ class SupportTicketStats(BaseModel):
     in_progress: int = 0
     resolved: int = 0
     closed: int = 0
+

@@ -241,3 +241,4 @@ async def delete_admin_ticket(
         raise NotFoundError("Support ticket not found.", error_code="ticket_not_found")
     await ticket.delete()
     return MessageResponse(message=f"Ticket {ticket.ticket_number} deleted successfully.")
+
