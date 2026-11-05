@@ -137,10 +137,25 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     except Exception as e:
         logger.debug("Face CV warm-up deferred: {}", e)
 
+    # Start 5-minute automated appointment reminder worker
+    reminder_task: asyncio.Task | None = None
+    try:
+        from app.services.reminders import appointment_reminder_worker_loop
+        reminder_task = asyncio.create_task(appointment_reminder_worker_loop())
+    except Exception as e:
+        logger.warning("Could not start appointment reminder worker: {}", e)
+
     logger.success("{} is ready on port {}.", settings.APP_NAME, settings.PORT)
     yield
 
     logger.info("Shutting down...")
+    if reminder_task and not reminder_task.done():
+        reminder_task.cancel()
+        try:
+            await reminder_task
+        except (asyncio.CancelledError, Exception):
+            pass
+
     flush_telemetry()
     await close_mongo_connection()
 
