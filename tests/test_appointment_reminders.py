@@ -74,3 +74,4 @@ def test_reminder_email_templates_render():
     assert "Rahul" in astro_html
     assert "Want guidance regarding promotion" in astro_html
     assert "Open Astrologer Chamber" in astro_html
+
