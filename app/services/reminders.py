@@ -218,3 +218,4 @@ async def appointment_reminder_worker_loop() -> None:
             logger.opt(exception=exc).error("Unexpected error in appointment reminder worker: {}", exc)
             # Sleep a bit on failure before retrying
             await asyncio.sleep(15)
+
