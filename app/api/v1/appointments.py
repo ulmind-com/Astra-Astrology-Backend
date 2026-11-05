@@ -4,11 +4,18 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from beanie import PydanticObjectId
+from beanie.operators import In
 from fastapi import APIRouter, Query, status
+from loguru import logger
 
 from app.api.dependencies import AstrologerUser, CurrentAstrologer, CurrentUser
 from app.core.exceptions import BadRequestError, ForbiddenError, NotFoundError
-from app.models.appointment import SLOT_MINUTES, Appointment, AvailabilityWindow
+from app.models.appointment import (
+    SLOT_MINUTES,
+    Appointment,
+    AppointmentStatus,
+    AvailabilityWindow,
+)
 from app.models.astrologer import Astrologer
 from app.models.user import User
 from app.schemas.appointment import (
@@ -50,7 +57,49 @@ async def _peer_for(appointment: Appointment, viewer: User) -> AppointmentPeer |
     return AppointmentPeer(id=str(other.id), name=other.full_name, avatar_url=None)
 
 
-async def _out(appointment: Appointment, viewer: User) -> AppointmentOut:
+async def _peers_for(
+    appointments: list[Appointment], viewer: User
+) -> dict[PydanticObjectId, AppointmentPeer]:
+    """Every booking's other person, in two queries instead of one per booking."""
+    astrologer_ids = {a.astrologer_id for a in appointments if viewer.id == a.user_id}
+    user_ids = {a.user_id for a in appointments if viewer.id != a.user_id}
+
+    profiles: dict[PydanticObjectId, Astrologer] = {}
+    if astrologer_ids:
+        found = await Astrologer.find(In(Astrologer.id, list(astrologer_ids))).to_list()
+        profiles = {p.id: p for p in found if p.id is not None}
+
+    others: dict[PydanticObjectId, User] = {}
+    if user_ids:
+        found_users = await User.find(In(User.id, list(user_ids))).to_list()
+        others = {u.id: u for u in found_users if u.id is not None}
+
+    peers: dict[PydanticObjectId, AppointmentPeer] = {}
+    for appointment in appointments:
+        if appointment.id is None:
+            continue
+        if viewer.id == appointment.user_id:
+            profile = profiles.get(appointment.astrologer_id)
+            if profile is not None:
+                peers[appointment.id] = AppointmentPeer(
+                    id=str(profile.id),
+                    name=profile.display_name,
+                    avatar_url=profile.profile_image_url,
+                )
+        else:
+            other = others.get(appointment.user_id)
+            if other is not None:
+                peers[appointment.id] = AppointmentPeer(
+                    id=str(other.id), name=other.full_name, avatar_url=None
+                )
+    return peers
+
+
+async def _out(
+    appointment: Appointment,
+    viewer: User,
+    peers: dict[PydanticObjectId, AppointmentPeer] | None = None,
+) -> AppointmentOut:
     from datetime import timedelta
     from app.models.base import utcnow
 
@@ -93,7 +142,11 @@ async def _out(appointment: Appointment, viewer: User) -> AppointmentOut:
         birth_details=appointment.birth_details,
         prescription=appointment.prescription,
         muhurat_type=appointment.muhurat_type,
-        peer=await _peer_for(appointment, viewer),
+        peer=(
+            peers.get(appointment.id)
+            if peers is not None
+            else await _peer_for(appointment, viewer)
+        ),
     )
 
 
@@ -291,9 +344,10 @@ async def my_schedule(
     upcoming_only: bool = True,
 ) -> ApiResponse[list[AppointmentOut]]:
     bookings = await service.for_astrologer(user.id, upcoming_only=upcoming_only)
+    peers = await _peers_for(bookings, user)
     return ApiResponse(
         message="Schedule fetched.",
-        data=[await _out(a, user) for a in bookings],
+        data=[await _out(a, user, peers) for a in bookings],
     )
 
 
@@ -434,8 +488,10 @@ async def mine(
     user: CurrentUser, upcoming_only: bool = False
 ) -> ApiResponse[list[AppointmentOut]]:
     bookings = await service.for_user(user.id, upcoming_only=upcoming_only)
+    peers = await _peers_for(bookings, user)
     return ApiResponse(
-        message="Appointments fetched.", data=[await _out(a, user) for a in bookings]
+        message="Appointments fetched.",
+        data=[await _out(a, user, peers) for a in bookings],
     )
 
 
