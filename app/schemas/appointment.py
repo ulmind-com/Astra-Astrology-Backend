@@ -137,11 +137,27 @@ class AppointmentOut(BaseModel):
     cosmic_synergy_score: int | None = None
     certificate_data: dict | None = None
 
+    rescheduled_count: int = 0
+    rescheduled_at: datetime | None = None
+    previous_starts_at: datetime | None = None
+    reschedule_reason: str | None = None
+    is_no_show: bool = False
+    no_show_marked_at: datetime | None = None
+
     peer: AppointmentPeer | None = None
 
 
 class CancelRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=300)
+
+
+class RescheduleRequest(BaseModel):
+    new_starts_at: datetime
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class NoShowRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=500)
 
 
 class PrescriptionUpdateRequest(BaseModel):

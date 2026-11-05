@@ -780,3 +780,170 @@ def appointment_reminder_astrologer_email_html(
         lead_text=lead_text,
     )
 
+
+def appointment_rescheduled_client_email_html(
+    *,
+    client_name: str,
+    astrologer_name: str,
+    consultation_pillar: str,
+    new_starts_at_str: str,
+    chamber_url: str,
+    reason: str | None = None,
+    calendar_url: str | None = None,
+) -> str:
+    """Email sent to client when astrologer grants a courtesy reschedule."""
+    app_name = settings.APP_NAME or "DivinLink"
+    headline = "Your consultation has been rescheduled 🗓️"
+    lead_text = (
+        f"Namaste {client_name}, your consulting astrologer <strong>{astrologer_name}</strong> has granted a "
+        f"courtesy reschedule for your sacred consultation."
+    )
+    pillar_clean = (consultation_pillar or "Vedic Astrology").replace("_", " ").title()
+
+    reason_html = ""
+    if reason:
+        reason_html = f"""
+        <p style="margin:0 0 4px;font-size:11px;font-weight:800;color:#B45309;text-transform:uppercase;letter-spacing:1px;">
+          Reschedule Note
+        </p>
+        <p style="margin:0 0 14px;font-size:14px;color:#475569;font-style:italic;">
+          “{reason}”
+        </p>
+        """
+
+    cal_btn_html = ""
+    if calendar_url:
+        cal_btn_html = f"""
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:10px auto 0;">
+          <tr>
+            <td align="center">
+              <a href="{calendar_url}" target="_blank" style="display:inline-block;color:#78350F;background:#FEF3C7;border:1px solid #FDE68A;font-size:12px;font-weight:700;padding:8px 18px;border-radius:9999px;text-decoration:none;">
+                📅 Update Google Calendar
+              </a>
+            </td>
+          </tr>
+        </table>
+        """
+
+    content = f"""
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 20px;background:#FFFDF7;border:1.5px solid #FCD34D;border-radius:20px;box-shadow:0 4px 16px rgba(217,119,6,0.08);">
+        <tr>
+          <td style="padding:22px 24px;text-align:left;">
+            <p style="margin:0 0 4px;font-size:11px;font-weight:800;color:#B45309;text-transform:uppercase;letter-spacing:1px;">
+              Vedic Astrologer
+            </p>
+            <p style="margin:0 0 14px;font-size:18px;font-weight:700;color:#1E293B;">
+              {astrologer_name}
+            </p>
+
+            <p style="margin:0 0 4px;font-size:11px;font-weight:800;color:#B45309;text-transform:uppercase;letter-spacing:1px;">
+              Consultation Focus
+            </p>
+            <p style="margin:0 0 14px;font-size:15px;font-weight:600;color:#1E293B;">
+              ✨ {pillar_clean}
+            </p>
+
+            {reason_html}
+
+            <p style="margin:0 0 4px;font-size:11px;font-weight:800;color:#B45309;text-transform:uppercase;letter-spacing:1px;">
+              New Scheduled Time (IST)
+            </p>
+            <p style="margin:0;font-size:17px;font-weight:800;color:#D97706;">
+              ⏰ {new_starts_at_str}
+            </p>
+          </td>
+        </tr>
+      </table>
+
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 8px;">
+        <tr>
+          <td align="center">
+            <a href="{chamber_url}" target="_blank" class="cta-button" style="display:inline-block;background:#D97706;background:linear-gradient(135deg,#F59E0B 0%,#D97706 100%);color:#ffffff;font-size:16px;font-weight:800;padding:16px 42px;border-radius:9999px;text-decoration:none;text-align:center;box-shadow:0 8px 24px rgba(245,158,11,0.35);letter-spacing:-0.2px;">
+              View My Appointments &rarr;
+            </a>
+          </td>
+        </tr>
+      </table>
+
+      {cal_btn_html}
+    """
+
+    return render_email(
+        title=f"Appointment Rescheduled: {astrologer_name} — {app_name}",
+        content_html=content,
+        preheader=f"Your session with {astrologer_name} has been moved to {new_starts_at_str}.",
+        headline=headline,
+        lead_text=lead_text,
+    )
+
+
+def appointment_no_show_client_email_html(
+    *,
+    client_name: str,
+    astrologer_name: str,
+    consultation_pillar: str,
+    starts_at_str: str,
+    support_url: str,
+    wait_minutes: int = 15,
+) -> str:
+    """Email sent to client when marked as No-Show by the astrologer after waiting 10-15m."""
+    app_name = settings.APP_NAME or "DivinLink"
+    headline = "Missed Consultation Notice (No-Show) ⚠️"
+    lead_text = (
+        f"Namaste {client_name}, your consulting astrologer <strong>{astrologer_name}</strong> was present in the chamber "
+        f"and waited for {wait_minutes} minutes, but you were unable to attend the scheduled session."
+    )
+    pillar_clean = (consultation_pillar or "Vedic Astrology").replace("_", " ").title()
+
+    content = f"""
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 20px;background:#FFFBFB;border:1.5px solid #FCA5A5;border-radius:20px;box-shadow:0 4px 16px rgba(239,68,68,0.08);">
+        <tr>
+          <td style="padding:22px 24px;text-align:left;">
+            <p style="margin:0 0 4px;font-size:11px;font-weight:800;color:#B91C1C;text-transform:uppercase;letter-spacing:1px;">
+              Session Status
+            </p>
+            <p style="margin:0 0 14px;font-size:16px;font-weight:700;color:#991B1B;">
+              Closed as Client No-Show
+            </p>
+
+            <p style="margin:0 0 4px;font-size:11px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:1px;">
+              Vedic Astrologer
+            </p>
+            <p style="margin:0 0 14px;font-size:15px;font-weight:600;color:#1E293B;">
+              {astrologer_name} ({pillar_clean})
+            </p>
+
+            <p style="margin:0 0 4px;font-size:11px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:1px;">
+              Scheduled Timing
+            </p>
+            <p style="margin:0 0 14px;font-size:14px;font-weight:600;color:#1E293B;">
+              {starts_at_str}
+            </p>
+
+            <p style="margin:0;font-size:12px;color:#64748B;line-height:1.5;">
+              As per Astra consultation policy, the astrologer's reserved time is compensated and the session fee has been settled. If you experienced an emergency, please contact support.
+            </p>
+          </td>
+        </tr>
+      </table>
+
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 8px;">
+        <tr>
+          <td align="center">
+            <a href="{support_url}" target="_blank" class="cta-button" style="display:inline-block;background:#475569;color:#ffffff;font-size:15px;font-weight:700;padding:14px 36px;border-radius:9999px;text-decoration:none;text-align:center;">
+              Contact Support
+            </a>
+          </td>
+        </tr>
+      </table>
+    """
+
+    return render_email(
+        title=f"Missed Consultation Notice — {app_name}",
+        content_html=content,
+        preheader=f"Consultation with {astrologer_name} on {starts_at_str} marked as missed.",
+        headline=headline,
+        lead_text=lead_text,
+    )
+
+

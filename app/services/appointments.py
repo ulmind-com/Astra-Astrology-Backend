@@ -845,3 +845,282 @@ async def _notify(appointment: Appointment) -> None:
             await realtime.publish_chat(who, payload)
     except Exception as exc:  # noqa: BLE001
         logger.debug("Appointment push skipped: {}", exc)
+
+
+async def reschedule(
+    *,
+    appointment: Appointment,
+    by: User,
+    new_starts_at: datetime,
+    reason: str | None = None,
+) -> Appointment:
+    """Astrologer courtesy reschedule: 1-time free reschedule to another open window."""
+    if appointment.status != AppointmentStatus.BOOKED:
+        raise BadRequestError(
+            "Only booked appointments can be rescheduled.",
+            error_code="appointment_not_open",
+        )
+    if by.id != appointment.astrologer_user_id and getattr(by, "role", None) != "admin":
+        raise ForbiddenError(
+            "Only the consulting astrologer or admin can grant a courtesy reschedule.",
+            error_code="not_consulting_astrologer",
+        )
+
+    # 1. Enforce 1-time courtesy reschedule limit (Rule: Option B)
+    if getattr(appointment, "rescheduled_count", 0) >= 1:
+        raise BadRequestError(
+            "This appointment has already been rescheduled once. Astra policy permits only one courtesy reschedule per booking.",
+            error_code="reschedule_limit_reached",
+        )
+
+    # 2. Validate timing and alignment
+    now = utcnow()
+    new_starts_at = new_starts_at.astimezone(UTC).replace(second=0, microsecond=0)
+    if not _aligned(new_starts_at):
+        raise BadRequestError(
+            f"Pick a time on a {SLOT_MINUTES}-minute mark.", error_code="unaligned_start"
+        )
+    if new_starts_at <= now:
+        raise BadRequestError("New appointment time must be in the future.", error_code="in_the_past")
+
+    platform = await settings_service.get_platform_settings()
+    horizon = now + timedelta(days=platform.appointment_booking_days_ahead)
+    if new_starts_at > horizon:
+        raise BadRequestError(
+            f"Bookings open {platform.appointment_booking_days_ahead} days ahead.",
+            error_code="beyond_horizon",
+        )
+
+    new_ends_at = new_starts_at + timedelta(minutes=appointment.minutes)
+
+    # 3. Verify target falls inside an open AvailabilityWindow
+    windows = await _windows_for(appointment.astrologer_id, new_starts_at, new_ends_at)
+    if not _covered_by_a_window(windows, new_starts_at, new_ends_at):
+        raise BadRequestError(
+            "The selected slot is outside your availability windows. Please pick a time within your open schedule.",
+            error_code="outside_availability",
+        )
+
+    # 4. Atomic slot swap: release old slots, claim new slots
+    old_slots = await AppointmentSlot.find(
+        AppointmentSlot.appointment_id == appointment.id
+    ).to_list()
+    await AppointmentSlot.find(
+        AppointmentSlot.appointment_id == appointment.id
+    ).delete()
+
+    new_claimed: list[AppointmentSlot] = []
+    try:
+        for moment in slot_starts(new_starts_at, appointment.minutes):
+            slot = AppointmentSlot(
+                astrologer_id=appointment.astrologer_id,
+                appointment_id=appointment.id,
+                starts_at=moment,
+            )
+            await slot.insert()
+            new_claimed.append(slot)
+    except DuplicateKeyError:
+        # Conflict: rollback new slots and re-insert old slots
+        await _release(new_claimed)
+        for os in old_slots:
+            try:
+                await os.insert()
+            except Exception:
+                pass
+        raise ConflictError(
+            "Someone has just booked part of that time. Please pick another slot.",
+            error_code="slot_taken",
+        )
+    except Exception:
+        await _release(new_claimed)
+        for os in old_slots:
+            try:
+                await os.insert()
+            except Exception:
+                pass
+        raise
+
+    # 5. Update appointment details
+    appointment.previous_starts_at = appointment.starts_at
+    appointment.starts_at = new_starts_at
+    appointment.ends_at = new_ends_at
+    appointment.rescheduled_count = getattr(appointment, "rescheduled_count", 0) + 1
+    appointment.rescheduled_at = now
+    appointment.reschedule_reason = reason
+    appointment.reminded_at = None  # Reset reminder so 5-min prior worker alerts for new time
+
+    # Re-evaluate Vedic Muhurat
+    muhurat_data = calculate_slot_muhurat(new_starts_at)
+    appointment.muhurat_type = muhurat_data.get("quality", "normal")
+
+    await appointment.save()
+    logger.info(
+        "Appointment {} courtesy rescheduled by {} to {}",
+        appointment.id,
+        by.email,
+        new_starts_at,
+    )
+
+    # Notify via email
+    try:
+        from app.services import email as email_service
+        from app.services.email_templates import (
+            appointment_rescheduled_client_email_html,
+            generate_google_calendar_url,
+        )
+        from app.services.reminders import _format_ist_timing
+
+        client_user = await User.get(appointment.user_id)
+        astrologer_prof = await Astrologer.get(appointment.astrologer_id)
+        if client_user and client_user.email and astrologer_prof:
+            timing_str = _format_ist_timing(new_starts_at, new_ends_at)
+            frontend_url = settings.FRONTEND_URL.rstrip("/") if settings.FRONTEND_URL else "https://astra-astrology-web.vercel.app"
+            chamber_url = f"{frontend_url}/account/appointments"
+            gcal_url = generate_google_calendar_url(
+                title=f"Sacred Consultation with {astrologer_prof.display_name}",
+                description=f"Consultation on {appointment.consultation_pillar or 'Vedic Astrology'}. Join link: {chamber_url}",
+                starts_at=new_starts_at,
+                ends_at=new_ends_at,
+                location=chamber_url,
+            )
+            html = appointment_rescheduled_client_email_html(
+                client_name=client_user.full_name or client_user.first_name or "Valued Client",
+                astrologer_name=astrologer_prof.display_name,
+                consultation_pillar=appointment.consultation_pillar or "Vedic Astrology",
+                new_starts_at_str=timing_str,
+                chamber_url=chamber_url,
+                reason=reason,
+                calendar_url=gcal_url,
+            )
+            await email_service.send_email(
+                to=client_user.email,
+                subject=f"🗓️ Appointment Rescheduled: Consultation with {astrologer_prof.display_name}",
+                html=html,
+            )
+    except Exception as mail_err:
+        logger.error("Failed to dispatch reschedule email: {}", mail_err)
+
+    # Realtime notification
+    try:
+        from app.services import realtime
+        await realtime.publish_appointment_event(
+            appointment.user_id,
+            appointment.astrologer_user_id,
+            "rescheduled",
+            {
+                "id": str(appointment.id),
+                "starts_at": new_starts_at.isoformat(),
+                "ends_at": new_ends_at.isoformat(),
+                "rescheduled_count": appointment.rescheduled_count,
+            },
+        )
+    except Exception as exc:
+        logger.debug("Realtime reschedule push skipped: {}", exc)
+
+    return appointment
+
+
+async def mark_no_show(
+    *,
+    appointment: Appointment,
+    by: User,
+    reason: str | None = None,
+) -> Appointment:
+    """Marks appointment as Client No-Show after astrologer waited 10-15m in chamber."""
+    from app.services import wallet as wallet_service
+
+    if appointment.status != AppointmentStatus.BOOKED:
+        raise BadRequestError(
+            "Only active booked appointments can be marked as No-Show.",
+            error_code="appointment_not_open",
+        )
+    if by.id != appointment.astrologer_user_id and getattr(by, "role", None) != "admin":
+        raise ForbiddenError(
+            "Only the consulting astrologer or admin can mark a client no-show.",
+            error_code="not_consulting_astrologer",
+        )
+
+    now = utcnow()
+    # Check grace wait period (must wait at least 10 minutes into scheduled session)
+    wait_min_time = appointment.starts_at + timedelta(minutes=10)
+    if now < wait_min_time:
+        raise BadRequestError(
+            f"You must wait at least 10 minutes into the scheduled consultation before marking a client no-show. "
+            f"Session started at {appointment.starts_at.strftime('%I:%M %p')}.",
+            error_code="no_show_too_early",
+        )
+
+    appointment.status = AppointmentStatus.COMPLETED
+    appointment.completed_at = now
+    appointment.is_no_show = True
+    appointment.no_show_marked_at = now
+    appointment.no_show_wait_minutes = 15
+    appointment.cancel_reason = reason or "Client did not attend consultation chamber after 15m wait."
+
+    # Capture held coins to compensate astrologer for their reserved time
+    if getattr(appointment, "held_coins", 0) > 0 and getattr(appointment, "held_status", "") == "held":
+        try:
+            await wallet_service.capture_held_coins(
+                user_id=appointment.user_id,
+                amount_coins=appointment.held_coins,
+                appointment_id=appointment.id,
+                astrologer_user_id=appointment.astrologer_user_id,
+                note="Consultation completed (Client No-Show compensation)",
+            )
+            appointment.held_status = "captured"
+        except Exception as exc:
+            logger.error("Failed to capture held coins on no-show: {}", exc)
+
+    # Release claimed slot so availability is cleaned
+    await AppointmentSlot.find(
+        AppointmentSlot.appointment_id == appointment.id
+    ).delete()
+
+    await appointment.save()
+    logger.info("Appointment {} marked as Client No-Show by {}", appointment.id, by.email)
+
+    # Email notification to client
+    try:
+        from app.services import email as email_service
+        from app.services.email_templates import appointment_no_show_client_email_html
+        from app.services.reminders import _format_ist_timing
+
+        client_user = await User.get(appointment.user_id)
+        astrologer_prof = await Astrologer.get(appointment.astrologer_id)
+        if client_user and client_user.email and astrologer_prof:
+            timing_str = _format_ist_timing(appointment.starts_at, appointment.ends_at)
+            frontend_url = settings.FRONTEND_URL.rstrip("/") if settings.FRONTEND_URL else "https://astra-astrology-web.vercel.app"
+            html = appointment_no_show_client_email_html(
+                client_name=client_user.full_name or client_user.first_name or "Valued Client",
+                astrologer_name=astrologer_prof.display_name,
+                consultation_pillar=appointment.consultation_pillar or "Vedic Astrology",
+                starts_at_str=timing_str,
+                support_url=f"{frontend_url}/support",
+                wait_minutes=15,
+            )
+            await email_service.send_email(
+                to=client_user.email,
+                subject=f"⚠️ Consultation Notice: Marked Missed (No-Show) with {astrologer_prof.display_name}",
+                html=html,
+            )
+    except Exception as mail_err:
+        logger.error("Failed to send no-show notification email: {}", mail_err)
+
+    # Realtime notification
+    try:
+        from app.services import realtime
+        await realtime.publish_appointment_event(
+            appointment.user_id,
+            appointment.astrologer_user_id,
+            "no_show_marked",
+            {
+                "id": str(appointment.id),
+                "is_no_show": True,
+                "status": "completed",
+            },
+        )
+    except Exception as exc:
+        logger.debug("Realtime no-show push skipped: {}", exc)
+
+    return appointment
+

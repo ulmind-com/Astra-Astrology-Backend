@@ -139,6 +139,17 @@ class Appointment(TimestampedDocument):
     # Cosmic standby waitlist for auto-fill on cancellation
     standby_queue: list[dict] = Field(default_factory=list)
 
+    # Courtesy Reschedule (Allowed 1 time by astrologer without extra fee)
+    rescheduled_count: int = Field(default=0, ge=0)
+    rescheduled_at: datetime | None = None
+    previous_starts_at: datetime | None = None
+    reschedule_reason: str | None = Field(default=None, max_length=500)
+
+    # Client No-Show Tracking (when client fails to join chamber after 10-15m wait)
+    is_no_show: bool = False
+    no_show_marked_at: datetime | None = None
+    no_show_wait_minutes: int | None = None
+
     class Settings:
         name = "appointments"
         indexes = [
