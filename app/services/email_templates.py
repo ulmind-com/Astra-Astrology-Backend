@@ -947,3 +947,90 @@ def appointment_no_show_client_email_html(
     )
 
 
+def appointment_brahma_pause_client_email_html(
+    *,
+    client_name: str,
+    astrologer_name: str,
+    consultation_pillar: str,
+    scheduled_starts_at_str: str,
+    pause_until_str: str,
+    reason: str | None = None,
+    appointments_url: str,
+) -> str:
+    """Email sent to seeker when an astrologer activates Brahma Pause affecting their booking."""
+    app_name = settings.APP_NAME or "DivinLink"
+    headline = "Important Notice: Panditji on Brahma Pause 🕊️"
+    lead_text = (
+        f"Namaste {client_name}, your consulting astrologer <strong>{astrologer_name}</strong> has activated a temporary "
+        f"<strong>Brahma Pause (Emergency Break)</strong> until {pause_until_str} due to {reason or 'an unforeseen emergency'}. "
+        f"Your booking and funds are 100% safe."
+    )
+    pillar_clean = (consultation_pillar or "Vedic Astrology").replace("_", " ").title()
+
+    content = f"""
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 20px;background:#FAF5FF;border:1.5px solid #D8B4FE;border-radius:20px;box-shadow:0 4px 16px rgba(168,85,247,0.08);">
+        <tr>
+          <td style="padding:22px 24px;text-align:left;">
+            <p style="margin:0 0 4px;font-size:11px;font-weight:800;color:#7E22CE;text-transform:uppercase;letter-spacing:1px;">
+              Sacred Notice
+            </p>
+            <p style="margin:0 0 14px;font-size:16px;font-weight:700;color:#581C87;">
+              Temporary Astrologer Pause Active
+            </p>
+
+            <p style="margin:0 0 4px;font-size:11px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:1px;">
+              Consulting Astrologer
+            </p>
+            <p style="margin:0 0 14px;font-size:15px;font-weight:600;color:#1E293B;">
+              {astrologer_name} ({pillar_clean})
+            </p>
+
+            <p style="margin:0 0 4px;font-size:11px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:1px;">
+              Originally Scheduled For
+            </p>
+            <p style="margin:0 0 14px;font-size:14px;font-weight:600;color:#1E293B;">
+              {scheduled_starts_at_str}
+            </p>
+
+            <p style="margin:0 0 4px;font-size:11px;font-weight:800;color:#7E22CE;text-transform:uppercase;letter-spacing:1px;">
+              Expected Availability Return
+            </p>
+            <p style="margin:0 0 14px;font-size:14px;font-weight:700;color:#7E22CE;">
+              After {pause_until_str}
+            </p>
+
+            <div style="background:#FFFFFF;border:1px solid #E9D5FF;border-radius:12px;padding:14px 16px;margin:16px 0 0;">
+              <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#581C87;">
+                Your Options (100% Free Choice):
+              </p>
+              <p style="margin:0 0 6px;font-size:12px;color:#475569;line-height:1.5;">
+                • <strong>Option A (Complimentary Reschedule):</strong> Shift to tomorrow or pick any upcoming open slot at no extra charge.
+              </p>
+              <p style="margin:0;font-size:12px;color:#475569;line-height:1.5;">
+                • <strong>Option B (100% Instant Refund):</strong> Cancel with one click and receive 100% of your deposit and held balance back to your wallet instantly.
+              </p>
+            </div>
+          </td>
+        </tr>
+      </table>
+
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 8px;">
+        <tr>
+          <td align="center">
+            <a href="{appointments_url}" target="_blank" class="cta-button" style="display:inline-block;background:linear-gradient(135deg,#9333EA 0%,#7E22CE 100%);color:#ffffff;font-size:15px;font-weight:700;padding:14px 36px;border-radius:9999px;text-decoration:none;text-align:center;box-shadow:0 4px 14px rgba(147,51,234,0.35);">
+              Choose Option in My Appointments
+            </a>
+          </td>
+        </tr>
+      </table>
+    """
+
+    return render_email(
+        title=f"Brahma Pause Notice — {app_name}",
+        content_html=content,
+        preheader=f"{astrologer_name} is on temporary emergency break until {pause_until_str}.",
+        headline=headline,
+        lead_text=lead_text,
+    )
+
+

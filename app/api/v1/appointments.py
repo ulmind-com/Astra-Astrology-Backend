@@ -26,6 +26,8 @@ from app.schemas.appointment import (
     AppointmentPeer,
     AppointmentQuote,
     BookRequest,
+    BrahmaPauseActionRequest,
+    BrahmaPauseRequest,
     CancelRequest,
     DayView,
     NoShowRequest,
@@ -158,6 +160,10 @@ async def _out(
         is_no_show=getattr(appointment, "is_no_show", False),
         no_show_marked_at=getattr(appointment, "no_show_marked_at", None),
         call_session_id=str(appointment.call_session_id) if getattr(appointment, "call_session_id", None) else None,
+        brahma_pause_affected=getattr(appointment, "brahma_pause_affected", False),
+        brahma_pause_reason=getattr(appointment, "brahma_pause_reason", None),
+        brahma_pause_until=getattr(appointment, "brahma_pause_until", None),
+        rescue_deadline=getattr(appointment, "rescue_deadline", None),
         peer=(
             peers.get(appointment.id)
             if peers is not None
@@ -659,6 +665,65 @@ async def join_appointment_chamber(
             "ends_at": appointment.ends_at.isoformat(),
             "minutes": appointment.minutes,
         },
+    )
+
+
+@router.post(
+    "/brahma-pause",
+    response_model=ApiResponse[dict],
+    summary="Activate Brahma Pause (emergency break) and trigger seeker auto-rescue",
+)
+async def activate_brahma_pause(
+    payload: BrahmaPauseRequest,
+    profile: CurrentAstrologer,
+) -> ApiResponse[dict]:
+    """Takes astrologer offline, shields upcoming slots, and sends 1-click rescue choices to affected seekers."""
+    result = await service.activate_brahma_pause(
+        astrologer=profile,
+        duration_hours=payload.duration_hours,
+        reason=payload.reason,
+    )
+    return ApiResponse(
+        message=f"Brahma Pause activated for {payload.duration_hours} hours.",
+        data=result,
+    )
+
+
+@router.post(
+    "/brahma-pause/resume",
+    response_model=ApiResponse[dict],
+    summary="End Brahma Pause early and restore normal schedule",
+)
+async def resume_brahma_pause(
+    profile: CurrentAstrologer,
+) -> ApiResponse[dict]:
+    """Resumes astrologer schedule and clears active emergency break."""
+    result = await service.resume_brahma_pause(astrologer=profile)
+    return ApiResponse(message="Brahma Pause ended successfully.", data=result)
+
+
+@router.post(
+    "/{appointment_id}/brahma-pause-action",
+    response_model=ApiResponse[AppointmentOut],
+    summary="Seeker choice during Brahma Pause: complimentary reschedule or 100% instant refund",
+)
+async def brahma_pause_rescue_action(
+    appointment_id: PydanticObjectId,
+    payload: BrahmaPauseActionRequest,
+    user: CurrentUser,
+) -> ApiResponse[AppointmentOut]:
+    """Processes seeker's 1-click decision when an astrologer activates Brahma Pause."""
+    appointment = await service.get(appointment_id)
+    updated = await service.handle_brahma_pause_rescue_action(
+        appointment=appointment,
+        user=user,
+        action=payload.action,
+        new_starts_at=payload.new_starts_at,
+        reason=payload.reason,
+    )
+    return ApiResponse(
+        message="Brahma Pause action processed successfully.",
+        data=await _out(updated, user),
     )
 
 

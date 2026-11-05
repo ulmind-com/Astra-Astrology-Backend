@@ -97,3 +97,71 @@ async def test_cancel_active_for_astrologer():
             cancelled = await service.cancel_active_for_astrologer(astro_id, by=admin_user)
             assert cancelled == 0
 
+
+@pytest.mark.asyncio
+async def test_activate_and_resume_brahma_pause():
+    """Verify astrologer can activate and resume Brahma Pause."""
+    now = datetime.now(UTC)
+    astro = SimpleNamespace(
+        id=PydanticObjectId(),
+        brahma_pause_until=None,
+        brahma_pause_reason=None,
+        brahma_pause_activated_at=None,
+        availability=SimpleNamespace(is_online=True, last_seen_at=now),
+        save=AsyncMock(),
+        display_name="Acharya Sharma",
+    )
+
+    mock_query = MagicMock()
+    mock_query.to_list = AsyncMock(return_value=[])
+
+    with patch.object(Appointment, "find", return_value=mock_query):
+        res = await service.activate_brahma_pause(
+            astrologer=astro,
+            duration_hours=6,
+            reason="Spiritual meditation",
+        )
+        assert res["affected_appointments_count"] == 0
+        assert astro.brahma_pause_until is not None
+        assert astro.brahma_pause_reason == "Spiritual meditation"
+        assert astro.availability.is_online is False
+
+        # Resume
+        res_resume = await service.resume_brahma_pause(astrologer=astro)
+        assert "ended successfully" in res_resume["message"]
+        assert astro.brahma_pause_until is None
+
+
+@pytest.mark.asyncio
+async def test_brahma_pause_rescue_action_refund():
+    """Verify seeker can choose 100% instant refund during Brahma Pause."""
+    user_id = PydanticObjectId()
+    user = SimpleNamespace(id=user_id, role="user")
+    appointment = SimpleNamespace(
+        id=PydanticObjectId(),
+        user_id=user_id,
+        astrologer_user_id=PydanticObjectId(),
+        status=AppointmentStatus.BOOKED,
+        brahma_pause_affected=True,
+        held_coins=500,
+        held_status="held",
+        deposit_coins=250,
+        save=AsyncMock(),
+    )
+
+    mock_slot_query = MagicMock()
+    mock_slot_query.delete = AsyncMock(return_value=None)
+
+    with patch.object(AppointmentSlot, "find", return_value=mock_slot_query):
+        with patch("app.services.wallet.release_held_coins", AsyncMock()) as mock_release:
+            with patch("app.services.wallet.credit", AsyncMock()) as mock_credit:
+                updated = await service.handle_brahma_pause_rescue_action(
+                    appointment=appointment,
+                    user=user,
+                    action="refund",
+                )
+                assert updated.status == AppointmentStatus.CANCELLED
+                assert updated.brahma_pause_affected is False
+                assert mock_release.called
+                assert mock_credit.called
+

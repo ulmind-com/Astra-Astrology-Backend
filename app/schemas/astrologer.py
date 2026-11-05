@@ -300,6 +300,9 @@ class AstrologerPublic(BaseModel):
     service_duration: ServiceDurationOut = Field(default_factory=ServiceDurationOut)
     followers_count: int
     is_featured: bool
+    brahma_pause_until: datetime | None = None
+    brahma_pause_reason: str | None = None
+    brahma_pause_activated_at: datetime | None = None
 
     @field_validator("id", mode="before")
     @classmethod
