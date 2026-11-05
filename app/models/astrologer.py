@@ -78,6 +78,8 @@ class AppointmentCard(BaseModel):
     enabled: bool = False
     price_paise: int = Field(default=0, ge=0, le=100_000_00)
     block_minutes: int = Field(default=30, ge=5, le=600)
+    # How many minutes after booking the client can cancel (e.g. 30 mins)
+    cancellation_window_minutes: int = Field(default=30, ge=0, le=1440)
 
 
 class RatingSummary(BaseModel):

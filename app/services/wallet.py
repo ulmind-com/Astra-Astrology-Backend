@@ -112,12 +112,16 @@ async def _move(
                     if direction is TransactionDirection.CREDIT:
                         new_balance = wallet.balance_coins + amount_coins
                     else:
-                        if wallet.balance_coins < amount_coins:
+                        blocked = getattr(wallet, "blocked_coins", 0)
+                        available = max(0, wallet.balance_coins - blocked)
+                        if available < amount_coins:
                             raise BadRequestError(
-                                "Not enough coins. Please recharge and try again.",
+                                "Not enough spendable coins. Some coins are reserved for your scheduled appointments. Please recharge.",
                                 error_code="insufficient_balance",
                                 details={
                                     "balance_coins": wallet.balance_coins,
+                                    "blocked_coins": blocked,
+                                    "available_coins": available,
                                     "required_coins": amount_coins,
                                 },
                             )
@@ -331,3 +335,95 @@ async def require_wallet(user_id: PydanticObjectId) -> Wallet:
     if wallet is None:
         raise NotFoundError("Wallet not found.", error_code="wallet_not_found")
     return wallet
+
+
+async def hold_coins(
+    *,
+    user_id: PydanticObjectId,
+    amount_coins: int,
+    appointment_id: PydanticObjectId,
+    note: str | None = None,
+) -> int:
+    """Blocks/reserves coins in user's wallet for a pending appointment."""
+    if amount_coins <= 0:
+        return 0
+    wallet = await get_or_create_wallet(user_id)
+    available = max(0, wallet.balance_coins - getattr(wallet, "blocked_coins", 0))
+    if available < amount_coins:
+        raise BadRequestError(
+            f"Not enough coins to reserve session. Need {amount_coins} coins, available {available}.",
+            error_code="insufficient_balance",
+            details={"available_coins": available, "required_coins": amount_coins},
+        )
+    now = datetime.now(UTC)
+    new_blocked = getattr(wallet, "blocked_coins", 0) + amount_coins
+    await Wallet.get_pymongo_collection().update_one(
+        {"_id": wallet.id},
+        {"$set": {"blocked_coins": new_blocked, "updated_at": now}},
+    )
+    logger.info(
+        "Wallet {} held {} coins for appointment {} -> total blocked {}",
+        user_id,
+        amount_coins,
+        appointment_id,
+        new_blocked,
+    )
+    return new_blocked
+
+
+async def release_held_coins(
+    *,
+    user_id: PydanticObjectId,
+    amount_coins: int,
+    appointment_id: PydanticObjectId,
+    note: str | None = None,
+) -> int:
+    """Releases previously blocked coins back to user's available balance."""
+    if amount_coins <= 0:
+        return 0
+    wallet = await get_or_create_wallet(user_id)
+    now = datetime.now(UTC)
+    new_blocked = max(0, getattr(wallet, "blocked_coins", 0) - amount_coins)
+    await Wallet.get_pymongo_collection().update_one(
+        {"_id": wallet.id},
+        {"$set": {"blocked_coins": new_blocked, "updated_at": now}},
+    )
+    logger.info(
+        "Wallet {} released {} held coins for appointment {} -> total blocked {}",
+        user_id,
+        amount_coins,
+        appointment_id,
+        new_blocked,
+    )
+    return new_blocked
+
+
+async def capture_held_coins(
+    *,
+    user_id: PydanticObjectId,
+    amount_coins: int,
+    appointment_id: PydanticObjectId,
+    astrologer_user_id: PydanticObjectId | None = None,
+    note: str | None = None,
+) -> None:
+    """Captures held coins on appointment completion: debits balance and unblocks."""
+    if amount_coins <= 0:
+        return
+    wallet = await get_or_create_wallet(user_id)
+    now = datetime.now(UTC)
+    # First unblock
+    new_blocked = max(0, getattr(wallet, "blocked_coins", 0) - amount_coins)
+    await Wallet.get_pymongo_collection().update_one(
+        {"_id": wallet.id},
+        {"$set": {"blocked_coins": new_blocked, "updated_at": now}},
+    )
+    # Then debit from balance as APPOINTMENT_BALANCE
+    await debit(
+        user_id=user_id,
+        amount_coins=amount_coins,
+        reason=TransactionReason.APPOINTMENT_BALANCE,
+        idempotency_key=f"appointment:{appointment_id}:capture_balance",
+        ref=TransactionRef(session_id=appointment_id),
+        note=note or "Consultation session balance completed",
+    )
+    logger.info("Wallet {} captured {} held coins for appointment {}", user_id, amount_coins, appointment_id)

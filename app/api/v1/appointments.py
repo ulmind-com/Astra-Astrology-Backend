@@ -51,6 +51,22 @@ async def _peer_for(appointment: Appointment, viewer: User) -> AppointmentPeer |
 
 
 async def _out(appointment: Appointment, viewer: User) -> AppointmentOut:
+    from datetime import timedelta
+    from app.models.base import utcnow
+
+    now = utcnow()
+    window_mins = getattr(appointment, "cancellation_window_minutes", 30) or 30
+    deadline = appointment.cancel_deadline or (
+        appointment.created_at + timedelta(minutes=window_mins)
+    )
+    is_client = viewer.id == appointment.user_id
+    can_cancel = (not is_client) or (
+        appointment.status == AppointmentStatus.BOOKED and now <= deadline
+    )
+
+    coins_rate = appointment.coins_per_rupee or 1
+    balance_due_coins = service.coins_for_paise(appointment.balance_due_paise, coins_rate)
+
     return AppointmentOut(
         id=str(appointment.id),
         status=appointment.status,
@@ -62,6 +78,13 @@ async def _out(appointment: Appointment, viewer: User) -> AppointmentOut:
         deposit_paise=appointment.deposit_paise,
         deposit_coins=appointment.deposit_coins,
         balance_due_paise=appointment.balance_due_paise,
+        balance_due_coins=balance_due_coins,
+        held_coins=getattr(appointment, "held_coins", 0),
+        held_status=getattr(appointment, "held_status", "none"),
+        cancellation_window_minutes=window_mins,
+        cancel_deadline=deadline,
+        can_cancel=can_cancel,
+        completed_at=getattr(appointment, "completed_at", None),
         cancelled_at=appointment.cancelled_at,
         cancel_reason=appointment.cancel_reason,
         user_note=appointment.user_note,
@@ -331,9 +354,15 @@ async def quote(payload: QuoteRequest, user: CurrentUser) -> ApiResponse[Appoint
 
     platform = await settings_service.get_settings()
     price = service.price_for(profile.appointment, payload.minutes)
-    deposit = service.deposit_for(price, platform.appointment_commission_percent)
-    coins = service.coins_for_paise(deposit, platform.coins_per_rupee)
+    deposit_paise = service.deposit_for(price, platform.appointment_commission_percent)
+    deposit_coins = service.coins_for_paise(deposit_paise, platform.coins_per_rupee)
+    balance_due_paise = max(price - deposit_paise, 0)
+    balance_due_coins = service.coins_for_paise(balance_due_paise, platform.coins_per_rupee)
+    total_coins = deposit_coins + balance_due_coins
+
     wallet = await wallet_service.get_or_create_wallet(user.id)
+    spendable = wallet.available_coins
+    can_afford = spendable >= total_coins
 
     return ApiResponse(
         message="Quote ready.",
@@ -341,11 +370,14 @@ async def quote(payload: QuoteRequest, user: CurrentUser) -> ApiResponse[Appoint
             minutes=payload.minutes,
             price_paise=price,
             commission_percent=platform.appointment_commission_percent,
-            deposit_paise=deposit,
-            deposit_coins=coins,
-            balance_due_paise=max(price - deposit, 0),
+            deposit_paise=deposit_paise,
+            deposit_coins=deposit_coins,
+            balance_due_paise=balance_due_paise,
+            balance_due_coins=balance_due_coins,
+            total_coins=total_coins,
+            available_coins=spendable,
             balance_coins=wallet.balance_coins,
-            can_afford=wallet.balance_coins >= coins,
+            can_afford=can_afford,
         ),
     )
 
@@ -424,7 +456,7 @@ async def one(
 @router.post(
     "/{appointment_id}/cancel",
     response_model=ApiResponse[AppointmentOut],
-    summary="Cancel — the deposit is not returned",
+    summary="Cancel — user grace period and refund rules applied",
 )
 async def cancel(
     appointment_id: PydanticObjectId, payload: CancelRequest, user: CurrentUser
@@ -432,3 +464,16 @@ async def cancel(
     appointment = await service.get(appointment_id)
     cancelled = await service.cancel(appointment=appointment, by=user, reason=payload.reason)
     return ApiResponse(message="Cancelled.", data=await _out(cancelled, user))
+
+
+@router.post(
+    "/{appointment_id}/complete",
+    response_model=ApiResponse[AppointmentOut],
+    summary="Complete appointment and capture escrowed balance",
+)
+async def complete(
+    appointment_id: PydanticObjectId, user: CurrentUser
+) -> ApiResponse[AppointmentOut]:
+    appointment = await service.get(appointment_id)
+    completed = await service.complete(appointment=appointment, by=user)
+    return ApiResponse(message="Appointment completed.", data=await _out(completed, user))

@@ -38,6 +38,8 @@ class Wallet(TimestampedDocument):
 
     user_id: PydanticObjectId
     balance_coins: int = Field(default=0, ge=0)
+    # Coins locked/held in escrow for pending appointments, cannot be spent elsewhere
+    blocked_coins: int = Field(default=0, ge=0)
 
     # Set by an admin when something looks wrong. A frozen wallet refuses both
     # credits and debits, so the balance cannot move while it is investigated.
@@ -45,6 +47,11 @@ class Wallet(TimestampedDocument):
     frozen_reason: str | None = None
 
     last_transaction_at: datetime | None = None
+
+    @property
+    def available_coins(self) -> int:
+        """Coins that can be spent right now (excluding coins blocked for appointments)."""
+        return max(0, self.balance_coins - self.blocked_coins)
 
     class Settings:
         name = "wallets"

@@ -175,12 +175,46 @@ def to_transaction(
     )
 
 
-def to_balance(wallet: Any) -> WalletBalance:
+async def to_balance(wallet: Any) -> WalletBalance:
+    blocked = getattr(wallet, "blocked_coins", 0)
+    avail = max(0, wallet.balance_coins - blocked)
+
+    # Fetch active holds for scheduled appointments
+    from app.models.appointment import Appointment
+    from app.models.astrologer import Astrologer
+    from app.models.enums import AppointmentStatus
+    from beanie.operators import And, In
+
+    active_appts = await Appointment.find(
+        And(
+            Appointment.user_id == wallet.user_id,
+            In(Appointment.status, [AppointmentStatus.BOOKED]),
+            Appointment.held_coins > 0,
+            Appointment.held_status == "held",
+        )
+    ).to_list()
+
+    holds = []
+    for a in active_appts:
+        astro = await Astrologer.get(a.astrologer_id)
+        holds.append({
+            "appointment_id": str(a.id),
+            "astrologer_name": astro.display_name if astro else "Astrologer",
+            "starts_at": a.starts_at.isoformat(),
+            "ends_at": a.ends_at.isoformat(),
+            "minutes": a.minutes,
+            "held_coins": a.held_coins,
+            "deposit_coins": a.deposit_coins,
+        })
+
     return WalletBalance(
         balance_coins=wallet.balance_coins,
+        blocked_coins=blocked,
+        available_coins=avail,
         is_frozen=wallet.is_frozen,
         frozen_reason=wallet.frozen_reason,
         last_transaction_at=wallet.last_transaction_at,
+        active_holds=holds,
     )
 
 
@@ -190,10 +224,11 @@ async def my_wallet(user: CurrentUser) -> ApiResponse[WalletSummary]:
     wallet = await wallet_service.get_or_create_wallet(user.id)
     recent, _ = await wallet_service.list_transactions(user.id, page=1, limit=5)
     consultations = await enrich_consultations(recent)
+    wallet_balance = await to_balance(wallet)
     return ApiResponse(
         message="Wallet fetched.",
         data=WalletSummary(
-            wallet=to_balance(wallet),
+            wallet=wallet_balance,
             recent=[to_transaction(t, consultations) for t in recent],
         ),
     )

@@ -95,10 +95,20 @@ class Appointment(TimestampedDocument):
     coins_per_rupee: int = Field(default=1, ge=1)
     # What is still owed to the astrologer at the session itself.
     balance_due_paise: int = Field(default=0, ge=0)
+    # Coins held in escrow for the remaining balance until completion
+    held_coins: int = Field(default=0, ge=0)
+    # Status of held balance coins: "none", "held", "released", "captured"
+    held_status: str = Field(default="none")
+
+    # Astrologer's cancellation window for client in minutes (e.g. 30m)
+    cancellation_window_minutes: int = Field(default=30, ge=0)
+    # The exact UTC deadline until which client is allowed to cancel
+    cancel_deadline: datetime | None = None
 
     cancelled_at: datetime | None = None
     cancelled_by: PydanticObjectId | None = None
     cancel_reason: str | None = Field(default=None, max_length=300)
+    completed_at: datetime | None = None
 
     # Set once the astrologer has been reminded, so a reminder is not repeated
     # every time the panel re-reads its schedule.

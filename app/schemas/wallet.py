@@ -20,9 +20,12 @@ from app.models.enums import (
 
 class WalletBalance(BaseModel):
     balance_coins: int
+    blocked_coins: int = 0
+    available_coins: int = 0
     is_frozen: bool
     frozen_reason: str | None = None
     last_transaction_at: datetime | None = None
+    active_holds: list[dict] = Field(default_factory=list)
 
 
 class TransactionRefOut(BaseModel):

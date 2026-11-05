@@ -326,6 +326,20 @@ async def book(
             error_code="beyond_horizon",
         )
 
+    # --- Rule 1: Single active appointment limit -------------------------
+    active_count = await Appointment.find(
+        And(
+            Appointment.user_id == user.id,
+            In(Appointment.status, [AppointmentStatus.BOOKED]),
+            GTE(Appointment.ends_at, now),
+        )
+    ).count()
+    if active_count > 0:
+        raise BadRequestError(
+            "You already have an active appointment booked. Astra policy permits only one active appointment at a time.",
+            error_code="single_appointment_limit",
+        )
+
     ends_at = starts_at + timedelta(minutes=minutes)
 
     windows = await _windows_for(astrologer.id, starts_at, ends_at)
@@ -340,6 +354,27 @@ async def book(
     commission = platform.appointment_commission_percent
     deposit_paise = deposit_for(price_paise, commission)
     deposit_coins = coins_for_paise(deposit_paise, platform.coins_per_rupee)
+    balance_due_paise = max(price_paise - deposit_paise, 0)
+    balance_due_coins = coins_for_paise(balance_due_paise, platform.coins_per_rupee)
+    total_coins_needed = deposit_coins + balance_due_coins
+
+    # --- Rule 2: Verify user can afford the FULL session fee --------------
+    user_wallet = await wallet_service.get_or_create_wallet(user.id)
+    spendable = user_wallet.available_coins
+    if spendable < total_coins_needed:
+        raise BadRequestError(
+            f"Insufficient wallet balance. Total consultation fee is {total_coins_needed} coins "
+            f"({deposit_coins} booking deposit + {balance_due_coins} session reserve). "
+            f"Your spendable balance is {spendable} coins. Please recharge and try again.",
+            error_code="insufficient_balance",
+            details={
+                "total_coins_needed": total_coins_needed,
+                "deposit_coins": deposit_coins,
+                "balance_due_coins": balance_due_coins,
+                "available_coins": spendable,
+                "balance_coins": user_wallet.balance_coins,
+            },
+        )
 
     # Calculate Vedic Muhurat
     muhurat_data = calculate_slot_muhurat(starts_at)
@@ -369,7 +404,12 @@ async def book(
         await _release(claimed)
         raise
 
-    # --- the deposit ------------------------------------------------------
+    # --- the deposit debit & balance escrow hold --------------------------
+    cancellation_window = getattr(card, "cancellation_window_minutes", 30) or 30
+    cancel_deadline = now + timedelta(minutes=cancellation_window)
+    deposit_debited = False
+    balance_held = False
+
     try:
         if deposit_coins > 0:
             await wallet_service.debit(
@@ -377,11 +417,40 @@ async def book(
                 amount_coins=deposit_coins,
                 reason=TransactionReason.APPOINTMENT_DEPOSIT,
                 idempotency_key=f"appointment:{appointment_id}:deposit",
-                note=f"Appointment with {astrologer.display_name}",
+                note=f"Appointment deposit with {astrologer.display_name}",
             )
+            deposit_debited = True
+
+        if balance_due_coins > 0:
+            await wallet_service.hold_coins(
+                user_id=user.id,
+                amount_coins=balance_due_coins,
+                appointment_id=appointment_id,
+                note=f"Reserved balance for appointment with {astrologer.display_name}",
+            )
+            balance_held = True
     except Exception:
-        # The time goes straight back: holding it for a booking that was never
-        # paid for would quietly take the astrologer off the market.
+        # Rollback money and slots if anything fails
+        if deposit_debited:
+            try:
+                await wallet_service.credit(
+                    user_id=user.id,
+                    amount_coins=deposit_coins,
+                    reason=TransactionReason.REFUND,
+                    idempotency_key=f"appointment:{appointment_id}:deposit_rollback",
+                    note="Rollback failed booking deposit",
+                )
+            except Exception as r_err:
+                logger.error("Failed to credit deposit on abort: {}", r_err)
+        if balance_held:
+            try:
+                await wallet_service.release_held_coins(
+                    user_id=user.id,
+                    amount_coins=balance_due_coins,
+                    appointment_id=appointment_id,
+                )
+            except Exception as r_err:
+                logger.error("Failed to release held coins on abort: {}", r_err)
         await _release(claimed)
         raise
 
@@ -398,7 +467,11 @@ async def book(
         deposit_paise=deposit_paise,
         deposit_coins=deposit_coins,
         coins_per_rupee=platform.coins_per_rupee,
-        balance_due_paise=max(price_paise - deposit_paise, 0),
+        balance_due_paise=balance_due_paise,
+        held_coins=balance_due_coins,
+        held_status="held" if balance_due_coins > 0 else "none",
+        cancellation_window_minutes=cancellation_window,
+        cancel_deadline=cancel_deadline,
         user_note=note,
         consultation_pillar=consultation_pillar,
         kundli_id=kundli_id,
@@ -474,20 +547,35 @@ async def release_orphans() -> int:
 async def cancel(
     *, appointment: Appointment, by: User, reason: str | None = None
 ) -> Appointment:
-    """Gives the time back. The deposit is not returned.
+    """Cancels appointment according to client grace period and refund rules."""
+    from app.services import wallet as wallet_service
 
-    That is the point of taking it: a calendar that can be filled and emptied
-    for nothing is a calendar the astrologer cannot plan around.
-    """
     if appointment.status is not AppointmentStatus.BOOKED:
         raise BadRequestError(
             "This appointment is not open.", error_code="appointment_not_open"
         )
     if by.id not in (appointment.user_id, appointment.astrologer_user_id):
-        raise ForbiddenError("This is not your appointment.", error_code="not_yours")
+        if getattr(by, "role", None) != "admin":
+            raise ForbiddenError("This is not your appointment.", error_code="not_yours")
+
+    now = utcnow()
+    is_client = by.id == appointment.user_id
+
+    # If client cancels, verify cancellation grace period (Rule 5)
+    if is_client:
+        window_mins = getattr(appointment, "cancellation_window_minutes", 30) or 30
+        deadline = appointment.cancel_deadline or (
+            appointment.created_at + timedelta(minutes=window_mins)
+        )
+        if now > deadline:
+            raise BadRequestError(
+                f"The cancellation window of {window_mins} minutes has expired. "
+                "This appointment can no longer be cancelled by the client.",
+                error_code="cancellation_window_expired",
+            )
 
     appointment.status = AppointmentStatus.CANCELLED
-    appointment.cancelled_at = utcnow()
+    appointment.cancelled_at = now
     appointment.cancelled_by = by.id
     appointment.cancel_reason = reason
     await appointment.save()
@@ -497,32 +585,64 @@ async def cancel(
         AppointmentSlot.appointment_id == appointment.id
     ).delete()
 
-    # --- refund deposit if cancelled by the astrologer or platform admin ---
-    # When the astrologer cancels (or admin cancels on their behalf), the client
-    # is not at fault and must always receive a 100% refund of their deposit coins.
-    cancelled_by_provider = by.id != appointment.user_id
-    if cancelled_by_provider and appointment.deposit_coins > 0:
-        try:
-            from app.services import wallet as wallet_service
-            await wallet_service.credit(
-                user_id=appointment.user_id,
-                amount_coins=appointment.deposit_coins,
-                reason=TransactionReason.REFUND,
-                idempotency_key=f"appointment:{appointment.id}:cancelled_by_astrologer_refund",
-                note=f"Full refund for appointment cancelled by astrologer ({reason or 'Session unavailable'})",
-            )
-            logger.info(
-                "Refunded {} deposit coins to user {} for cancelled appointment {}",
-                appointment.deposit_coins,
-                appointment.user_id,
-                appointment.id,
-            )
-        except Exception as refund_err:
-            logger.error(
-                "Failed to auto-refund deposit coins for appointment {}: {}",
-                appointment.id,
-                refund_err,
-            )
+    # --- Handle Escrow and Refunds (Rules 3 & 4) ---
+    if is_client:
+        # Rule 3: Client cancelled voluntarily (within grace window)
+        # - Deposit is NOT returned.
+        # - Blocked balance coins are RELEASED back to user's spendable wallet.
+        if getattr(appointment, "held_coins", 0) > 0 and getattr(appointment, "held_status", "") == "held":
+            try:
+                await wallet_service.release_held_coins(
+                    user_id=appointment.user_id,
+                    amount_coins=appointment.held_coins,
+                    appointment_id=appointment.id,
+                )
+                appointment.held_status = "released"
+                await appointment.save()
+                logger.info(
+                    "User cancelled: released {} held coins for appointment {}",
+                    appointment.held_coins,
+                    appointment.id,
+                )
+            except Exception as exc:
+                logger.error("Failed to release held coins on user cancel: {}", exc)
+    else:
+        # Rule 4: Astrologer / Admin cancelled
+        # - Blocked balance coins are RELEASED back to user.
+        # - 100% of upfront deposit is REFUNDED to user's wallet. User loses 0 coins!
+        if getattr(appointment, "held_coins", 0) > 0 and getattr(appointment, "held_status", "") == "held":
+            try:
+                await wallet_service.release_held_coins(
+                    user_id=appointment.user_id,
+                    amount_coins=appointment.held_coins,
+                    appointment_id=appointment.id,
+                )
+                appointment.held_status = "released"
+            except Exception as exc:
+                logger.error("Failed to release held coins on provider cancel: {}", exc)
+
+        if appointment.deposit_coins > 0:
+            try:
+                await wallet_service.credit(
+                    user_id=appointment.user_id,
+                    amount_coins=appointment.deposit_coins,
+                    reason=TransactionReason.REFUND,
+                    idempotency_key=f"appointment:{appointment.id}:provider_cancel_refund",
+                    note=f"Full refund for appointment cancelled by astrologer ({reason or 'Session unavailable'})",
+                )
+                logger.info(
+                    "Provider cancelled: 100% refunded {} deposit coins to user {}",
+                    appointment.deposit_coins,
+                    appointment.user_id,
+                )
+            except Exception as refund_err:
+                logger.error(
+                    "Failed to auto-refund deposit coins for appointment {}: {}",
+                    appointment.id,
+                    refund_err,
+                )
+
+        await appointment.save()
 
     logger.info("Appointment {} cancelled by {}", appointment.id, by.email)
     await _notify(appointment)
@@ -542,6 +662,60 @@ async def cancel(
         )
     except Exception as exc:
         logger.debug("Realtime cancel publish skipped: {}", exc)
+
+    return appointment
+
+
+# -------------------------------------------------------------- completing
+async def complete(
+    *, appointment: Appointment, by: User
+) -> Appointment:
+    """Marks appointment completed, captures held escrow coins and notifies parties."""
+    from app.services import wallet as wallet_service
+
+    if appointment.status != AppointmentStatus.BOOKED:
+        raise BadRequestError(
+            "This appointment is not open for completion.",
+            error_code="appointment_not_open",
+        )
+    if by.id not in (appointment.astrologer_user_id, appointment.user_id):
+        if getattr(by, "role", None) != "admin":
+            raise ForbiddenError("Not authorized to complete this appointment.")
+
+    appointment.status = AppointmentStatus.COMPLETED
+    appointment.completed_at = utcnow()
+
+    # Rule 2: Capture held balance coins
+    if getattr(appointment, "held_coins", 0) > 0 and getattr(appointment, "held_status", "") == "held":
+        try:
+            await wallet_service.capture_held_coins(
+                user_id=appointment.user_id,
+                amount_coins=appointment.held_coins,
+                appointment_id=appointment.id,
+                astrologer_user_id=appointment.astrologer_user_id,
+                note="Consultation session balance completed",
+            )
+            appointment.held_status = "captured"
+        except Exception as exc:
+            logger.error("Failed to capture held coins for appointment {}: {}", appointment.id, exc)
+
+    await appointment.save()
+    logger.info("Appointment {} marked completed and escrow captured", appointment.id)
+
+    # Realtime notification
+    try:
+        from app.services import realtime
+        await realtime.publish_appointment_event(
+            appointment.user_id,
+            appointment.astrologer_user_id,
+            "completed",
+            {
+                "id": str(appointment.id),
+                "status": "completed",
+            },
+        )
+    except Exception as exc:
+        logger.debug("Realtime complete publish skipped: {}", exc)
 
     return appointment
 

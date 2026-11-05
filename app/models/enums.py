@@ -96,6 +96,10 @@ class TransactionReason(StrEnum):
     # The platform's share of a scheduled appointment, taken when it is booked
     # and not returned if it is called off.
     APPOINTMENT_DEPOSIT = "appointment_deposit"
+    # Escrow hold and release for remaining consultation balance
+    APPOINTMENT_HOLD = "appointment_hold"
+    APPOINTMENT_RELEASE = "appointment_release"
+    APPOINTMENT_BALANCE = "appointment_balance"
     # Coins deducted for using platform astrology / scanning features (Kundli, KP, etc.)
     FEATURE_USAGE = "feature_usage"
 

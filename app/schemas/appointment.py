@@ -31,6 +31,7 @@ class AppointmentCardUpdate(BaseModel):
     enabled: bool | None = None
     price_paise: int | None = Field(default=None, ge=0, le=100_000_00)
     block_minutes: int | None = Field(default=None, ge=5, le=600)
+    cancellation_window_minutes: int | None = Field(default=None, ge=0, le=1440)
 
 
 class AppointmentCardOut(BaseModel):
@@ -39,6 +40,7 @@ class AppointmentCardOut(BaseModel):
     enabled: bool
     price_paise: int
     block_minutes: int
+    cancellation_window_minutes: int = 30
 
 
 # ------------------------------------------------------------- what is free
@@ -83,7 +85,13 @@ class AppointmentQuote(BaseModel):
     deposit_paise: int
     deposit_coins: int
     balance_due_paise: int
+    balance_due_coins: int = 0
+    total_coins: int = 0
+    # Available wallet balance that can be used for booking
+    available_coins: int = 0
+    # Total wallet balance
     balance_coins: int
+    # True only if user's available_coins >= total_coins needed for the consultation
     can_afford: bool
 
 
@@ -107,6 +115,14 @@ class AppointmentOut(BaseModel):
     deposit_paise: int
     deposit_coins: int
     balance_due_paise: int
+    balance_due_coins: int = 0
+    held_coins: int = 0
+    held_status: str = "none"
+
+    cancellation_window_minutes: int = 30
+    cancel_deadline: datetime | None = None
+    can_cancel: bool = False
+    completed_at: datetime | None = None
 
     cancelled_at: datetime | None = None
     cancel_reason: str | None = None
