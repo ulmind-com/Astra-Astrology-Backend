@@ -181,6 +181,16 @@ class Appointment(TimestampedDocument):
     extension_status: str = "none"  # "none", "pending", "accepted", "declined", "expired"
     extension_total_extended_minutes: int = 0
 
+    # Complimentary Follow-up / Remedy Clarification Pass
+    follow_up_pass_enabled: bool = False
+    follow_up_window_days: int = 7
+    follow_up_expires_at: datetime | None = None
+    follow_up_max_messages: int = 3
+    follow_up_messages_used: int = 0
+    follow_up_granted_at: datetime | None = None
+    follow_up_notes: str | None = None
+    follow_up_thread: list[dict] = Field(default_factory=list)
+
     class Settings:
         name = "appointments"
         indexes = [

@@ -33,6 +33,9 @@ class AppointmentCardUpdate(BaseModel):
     block_minutes: int | None = Field(default=None, ge=5, le=600)
     cancellation_window_minutes: int | None = Field(default=None, ge=0, le=1440)
     buffer_minutes: int | None = Field(default=None, ge=0, le=60)
+    follow_up_enabled: bool | None = None
+    follow_up_window_days: int | None = Field(default=None, ge=1, le=30)
+    follow_up_max_messages: int | None = Field(default=None, ge=1, le=20)
 
 
 class AppointmentCardOut(BaseModel):
@@ -43,6 +46,9 @@ class AppointmentCardOut(BaseModel):
     block_minutes: int
     cancellation_window_minutes: int = 30
     buffer_minutes: int = 10
+    follow_up_enabled: bool = True
+    follow_up_window_days: int = 7
+    follow_up_max_messages: int = 3
 
 
 # ------------------------------------------------------------- what is free
@@ -174,6 +180,16 @@ class AppointmentOut(BaseModel):
     extension_status: str = "none"
     extension_total_extended_minutes: int = 0
 
+    # Complimentary Follow-up Pass
+    follow_up_pass_enabled: bool = False
+    follow_up_window_days: int = 7
+    follow_up_expires_at: datetime | None = None
+    follow_up_max_messages: int = 3
+    follow_up_messages_used: int = 0
+    follow_up_granted_at: datetime | None = None
+    follow_up_notes: str | None = None
+    follow_up_thread: list[dict] = Field(default_factory=list)
+
     peer: AppointmentPeer | None = None
 
 
@@ -263,4 +279,15 @@ class OfferExtensionRequest(BaseModel):
 
 class ExtensionActionRequest(BaseModel):
     action: str = Field(description="'accept' or 'decline'")
+
+
+class IssueFollowUpPassRequest(BaseModel):
+    window_days: int = Field(default=7, ge=1, le=30)
+    max_messages: int = Field(default=3, ge=1, le=20)
+    notes: str | None = Field(default=None, max_length=500)
+
+
+class SendFollowUpMessageRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=1000)
+
 

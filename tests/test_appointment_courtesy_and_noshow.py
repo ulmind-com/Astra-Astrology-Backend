@@ -482,6 +482,103 @@ async def test_session_extension_accept_and_decline():
                                     assert call_session.save.called
 
 
+@pytest.mark.asyncio
+async def test_follow_up_pass_issue_and_messaging():
+    """Astrologer issues 7-day remedy pass and client asks questions within quota."""
+    now = datetime.now(UTC)
+    appt_id = PydanticObjectId()
+    astro_id = PydanticObjectId()
+    astro_user_id = PydanticObjectId()
+    client_id = PydanticObjectId()
+
+    appointment = SimpleNamespace(
+        id=appt_id,
+        astrologer_id=astro_id,
+        astrologer_user_id=astro_user_id,
+        user_id=client_id,
+        status=AppointmentStatus.COMPLETED,
+        follow_up_pass_enabled=False,
+        follow_up_window_days=7,
+        follow_up_expires_at=None,
+        follow_up_max_messages=2,
+        follow_up_messages_used=0,
+        follow_up_granted_at=None,
+        follow_up_notes=None,
+        follow_up_thread=[],
+        save=AsyncMock(),
+    )
+
+    astrologer_user = SimpleNamespace(id=astro_user_id, role="astrologer", email="pandit@astra.com", full_name="Acharya Sharma")
+    client_user = SimpleNamespace(id=client_id, role="user", email="seeker@gmail.com", full_name="Rahul Roy")
+
+    with patch("app.services.realtime.publish_appointment_event", AsyncMock()):
+        # 1. Astrologer issues 7-day pass with max 2 questions
+        issued = await service.issue_follow_up_pass(
+            appointment=appointment,
+            by=astrologer_user,
+            window_days=7,
+            max_messages=2,
+            notes="Please ask within 7 days for any mantra or gemstone clarity.",
+        )
+        assert issued.follow_up_pass_enabled is True
+        assert issued.follow_up_window_days == 7
+        assert issued.follow_up_max_messages == 2
+        assert issued.follow_up_expires_at > now
+        assert issued.follow_up_notes == "Please ask within 7 days for any mantra or gemstone clarity."
+
+        # 2. Client sends question 1 -> succeeds
+        appt, msg1 = await service.send_follow_up_message(
+            appointment=issued,
+            by=client_user,
+            text="Panditji, which finger should I wear the Yellow Sapphire on?",
+        )
+        assert appt.follow_up_messages_used == 1
+        assert len(appt.follow_up_thread) == 1
+        assert msg1["sender_role"] == "user"
+        assert "Yellow Sapphire" in msg1["text"]
+
+        # 3. Astrologer replies -> succeeds and does not increment client quota
+        appt, msg_reply = await service.send_follow_up_message(
+            appointment=appt,
+            by=astrologer_user,
+            text="Wear it on the index finger of your right hand on a Thursday morning.",
+        )
+        assert appt.follow_up_messages_used == 1  # Astrologer reply does not consume quota
+        assert len(appt.follow_up_thread) == 2
+        assert msg_reply["sender_role"] == "astrologer"
+
+        # 4. Client sends question 2 -> succeeds (quota becomes 2/2)
+        appt, msg2 = await service.send_follow_up_message(
+            appointment=appt,
+            by=client_user,
+            text="Should I fast on the day of energizing the stone?",
+        )
+        assert appt.follow_up_messages_used == 2
+
+        # 5. Client attempts question 3 -> blocked by quota
+        with pytest.raises(BadRequestError) as exc_info:
+            await service.send_follow_up_message(
+                appointment=appt,
+                by=client_user,
+                text="One more question please!",
+            )
+        assert "used all 2 complimentary questions" in str(exc_info.value.message)
+        assert exc_info.value.error_code == "follow_up_limit_reached"
+
+        # 6. Expired pass test
+        appt.follow_up_messages_used = 0
+        appt.follow_up_expires_at = now - timedelta(hours=1)  # expired
+        with pytest.raises(BadRequestError) as exc_info:
+            await service.send_follow_up_message(
+                appointment=appt,
+                by=client_user,
+                text="Is the pass still working?",
+            )
+        assert "expired" in str(exc_info.value.message).lower()
+        assert exc_info.value.error_code == "follow_up_expired"
+
+
+
 
 
 

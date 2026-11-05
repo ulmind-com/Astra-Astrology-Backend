@@ -32,6 +32,8 @@ from app.schemas.appointment import (
     BrahmaPauseRequest,
     CancelRequest,
     DayView,
+    ExtensionActionRequest,
+    IssueFollowUpPassRequest,
     NoShowRequest,
     OfferExtensionRequest,
     PrescriptionUpdateRequest,
@@ -40,7 +42,7 @@ from app.schemas.appointment import (
     RedFlagRequest,
     RequestBTRRequest,
     RescheduleRequest,
-    ExtensionActionRequest,
+    SendFollowUpMessageRequest,
     UpdateBTRRequest,
     WindowInput,
     WindowOut,
@@ -1031,6 +1033,53 @@ async def handle_appointment_extension_action(
         else "Extension offer declined."
     )
     return ApiResponse(message=msg, data=await _out(updated, user))
+
+
+@router.post(
+    "/{appointment_id}/follow-up/issue",
+    response_model=ApiResponse[AppointmentOut],
+    summary="Astrologer issues or customizes a complimentary remedy clarification pass",
+)
+async def issue_appointment_follow_up_pass(
+    appointment_id: PydanticObjectId,
+    payload: IssueFollowUpPassRequest,
+    user: AstrologerUser,
+) -> ApiResponse[AppointmentOut]:
+    appointment = await service.get(appointment_id)
+    updated = await service.issue_follow_up_pass(
+        appointment=appointment,
+        by=user,
+        window_days=payload.window_days,
+        max_messages=payload.max_messages,
+        notes=payload.notes,
+    )
+    return ApiResponse(
+        message=f"Complimentary {payload.window_days}-day remedy clarification pass issued.",
+        data=await _out(updated, user),
+    )
+
+
+@router.post(
+    "/{appointment_id}/follow-up/message",
+    response_model=ApiResponse[AppointmentOut],
+    summary="Send a remedy clarification message under the complimentary follow-up pass",
+)
+async def send_appointment_follow_up_message(
+    appointment_id: PydanticObjectId,
+    payload: SendFollowUpMessageRequest,
+    user: CurrentUser,
+) -> ApiResponse[AppointmentOut]:
+    appointment = await service.get(appointment_id)
+    updated, msg_item = await service.send_follow_up_message(
+        appointment=appointment,
+        by=user,
+        text=payload.text,
+    )
+    return ApiResponse(
+        message="Follow-up message delivered.",
+        data=await _out(updated, user),
+    )
+
 
 
 

@@ -897,6 +897,16 @@ async def complete(
             appointment.certificate_data = generate_divya_paramarsha_certificate_data(
                 appointment, astrologer_prof, client_user
             )
+            # Auto-initialize Complimentary Follow-up Window if enabled in astrologer profile
+            if getattr(getattr(astrologer_prof, "appointment", None), "follow_up_enabled", True):
+                card = astrologer_prof.appointment
+                window_days = getattr(card, "follow_up_window_days", 7) or 7
+                max_messages = getattr(card, "follow_up_max_messages", 3) or 3
+                appointment.follow_up_pass_enabled = True
+                appointment.follow_up_window_days = window_days
+                appointment.follow_up_expires_at = utcnow() + timedelta(days=window_days)
+                appointment.follow_up_max_messages = max_messages
+                appointment.follow_up_granted_at = utcnow()
     except Exception as cert_err:
         logger.error("Failed to generate Divya Paramarsha certificate: {}", cert_err)
 
@@ -2192,5 +2202,125 @@ async def handle_session_extension_action(
         appointment.astrologer_id,
     )
     return appointment
+
+
+# ------------------------------------------------ complimentary follow-up window
+async def issue_follow_up_pass(
+    *,
+    appointment: Appointment,
+    by: User,
+    window_days: int = 7,
+    max_messages: int = 3,
+    notes: str | None = None,
+) -> Appointment:
+    """Astrologer issues or updates the 7-day (or custom days) remedy clarification pass."""
+    if by.id != appointment.astrologer_user_id and getattr(by, "role", None) != "admin":
+        raise ForbiddenError("Only the consulting astrologer can issue a follow-up pass.")
+
+    if appointment.status != AppointmentStatus.COMPLETED and appointment.status != AppointmentStatus.BOOKED:
+        raise BadRequestError("A follow-up pass can only be issued for booked or completed consultations.")
+
+    now = utcnow()
+    appointment.follow_up_pass_enabled = True
+    appointment.follow_up_window_days = window_days
+    appointment.follow_up_expires_at = now + timedelta(days=window_days)
+    appointment.follow_up_max_messages = max_messages
+    appointment.follow_up_granted_at = now
+    if notes:
+        appointment.follow_up_notes = notes
+
+    await appointment.save()
+
+    try:
+        from app.services import realtime
+        await realtime.publish_appointment_event(
+            appointment.user_id,
+            appointment.astrologer_user_id,
+            "follow_up_pass_issued",
+            {
+                "id": str(appointment.id),
+                "follow_up_pass_enabled": True,
+                "follow_up_window_days": window_days,
+                "follow_up_expires_at": appointment.follow_up_expires_at.isoformat(),
+                "follow_up_max_messages": max_messages,
+                "follow_up_messages_used": appointment.follow_up_messages_used,
+            },
+        )
+    except Exception as exc:
+        logger.debug("Failed to publish follow-up pass event: {}", exc)
+
+    logger.info("Follow-up pass of {} days issued for appointment {} by {}", window_days, appointment.id, by.email)
+    return appointment
+
+
+async def send_follow_up_message(
+    *,
+    appointment: Appointment,
+    by: User,
+    text: str,
+) -> tuple[Appointment, dict]:
+    """Sends a clarification message under the complimentary follow-up pass."""
+    if by.id not in (appointment.user_id, appointment.astrologer_user_id) and getattr(by, "role", None) != "admin":
+        raise ForbiddenError("You are not a participant in this consultation.")
+
+    is_client = (by.id == appointment.user_id)
+    now = utcnow()
+
+    body = text.strip()
+    if not body:
+        raise BadRequestError("Message cannot be empty.", error_code="empty_message")
+
+    if is_client:
+        if not appointment.follow_up_pass_enabled:
+            raise BadRequestError(
+                "A complimentary follow-up pass has not been active for this session.",
+                error_code="pass_not_active",
+            )
+        if appointment.follow_up_expires_at and now > appointment.follow_up_expires_at:
+            raise BadRequestError(
+                "Your complimentary follow-up window for this consultation has expired.",
+                error_code="follow_up_expired",
+            )
+        if appointment.follow_up_messages_used >= appointment.follow_up_max_messages:
+            raise BadRequestError(
+                f"You have used all {appointment.follow_up_max_messages} complimentary questions for this session.",
+                error_code="follow_up_limit_reached",
+            )
+        appointment.follow_up_messages_used += 1
+
+    msg_item = {
+        "id": str(PydanticObjectId()),
+        "sender_id": str(by.id),
+        "sender_role": "user" if is_client else "astrologer",
+        "sender_name": getattr(by, "full_name", None) or ("Seeker" if is_client else "Astrologer"),
+        "text": body,
+        "sent_at": now.isoformat(),
+    }
+
+    if appointment.follow_up_thread is None:
+        appointment.follow_up_thread = []
+
+    appointment.follow_up_thread.append(msg_item)
+    await appointment.save()
+
+    try:
+        from app.services import realtime
+        await realtime.publish_appointment_event(
+            appointment.user_id,
+            appointment.astrologer_user_id,
+            "follow_up_message",
+            {
+                "id": str(appointment.id),
+                "message": msg_item,
+                "follow_up_messages_used": appointment.follow_up_messages_used,
+                "follow_up_max_messages": appointment.follow_up_max_messages,
+            },
+        )
+    except Exception as exc:
+        logger.debug("Failed to publish follow-up message event: {}", exc)
+
+    logger.info("Follow-up message sent on appointment {} by {}", appointment.id, by.email)
+    return appointment, msg_item
+
 
 

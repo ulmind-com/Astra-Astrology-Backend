@@ -82,6 +82,10 @@ class AppointmentCard(BaseModel):
     cancellation_window_minutes: int = Field(default=30, ge=0, le=1440)
     # Energy cleansing and meditation buffer between sessions (e.g. 5, 10, 15 mins)
     buffer_minutes: int = Field(default=10, ge=0, le=60)
+    # Complimentary Follow-up / Remedy Clarification Pass settings
+    follow_up_enabled: bool = True
+    follow_up_window_days: int = Field(default=7, ge=1, le=30)
+    follow_up_max_messages: int = Field(default=3, ge=1, le=20)
 
 
 class RatingSummary(BaseModel):
