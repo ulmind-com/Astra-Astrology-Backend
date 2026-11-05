@@ -309,7 +309,7 @@ async def _charge(session: CallSession) -> billing.ChargeResult:
         cap_minutes=session.requested_minutes or None,
     )
 
-    if result.coins_charged:
+    if result.coins_charged or session.appointment_id:
         session.minutes_charged = result.minutes_charged
         session.coins_charged += result.coins_charged
         session.earning_paise += result.earning_paise

@@ -15,6 +15,7 @@ from app.models.enums import UserRole
 from app.models.user import User
 from app.schemas.call import (
     ExtendRequest,
+    ExtensionOfferInfo,
     SessionBilling,
     CallCredentials,
     CallOut,
@@ -53,14 +54,21 @@ async def _billing_of(session: CallSession) -> SessionBilling:
     affordable = billing.affordable_minutes(wallet.balance_coins, session.coins_per_minute)
 
     # Minutes already paid for that have not been used yet.
-    remaining = max(0, session.requested_minutes - session.minutes_charged)
+    if getattr(session, "appointment_id", None) and session.started_at:
+        elapsed = billing.minutes_elapsed(session.started_at)
+        remaining = max(0, session.requested_minutes - elapsed)
+        minutes_charged = min(elapsed, session.requested_minutes)
+    else:
+        remaining = max(0, session.requested_minutes - session.minutes_charged)
+        minutes_charged = session.minutes_charged
+
     settings_doc = await settings_service.get_settings()
     room = max(0, settings_doc.max_session_minutes - session.requested_minutes)
 
     return SessionBilling(
         coins_per_minute=session.coins_per_minute,
         requested_minutes=session.requested_minutes,
-        minutes_charged=session.minutes_charged,
+        minutes_charged=minutes_charged,
         coins_charged=session.coins_charged,
         minutes_remaining=remaining,
         balance_coins=wallet.balance_coins,
@@ -71,6 +79,20 @@ async def _billing_of(session: CallSession) -> SessionBilling:
 
 
 async def to_call(session: CallSession, viewer: User | None = None) -> CallOut:
+    extension_offer = None
+    if getattr(session, "appointment_id", None):
+        from app.models.appointment import Appointment
+        apt = await Appointment.get(session.appointment_id)
+        if apt and (getattr(apt, "extension_offered", False) or apt.extension_status in ("pending", "accepted", "declined")):
+            extension_offer = ExtensionOfferInfo(
+                offered=bool(apt.extension_offered),
+                status=apt.extension_status,
+                extra_minutes=apt.extension_offered_minutes,
+                cost_coins=apt.extension_cost_coins,
+                cost_paise=apt.extension_cost_paise,
+                offered_at=apt.extension_offered_at,
+            )
+
     return CallOut(
         id=str(session.id),
         room_id=session.room_id,
@@ -88,6 +110,7 @@ async def to_call(session: CallSession, viewer: User | None = None) -> CallOut:
         appointment_id=str(session.appointment_id) if getattr(session, "appointment_id", None) else None,
         created_at=session.created_at,
         billing=await _billing_of(session),
+        extension_offer=extension_offer,
     )
 
 

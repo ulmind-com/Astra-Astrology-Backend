@@ -172,6 +172,15 @@ class Appointment(TimestampedDocument):
     btr_fulfilled: bool = False
     btr_updated_at: datetime | None = None
 
+    # Live In-Chamber Session Extension Authority
+    extension_offered: bool = False
+    extension_offered_minutes: int | None = None
+    extension_cost_coins: int = 0
+    extension_cost_paise: int = 0
+    extension_offered_at: datetime | None = None
+    extension_status: str = "none"  # "none", "pending", "accepted", "declined", "expired"
+    extension_total_extended_minutes: int = 0
+
     class Settings:
         name = "appointments"
         indexes = [

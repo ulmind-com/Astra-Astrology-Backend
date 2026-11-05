@@ -165,6 +165,15 @@ class AppointmentOut(BaseModel):
     btr_fulfilled: bool = False
     btr_updated_at: datetime | None = None
 
+    # In-Chamber Consultation Extension
+    extension_offered: bool = False
+    extension_offered_minutes: int | None = None
+    extension_cost_coins: int = 0
+    extension_cost_paise: int = 0
+    extension_offered_at: datetime | None = None
+    extension_status: str = "none"
+    extension_total_extended_minutes: int = 0
+
     peer: AppointmentPeer | None = None
 
 
@@ -246,3 +255,12 @@ class AbuseReportOut(BaseModel):
     action_taken: str
     status: str
     created_at: datetime
+
+
+class OfferExtensionRequest(BaseModel):
+    extra_minutes: int = Field(default=10, ge=5, le=30)
+
+
+class ExtensionActionRequest(BaseModel):
+    action: str = Field(description="'accept' or 'decline'")
+

@@ -33,12 +33,14 @@ from app.schemas.appointment import (
     CancelRequest,
     DayView,
     NoShowRequest,
+    OfferExtensionRequest,
     PrescriptionUpdateRequest,
     QuoteRequest,
     Range,
     RedFlagRequest,
     RequestBTRRequest,
     RescheduleRequest,
+    ExtensionActionRequest,
     UpdateBTRRequest,
     WindowInput,
     WindowOut,
@@ -983,5 +985,52 @@ async def update_btr(
         message="Birth parameters updated successfully. Astrologer has been notified.",
         data=await _out(appt, current_user),
     )
+
+
+@router.post(
+    "/{appointment_id}/extension/offer",
+    response_model=ApiResponse[AppointmentOut],
+    summary="Astrologer offers an in-chamber consultation extension (+10/15 mins)",
+)
+async def offer_appointment_extension(
+    appointment_id: PydanticObjectId,
+    payload: OfferExtensionRequest,
+    user: AstrologerUser,
+) -> ApiResponse[AppointmentOut]:
+    appointment = await service.get(appointment_id)
+    updated = await service.offer_session_extension(
+        appointment=appointment,
+        by=user,
+        extra_minutes=payload.extra_minutes,
+    )
+    return ApiResponse(
+        message=f"Extension offer of {payload.extra_minutes} minutes sent to seeker.",
+        data=await _out(updated, user),
+    )
+
+
+@router.post(
+    "/{appointment_id}/extension/action",
+    response_model=ApiResponse[AppointmentOut],
+    summary="Client accepts or declines an in-chamber consultation extension offer",
+)
+async def handle_appointment_extension_action(
+    appointment_id: PydanticObjectId,
+    payload: ExtensionActionRequest,
+    user: CurrentUser,
+) -> ApiResponse[AppointmentOut]:
+    appointment = await service.get(appointment_id)
+    updated = await service.handle_session_extension_action(
+        appointment=appointment,
+        by=user,
+        action=payload.action,
+    )
+    msg = (
+        f"Extension accepted! Session extended by {payload.action} successfully."
+        if payload.action.lower() == "accept"
+        else "Extension offer declined."
+    )
+    return ApiResponse(message=msg, data=await _out(updated, user))
+
 
 

@@ -35,3 +35,4 @@ class AbuseReport(TimestampedDocument):
             pymongo.IndexModel([("status", pymongo.ASCENDING)]),
             pymongo.IndexModel([("created_at", pymongo.DESCENDING)]),
         ]
+

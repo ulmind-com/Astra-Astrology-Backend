@@ -1944,3 +1944,253 @@ async def update_birth_time_rectification(
 
     return appointment
 
+
+# ------------------------------------------------ in-chamber session extension
+async def offer_session_extension(
+    *,
+    appointment: Appointment,
+    by: User,
+    extra_minutes: int = 10,
+) -> Appointment:
+    """Astrologer offers an in-chamber consultation extension (+10/15 mins)."""
+    if appointment.status != AppointmentStatus.BOOKED:
+        raise BadRequestError(
+            "This appointment is not active.", error_code="appointment_not_open"
+        )
+    if by.id != appointment.astrologer_user_id and getattr(by, "role", None) != "admin":
+        raise ForbiddenError("Only the consulting astrologer can offer a session extension.")
+
+    astro = await Astrologer.get(appointment.astrologer_id)
+    if astro is None:
+        raise NotFoundError("Astrologer profile not found.", error_code="astrologer_not_found")
+
+    # Safety Check: Schedule conflict with future appointments
+    buffer_mins = getattr(getattr(astro, "appointment", None), "buffer_minutes", 0) or 0
+    clash_window_start = appointment.ends_at
+    clash_window_end = appointment.ends_at + timedelta(minutes=extra_minutes + buffer_mins)
+
+    clashing_slot = await AppointmentSlot.find({
+        "astrologer_id": appointment.astrologer_id,
+        "appointment_id": {"$ne": appointment.id},
+        "starts_at": {"$gte": clash_window_start, "$lt": clash_window_end},
+    }).first_or_none()
+
+    if clashing_slot:
+        raise BadRequestError(
+            f"Cannot extend: You have another consultation scheduled starting at "
+            f"{clashing_slot.starts_at.strftime('%I:%M %p')}. Extension would cause a booking overlap.",
+            error_code="extension_clash_with_future_booking",
+        )
+
+    # Price calculation
+    extra_price_paise = price_for(astro.appointment, extra_minutes) if getattr(astro, "appointment", None) else 0
+    if extra_price_paise <= 0 and appointment.minutes > 0:
+        extra_price_paise = round(appointment.price_paise * extra_minutes / appointment.minutes)
+
+    coins_per_rupee = appointment.coins_per_rupee or 1
+    extra_cost_coins = coins_for_paise(extra_price_paise, coins_per_rupee)
+
+    appointment.extension_offered = True
+    appointment.extension_offered_minutes = extra_minutes
+    appointment.extension_cost_paise = extra_price_paise
+    appointment.extension_cost_coins = extra_cost_coins
+    appointment.extension_offered_at = utcnow()
+    appointment.extension_status = "pending"
+    await appointment.save()
+
+    try:
+        from app.services import realtime
+        await realtime.publish_appointment_event(
+            appointment.user_id,
+            appointment.astrologer_user_id,
+            "extension_offered",
+            {
+                "appointment_id": str(appointment.id),
+                "status": "pending",
+                "extra_minutes": extra_minutes,
+                "cost_coins": extra_cost_coins,
+                "cost_paise": extra_price_paise,
+                "offered_at": appointment.extension_offered_at.isoformat(),
+            },
+        )
+    except Exception as exc:
+        logger.debug("Failed to publish extension offer event: {}", exc)
+
+    return appointment
+
+
+async def handle_session_extension_action(
+    *,
+    appointment: Appointment,
+    by: User,
+    action: str,
+) -> Appointment:
+    """Client agrees to or declines the in-chamber extension offer."""
+    from app.models.call import CallSession
+    from app.models.enums import CallStatus
+    from app.models.wallet import TransactionRef
+    from app.services import wallet as wallet_service
+
+    if appointment.status != AppointmentStatus.BOOKED:
+        raise BadRequestError(
+            "This appointment is not active.", error_code="appointment_not_open"
+        )
+    if by.id != appointment.user_id and getattr(by, "role", None) != "admin":
+        raise ForbiddenError("Only the consulting client can respond to the extension offer.")
+
+    if not appointment.extension_offered or appointment.extension_status != "pending":
+        raise BadRequestError(
+            "No pending extension offer found for this appointment.",
+            error_code="no_pending_offer",
+        )
+
+    act = action.lower().strip()
+    if act not in ("accept", "decline"):
+        raise BadRequestError("Action must be 'accept' or 'decline'.", error_code="invalid_action")
+
+    if act == "decline":
+        appointment.extension_status = "declined"
+        appointment.extension_offered = False
+        await appointment.save()
+
+        try:
+            from app.services import realtime
+            await realtime.publish_appointment_event(
+                appointment.user_id,
+                appointment.astrologer_user_id,
+                "extension_declined",
+                {
+                    "appointment_id": str(appointment.id),
+                    "status": "declined",
+                },
+            )
+        except Exception as exc:
+            logger.debug("Failed to publish extension decline event: {}", exc)
+
+        return appointment
+
+    # act == "accept"
+    astro = await Astrologer.get(appointment.astrologer_id)
+    if astro is None:
+        raise NotFoundError("Astrologer profile not found.", error_code="astrologer_not_found")
+
+    extra_minutes = appointment.extension_offered_minutes or 10
+    cost_coins = appointment.extension_cost_coins or 0
+    cost_paise = appointment.extension_cost_paise or 0
+
+    # 1. Check client wallet balance
+    user_wallet = await wallet_service.get_or_create_wallet(appointment.user_id)
+    if user_wallet.available_coins < cost_coins:
+        raise BadRequestError(
+            f"Insufficient coins. Extension requires {cost_coins} coins, but your available balance is "
+            f"{user_wallet.available_coins} coins. Please recharge your wallet to continue.",
+            error_code="insufficient_balance",
+            details={
+                "needed_coins": cost_coins,
+                "available_coins": user_wallet.available_coins,
+            },
+        )
+
+    # 2. Check and lock extra slots
+    buffer_mins = getattr(getattr(astro, "appointment", None), "buffer_minutes", 0) or 0
+    new_ends_at = appointment.ends_at + timedelta(minutes=extra_minutes)
+    total_blocked_minutes = appointment.minutes + extra_minutes + buffer_mins
+
+    # Existing slots claimed for this appointment
+    existing_slots = await AppointmentSlot.find(
+        {"appointment_id": appointment.id}
+    ).to_list()
+    existing_starts = {s.starts_at for s in existing_slots}
+
+    # Desired slot starts
+    all_starts = set(slot_starts(appointment.starts_at, total_blocked_minutes))
+    slots_to_add = all_starts - existing_starts
+
+    new_slots: list[AppointmentSlot] = []
+    try:
+        for moment in sorted(slots_to_add):
+            slot = AppointmentSlot(
+                astrologer_id=appointment.astrologer_id,
+                appointment_id=appointment.id,
+                starts_at=moment,
+            )
+            await slot.insert()
+            new_slots.append(slot)
+    except DuplicateKeyError:
+        for s in new_slots:
+            try:
+                await s.delete()
+            except Exception:
+                pass
+        raise ConflictError(
+            "Cannot extend: A time slot during the extension period was just booked by another user.",
+            error_code="slot_clash",
+        )
+
+    # 3. Debit wallet
+    if cost_coins > 0:
+        await wallet_service.debit(
+            user_id=appointment.user_id,
+            amount_coins=cost_coins,
+            reason=TransactionReason.CONSULTATION,
+            idempotency_key=f"appointment:{appointment.id}:ext:{int(appointment.extension_offered_at.timestamp())}",
+            ref=TransactionRef(
+                session_id=appointment.id,
+                astrologer_id=appointment.astrologer_id,
+                astrologer_name=astro.display_name,
+                astrologer_image_url=astro.profile_image_url,
+                consultation_mode="video",
+            ),
+            note=f"In-chamber consultation extension (+{extra_minutes}m) with {astro.display_name}",
+        )
+
+    # 4. Update appointment
+    appointment.minutes += extra_minutes
+    appointment.ends_at = new_ends_at
+    appointment.price_paise += cost_paise
+    appointment.extension_status = "accepted"
+    appointment.extension_offered = False
+    appointment.extension_total_extended_minutes = (
+        getattr(appointment, "extension_total_extended_minutes", 0) + extra_minutes
+    )
+    await appointment.save()
+
+    # 5. Update CallSession if connected
+    if getattr(appointment, "call_session_id", None):
+        try:
+            call_session = await CallSession.get(appointment.call_session_id)
+            if call_session and call_session.status == CallStatus.ACTIVE:
+                call_session.requested_minutes += extra_minutes
+                await call_session.save()
+        except Exception as exc:
+            logger.error("Failed to update call_session duration on extension: {}", exc)
+
+    # 6. Publish realtime update
+    try:
+        from app.services import realtime
+        await realtime.publish_appointment_event(
+            appointment.user_id,
+            appointment.astrologer_user_id,
+            "extension_accepted",
+            {
+                "appointment_id": str(appointment.id),
+                "status": "accepted",
+                "extra_minutes": extra_minutes,
+                "minutes": appointment.minutes,
+                "ends_at": appointment.ends_at.isoformat(),
+                "cost_coins": cost_coins,
+            },
+        )
+    except Exception as exc:
+        logger.debug("Failed to publish extension accepted event: {}", exc)
+
+    logger.info(
+        "Appointment {} extended by {} minutes for client {} with astrologer {}",
+        appointment.id,
+        extra_minutes,
+        appointment.user_id,
+        appointment.astrologer_id,
+    )
+    return appointment
+
+

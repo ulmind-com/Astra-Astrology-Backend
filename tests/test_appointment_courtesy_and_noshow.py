@@ -9,6 +9,7 @@ from beanie import PydanticObjectId
 from app.core.exceptions import BadRequestError, ConflictError, ForbiddenError
 from app.models.appointment import Appointment, AppointmentSlot, AppointmentStatus
 from app.models.astrologer import Astrologer
+from app.models.enums import CallStatus
 from app.models.user import User
 from app.services import appointments as service
 
@@ -301,6 +302,186 @@ async def test_booking_blocked_for_blacklisted_user():
 
         assert "unavailable for your account" in str(exc_info.value.message)
         assert exc_info.value.error_code == "client_blacklisted"
+
+
+@pytest.mark.asyncio
+async def test_session_extension_offer_and_clash_detection():
+    """Astrologer offers in-chamber extension and detects clashing future bookings."""
+    now = datetime.now(UTC)
+    starts = now - timedelta(minutes=20)
+    ends = starts + timedelta(minutes=30)
+    appt_id = PydanticObjectId()
+    astro_id = PydanticObjectId()
+    astro_user_id = PydanticObjectId()
+    client_id = PydanticObjectId()
+
+    appointment = SimpleNamespace(
+        id=appt_id,
+        astrologer_id=astro_id,
+        astrologer_user_id=astro_user_id,
+        user_id=client_id,
+        starts_at=starts,
+        ends_at=ends,
+        minutes=30,
+        price_paise=60000,
+        coins_per_rupee=1,
+        status=AppointmentStatus.BOOKED,
+        extension_offered=False,
+        extension_offered_minutes=None,
+        extension_cost_paise=0,
+        extension_cost_coins=0,
+        extension_offered_at=None,
+        extension_status="none",
+        save=AsyncMock(),
+    )
+
+    astrologer_profile = SimpleNamespace(
+        id=astro_id,
+        user_id=astro_user_id,
+        display_name="Acharya Sharma",
+        appointment=SimpleNamespace(price_paise=60000, block_minutes=30, buffer_minutes=5),
+    )
+    astrologer_user = SimpleNamespace(id=astro_user_id, role="astrologer")
+
+    with patch("app.models.astrologer.Astrologer.get", AsyncMock(return_value=astrologer_profile)):
+        with patch("app.services.realtime.publish_appointment_event", AsyncMock()) as mock_pub:
+            # 1. Successful offer for 10 minutes
+            with patch("app.models.appointment.AppointmentSlot.find") as mock_slot_find:
+                mock_slot_find.return_value.first_or_none = AsyncMock(return_value=None)
+                updated = await service.offer_session_extension(
+                    appointment=appointment,
+                    by=astrologer_user,
+                    extra_minutes=10,
+                )
+                assert updated.extension_offered is True
+                assert updated.extension_offered_minutes == 10
+                assert updated.extension_status == "pending"
+                assert updated.extension_cost_paise == 20000
+                assert updated.extension_cost_coins == 200
+                assert mock_pub.called
+
+            # 2. Clash detected: another appointment booked in that window
+            with patch("app.models.appointment.AppointmentSlot.find") as mock_slot_find:
+                mock_slot_find.return_value.first_or_none = AsyncMock(
+                    return_value=SimpleNamespace(starts_at=ends + timedelta(minutes=5))
+                )
+                with pytest.raises(BadRequestError) as exc_info:
+                    await service.offer_session_extension(
+                        appointment=appointment,
+                        by=astrologer_user,
+                        extra_minutes=15,
+                    )
+                assert "overlap" in str(exc_info.value.message).lower()
+                assert exc_info.value.error_code == "extension_clash_with_future_booking"
+
+
+@pytest.mark.asyncio
+async def test_session_extension_accept_and_decline():
+    """Client can decline or accept extension with atomic wallet debit and slot locking."""
+    now = datetime.now(UTC)
+    starts = now - timedelta(minutes=25)
+    ends = starts + timedelta(minutes=30)
+    appt_id = PydanticObjectId()
+    astro_id = PydanticObjectId()
+    astro_user_id = PydanticObjectId()
+    client_id = PydanticObjectId()
+    call_id = PydanticObjectId()
+
+    appointment = SimpleNamespace(
+        id=appt_id,
+        astrologer_id=astro_id,
+        astrologer_user_id=astro_user_id,
+        user_id=client_id,
+        starts_at=starts,
+        ends_at=ends,
+        minutes=30,
+        price_paise=60000,
+        coins_per_rupee=1,
+        status=AppointmentStatus.BOOKED,
+        call_session_id=call_id,
+        extension_offered=True,
+        extension_offered_minutes=10,
+        extension_cost_paise=20000,
+        extension_cost_coins=200,
+        extension_offered_at=now,
+        extension_status="pending",
+        extension_total_extended_minutes=0,
+        save=AsyncMock(),
+    )
+
+    client_user = SimpleNamespace(id=client_id, role="user")
+    astrologer_profile = SimpleNamespace(
+        id=astro_id,
+        user_id=astro_user_id,
+        display_name="Acharya Sharma",
+        profile_image_url="https://example.com/avatar.jpg",
+        appointment=SimpleNamespace(price_paise=60000, block_minutes=30, buffer_minutes=0),
+    )
+
+    call_session = SimpleNamespace(
+        id=call_id,
+        status=CallStatus.ACTIVE,
+        requested_minutes=30,
+        save=AsyncMock(),
+    )
+
+    with patch("app.models.astrologer.Astrologer.get", AsyncMock(return_value=astrologer_profile)):
+        with patch("app.models.call.CallSession.get", AsyncMock(return_value=call_session)):
+            with patch("app.services.realtime.publish_appointment_event", AsyncMock()):
+                # 1. Decline
+                appointment_declining = SimpleNamespace(
+                    id=appt_id,
+                    astrologer_id=astro_id,
+                    astrologer_user_id=astro_user_id,
+                    user_id=client_id,
+                    starts_at=starts,
+                    ends_at=ends,
+                    minutes=30,
+                    status=AppointmentStatus.BOOKED,
+                    extension_offered=True,
+                    extension_status="pending",
+                    save=AsyncMock(),
+                )
+                declined = await service.handle_session_extension_action(
+                    appointment=appointment_declining,
+                    by=client_user,
+                    action="decline",
+                )
+                assert declined.extension_status == "declined"
+                assert declined.extension_offered is False
+
+                # 2. Accept - Insufficient wallet balance
+                with patch("app.services.wallet.get_or_create_wallet", AsyncMock(return_value=SimpleNamespace(available_coins=50))):
+                    with pytest.raises(BadRequestError) as exc_info:
+                        await service.handle_session_extension_action(
+                            appointment=appointment,
+                            by=client_user,
+                            action="accept",
+                        )
+                    assert "Insufficient coins" in str(exc_info.value.message)
+                    assert exc_info.value.error_code == "insufficient_balance"
+
+                # 3. Accept - Success
+                with patch("app.services.wallet.get_or_create_wallet", AsyncMock(return_value=SimpleNamespace(available_coins=500))):
+                    with patch("app.services.wallet.debit", AsyncMock()) as mock_debit:
+                        with patch("app.models.appointment.AppointmentSlot.find") as mock_slot_find:
+                            mock_slot_find.return_value.to_list = AsyncMock(return_value=[])
+                            with patch.object(AppointmentSlot, "get_pymongo_collection", MagicMock()):
+                                with patch("app.models.appointment.AppointmentSlot.insert", AsyncMock()):
+                                    accepted = await service.handle_session_extension_action(
+                                        appointment=appointment,
+                                        by=client_user,
+                                        action="accept",
+                                    )
+                                    assert accepted.extension_status == "accepted"
+                                    assert accepted.minutes == 40
+                                    assert accepted.price_paise == 80000
+                                    assert accepted.ends_at == ends + timedelta(minutes=10)
+                                    assert mock_debit.called
+                                    assert call_session.requested_minutes == 40
+                                    assert call_session.save.called
+
+
 
 
 
