@@ -28,9 +28,11 @@ from app.schemas.appointment import (
     BookRequest,
     CancelRequest,
     DayView,
+    NoShowRequest,
     PrescriptionUpdateRequest,
     QuoteRequest,
     Range,
+    RescheduleRequest,
     WindowInput,
     WindowOut,
 )
@@ -146,6 +148,12 @@ async def _out(
         preflight_dossier=getattr(appointment, "preflight_dossier", None),
         cosmic_synergy_score=getattr(appointment, "cosmic_synergy_score", None),
         certificate_data=getattr(appointment, "certificate_data", None),
+        rescheduled_count=getattr(appointment, "rescheduled_count", 0),
+        rescheduled_at=getattr(appointment, "rescheduled_at", None),
+        previous_starts_at=getattr(appointment, "previous_starts_at", None),
+        reschedule_reason=getattr(appointment, "reschedule_reason", None),
+        is_no_show=getattr(appointment, "is_no_show", False),
+        no_show_marked_at=getattr(appointment, "no_show_marked_at", None),
         peer=(
             peers.get(appointment.id)
             if peers is not None
@@ -537,6 +545,45 @@ async def complete(
     appointment = await service.get(appointment_id)
     completed = await service.complete(appointment=appointment, by=user)
     return ApiResponse(message="Appointment completed.", data=await _out(completed, user))
+
+
+@router.post(
+    "/{appointment_id}/reschedule",
+    response_model=ApiResponse[AppointmentOut],
+    summary="Courtesy Reschedule: 1-time free slot move by astrologer",
+)
+async def reschedule(
+    appointment_id: PydanticObjectId,
+    payload: RescheduleRequest,
+    user: CurrentUser,
+) -> ApiResponse[AppointmentOut]:
+    appointment = await service.get(appointment_id)
+    rescheduled = await service.reschedule(
+        appointment=appointment,
+        by=user,
+        new_starts_at=payload.new_starts_at,
+        reason=payload.reason,
+    )
+    return ApiResponse(message="Appointment courtesy rescheduled.", data=await _out(rescheduled, user))
+
+
+@router.post(
+    "/{appointment_id}/no-show",
+    response_model=ApiResponse[AppointmentOut],
+    summary="Mark client no-show after waiting 10-15m in chamber",
+)
+async def mark_no_show(
+    appointment_id: PydanticObjectId,
+    payload: NoShowRequest,
+    user: CurrentUser,
+) -> ApiResponse[AppointmentOut]:
+    appointment = await service.get(appointment_id)
+    marked = await service.mark_no_show(
+        appointment=appointment,
+        by=user,
+        reason=payload.reason,
+    )
+    return ApiResponse(message="Appointment marked as Client No-Show.", data=await _out(marked, user))
 
 
 @router.get(
