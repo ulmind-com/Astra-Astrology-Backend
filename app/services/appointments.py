@@ -571,8 +571,13 @@ async def cancel(
     now = utcnow()
     is_client = by.id == appointment.user_id
 
-    # If client cancels, verify cancellation grace period (Rule 5)
+    # If client cancels, verify session has not started and grace period is active (Rule 5)
     if is_client:
+        if now >= appointment.starts_at:
+            raise BadRequestError(
+                "The scheduled consultation has already started and can no longer be cancelled by the client.",
+                error_code="session_already_started",
+            )
         window_mins = getattr(appointment, "cancellation_window_minutes", 30) or 30
         deadline = appointment.cancel_deadline or (
             appointment.created_at + timedelta(minutes=window_mins)
@@ -583,6 +588,11 @@ async def cancel(
                 "This appointment can no longer be cancelled by the client.",
                 error_code="cancellation_window_expired",
             )
+    elif getattr(by, "role", None) != "admin" and now > appointment.ends_at:
+        raise BadRequestError(
+            "This appointment has already concluded and cannot be cancelled by the astrologer. Please mark it as completed.",
+            error_code="session_already_concluded",
+        )
 
     appointment.status = AppointmentStatus.CANCELLED
     appointment.cancelled_at = now
