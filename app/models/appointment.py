@@ -127,6 +127,18 @@ class Appointment(TimestampedDocument):
     # Vedic Muhurat classification calculated for the slot (amrit, shubh, labh, char, etc.)
     muhurat_type: str | None = Field(default=None, max_length=50)
 
+    # AI Pre-Flight Astrological Intelligence Dossier (generated 15m prior or on-demand)
+    preflight_dossier: dict | None = None
+
+    # Cosmic Resonance & Synastry Compatibility Score (0-100%)
+    cosmic_synergy_score: int | None = Field(default=None, ge=0, le=100)
+
+    # Post-session Divya Paramarsha PDF Certificate data
+    certificate_data: dict | None = None
+
+    # Cosmic standby waitlist for auto-fill on cancellation
+    standby_queue: list[dict] = Field(default_factory=list)
+
     class Settings:
         name = "appointments"
         indexes = [

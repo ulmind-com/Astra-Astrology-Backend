@@ -6,6 +6,7 @@ from typing import Annotated
 from beanie import PydanticObjectId
 from beanie.operators import In
 from fastapi import APIRouter, Query, status
+from fastapi.responses import HTMLResponse
 from loguru import logger
 
 from app.api.dependencies import AstrologerUser, CurrentAstrologer, CurrentUser
@@ -142,6 +143,9 @@ async def _out(
         birth_details=appointment.birth_details,
         prescription=appointment.prescription,
         muhurat_type=appointment.muhurat_type,
+        preflight_dossier=getattr(appointment, "preflight_dossier", None),
+        cosmic_synergy_score=getattr(appointment, "cosmic_synergy_score", None),
+        certificate_data=getattr(appointment, "certificate_data", None),
         peer=(
             peers.get(appointment.id)
             if peers is not None
@@ -533,3 +537,142 @@ async def complete(
     appointment = await service.get(appointment_id)
     completed = await service.complete(appointment=appointment, by=user)
     return ApiResponse(message="Appointment completed.", data=await _out(completed, user))
+
+
+@router.get(
+    "/synergy",
+    response_model=ApiResponse[dict],
+    summary="Calculate cosmic resonance compatibility index between user and astrologer",
+)
+async def get_cosmic_synergy(
+    astrologer_id: str,
+    dob: str | None = None,
+    user: CurrentUser = None,
+) -> ApiResponse[dict]:
+    from app.services.cosmic_intelligence import calculate_cosmic_synergy
+
+    profile = await Astrologer.get(PydanticObjectId(astrologer_id))
+    if profile is None:
+        raise NotFoundError("Astrologer not found.", error_code="astrologer_not_found")
+    synergy = calculate_cosmic_synergy({"dob": dob} if dob else None, profile.id)
+    return ApiResponse(message="Cosmic synergy calculated.", data=synergy)
+
+
+@router.get(
+    "/{appointment_id}/preflight",
+    response_model=ApiResponse[dict],
+    summary="Get or generate AI Astrological Pre-Flight Dossier (Astrologer & Admin only)",
+)
+async def get_preflight(
+    appointment_id: PydanticObjectId,
+    user: CurrentUser,
+) -> ApiResponse[dict]:
+    appointment = await service.get(appointment_id)
+    if appointment.astrologer_user_id != user.id and getattr(user, "role", None) != "admin":
+        raise ForbiddenError("Only the consulting astrologer or admin can access the pre-flight dossier.")
+
+    dossier = appointment.preflight_dossier
+    if not dossier:
+        from app.services.cosmic_intelligence import generate_preflight_dossier
+
+        dossier = await generate_preflight_dossier(appointment)
+    return ApiResponse(message="Pre-flight dossier fetched.", data=dossier)
+
+
+@router.get(
+    "/{appointment_id}/certificate",
+    response_model=ApiResponse[dict],
+    summary="Get Divya Paramarsha Sacred Certificate data",
+)
+async def get_certificate(
+    appointment_id: PydanticObjectId,
+    user: CurrentUser,
+) -> ApiResponse[dict]:
+    appointment = await service.get(appointment_id)
+    if not service.may_see(appointment, user):
+        raise ForbiddenError("This is not your appointment.")
+
+    cert = appointment.certificate_data
+    if not cert and appointment.status == AppointmentStatus.COMPLETED:
+        from app.services.cosmic_intelligence import generate_divya_paramarsha_certificate_data
+
+        astro = await Astrologer.get(appointment.astrologer_id)
+        client_u = await User.get(appointment.user_id)
+        if astro and client_u:
+            cert = generate_divya_paramarsha_certificate_data(appointment, astro, client_u)
+            appointment.certificate_data = cert
+            await appointment.save()
+
+    if not cert:
+        raise BadRequestError("Certificate is only generated once consultation is completed.")
+    return ApiResponse(message="Certificate fetched.", data=cert)
+
+
+@router.get(
+    "/{appointment_id}/certificate/html",
+    response_class=HTMLResponse,
+    summary="Render printable high-res Divya Paramarsha Sacred Certificate HTML",
+)
+async def get_certificate_html_endpoint(
+    appointment_id: PydanticObjectId,
+    user: CurrentUser,
+) -> HTMLResponse:
+    appointment = await service.get(appointment_id)
+    if not service.may_see(appointment, user):
+        raise ForbiddenError("This is not your appointment.")
+
+    cert = appointment.certificate_data
+    if not cert and appointment.status == AppointmentStatus.COMPLETED:
+        from app.services.cosmic_intelligence import generate_divya_paramarsha_certificate_data
+
+        astro = await Astrologer.get(appointment.astrologer_id)
+        client_u = await User.get(appointment.user_id)
+        if astro and client_u:
+            cert = generate_divya_paramarsha_certificate_data(appointment, astro, client_u)
+            appointment.certificate_data = cert
+            await appointment.save()
+
+    if not cert:
+        raise BadRequestError("Certificate is only generated once consultation is completed.")
+
+    from app.services.cosmic_intelligence import generate_certificate_html
+
+    html_content = generate_certificate_html(cert)
+    return HTMLResponse(content=html_content)
+
+
+@router.post(
+    "/{appointment_id}/standby",
+    response_model=ApiResponse[dict],
+    summary="Join the Cosmic Standby Waitlist for a booked appointment slot",
+)
+async def join_standby_waitlist(
+    appointment_id: PydanticObjectId,
+    user: CurrentUser,
+) -> ApiResponse[dict]:
+    appointment = await service.get(appointment_id)
+    if appointment.status != AppointmentStatus.BOOKED:
+        raise BadRequestError("Standby queue is only available for booked appointments.")
+
+    queue = getattr(appointment, "standby_queue", []) or []
+    if any(q.get("user_id") == str(user.id) for q in queue):
+        return ApiResponse(
+            message="You are already in the standby queue for this slot.",
+            data={"position": len(queue)},
+        )
+
+    from app.models.base import utcnow
+
+    queue.append({
+        "user_id": str(user.id),
+        "email": user.email,
+        "name": user.full_name or user.first_name or "Seeker",
+        "joined_at": utcnow().isoformat(),
+    })
+    appointment.standby_queue = queue
+    await appointment.save()
+    return ApiResponse(
+        message="Successfully joined Cosmic Standby Queue. You will be notified instantly if this slot opens up.",
+        data={"position": len(queue)},
+    )
+
