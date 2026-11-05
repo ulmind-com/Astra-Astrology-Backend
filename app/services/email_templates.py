@@ -549,3 +549,234 @@ def astrologer_welcome_email_html(name: str, email: str, password: str) -> str:
         headline=headline,
         lead_text=lead_text,
     )
+
+
+def generate_google_calendar_url(
+    title: str,
+    description: str,
+    starts_at,
+    ends_at,
+    location: str = "",
+) -> str:
+    """Generates a 1-click Google Calendar add link."""
+    import urllib.parse
+
+    fmt = "%Y%m%dT%H%M%SZ"
+    dates = f"{starts_at.strftime(fmt)}/{ends_at.strftime(fmt)}"
+    params = {
+        "action": "TEMPLATE",
+        "text": title,
+        "details": description,
+        "dates": dates,
+        "location": location,
+    }
+    return f"https://calendar.google.com/calendar/render?{urllib.parse.urlencode(params)}"
+
+
+def appointment_reminder_client_email_html(
+    *,
+    client_name: str,
+    astrologer_name: str,
+    consultation_pillar: str,
+    starts_at_str: str,
+    chamber_url: str,
+    calendar_url: str | None = None,
+) -> str:
+    """Aesthetic reminder email sent to the user/client 5 minutes before their session."""
+    app_name = settings.APP_NAME or "DivinLink"
+
+    headline = "Your consultation starts in 5 minutes! 🔔"
+    lead_text = (
+        f"Namaste {client_name}, your dedicated 1-on-1 sacred consultation with "
+        f"<strong>{astrologer_name}</strong> is scheduled to begin in just 5 minutes."
+    )
+
+    pillar_clean = (consultation_pillar or "Vedic Astrology").replace("_", " ").title()
+
+    cal_btn_html = ""
+    if calendar_url:
+        cal_btn_html = f"""
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:10px auto 0;">
+          <tr>
+            <td align="center">
+              <a href="{calendar_url}" target="_blank" style="display:inline-block;color:#78350F;background:#FEF3C7;border:1px solid #FDE68A;font-size:12px;font-weight:700;padding:8px 18px;border-radius:9999px;text-decoration:none;">
+                📅 Add to Google Calendar
+              </a>
+            </td>
+          </tr>
+        </table>
+        """
+
+    content = f"""
+      <!-- Appointment Details Card -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 20px;background:#FFFDF7;border:1.5px solid #FCD34D;border-radius:20px;box-shadow:0 4px 16px rgba(217,119,6,0.08);">
+        <tr>
+          <td style="padding:22px 24px;text-align:left;">
+            <p style="margin:0 0 4px;font-size:11px;font-weight:800;color:#B45309;text-transform:uppercase;letter-spacing:1px;">
+              Vedic Specialist
+            </p>
+            <p style="margin:0 0 14px;font-size:18px;font-weight:700;color:#1E293B;">
+              {astrologer_name}
+            </p>
+
+            <p style="margin:0 0 4px;font-size:11px;font-weight:800;color:#B45309;text-transform:uppercase;letter-spacing:1px;">
+              Focus Pillar
+            </p>
+            <p style="margin:0 0 14px;font-size:15px;font-weight:600;color:#334155;">
+              ✨ {pillar_clean}
+            </p>
+
+            <p style="margin:0 0 4px;font-size:11px;font-weight:800;color:#B45309;text-transform:uppercase;letter-spacing:1px;">
+              Scheduled Timing (IST)
+            </p>
+            <p style="margin:0;font-size:16px;font-weight:700;color:#C2410C;">
+              ⏰ {starts_at_str}
+            </p>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Primary Action CTA Button -->
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 8px;">
+        <tr>
+          <td align="center">
+            <a href="{chamber_url}" target="_blank" class="cta-button" style="display:inline-block;background:#D97706;background:linear-gradient(135deg,#F59E0B 0%,#D97706 100%);color:#ffffff;font-size:16px;font-weight:800;padding:16px 42px;border-radius:9999px;text-decoration:none;text-align:center;box-shadow:0 8px 24px rgba(217,119,6,0.35);letter-spacing:-0.2px;">
+              ✨ Enter Consultation Chamber Now &rarr;
+            </a>
+          </td>
+        </tr>
+      </table>
+
+      {cal_btn_html}
+
+      <!-- Checklist Tip Card -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px auto 0;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;">
+        <tr>
+          <td style="padding:14px 18px;text-align:left;font-size:12px;color:#475569;line-height:1.5;">
+            💡 <strong>Quick Checklist:</strong> Please ensure you are in a quiet environment with a stable internet connection. If you have specific birth charts or queries prepared, have them ready.
+          </td>
+        </tr>
+      </table>
+    """
+
+    return render_email(
+        title=f"Consultation starts in 5 minutes — {app_name}",
+        content_html=content,
+        preheader=f"Your consultation with {astrologer_name} is starting in 5 minutes.",
+        headline=headline,
+        lead_text=lead_text,
+    )
+
+
+def appointment_reminder_astrologer_email_html(
+    *,
+    astrologer_name: str,
+    client_name: str,
+    consultation_pillar: str,
+    birth_details_str: str | None = None,
+    user_note: str | None = None,
+    starts_at_str: str,
+    admin_chamber_url: str,
+    calendar_url: str | None = None,
+) -> str:
+    """Aesthetic reminder email sent to the Astrologer/Admin 5 minutes before the session."""
+    app_name = settings.APP_NAME or "DivinLink"
+
+    headline = "Incoming Client Session in 5 Minutes! 🔔"
+    lead_text = (
+        f"Namaste {astrologer_name}, client <strong>{client_name}</strong> is booked for a consultation "
+        f"starting in 5 minutes. The consultation chamber is ready."
+    )
+
+    pillar_clean = (consultation_pillar or "Vedic Astrology").replace("_", " ").title()
+
+    cal_btn_html = ""
+    if calendar_url:
+        cal_btn_html = f"""
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:10px auto 0;">
+          <tr>
+            <td align="center">
+              <a href="{calendar_url}" target="_blank" style="display:inline-block;color:#0369A1;background:#E0F2FE;border:1px solid #BAE6FD;font-size:12px;font-weight:700;padding:8px 18px;border-radius:9999px;text-decoration:none;">
+                📅 Add to Google Calendar
+              </a>
+            </td>
+          </tr>
+        </table>
+        """
+
+    birth_row = ""
+    if birth_details_str:
+        birth_row = f"""
+            <p style="margin:0 0 4px;font-size:11px;font-weight:800;color:#0369A1;text-transform:uppercase;letter-spacing:1px;">
+              Birth Details (Kundli)
+            </p>
+            <p style="margin:0 0 14px;font-size:13px;font-weight:600;color:#334155;">
+              {birth_details_str}
+            </p>
+        """
+
+    note_row = ""
+    if user_note:
+        note_row = f"""
+            <p style="margin:0 0 4px;font-size:11px;font-weight:800;color:#0369A1;text-transform:uppercase;letter-spacing:1px;">
+              Client Query / Notes
+            </p>
+            <p style="margin:0 0 14px;font-size:13px;font-weight:500;color:#475569;font-style:italic;">
+              &ldquo;{user_note}&rdquo;
+            </p>
+        """
+
+    content = f"""
+      <!-- Client Session Details Card -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 20px;background:#F0F9FF;border:1.5px solid #BAE6FD;border-radius:20px;box-shadow:0 4px 16px rgba(3,105,161,0.08);">
+        <tr>
+          <td style="padding:22px 24px;text-align:left;">
+            <p style="margin:0 0 4px;font-size:11px;font-weight:800;color:#0369A1;text-transform:uppercase;letter-spacing:1px;">
+              Client Name
+            </p>
+            <p style="margin:0 0 14px;font-size:18px;font-weight:700;color:#0F172A;">
+              {client_name}
+            </p>
+
+            <p style="margin:0 0 4px;font-size:11px;font-weight:800;color:#0369A1;text-transform:uppercase;letter-spacing:1px;">
+              Topic / Pillar
+            </p>
+            <p style="margin:0 0 14px;font-size:15px;font-weight:600;color:#1E293B;">
+              ✨ {pillar_clean}
+            </p>
+
+            {birth_row}
+            {note_row}
+
+            <p style="margin:0 0 4px;font-size:11px;font-weight:800;color:#0369A1;text-transform:uppercase;letter-spacing:1px;">
+              Time (IST)
+            </p>
+            <p style="margin:0;font-size:16px;font-weight:700;color:#0284C7;">
+              ⏰ {starts_at_str}
+            </p>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Primary Action CTA Button -->
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 8px;">
+        <tr>
+          <td align="center">
+            <a href="{admin_chamber_url}" target="_blank" class="cta-button" style="display:inline-block;background:#0284C7;background:linear-gradient(135deg,#0284C7 0%,#0369A1 100%);color:#ffffff;font-size:16px;font-weight:800;padding:16px 42px;border-radius:9999px;text-decoration:none;text-align:center;box-shadow:0 8px 24px rgba(2,132,199,0.35);letter-spacing:-0.2px;">
+              🔮 Open Astrologer Chamber &rarr;
+            </a>
+          </td>
+        </tr>
+      </table>
+
+      {cal_btn_html}
+    """
+
+    return render_email(
+        title=f"Session alert: {client_name} in 5 minutes — {app_name}",
+        content_html=content,
+        preheader=f"Upcoming session with {client_name} starts in 5 minutes.",
+        headline=headline,
+        lead_text=lead_text,
+    )
+
