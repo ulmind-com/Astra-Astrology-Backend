@@ -112,9 +112,12 @@ async def _out(
         appointment.created_at + timedelta(minutes=window_mins)
     )
     is_client = viewer.id == appointment.user_id
-    can_cancel = (not is_client) or (
-        appointment.status == AppointmentStatus.BOOKED and now <= deadline
-    )
+    if appointment.status != AppointmentStatus.BOOKED:
+        can_cancel = False
+    elif is_client:
+        can_cancel = now < deadline and now < appointment.starts_at
+    else:
+        can_cancel = True
 
     coins_rate = appointment.coins_per_rupee or 1
     balance_due_coins = service.coins_for_paise(appointment.balance_due_paise, coins_rate)
