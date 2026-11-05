@@ -69,6 +69,29 @@ def _before_send(event: dict[str, Any], hint: dict[str, Any]) -> dict[str, Any] 
     return event
 
 
+def _before_send_transaction(event: dict[str, Any], hint: dict[str, Any]) -> dict[str, Any] | None:
+    """Discards persistent WebSocket transactions so Sentry APM never generates N+1 Query issues for live sockets.
+
+    WebSockets stay open for hours as a bi-directional continuous stream. Sentry's transaction
+    profiler treats the entire open connection as a single HTTP request lifecycle and accumulates
+    all heartbeat intervals into an artificial 'N+1 Query' issue. Dropping the WebSocket transaction
+    prevents these false positive alerts while keeping standard HTTP APM transactions active.
+    """
+    txn = event.get("transaction", "")
+    op = event.get("contexts", {}).get("trace", {}).get("op", "")
+    asgi_type = event.get("tags", {}).get("asgi.type", "")
+
+    if (
+        "live" in txn
+        or txn == "app.api.v1.ws.live"
+        or op == "websocket.server"
+        or asgi_type == "websocket"
+    ):
+        return None
+
+    return event
+
+
 def init_sentry() -> bool:
     """Initializes Sentry if SENTRY_DSN is configured.
 
@@ -89,6 +112,7 @@ def init_sentry() -> bool:
         profile_lifecycle="trace",
         send_default_pii=False,
         before_send=_before_send,
+        before_send_transaction=_before_send_transaction,
         integrations=[
             StarletteIntegration(transaction_style="endpoint"),
             FastApiIntegration(transaction_style="endpoint"),
