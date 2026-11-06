@@ -52,6 +52,13 @@ class AvailabilityWindow(TimestampedDocument):
     starts_at: datetime
     ends_at: datetime
 
+    # VIP / Tatkal Emergency Window & Custom Multipliers
+    is_tatkal: bool = False
+    tatkal_multiplier: float = 1.5
+    tatkal_fixed_paise: int | None = None
+    custom_title: str | None = None
+    is_private: bool = False
+
     class Settings:
         name = "availability_windows"
         indexes = [
@@ -62,6 +69,10 @@ class AvailabilityWindow(TimestampedDocument):
             pymongo.IndexModel(
                 [("astrologer_id", pymongo.ASCENDING), ("day", pymongo.ASCENDING)],
                 name="availability_astrologer_day",
+            ),
+            pymongo.IndexModel(
+                [("astrologer_id", pymongo.ASCENDING), ("is_tatkal", pymongo.ASCENDING)],
+                name="availability_astrologer_tatkal",
             ),
         ]
 
@@ -191,6 +202,14 @@ class Appointment(TimestampedDocument):
     follow_up_notes: str | None = None
     follow_up_thread: list[dict] = Field(default_factory=list)
 
+    # VIP Tatkal & Private Invite Link Authority
+    is_tatkal: bool = False
+    tatkal_multiplier: float | None = None
+    tatkal_premium_paise: int = 0
+    tatkal_premium_coins: int = 0
+    is_private: bool = False
+    invite_code: str | None = None
+
     class Settings:
         name = "appointments"
         indexes = [
@@ -209,6 +228,46 @@ class Appointment(TimestampedDocument):
                 partialFilterExpression={"status": "booked"},
                 name="unique_active_user_booking",
             ),
+            pymongo.IndexModel(
+                [("astrologer_id", pymongo.ASCENDING), ("is_tatkal", pymongo.ASCENDING)],
+                name="appointment_astrologer_tatkal",
+            ),
+            pymongo.IndexModel(
+                [("invite_code", pymongo.ASCENDING)],
+                name="appointment_invite_code",
+            ),
+        ]
+
+
+class PrivateInviteLink(TimestampedDocument):
+    """Secure, invite-only private booking link for VIP and discreet clients.
+
+    Allows astrologers to provide customized consultation fees or private slots
+    that do not appear in the public marketplace, with optional passcode protection.
+    """
+
+    astrologer_id: PydanticObjectId
+    invite_code: str  # Unique code e.g. "VIP-XXXXXX"
+    title: str = "VIP Private Consultation"
+    client_name: str | None = None
+    client_email: str | None = None
+    has_passcode: bool = False
+    passcode_hash: str | None = None
+    custom_price_paise: int | None = None  # Custom flat fee override
+    discount_percent: float | None = None  # Optional discount % off standard rate
+    is_tatkal: bool = False
+    max_uses: int = 1
+    uses_count: int = 0
+    expires_at: datetime | None = None
+    is_active: bool = True
+    notes: str | None = None
+
+    class Settings:
+        name = "private_invite_links"
+        indexes = [
+            pymongo.IndexModel([("astrologer_id", pymongo.ASCENDING)]),
+            pymongo.IndexModel([("invite_code", pymongo.ASCENDING)], unique=True),
+            pymongo.IndexModel([("is_active", pymongo.ASCENDING)]),
         ]
 
 

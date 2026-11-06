@@ -3,7 +3,7 @@
 from beanie import Document
 
 from app.models.abuse_report import AbuseReport
-from app.models.appointment import Appointment, AppointmentSlot, AvailabilityWindow
+from app.models.appointment import Appointment, AppointmentSlot, AvailabilityWindow, PrivateInviteLink
 from app.models.astrologer import Astrologer
 from app.models.call import CallSession, ZegoCallbackEvent
 from app.models.chat import ChatMessage, ChatRead, ChatSession
@@ -52,6 +52,7 @@ DOCUMENT_MODELS: list[type[Document]] = [
     Appointment,
     AppointmentSlot,
     AvailabilityWindow,
+    PrivateInviteLink,
     ChatMessage,
     ChatRead,
     ChatSession,
@@ -85,6 +86,7 @@ __all__ = [
     "Appointment",
     "AppointmentSlot",
     "AvailabilityWindow",
+    "PrivateInviteLink",
     "ChatMessage",
     "ChatRead",
     "ChatSession",

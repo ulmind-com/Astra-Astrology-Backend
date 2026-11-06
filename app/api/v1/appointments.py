@@ -16,6 +16,7 @@ from app.models.appointment import (
     Appointment,
     AppointmentStatus,
     AvailabilityWindow,
+    PrivateInviteLink,
 )
 from app.models.astrologer import Astrologer
 from app.models.user import User
@@ -31,12 +32,15 @@ from app.schemas.appointment import (
     BrahmaPauseActionRequest,
     BrahmaPauseRequest,
     CancelRequest,
+    CreatePrivateInviteLinkRequest,
     DayView,
     ExtensionActionRequest,
     IssueFollowUpPassRequest,
     NoShowRequest,
     OfferExtensionRequest,
     PrescriptionUpdateRequest,
+    PrivateInviteLinkOut,
+    QuickTatkalWindowRequest,
     QuoteRequest,
     Range,
     RedFlagRequest,
@@ -44,6 +48,8 @@ from app.schemas.appointment import (
     RescheduleRequest,
     SendFollowUpMessageRequest,
     UpdateBTRRequest,
+    ValidatePrivateInviteResponse,
+    VerifyPasscodeRequest,
     WindowInput,
     WindowOut,
 )
@@ -181,6 +187,27 @@ async def _out(
         btr_requested_at=getattr(appointment, "btr_requested_at", None),
         btr_fulfilled=getattr(appointment, "btr_fulfilled", False),
         btr_updated_at=getattr(appointment, "btr_updated_at", None),
+        extension_offered=getattr(appointment, "extension_offered", False),
+        extension_offered_minutes=getattr(appointment, "extension_offered_minutes", None),
+        extension_cost_coins=getattr(appointment, "extension_cost_coins", 0),
+        extension_cost_paise=getattr(appointment, "extension_cost_paise", 0),
+        extension_offered_at=getattr(appointment, "extension_offered_at", None),
+        extension_status=getattr(appointment, "extension_status", "none"),
+        extension_total_extended_minutes=getattr(appointment, "extension_total_extended_minutes", 0),
+        follow_up_pass_enabled=getattr(appointment, "follow_up_pass_enabled", False),
+        follow_up_window_days=getattr(appointment, "follow_up_window_days", 7),
+        follow_up_expires_at=getattr(appointment, "follow_up_expires_at", None),
+        follow_up_max_messages=getattr(appointment, "follow_up_max_messages", 3),
+        follow_up_messages_used=getattr(appointment, "follow_up_messages_used", 0),
+        follow_up_granted_at=getattr(appointment, "follow_up_granted_at", None),
+        follow_up_notes=getattr(appointment, "follow_up_notes", None),
+        follow_up_thread=getattr(appointment, "follow_up_thread", []) or [],
+        is_tatkal=getattr(appointment, "is_tatkal", False),
+        tatkal_multiplier=getattr(appointment, "tatkal_multiplier", None),
+        tatkal_premium_paise=getattr(appointment, "tatkal_premium_paise", 0),
+        tatkal_premium_coins=getattr(appointment, "tatkal_premium_coins", 0),
+        is_private=getattr(appointment, "is_private", False),
+        invite_code=getattr(appointment, "invite_code", None),
         peer=(
             peers.get(appointment.id)
             if peers is not None
@@ -262,7 +289,17 @@ async def my_windows(
     return ApiResponse(
         message="Windows fetched.",
         data=[
-            WindowOut(id=str(w.id), day=w.day, starts_at=w.starts_at, ends_at=w.ends_at)
+            WindowOut(
+                id=str(w.id),
+                day=w.day,
+                starts_at=w.starts_at,
+                ends_at=w.ends_at,
+                is_tatkal=getattr(w, "is_tatkal", False),
+                tatkal_multiplier=getattr(w, "tatkal_multiplier", 1.5),
+                tatkal_fixed_paise=getattr(w, "tatkal_fixed_paise", None),
+                custom_title=getattr(w, "custom_title", None),
+                is_private=getattr(w, "is_private", False),
+            )
             for w in windows
         ],
     )
@@ -312,7 +349,15 @@ async def add_window(
         )
 
     window = AvailabilityWindow(
-        astrologer_id=profile.id, day=starts.date(), starts_at=starts, ends_at=ends
+        astrologer_id=profile.id,
+        day=starts.date(),
+        starts_at=starts,
+        ends_at=ends,
+        is_tatkal=payload.is_tatkal,
+        tatkal_multiplier=payload.tatkal_multiplier,
+        tatkal_fixed_paise=payload.tatkal_fixed_paise,
+        custom_title=payload.custom_title,
+        is_private=payload.is_private,
     )
     await window.insert()
 
@@ -399,6 +444,7 @@ async def my_schedule(
 async def day(
     astrologer_id: PydanticObjectId,
     on: Annotated[str, Query(description="The day, as YYYY-MM-DD")],
+    invite_code: Annotated[str | None, Query(description="Optional private invitation code")] = None,
 ) -> ApiResponse[DayView]:
     from app.services import settings as settings_service
 
@@ -417,6 +463,7 @@ async def day(
         astrologer=profile,
         day_start=chosen - timedelta(days=1),
         day_end=chosen + timedelta(days=2),
+        invite_code=invite_code,
     )
     platform = await settings_service.get_settings()
 
@@ -446,7 +493,47 @@ async def quote(payload: QuoteRequest, user: CurrentUser) -> ApiResponse[Appoint
         raise NotFoundError("Astrologer not found.", error_code="astrologer_not_found")
 
     platform = await settings_service.get_settings()
-    price = service.price_for(profile.appointment, payload.minutes)
+
+    starts = (
+        payload.starts_at.astimezone(UTC).replace(second=0, microsecond=0)
+        if payload.starts_at
+        else None
+    )
+    ends = starts + timedelta(minutes=payload.minutes) if starts else None
+
+    # Check for private invite link
+    invite_link = None
+    if payload.invite_code:
+        invite_link = await PrivateInviteLink.find_one(
+            {"invite_code": payload.invite_code, "astrologer_id": profile.id, "is_active": True}
+        )
+
+    # Check for Tatkal covering window
+    is_tatkal_slot = False
+    tatkal_multiplier = 1.0
+    tatkal_fixed_paise = None
+    if starts and ends:
+        windows = await service._windows_for(profile.id, starts, ends, include_private=True)
+        covering = service._find_covering_window(windows, starts, ends)
+        if covering and getattr(covering, "is_tatkal", False):
+            is_tatkal_slot = True
+            tatkal_multiplier = getattr(covering, "tatkal_multiplier", 1.5) or 1.5
+            tatkal_fixed_paise = getattr(covering, "tatkal_fixed_paise", None)
+    elif invite_link and invite_link.is_tatkal:
+        is_tatkal_slot = True
+
+    standard_price = service.price_for(profile.appointment, payload.minutes)
+    price = service.price_for(
+        profile.appointment,
+        payload.minutes,
+        tatkal_multiplier=tatkal_multiplier if is_tatkal_slot else None,
+        tatkal_fixed_paise=tatkal_fixed_paise,
+        custom_price_paise=getattr(invite_link, "custom_price_paise", None),
+        discount_percent=getattr(invite_link, "discount_percent", None),
+    )
+    tatkal_premium_paise = max(0, price - standard_price) if is_tatkal_slot else 0
+    tatkal_premium_coins = service.coins_for_paise(tatkal_premium_paise, platform.coins_per_rupee)
+
     deposit_paise = service.deposit_for(price, platform.appointment_commission_percent)
     deposit_coins = service.coins_for_paise(deposit_paise, platform.coins_per_rupee)
     balance_due_paise = max(price - deposit_paise, 0)
@@ -471,6 +558,11 @@ async def quote(payload: QuoteRequest, user: CurrentUser) -> ApiResponse[Appoint
             available_coins=spendable,
             balance_coins=wallet.balance_coins,
             can_afford=can_afford,
+            is_tatkal=is_tatkal_slot,
+            tatkal_multiplier=tatkal_multiplier,
+            tatkal_premium_paise=tatkal_premium_paise,
+            tatkal_premium_coins=tatkal_premium_coins,
+            is_private=bool(invite_link),
         ),
     )
 
@@ -495,6 +587,8 @@ async def book(payload: BookRequest, user: CurrentUser) -> ApiResponse[Appointme
         consultation_pillar=payload.consultation_pillar,
         kundli_id=PydanticObjectId(payload.kundli_id) if payload.kundli_id else None,
         birth_details=payload.birth_details,
+        invite_code=payload.invite_code,
+        invite_passcode=payload.invite_passcode,
     )
     return ApiResponse(message="Booked.", data=await _out(appointment, user))
 
@@ -1078,6 +1172,164 @@ async def send_appointment_follow_up_message(
     return ApiResponse(
         message="Follow-up message delivered.",
         data=await _out(updated, user),
+    )
+
+
+# ================================================================= VIP & Private Links
+@router.post(
+    "/me/private-links",
+    response_model=ApiResponse[PrivateInviteLinkOut],
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a VIP private invite-only booking link",
+)
+async def create_private_link(
+    payload: CreatePrivateInviteLinkRequest,
+    profile: CurrentAstrologer,
+) -> ApiResponse[PrivateInviteLinkOut]:
+    link = await service.create_private_invite_link(
+        astrologer=profile,
+        title=payload.title,
+        client_name=payload.client_name,
+        client_email=payload.client_email,
+        passcode=payload.passcode,
+        custom_price_paise=payload.custom_price_paise,
+        discount_percent=payload.discount_percent,
+        is_tatkal=payload.is_tatkal,
+        max_uses=payload.max_uses,
+        expires_in_hours=payload.expires_in_hours,
+        notes=payload.notes,
+    )
+    return ApiResponse(
+        message="Private invitation link created.",
+        data=PrivateInviteLinkOut(
+            id=str(link.id),
+            astrologer_id=str(link.astrologer_id),
+            invite_code=link.invite_code,
+            title=link.title,
+            client_name=link.client_name,
+            client_email=link.client_email,
+            has_passcode=link.has_passcode,
+            custom_price_paise=link.custom_price_paise,
+            discount_percent=link.discount_percent,
+            is_tatkal=link.is_tatkal,
+            max_uses=link.max_uses,
+            uses_count=link.uses_count,
+            expires_at=link.expires_at,
+            is_active=link.is_active,
+            created_at=link.created_at,
+            notes=link.notes,
+        ),
+    )
+
+
+@router.get(
+    "/me/private-links",
+    response_model=ApiResponse[list[PrivateInviteLinkOut]],
+    summary="List all my private invite-only booking links",
+)
+async def get_my_private_links(
+    profile: CurrentAstrologer,
+) -> ApiResponse[list[PrivateInviteLinkOut]]:
+    links = await service.list_private_invite_links(profile.id)
+    return ApiResponse(
+        message="Private links fetched.",
+        data=[
+            PrivateInviteLinkOut(
+                id=str(link.id),
+                astrologer_id=str(link.astrologer_id),
+                invite_code=link.invite_code,
+                title=link.title,
+                client_name=link.client_name,
+                client_email=link.client_email,
+                has_passcode=link.has_passcode,
+                custom_price_paise=link.custom_price_paise,
+                discount_percent=link.discount_percent,
+                is_tatkal=link.is_tatkal,
+                max_uses=link.max_uses,
+                uses_count=link.uses_count,
+                expires_at=link.expires_at,
+                is_active=link.is_active,
+                created_at=link.created_at,
+                notes=link.notes,
+            )
+            for link in links
+        ],
+    )
+
+
+@router.delete(
+    "/me/private-links/{link_id}",
+    response_model=MessageResponse,
+    summary="Deactivate a private invite link",
+)
+async def delete_private_link(
+    link_id: PydanticObjectId,
+    profile: CurrentAstrologer,
+) -> MessageResponse:
+    await service.deactivate_private_invite_link(link_id, profile.id)
+    return MessageResponse(message="Private invite link deactivated.")
+
+
+@router.get(
+    "/private-links/{invite_code}/validate",
+    response_model=ApiResponse[ValidatePrivateInviteResponse],
+    summary="Validate an invite code and retrieve its consultation details",
+)
+async def validate_invite_link(
+    invite_code: str,
+) -> ApiResponse[ValidatePrivateInviteResponse]:
+    data = await service.validate_private_invite_link(invite_code)
+    return ApiResponse(
+        message="Invitation link verified.",
+        data=ValidatePrivateInviteResponse(**data),
+    )
+
+
+@router.post(
+    "/private-links/{invite_code}/verify-passcode",
+    response_model=MessageResponse,
+    summary="Verify passcode for private invitation link",
+)
+async def verify_invite_passcode(
+    invite_code: str,
+    payload: VerifyPasscodeRequest,
+) -> MessageResponse:
+    await service.verify_private_invite_passcode(invite_code, payload.passcode)
+    return MessageResponse(message="Passcode verified successfully.")
+
+
+@router.post(
+    "/me/tatkal-window",
+    response_model=ApiResponse[WindowOut],
+    status_code=status.HTTP_201_CREATED,
+    summary="1-Click quick open an emergency VIP / Tatkal slot",
+)
+async def open_tatkal_window(
+    payload: QuickTatkalWindowRequest,
+    profile: CurrentAstrologer,
+) -> ApiResponse[WindowOut]:
+    window = await service.open_quick_tatkal_window(
+        astrologer=profile,
+        starts_at=payload.starts_at,
+        minutes=payload.minutes,
+        multiplier=payload.multiplier,
+        fixed_paise=payload.fixed_paise,
+        custom_title=payload.custom_title,
+        is_private=payload.is_private,
+    )
+    return ApiResponse(
+        message="Emergency VIP Tatkal slot opened successfully.",
+        data=WindowOut(
+            id=str(window.id),
+            day=window.day,
+            starts_at=window.starts_at,
+            ends_at=window.ends_at,
+            is_tatkal=window.is_tatkal,
+            tatkal_multiplier=window.tatkal_multiplier,
+            tatkal_fixed_paise=window.tatkal_fixed_paise,
+            custom_title=window.custom_title,
+            is_private=window.is_private,
+        ),
     )
 
 

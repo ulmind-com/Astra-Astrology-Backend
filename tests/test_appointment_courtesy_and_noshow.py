@@ -578,6 +578,94 @@ async def test_follow_up_pass_issue_and_messaging():
         assert exc_info.value.error_code == "follow_up_expired"
 
 
+@pytest.mark.asyncio
+async def test_vip_tatkal_and_private_invite_links():
+    """Verify VIP Tatkal slot calculations and Private Invite-Only Link lifecycle."""
+    now = datetime.now(UTC)
+    astrologer_id = PydanticObjectId()
+    card = SimpleNamespace(
+        price_paise=10000,  # Rs 100 for 30m
+        block_minutes=30,
+        tatkal_enabled=True,
+        tatkal_default_multiplier=1.5,
+    )
+    astrologer = SimpleNamespace(
+        id=astrologer_id,
+        name="Acharya Sharma",
+        slug="acharya-sharma",
+        avatar_url="https://example.com/avatar.jpg",
+        appointment=card,
+    )
+
+    # 1. Test price_for with standard vs Tatkal vs custom price vs discount
+    std_price = service.price_for(card, 30)
+    assert std_price == 10000
+
+    tatkal_price = service.price_for(card, 30, tatkal_multiplier=1.5)
+    assert tatkal_price == 15000  # 1.5x of 10000
+
+    custom_price = service.price_for(card, 30, custom_price_paise=25000)
+    assert custom_price == 25000  # Custom override
+
+    discounted_price = service.price_for(card, 30, discount_percent=20.0)
+    assert discounted_price == 8000  # 20% off 10000
+
+    from app.models.appointment import PrivateInviteLink, AvailabilityWindow
+
+    # 2. Test create_private_invite_link & verification
+    with patch.object(PrivateInviteLink, "get_pymongo_collection", return_value=MagicMock()), \
+         patch.object(PrivateInviteLink, "find_one", new=AsyncMock(return_value=None)), \
+         patch.object(PrivateInviteLink, "insert", new=AsyncMock()) as mock_insert:
+
+        link = await service.create_private_invite_link(
+            astrologer=astrologer,
+            title="Royal VIP Consultation",
+            client_name="VIP Client",
+            passcode="VipSecret99",
+            custom_price_paise=20000,
+            max_uses=2,
+            expires_in_hours=48,
+        )
+        assert link.has_passcode is True
+        assert link.passcode_hash is not None
+        assert link.custom_price_paise == 20000
+        assert link.invite_code.startswith("VIP-")
+        assert link.is_active is True
+        mock_insert.assert_awaited_once()
+
+    # 3. Test passcode verification
+    with patch.object(PrivateInviteLink, "find_one", new=AsyncMock(return_value=link)):
+        # Correct passcode
+        ok = await service.verify_private_invite_passcode(link.invite_code, "VipSecret99")
+        assert ok is True
+
+        # Incorrect passcode
+        with pytest.raises(BadRequestError) as exc_info:
+            await service.verify_private_invite_passcode(link.invite_code, "WrongPasscode")
+        assert "incorrect" in str(exc_info.value.message).lower()
+        assert exc_info.value.error_code == "invalid_passcode"
+
+    # 4. Test quick open Tatkal window
+    starts_at = now + timedelta(days=1)
+    with patch.object(AvailabilityWindow, "get_pymongo_collection", return_value=MagicMock()), \
+         patch.object(AvailabilityWindow, "find_one", new=AsyncMock(return_value=None)), \
+         patch.object(AvailabilityWindow, "insert", new=AsyncMock()) as mock_win_insert:
+
+        window = await service.open_quick_tatkal_window(
+            astrologer=astrologer,
+            starts_at=starts_at,
+            minutes=30,
+            multiplier=2.0,
+            custom_title="Instant VIP Emergency",
+            is_private=False,
+        )
+        assert window.is_tatkal is True
+        assert window.tatkal_multiplier == 2.0
+        assert window.custom_title == "Instant VIP Emergency"
+        mock_win_insert.assert_awaited_once()
+
+
+
 
 
 

@@ -30,6 +30,7 @@ from app.models.appointment import (
     Appointment,
     AppointmentSlot,
     AvailabilityWindow,
+    PrivateInviteLink,
 )
 from app.models.astrologer import Astrologer
 from app.models.base import utcnow
@@ -171,16 +172,38 @@ def calculate_slot_muhurat(moment_utc: datetime) -> dict[str, Any]:
 
 
 # ----------------------------------------------------------------- pricing
-def price_for(card, minutes: int) -> int:
+def price_for(
+    card,
+    minutes: int,
+    *,
+    tatkal_multiplier: float | None = None,
+    tatkal_fixed_paise: int | None = None,
+    custom_price_paise: int | None = None,
+    discount_percent: float | None = None,
+) -> int:
     """What a booking of this length costs, in paise.
 
     Pro rata from the astrologer's block price, so "thirty minutes for two
     hundred and fifty" also prices forty minutes without them having to say
-    so. Rounded to the nearest paisa; the money is integer from here on.
+    so. Supports custom price overrides, discount percentages, and Tatkal multipliers.
     """
     if card.block_minutes <= 0:
         return 0
-    return round(card.price_paise * minutes / card.block_minutes)
+
+    if custom_price_paise is not None and custom_price_paise >= 0:
+        base = round(custom_price_paise * minutes / card.block_minutes)
+    else:
+        base = round(card.price_paise * minutes / card.block_minutes)
+
+    if discount_percent and 0 < discount_percent <= 100:
+        base = int(base * (1.0 - discount_percent / 100.0))
+
+    if tatkal_fixed_paise is not None and tatkal_fixed_paise > 0:
+        base = round(tatkal_fixed_paise * minutes / card.block_minutes)
+    elif tatkal_multiplier and tatkal_multiplier > 1.0:
+        base = int(base * tatkal_multiplier)
+
+    return max(base, 0)
 
 
 def deposit_for(price_paise: int, commission_percent: float) -> int:
@@ -204,19 +227,26 @@ def coins_for_paise(paise: int, coins_per_rupee: int) -> int:
 
 # ------------------------------------------------------------ availability
 async def _windows_for(
-    astrologer_id: PydanticObjectId, start: datetime, end: datetime
+    astrologer_id: PydanticObjectId,
+    start: datetime,
+    end: datetime,
+    *,
+    include_private: bool = False,
 ) -> list[AvailabilityWindow]:
-    return (
-        await AvailabilityWindow.find(
-            And(
-                AvailabilityWindow.astrologer_id == astrologer_id,
-                LT(AvailabilityWindow.starts_at, end),
-                GTE(AvailabilityWindow.ends_at, start),
-            )
+    windows = await (
+        AvailabilityWindow.find(
+            {
+                "astrologer_id": astrologer_id,
+                "starts_at": {"$lt": end},
+                "ends_at": {"$gte": start},
+            }
         )
         .sort(+AvailabilityWindow.starts_at)
         .to_list()
     )
+    if not include_private:
+        windows = [w for w in windows if not getattr(w, "is_private", False)]
+    return windows
 
 
 async def booked_between(
@@ -238,11 +268,23 @@ async def booked_between(
 
 
 async def day_view(
-    *, astrologer: Astrologer, day_start: datetime, day_end: datetime
+    *,
+    astrologer: Astrologer,
+    day_start: datetime,
+    day_end: datetime,
+    invite_code: str | None = None,
 ) -> dict:
-    """What a user needs to pick a time: the open hours, what is gone, and Vedic Muhurat ratings."""
+    """What a user needs to pick a time: open hours, what is gone, Vedic Muhurat ratings, and VIP Tatkal metadata."""
     assert astrologer.id is not None
-    windows = await _windows_for(astrologer.id, day_start, day_end)
+    include_private = False
+    if invite_code:
+        invite_link = await PrivateInviteLink.find_one(
+            {"invite_code": invite_code, "astrologer_id": astrologer.id, "is_active": True}
+        )
+        if invite_link:
+            include_private = True
+
+    windows = await _windows_for(astrologer.id, day_start, day_end, include_private=include_private)
     taken = await booked_between(astrologer.id, day_start, day_end)
 
     # Pre-calculate Vedic Muhurat ratings for windows
@@ -269,7 +311,18 @@ async def day_view(
             booked_ranges.append({"starts_at": pause_start, "ends_at": pause_end})
 
     return {
-        "windows": [{"starts_at": w.starts_at, "ends_at": w.ends_at} for w in windows],
+        "windows": [
+            {
+                "starts_at": w.starts_at,
+                "ends_at": w.ends_at,
+                "is_tatkal": getattr(w, "is_tatkal", False),
+                "tatkal_multiplier": getattr(w, "tatkal_multiplier", 1.5),
+                "tatkal_fixed_paise": getattr(w, "tatkal_fixed_paise", None),
+                "custom_title": getattr(w, "custom_title", None),
+                "is_private": getattr(w, "is_private", False),
+            }
+            for w in windows
+        ],
         "booked": booked_ranges,
         "muhurat_ratings": muhurat_ratings,
         "buffer_minutes": buffer_mins,
@@ -277,6 +330,15 @@ async def day_view(
         "brahma_pause_until": astrologer.brahma_pause_until.isoformat() if astrologer.brahma_pause_until and now < astrologer.brahma_pause_until else None,
         "brahma_pause_reason": astrologer.brahma_pause_reason if astrologer.brahma_pause_until and now < astrologer.brahma_pause_until else None,
     }
+
+
+def _find_covering_window(
+    windows: list[AvailabilityWindow], starts_at: datetime, ends_at: datetime
+) -> AvailabilityWindow | None:
+    for w in windows:
+        if w.starts_at <= starts_at and ends_at <= w.ends_at:
+            return w
+    return None
 
 
 def _covered_by_a_window(
@@ -288,7 +350,7 @@ def _covered_by_a_window(
     separate stretches the astrologer offered, and a booking running across
     the join would span a gap they did not agree to.
     """
-    return any(w.starts_at <= starts_at and ends_at <= w.ends_at for w in windows)
+    return _find_covering_window(windows, starts_at, ends_at) is not None
 
 
 # ------------------------------------------------------------------ booking
@@ -319,6 +381,8 @@ async def book(
     consultation_pillar: str | None = None,
     kundli_id: PydanticObjectId | None = None,
     birth_details: dict[str, Any] | None = None,
+    invite_code: str | None = None,
+    invite_passcode: str | None = None,
 ) -> Appointment:
     """Takes a slot, takes the deposit, and writes the booking."""
     user_lock = await _get_user_booking_lock(user.id)
@@ -332,6 +396,8 @@ async def book(
             consultation_pillar=consultation_pillar,
             kundli_id=kundli_id,
             birth_details=birth_details,
+            invite_code=invite_code,
+            invite_passcode=invite_passcode,
         )
 
 
@@ -345,6 +411,8 @@ async def _book_locked(
     consultation_pillar: str | None = None,
     kundli_id: PydanticObjectId | None = None,
     birth_details: dict[str, Any] | None = None,
+    invite_code: str | None = None,
+    invite_passcode: str | None = None,
 ) -> Appointment:
     from app.services import settings as settings_service
     from app.services import wallet as wallet_service
@@ -410,15 +478,83 @@ async def _book_locked(
 
     ends_at = starts_at + timedelta(minutes=minutes)
 
-    windows = await _windows_for(astrologer.id, starts_at, ends_at)
-    if not _covered_by_a_window(windows, starts_at, ends_at):
+    windows = await _windows_for(astrologer.id, starts_at, ends_at, include_private=True)
+    covering_window = _find_covering_window(windows, starts_at, ends_at)
+    if not covering_window:
         raise BadRequestError(
             "The astrologer is not available for that whole time.",
             error_code="outside_availability",
         )
 
+    # --- Private Link Validation ---
+    invite_link: PrivateInviteLink | None = None
+    if invite_code:
+        invite_link = await PrivateInviteLink.find_one(
+            {"invite_code": invite_code, "astrologer_id": astrologer.id, "is_active": True}
+        )
+        if not invite_link:
+            raise BadRequestError(
+                "Invalid or expired private invitation link.",
+                error_code="invalid_invite_link",
+            )
+        if invite_link.expires_at and now > invite_link.expires_at:
+            raise BadRequestError(
+                "This private invitation link has expired.",
+                error_code="invite_link_expired",
+            )
+        if invite_link.uses_count >= invite_link.max_uses:
+            raise BadRequestError(
+                "This private invitation link has reached its maximum allowed uses.",
+                error_code="invite_link_exhausted",
+            )
+        if invite_link.has_passcode and invite_link.passcode_hash:
+            if not invite_passcode:
+                raise BadRequestError(
+                    "This private consultation requires a passcode.",
+                    error_code="passcode_required",
+                )
+            from app.core.security import verify_password
+
+            if not verify_password(invite_passcode, invite_link.passcode_hash):
+                raise BadRequestError(
+                    "Incorrect passcode for private consultation.",
+                    error_code="invalid_passcode",
+                )
+    elif getattr(covering_window, "is_private", False):
+        raise BadRequestError(
+            "This slot is reserved for private invitation only. Please use your private booking link.",
+            error_code="private_slot_restricted",
+        )
+
     # --- the money, worked out before anything is claimed -----------------
-    price_paise = price_for(card, minutes)
+    is_tatkal_slot = bool(
+        getattr(covering_window, "is_tatkal", False) or (invite_link and invite_link.is_tatkal)
+    )
+    tatkal_multiplier = (
+        getattr(covering_window, "tatkal_multiplier", None)
+        if getattr(covering_window, "is_tatkal", False)
+        else None
+    )
+    tatkal_fixed_paise = (
+        getattr(covering_window, "tatkal_fixed_paise", None)
+        if getattr(covering_window, "is_tatkal", False)
+        else None
+    )
+    custom_price_paise = getattr(invite_link, "custom_price_paise", None) if invite_link else None
+    discount_percent = getattr(invite_link, "discount_percent", None) if invite_link else None
+
+    standard_price_paise = price_for(card, minutes)
+    price_paise = price_for(
+        card,
+        minutes,
+        tatkal_multiplier=tatkal_multiplier,
+        tatkal_fixed_paise=tatkal_fixed_paise,
+        custom_price_paise=custom_price_paise,
+        discount_percent=discount_percent,
+    )
+    tatkal_premium_paise = max(0, price_paise - standard_price_paise) if is_tatkal_slot else 0
+    tatkal_premium_coins = coins_for_paise(tatkal_premium_paise, platform.coins_per_rupee)
+
     commission = platform.appointment_commission_percent
     deposit_paise = deposit_for(price_paise, commission)
     deposit_coins = coins_for_paise(deposit_paise, platform.coins_per_rupee)
@@ -571,9 +707,20 @@ async def _book_locked(
         birth_details=birth_details,
         muhurat_type=muhurat_type,
         cosmic_synergy_score=cosmic_synergy_score,
+        is_tatkal=is_tatkal_slot,
+        tatkal_multiplier=tatkal_multiplier,
+        tatkal_premium_paise=tatkal_premium_paise,
+        tatkal_premium_coins=tatkal_premium_coins,
+        is_private=bool(invite_link or getattr(covering_window, "is_private", False)),
+        invite_code=invite_code if invite_link else None,
     )
     try:
         await appointment.insert()
+        if invite_link:
+            invite_link.uses_count += 1
+            if invite_link.uses_count >= invite_link.max_uses:
+                invite_link.is_active = False
+            await invite_link.save()
     except DuplicateKeyError:
         # If user concurrently attempted to book a second appointment
         if deposit_debited:
@@ -2321,6 +2468,184 @@ async def send_follow_up_message(
 
     logger.info("Follow-up message sent on appointment {} by {}", appointment.id, by.email)
     return appointment, msg_item
+
+
+# ----------------------------------------------------------------- VIP & Private Links
+async def create_private_invite_link(
+    *,
+    astrologer: Astrologer,
+    title: str,
+    client_name: str | None = None,
+    client_email: str | None = None,
+    passcode: str | None = None,
+    custom_price_paise: int | None = None,
+    discount_percent: float | None = None,
+    is_tatkal: bool = False,
+    max_uses: int = 1,
+    expires_in_hours: int | None = 48,
+    notes: str | None = None,
+) -> PrivateInviteLink:
+    import secrets
+    from app.core.security import hash_password
+
+    assert astrologer.id is not None
+    # Generate unique code, e.g. "VIP-9A8B7C"
+    raw_code = f"VIP-{secrets.token_hex(3).upper()}"
+    while await PrivateInviteLink.find_one({"invite_code": raw_code}):
+        raw_code = f"VIP-{secrets.token_hex(3).upper()}"
+
+    passcode_hash = None
+    has_passcode = False
+    if passcode and passcode.strip():
+        passcode_hash = hash_password(passcode.strip())
+        has_passcode = True
+
+    expires_at = None
+    if expires_in_hours and expires_in_hours > 0:
+        expires_at = utcnow() + timedelta(hours=expires_in_hours)
+
+    link = PrivateInviteLink(
+        astrologer_id=astrologer.id,
+        invite_code=raw_code,
+        title=title.strip() or "VIP Private Consultation",
+        client_name=client_name.strip() if client_name else None,
+        client_email=client_email.strip() if client_email else None,
+        has_passcode=has_passcode,
+        passcode_hash=passcode_hash,
+        custom_price_paise=custom_price_paise,
+        discount_percent=discount_percent,
+        is_tatkal=is_tatkal,
+        max_uses=max_uses,
+        uses_count=0,
+        expires_at=expires_at,
+        is_active=True,
+        notes=notes.strip() if notes else None,
+    )
+    await link.insert()
+    logger.info(
+        "Private invite link {} created for astrologer {} (code: {})",
+        link.id,
+        astrologer.id,
+        raw_code,
+    )
+    return link
+
+
+async def list_private_invite_links(
+    astrologer_id: PydanticObjectId,
+) -> list[PrivateInviteLink]:
+    return (
+        await PrivateInviteLink.find({"astrologer_id": astrologer_id})
+        .sort(-PrivateInviteLink.created_at)
+        .to_list()
+    )
+
+
+async def deactivate_private_invite_link(
+    link_id: PydanticObjectId, astrologer_id: PydanticObjectId
+) -> None:
+    link = await PrivateInviteLink.get(link_id)
+    if not link or link.astrologer_id != astrologer_id:
+        raise NotFoundError("Private invite link not found.", error_code="link_not_found")
+    link.is_active = False
+    await link.save()
+    logger.info("Private invite link {} deactivated by astrologer {}", link_id, astrologer_id)
+
+
+async def validate_private_invite_link(invite_code: str) -> dict:
+    link = await PrivateInviteLink.find_one({"invite_code": invite_code})
+    if not link:
+        raise NotFoundError("Invitation link does not exist.", error_code="invite_not_found")
+
+    now = utcnow()
+    is_expired = bool(link.expires_at and now > link.expires_at)
+    is_active = bool(link.is_active and not is_expired and link.uses_count < link.max_uses)
+
+    astrologer = await Astrologer.get(link.astrologer_id)
+    if not astrologer:
+        raise NotFoundError("Astrologer not found.", error_code="astrologer_not_found")
+
+    return {
+        "invite_code": link.invite_code,
+        "title": link.title,
+        "astrologer_id": str(astrologer.id),
+        "astrologer_name": astrologer.name,
+        "astrologer_avatar": astrologer.avatar_url,
+        "astrologer_slug": astrologer.slug,
+        "has_passcode": link.has_passcode,
+        "is_active": is_active,
+        "is_expired": is_expired,
+        "custom_price_paise": link.custom_price_paise,
+        "discount_percent": link.discount_percent,
+        "is_tatkal": link.is_tatkal,
+        "standard_price_paise": astrologer.appointment.price_paise,
+        "block_minutes": astrologer.appointment.block_minutes,
+    }
+
+
+async def verify_private_invite_passcode(invite_code: str, passcode: str) -> bool:
+    from app.core.security import verify_password
+
+    link = await PrivateInviteLink.find_one({"invite_code": invite_code})
+    if not link or not link.is_active:
+        raise BadRequestError("Invalid or inactive invitation link.", error_code="invalid_link")
+    if not link.has_passcode or not link.passcode_hash:
+        return True
+    if not verify_password(passcode, link.passcode_hash):
+        raise BadRequestError("Incorrect invitation passcode.", error_code="invalid_passcode")
+    return True
+
+
+async def open_quick_tatkal_window(
+    *,
+    astrologer: Astrologer,
+    starts_at: datetime,
+    minutes: int = 30,
+    multiplier: float = 1.5,
+    fixed_paise: int | None = None,
+    custom_title: str | None = "VIP Emergency Tatkal Slot",
+    is_private: bool = False,
+) -> AvailabilityWindow:
+    from datetime import UTC
+    assert astrologer.id is not None
+    starts = starts_at.astimezone(UTC).replace(second=0, microsecond=0)
+    ends = starts + timedelta(minutes=minutes)
+
+    clash = await AvailabilityWindow.find_one(
+        {
+            "astrologer_id": astrologer.id,
+            "starts_at": {"$lt": ends},
+            "ends_at": {"$gte": starts},
+        }
+    )
+    if clash is not None:
+        raise BadRequestError(
+            "That emergency slot overlaps hours you have already opened.",
+            error_code="window_overlap",
+        )
+
+    window = AvailabilityWindow(
+        astrologer_id=astrologer.id,
+        day=starts.date(),
+        starts_at=starts,
+        ends_at=ends,
+        is_tatkal=True,
+        tatkal_multiplier=multiplier,
+        tatkal_fixed_paise=fixed_paise,
+        custom_title=custom_title,
+        is_private=is_private,
+    )
+    await window.insert()
+    logger.info(
+        "Quick Tatkal Window {} created for astrologer {} from {} to {} (x{})",
+        window.id,
+        astrologer.id,
+        starts,
+        ends,
+        multiplier,
+    )
+    return window
+
 
 
 

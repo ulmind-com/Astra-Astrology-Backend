@@ -14,6 +14,11 @@ class WindowInput(BaseModel):
 
     starts_at: datetime
     ends_at: datetime
+    is_tatkal: bool = False
+    tatkal_multiplier: float = 1.5
+    tatkal_fixed_paise: int | None = None
+    custom_title: str | None = None
+    is_private: bool = False
 
 
 class WindowOut(BaseModel):
@@ -23,6 +28,11 @@ class WindowOut(BaseModel):
     day: date_type
     starts_at: datetime
     ends_at: datetime
+    is_tatkal: bool = False
+    tatkal_multiplier: float = 1.5
+    tatkal_fixed_paise: int | None = None
+    custom_title: str | None = None
+    is_private: bool = False
 
 
 class AppointmentCardUpdate(BaseModel):
@@ -36,6 +46,8 @@ class AppointmentCardUpdate(BaseModel):
     follow_up_enabled: bool | None = None
     follow_up_window_days: int | None = Field(default=None, ge=1, le=30)
     follow_up_max_messages: int | None = Field(default=None, ge=1, le=20)
+    tatkal_enabled: bool | None = None
+    tatkal_default_multiplier: float | None = Field(default=None, ge=1.0, le=5.0)
 
 
 class AppointmentCardOut(BaseModel):
@@ -49,12 +61,19 @@ class AppointmentCardOut(BaseModel):
     follow_up_enabled: bool = True
     follow_up_window_days: int = 7
     follow_up_max_messages: int = 3
+    tatkal_enabled: bool = True
+    tatkal_default_multiplier: float = 1.5
 
 
 # ------------------------------------------------------------- what is free
 class Range(BaseModel):
     starts_at: datetime
     ends_at: datetime
+    is_tatkal: bool = False
+    tatkal_multiplier: float = 1.5
+    tatkal_fixed_paise: int | None = None
+    custom_title: str | None = None
+    is_private: bool = False
 
 
 class DayView(BaseModel):
@@ -77,11 +96,16 @@ class BookRequest(BaseModel):
     consultation_pillar: str | None = Field(default=None, max_length=50)
     kundli_id: str | None = None
     birth_details: dict | None = None
+    invite_code: str | None = None
+    invite_passcode: str | None = None
 
 
 class QuoteRequest(BaseModel):
     astrologer_id: str
     minutes: int = Field(ge=5, le=600)
+    starts_at: datetime | None = None
+    invite_code: str | None = None
+    invite_passcode: str | None = None
 
 
 class AppointmentQuote(BaseModel):
@@ -101,6 +125,11 @@ class AppointmentQuote(BaseModel):
     balance_coins: int
     # True only if user's available_coins >= total_coins needed for the consultation
     can_afford: bool
+    is_tatkal: bool = False
+    tatkal_multiplier: float = 1.0
+    tatkal_premium_paise: int = 0
+    tatkal_premium_coins: int = 0
+    is_private: bool = False
 
 
 class AppointmentPeer(BaseModel):
@@ -189,6 +218,14 @@ class AppointmentOut(BaseModel):
     follow_up_granted_at: datetime | None = None
     follow_up_notes: str | None = None
     follow_up_thread: list[dict] = Field(default_factory=list)
+
+    # VIP Tatkal & Private Invite Link Authority
+    is_tatkal: bool = False
+    tatkal_multiplier: float | None = None
+    tatkal_premium_paise: int = 0
+    tatkal_premium_coins: int = 0
+    is_private: bool = False
+    invite_code: str | None = None
 
     peer: AppointmentPeer | None = None
 
@@ -289,5 +326,70 @@ class IssueFollowUpPassRequest(BaseModel):
 
 class SendFollowUpMessageRequest(BaseModel):
     text: str = Field(min_length=1, max_length=1000)
+
+
+# ------------------------------------------------------------- VIP & Private Links
+class CreatePrivateInviteLinkRequest(BaseModel):
+    title: str = Field(default="VIP Private Consultation", min_length=2, max_length=100)
+    client_name: str | None = Field(default=None, max_length=100)
+    client_email: str | None = Field(default=None, max_length=150)
+    passcode: str | None = Field(default=None, max_length=50)
+    custom_price_paise: int | None = Field(default=None, ge=0, le=100_000_00)
+    discount_percent: float | None = Field(default=None, ge=0.0, le=100.0)
+    is_tatkal: bool = False
+    max_uses: int = Field(default=1, ge=1, le=1000)
+    expires_in_hours: int | None = Field(default=48, ge=1, le=8760)
+    notes: str | None = Field(default=None, max_length=500)
+
+
+class PrivateInviteLinkOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    astrologer_id: str
+    invite_code: str
+    title: str
+    client_name: str | None = None
+    client_email: str | None = None
+    has_passcode: bool = False
+    custom_price_paise: int | None = None
+    discount_percent: float | None = None
+    is_tatkal: bool = False
+    max_uses: int = 1
+    uses_count: int = 0
+    expires_at: datetime | None = None
+    is_active: bool = True
+    created_at: datetime
+    notes: str | None = None
+
+
+class ValidatePrivateInviteResponse(BaseModel):
+    invite_code: str
+    title: str
+    astrologer_id: str
+    astrologer_name: str
+    astrologer_avatar: str | None = None
+    astrologer_slug: str | None = None
+    has_passcode: bool = False
+    is_active: bool = True
+    is_expired: bool = False
+    custom_price_paise: int | None = None
+    discount_percent: float | None = None
+    is_tatkal: bool = False
+    standard_price_paise: int
+    block_minutes: int
+
+
+class VerifyPasscodeRequest(BaseModel):
+    passcode: str
+
+
+class QuickTatkalWindowRequest(BaseModel):
+    starts_at: datetime
+    minutes: int = Field(default=30, ge=15, le=180)
+    multiplier: float = Field(default=1.5, ge=1.0, le=5.0)
+    fixed_paise: int | None = Field(default=None, ge=0, le=100_000_00)
+    custom_title: str | None = Field(default="VIP Emergency Tatkal Slot", max_length=100)
+    is_private: bool = False
 
 

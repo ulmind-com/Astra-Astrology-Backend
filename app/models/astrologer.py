@@ -86,6 +86,9 @@ class AppointmentCard(BaseModel):
     follow_up_enabled: bool = True
     follow_up_window_days: int = Field(default=7, ge=1, le=30)
     follow_up_max_messages: int = Field(default=3, ge=1, le=20)
+    # VIP / Tatkal Emergency Consultation Settings
+    tatkal_enabled: bool = True
+    tatkal_default_multiplier: float = Field(default=1.5, ge=1.0, le=5.0)
 
 
 class RatingSummary(BaseModel):
