@@ -32,6 +32,7 @@ from app.models.wallet import (
     WalletTransaction,
     WebhookEvent,
 )
+from app.models.whiteboard import CallWhiteboard
 
 DOCUMENT_MODELS: list[type[Document]] = [
     User,
@@ -70,6 +71,7 @@ DOCUMENT_MODELS: list[type[Document]] = [
     AIUserMemory,
     AIChatFeedback,
     SupportTicket,
+    CallWhiteboard,
 ]
 
 __all__ = [
@@ -83,6 +85,7 @@ __all__ = [
     "Astrologer",
     "AstrologerFavorite",
     "CallSession",
+    "CallWhiteboard",
     "Appointment",
     "AppointmentSlot",
     "AvailabilityWindow",

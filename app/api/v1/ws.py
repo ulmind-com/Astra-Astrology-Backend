@@ -95,9 +95,25 @@ async def live(websocket: WebSocket, token: str | None = Query(default=None)) ->
         while True:
             # The client pings; anything arriving proves the socket is alive.
             # Nothing arriving for longer than the timeout means it is not.
-            await asyncio.wait_for(websocket.receive_text(), timeout=IDLE_TIMEOUT_SECONDS)
+            raw_text = await asyncio.wait_for(websocket.receive_text(), timeout=IDLE_TIMEOUT_SECONDS)
             connection.offer({"type": "pong"})
             await _touch_presence(astrologer_profile)
+
+            # Handle live collaborative whiteboard broadcast frames if sent over websocket
+            if raw_text and raw_text.startswith("{"):
+                try:
+                    import json
+                    msg = json.loads(raw_text)
+                    if msg.get("action") == "whiteboard_live" and msg.get("to_user"):
+                        realtime._broadcast(
+                            {
+                                "type": "whiteboard_live",
+                                "data": msg.get("data", {}),
+                            },
+                            to_user=str(msg["to_user"]),
+                        )
+                except Exception:
+                    pass
 
     except (TimeoutError, WebSocketDisconnect):
         pass

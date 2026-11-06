@@ -27,6 +27,7 @@ from app.api.v1 import (
     passkeys,
     tarot,
     support,
+    whiteboard,
 )
 
 api_router = APIRouter()
@@ -65,3 +66,4 @@ api_router.include_router(passkeys.router)
 api_router.include_router(tarot.router)
 api_router.include_router(support.router)
 api_router.include_router(support.admin_router)
+api_router.include_router(whiteboard.router)
