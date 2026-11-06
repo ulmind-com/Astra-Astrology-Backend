@@ -60,3 +60,4 @@ class CallWhiteboard(TimestampedDocument):
                 name="whiteboard_user",
             ),
         ]
+

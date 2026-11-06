@@ -100,3 +100,4 @@ async def toggle_whiteboard(
     current = await service.get_or_create_whiteboard(call_id, user)
     wb = await service.sync_whiteboard(call_id, user, WhiteboardSyncRequest(is_open=not current.is_open))
     return ApiResponse(message="Whiteboard toggled.", data=_to_out(wb))
+

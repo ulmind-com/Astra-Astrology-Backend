@@ -61,3 +61,4 @@ class WhiteboardOut(BaseModel):
     strokes: list[dict[str, Any]] = Field(default_factory=list)
 
     version: int = 1
+
