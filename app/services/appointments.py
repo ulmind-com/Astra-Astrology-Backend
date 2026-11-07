@@ -937,6 +937,13 @@ async def _book_locked(
     )
     await _notify(appointment)
 
+    # AI Pre-Flight Cosmic Dossier: Generate immediately upon booking so astrologer has it ready
+    try:
+        from app.services.cosmic_intelligence import generate_preflight_dossier
+        await generate_preflight_dossier(appointment)
+    except Exception as exc:
+        logger.warning("Auto-generation of pre-flight dossier on booking skipped for {}: {}", appointment_id, exc)
+
     # Realtime notification to both client and astrologer
     try:
         from app.services import realtime

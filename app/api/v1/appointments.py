@@ -931,13 +931,20 @@ async def get_cosmic_synergy(
 async def get_preflight(
     appointment_id: PydanticObjectId,
     user: CurrentUser,
+    refresh: bool = False,
 ) -> ApiResponse[dict]:
     appointment = await service.get(appointment_id)
-    if appointment.astrologer_user_id != user.id and getattr(user, "role", None) != "admin":
+    profile = await Astrologer.find_one(Astrologer.user_id == user.id)
+    is_authorized = (
+        appointment.astrologer_user_id == user.id
+        or (profile and profile.id == appointment.astrologer_id)
+        or getattr(user, "role", None) == "admin"
+    )
+    if not is_authorized:
         raise ForbiddenError("Only the consulting astrologer or admin can access the pre-flight dossier.")
 
     dossier = appointment.preflight_dossier
-    if not dossier:
+    if not dossier or refresh:
         from app.services.cosmic_intelligence import generate_preflight_dossier
 
         dossier = await generate_preflight_dossier(appointment)

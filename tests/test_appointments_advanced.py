@@ -61,6 +61,76 @@ def test_vedic_choghadiya_and_muhurat_calculation():
 
 
 @pytest.mark.asyncio
+async def test_ai_preflight_cosmic_dossier_synthesis():
+    """Verify AI Pre-Flight Cosmic Dossier generation with Lagna, Moon sign, Nakshatra, Dasha and afflicted planets."""
+    from unittest.mock import AsyncMock, patch
+    from beanie import PydanticObjectId
+    from app.services.cosmic_intelligence import generate_preflight_dossier
+
+    user_id = PydanticObjectId()
+    appt = Appointment.model_construct(
+        id=PydanticObjectId(),
+        astrologer_id=PydanticObjectId(),
+        astrologer_user_id=PydanticObjectId(),
+        user_id=user_id,
+        starts_at=datetime(2026, 11, 10, 10, 0, tzinfo=UTC),
+        ends_at=datetime(2026, 11, 10, 10, 30, tzinfo=UTC),
+        minutes=30,
+        consultation_pillar="career_wealth",
+        birth_details={
+            "dob": "1992-11-12",
+            "tob": "19:45",
+            "pob": "Kolkata, West Bengal, India",
+            "lat": 22.5726,
+            "lon": 88.3639,
+            "timezone": 5.5,
+        },
+    )
+
+    with patch("app.models.user.User.get", new_callable=AsyncMock) as mock_user_get, \
+         patch("app.models.appointment.Appointment.save", new_callable=AsyncMock) as mock_save:
+        mock_user = AsyncMock()
+        mock_user.full_name = "Aniket Sen"
+        mock_user.email = "aniket@example.com"
+        mock_user_get.return_value = mock_user
+
+        dossier = await generate_preflight_dossier(appt)
+
+        assert dossier["client_name"] == "Aniket Sen"
+        assert dossier["is_birth_details_available"] is True
+        assert dossier["chart_mode"] == "natal_kundli"
+
+        # Check Core Identity (Lagna, Moon, Nakshatra)
+        core = dossier["core_identity"]
+        assert "lagna" in core
+        assert "chandra_rashi" in core
+        assert "nakshatra" in core
+        assert core["lagna_bn"] != ""
+
+        # Check Current Vimshottari Dasha
+        dasha = dossier["current_vimshottari_dasha"]
+        assert "mahadasha_lord" in dasha
+        assert "antardasha_lord" in dasha
+        assert "verdict_bn" in dasha
+
+        # Check Afflicted Planets
+        assert isinstance(dossier["afflicted_planets"], list)
+
+        # Check Pillar House Analysis
+        pha = dossier["pillar_house_analysis"]
+        assert pha["pillar_key"] == "career_wealth"
+        assert 10 in pha["relevant_houses"]
+        assert len(pha["houses_details"]) == 4
+
+        # Check Executive Cosmic Diagnosis
+        diag = dossier["executive_cosmic_diagnosis"]
+        assert "core_distress_bn" in diag
+        assert "opening_ice_breaker_bn" in diag
+        assert len(diag["one_glance_cheat_sheet"]) >= 3
+        assert "gemstone" in diag["remedial_blueprint"]
+
+
+@pytest.mark.asyncio
 async def test_appointment_booking_with_pillar_and_prescription(client: AsyncClient):
     """Verify appointment creation with consultation pillar, Muhurat, and prescription workflow."""
     # Create test user

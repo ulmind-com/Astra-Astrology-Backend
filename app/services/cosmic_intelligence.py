@@ -8,7 +8,7 @@ Features:
 5. Cosmic Standby Queue auto-notifier on appointment cancellations.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 import hashlib
 from typing import Any
 import uuid
@@ -21,6 +21,186 @@ from app.models.appointment import Appointment, AppointmentStatus
 from app.models.astrologer import Astrologer
 from app.models.base import utcnow
 from app.models.user import User
+
+# Rashi Bengali Names & Natural Lords
+RASHI_META = {
+    "Aries": {"bn": "মেষ", "lord": "Mars", "lord_bn": "মঙ্গল"},
+    "Taurus": {"bn": "বৃষ", "lord": "Venus", "lord_bn": "শুক্র"},
+    "Gemini": {"bn": "মিথুন", "lord": "Mercury", "lord_bn": "বুধ"},
+    "Cancer": {"bn": "কর্কট", "lord": "Moon", "lord_bn": "চন্দ্র"},
+    "Leo": {"bn": "সিংহ", "lord": "Sun", "lord_bn": "সূর্য"},
+    "Virgo": {"bn": "কন্যা", "lord": "Mercury", "lord_bn": "বুধ"},
+    "Libra": {"bn": "তুলা", "lord": "Venus", "lord_bn": "শুক্র"},
+    "Scorpio": {"bn": "বৃশ্চিক", "lord": "Mars", "lord_bn": "মঙ্গল"},
+    "Sagittarius": {"bn": "ধনু", "lord": "Jupiter", "lord_bn": "বৃহস্পতি"},
+    "Capricorn": {"bn": "মকর", "lord": "Saturn", "lord_bn": "শনি"},
+    "Aquarius": {"bn": "কুম্ভ", "lord": "Saturn", "lord_bn": "শনি"},
+    "Pisces": {"bn": "মীন", "lord": "Jupiter", "lord_bn": "বৃহস্পতি"},
+}
+
+PLANET_BN = {
+    "Sun": "সূর্য",
+    "Moon": "চন্দ্র",
+    "Mars": "মঙ্গল",
+    "Mercury": "বুধ",
+    "Jupiter": "বৃহস্পতি",
+    "Venus": "শুক্র",
+    "Saturn": "শনি",
+    "Rahu": "রাহু",
+    "Ketu": "কেতু",
+    "Ascendant": "লগ্ন",
+}
+
+PILLAR_HOUSES_MAP = {
+    "career_wealth": {
+        "houses": [10, 2, 11, 6],
+        "titles_bn": {
+            10: "১০ম ভাব (কর্ম, ক্যারিয়ার ও সামাজিক প্রতিষ্ঠা)",
+            2: "২য় ভাব (ধন, সঞ্চয় ও পারিবারিক প্রাচুর্য)",
+            11: "১১শ ভাব (আয়, লাভ ও আকাঙ্ক্ষা পূরণ)",
+            6: "৬ষ্ঠ ভাব (চাকরি, প্রতিযোগিতা ও দৈনন্দিন দায়িত্ব)",
+        },
+        "titles_en": {
+            10: "10th House (Career, Karma & Reputation)",
+            2: "2nd House (Wealth, Liquid Assets & Family)",
+            11: "11th House (Income, Gains & Network)",
+            6: "6th House (Service, Competition & Hurdles)",
+        },
+        "default_distress_bn": "কর্মক্ষেত্রে অস্থিরতা, পদোন্নতিতে অপ্রত্যাশিত বিলম্ব অথবা আয়ের স্থায়িত্ব নিয়ে দোলাচল।",
+        "default_distress_en": "Career instability, delayed promotions or irregular financial cash flow.",
+        "ice_breaker_bn": "আপনি কি গত কিছুদিন ধরে কর্মক্ষেত্রে বা ব্যবসায়ে যোগাযোগ ও সিদ্ধান্ত নিয়ে বিভ্রান্তি বা বিলম্ব অনুভব করছেন?",
+        "ice_breaker_en": "Have you been experiencing roadblocks, dilemmas or unexpected delays in your career or financial flow recently?",
+    },
+    "love_marriage": {
+        "houses": [7, 2, 5, 8],
+        "titles_bn": {
+            7: "৭ম ভাব (দাম্পত্য, জীবনসঙ্গী ও অংশীদারি)",
+            2: "২য় ভাব (কুটুম্ব, পারিবারিক সম্প্রীতি)",
+            5: "৫ম ভাব (প্রেম, আবেগীয় আকর্ষণ ও পূর্বপূণ্য)",
+            8: "৮ম ভাব (মাঙ্গল্য, যৌথ সম্পদ ও দাম্পত্য স্থায়িত্ব)",
+        },
+        "titles_en": {
+            7: "7th House (Marriage, Spouse & Partnership)",
+            2: "2nd House (Family Harmony & Domestic Peace)",
+            5: "5th House (Romance, Emotional Bond & Intellect)",
+            8: "8th House (Marital Longevity & In-Laws)",
+        },
+        "default_distress_bn": "সম্পর্কে বোঝাপড়ার অভাব, দাম্পত্যে মানসিক দূরত্ব অথবা বিবাহ আলোচনায় বাধা।",
+        "default_distress_en": "Communication gaps in relationship, emotional distance with partner, or delayed marriage prospects.",
+        "ice_breaker_bn": "সম্পর্ক বা দাম্পত্যে কি সম্প্রতি কোনো ভুল বোঝাবুঝি বা মানসিক দূরত্ব তৈরি হয়েছে যা আপনাকে কষ্ট দিচ্ছে?",
+        "ice_breaker_en": "Has there been an emotional distance or misunderstanding in your relationship or marriage recently?",
+    },
+    "health_longevity": {
+        "houses": [6, 8, 1, 12],
+        "titles_bn": {
+            6: "৬ষ্ঠ ভাব (রোগ, শত্রু ও স্বাস্থ্য সংকট)",
+            8: "৮ম ভাব (দীর্ঘস্থায়ী ব্যাধি ও আয়ুষ্কাল)",
+            1: "১ম ভাব (তনু ভাব, রোগ প্রতিরোধ ক্ষমতা ও জীবনীশক্তি)",
+            12: "১২শ ভাব (ব্যয়, চিকিৎসা ও মানসিক শান্তি)",
+        },
+        "titles_en": {
+            6: "6th House (Diseases, Acute Ailments & Stress)",
+            8: "8th House (Chronic Conditions & Longevity)",
+            1: "1st House (Vitality, Constitution & Immunity)",
+            12: "12th House (Hospitalization, Sleep & Mental Rest)",
+        },
+        "default_distress_bn": "ক্রমাগত ক্লান্তি, মানসিক উদ্বেগ, নিদ্রাহীনতা বা চিকিৎসার পুনরাবৃত্তি।",
+        "default_distress_en": "Chronic fatigue, nervous anxiety, insomnia or repeated health consultations.",
+        "ice_breaker_bn": "শারীরিক ক্লান্তির পাশাপাশি কি মানসিক ক্লান্তি ও ঘুমের ব্যাঘাত আপনাকে বেশি ভোগাচ্ছে?",
+        "ice_breaker_en": "Along with physical fatigue, are mental exhaustion and sleep disruptions affecting you lately?",
+    },
+    "business_expansion": {
+        "houses": [7, 10, 11, 3],
+        "titles_bn": {
+            7: "৭ম ভাব (ব্যবসা, ক্লায়েন্ট ও অংশীদারি চুক্তি)",
+            10: "১০ম ভাব (বাণিজ্য বিস্তার ও কর্তৃত্ব)",
+            11: "১১শ ভাব (মুনাফা ও নগদ লাভ)",
+            3: "৩য় ভাব (উদ্যোগ, সাহস ও ঝুঁকি গ্রহণ)",
+        },
+        "titles_en": {
+            7: "7th House (Business Partners, Clients & Contracts)",
+            10: "10th House (Trade Expansion & Market Leadership)",
+            11: "11th House (Profits & ROI)",
+            3: "3rd House (Initiative, Enterprise & Courage)",
+        },
+        "default_distress_bn": "নতুন উদ্যোগে ঝুঁকি নেওয়ার ভয়, অংশীদারের সাথে মতানৈক্য বা প্রত্যাশিত মুনাফা আটকে থাকা।",
+        "default_distress_en": "Hesitation in scaling ventures, partnership friction, or cash liquidity crunch.",
+        "ice_breaker_bn": "নতুন প্রজেক্ট বা ব্যবসায়িক চুক্তি চূড়ান্ত করার পথে কি কোনো নগদ অর্থ বা অংশীদারি জটিলতা তৈরি হচ্ছে?",
+        "ice_breaker_en": "Are you facing cash liquidity bottlenecks or partnership hesitations in scaling your venture?",
+    },
+    "dosha_graha_shanti": {
+        "houses": [8, 12, 1, 7],
+        "titles_bn": {
+            8: "৮ম ভাব (অদৃষ্ট বাধা ও আকস্মিক সংকট)",
+            12: "১২শ ভাব (ক্ষতি ও মোক্ষ)",
+            1: "১ম ভাব (আত্মা ও আত্মবিশ্বাস)",
+            7: "৭ম ভাব (মঙ্গল/কুজ দোষ ও বিরোধ)",
+        },
+        "titles_en": {
+            8: "8th House (Unforeseen Obstacles & Karmic Debt)",
+            12: "12th House (Losses & Subconscious Fear)",
+            1: "1st House (Self Confidence & Vitality)",
+            7: "7th House (Manglik Tension & Opposition)",
+        },
+        "default_distress_bn": "কোনো কাজ শেষ মুহূর্তে ভেস্তে যাওয়া, নজর দোষ বা শনি-রাহুর আকস্মিক প্রতিকূল প্রভাব।",
+        "default_distress_en": "Repeated near-finish failures, unexplainable roadblocks, or intense Saturn/Rahu transit pressures.",
+        "ice_breaker_bn": "আপনার সমস্ত চেষ্টা সত্ত্বেও কি বারবার শেষ মুহূর্তে কোনো কাজ আটকে যাচ্ছে বা অদৃষ্ট বাধা আসছে?",
+        "ice_breaker_en": "Despite your best efforts, do you feel things are mysteriously stalling right at the finish line?",
+    },
+    "spiritual_guidance": {
+        "houses": [9, 12, 5, 1],
+        "titles_bn": {
+            9: "৯ম ভাব (ধর্ম, ভাগ্য, গুরু ও তীর্থযাত্রা)",
+            12: "১২শ ভাব (মোক্ষ, ধ্যান ও অন্তর্দৃষ্টি)",
+            5: "৫ম ভাব (মন্ত্র সিদ্ধি ও আধ্যাত্মিক মেধা)",
+            1: "১ম ভাব (আত্মোপলব্ধি ও সাধনা)",
+        },
+        "titles_en": {
+            9: "9th House (Dharma, Fortune & Guru Blessing)",
+            12: "12th House (Moksha, Meditation & Intuition)",
+            5: "5th House (Mantra Sadhana & Spiritual Intellect)",
+            1: "1st House (Self Realization & Soul Journey)",
+        },
+        "default_distress_bn": "জীবনের উদ্দেশ্য নিয়ে গভীর শূন্যতা, আধ্যাত্মিক দিকভ্রান্তি বা সঠিক গুরু/সাধনার অনুসন্ধান।",
+        "default_distress_en": "Existential restlessness, seeking true soul purpose and divine guru alignment.",
+        "ice_breaker_bn": "সংসার বা ক্যারিয়ারের বাইরেও কি মনের ভেতর এক ধরনের আত্মিক শূন্যতা বা পথ খোঁজার আকুলতা কাজ করছে?",
+        "ice_breaker_en": "Beyond material pursuits, are you sensing a deep spiritual calling or seeking clarity on your soul purpose?",
+    },
+}
+
+
+def _parse_dob(val: Any) -> tuple[int, int, int] | None:
+    if isinstance(val, (datetime, date)):
+        return val.day, val.month, val.year
+    if isinstance(val, str) and val.strip():
+        val = val.strip().split("T")[0]
+        for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%Y/%m/%d"):
+            try:
+                dt = datetime.strptime(val, fmt)
+                return dt.day, dt.month, dt.year
+            except ValueError:
+                pass
+    return None
+
+
+def _parse_tob(val: Any) -> tuple[int, int]:
+    if isinstance(val, str) and val.strip():
+        clean = val.strip().upper()
+        is_pm = "PM" in clean
+        is_am = "AM" in clean
+        clean = clean.replace("AM", "").replace("PM", "").strip()
+        parts = clean.split(":")
+        try:
+            h = int(parts[0])
+            m = int(parts[1]) if len(parts) > 1 else 0
+            if is_pm and h < 12:
+                h += 12
+            elif is_am and h == 12:
+                h = 0
+            return h, m
+        except Exception:
+            return 12, 0
+    return 12, 0
 
 
 def calculate_cosmic_synergy(
@@ -62,46 +242,318 @@ def calculate_cosmic_synergy(
 
 
 async def generate_preflight_dossier(appointment: Appointment) -> dict[str, Any]:
-    """Generates an executive Astrological Pre-Flight Dossier for the astrologer 15m prior to session."""
-    client_name = "Valued Client"
+    """Generates an executive AI Pre-Flight Cosmic Dossier for the astrologer.
+    
+    Analyses:
+    1. Core Identity: Client's Lagna, Chandra Rashi & Nakshatra with Pada and Lords.
+    2. Current Vimshottari Mahadasha & Antardasha with timeline and karmic phase.
+    3. Afflicted Planets (পীড়িত গ্রহ): Debilitated, Combust, Retrograde, Dusthana placements & malefic afflictions.
+    4. Consultation Pillar House Analysis: Specific house placements and lords for the consultation focus (Career, Marriage, Health, etc.).
+    5. Executive 1-Glance Cosmic Diagnosis: Core suffering description, opening ice-breaker question for the astrologer, and remedy blueprint.
+    """
+    client_name = "Valued Seeker"
+    client_email = "Not provided"
     user = await User.get(appointment.user_id)
     if user:
         client_name = user.full_name or user.first_name or client_name
+        client_email = user.email
 
     bd = appointment.birth_details or {}
-    dob = bd.get("dob") or bd.get("date_of_birth") or "Not provided"
-    tob = bd.get("tob") or bd.get("time_of_birth") or "Not provided"
-    pob = bd.get("pob") or bd.get("place_of_birth") or "Not provided"
-    pillar = (appointment.consultation_pillar or "Vedic Astrology").replace("_", " ").title()
+    dob_raw = bd.get("dob") or bd.get("date_of_birth")
+    tob_raw = bd.get("tob") or bd.get("time_of_birth")
+    pob_raw = bd.get("pob") or bd.get("place_of_birth") or bd.get("place")
+    lat_raw = bd.get("lat") or bd.get("latitude")
+    lon_raw = bd.get("lon") or bd.get("longitude")
+    tz_raw = bd.get("timezone") or bd.get("timezone_offset") or 5.5
 
-    # Pre-calculated Vedic Transits & Mahadasha Synthesis
+    # Fallback to user.birth if appointment birth_details is empty
+    if (not dob_raw or dob_raw == "Not provided") and user and hasattr(user, "birth") and user.birth:
+        if user.birth.date_of_birth:
+            dob_raw = user.birth.date_of_birth
+        if user.birth.time_of_birth:
+            tob_raw = user.birth.time_of_birth
+        if user.birth.place:
+            pob_raw = user.birth.place
+        if user.birth.latitude is not None:
+            lat_raw = user.birth.latitude
+        if user.birth.longitude is not None:
+            lon_raw = user.birth.longitude
+        if user.birth.timezone_offset is not None:
+            tz_raw = user.birth.timezone_offset
+
+    dob_parsed = _parse_dob(dob_raw)
+    is_birth_details_available = dob_parsed is not None
+
+    if is_birth_details_available and dob_parsed:
+        b_day, b_month, b_year = dob_parsed
+        b_hour, b_minute = _parse_tob(tob_raw)
+        b_place = str(pob_raw or "Kolkata, West Bengal, India")
+        b_lat = float(lat_raw) if lat_raw is not None else 22.5726
+        b_lon = float(lon_raw) if lon_raw is not None else 88.3639
+        b_tz = float(tz_raw) if tz_raw is not None else 5.5
+        chart_mode = "natal_kundli"
+        chart_mode_bn = "জন্ম কুণ্ডলী (Natal Chart)"
+    else:
+        # Fallback to Horary / Prashna Kundli based on appointment time
+        ref_dt = appointment.starts_at or utcnow()
+        ref_ist = ref_dt + timedelta(hours=5, minutes=30)
+        b_day, b_month, b_year = ref_ist.day, ref_ist.month, ref_ist.year
+        b_hour, b_minute = ref_ist.hour, ref_ist.minute
+        b_place = "Kolkata, West Bengal, India"
+        b_lat, b_lon, b_tz = 22.5726, 88.3639, 5.5
+        chart_mode = "prashna_kundli"
+        chart_mode_bn = "প্রশ্ন কুণ্ডলী (Prashna Horary Chart)"
+
+    from app.schemas.astrology import KundliCalculateRequest
+    from app.services.astrology.kundli_service import calculate_kundli
+
+    req = KundliCalculateRequest(
+        name=client_name,
+        gender="male",
+        day=b_day,
+        month=b_month,
+        year=b_year,
+        hour=b_hour,
+        minute=b_minute,
+        second=0,
+        place=b_place,
+        latitude=b_lat,
+        longitude=b_lon,
+        timezone=b_tz,
+        ayanamsa="lahiri",
+        language="bn",
+    )
+
+    kres = calculate_kundli(req)
+
+    # 1. Core Identity
+    asc_sign = kres.astro_positions.asc or "Aries"
+    asc_meta = RASHI_META.get(asc_sign, {"bn": asc_sign, "lord": "Mars", "lord_bn": "মঙ্গল"})
+    moon_sign = kres.planetary_info.rasi or "Moon"
+    moon_meta = RASHI_META.get(moon_sign, {"bn": moon_sign, "lord": "Moon", "lord_bn": "চন্দ্র"})
+    nakshatra_name = kres.planetary_info.nakshatra or "Ashwini"
+    nakshatra_lord = kres.planetary_info.nakshatra_lord or "Ketu"
+    nakshatra_lord_bn = PLANET_BN.get(nakshatra_lord.split()[0], nakshatra_lord)
+
+    core_identity = {
+        "lagna": asc_sign,
+        "lagna_bn": asc_meta["bn"],
+        "lagna_lord": asc_meta["lord"],
+        "lagna_lord_bn": asc_meta["lord_bn"],
+        "chandra_rashi": moon_sign,
+        "chandra_rashi_bn": moon_meta["bn"],
+        "chandra_lord": moon_meta["lord"],
+        "chandra_lord_bn": moon_meta["lord_bn"],
+        "nakshatra": nakshatra_name,
+        "nakshatra_bn": nakshatra_name,
+        "nakshatra_lord": nakshatra_lord,
+        "nakshatra_lord_bn": nakshatra_lord_bn,
+        "sun_sign": kres.personal_details.day or "",
+    }
+
+    # 2. Current Vimshottari Dasha
+    cd = kres.current_dasha
+    maha_lord = cd.mahadasha_lord if cd else "Jupiter"
+    antar_lord = cd.antardasha_lord if cd else "Saturn"
+    current_vimshottari_dasha = {
+        "mahadasha_lord": maha_lord,
+        "mahadasha_lord_bn": PLANET_BN.get(maha_lord, maha_lord),
+        "antardasha_lord": antar_lord,
+        "antardasha_lord_bn": PLANET_BN.get(antar_lord, antar_lord),
+        "start_date": cd.start_date if cd else "",
+        "end_date": cd.end_date if cd else "",
+        "verdict_bn": cd.verdict_bn if cd else f"বর্তমানে {maha_lord} মহাদশায় {antar_lord} অন্তর্দশা সক্রিয়।",
+        "verdict_en": cd.verdict if cd else f"Currently running {maha_lord} Mahadasha with {antar_lord} Antardasha.",
+        "karmic_phase_bn": cd.guidance_bn if cd else "এই সময়ে গ্রহের শুভাশুভ ফলাফলের ভারসাম্য বজায় রাখা জরুরি।",
+        "karmic_phase_en": cd.guidance if cd else "Karmic cycle shaping immediate events.",
+    }
+
+    # 3. Afflicted Planets (পীড়িত গ্রহ)
+    afflicted_planets = []
+    for p in kres.planetary_dignities:
+        reasons = []
+        severity = "low"
+        is_debilitated = "Debilitated" in p.dignity or "নীচস্থ" in getattr(p, "dignity_bn", "")
+        if is_debilitated:
+            reasons.append("নীচস্থ (Debilitated)")
+            severity = "high"
+        if p.is_combust:
+            reasons.append("রবির সাথে অস্তমিত (Combust)")
+            if severity != "high":
+                severity = "medium"
+        if p.is_retrograde and p.house in (6, 8, 12):
+            reasons.append(f"{p.house}ম দুঃস্থানে বক্রী (Retrograde in Trik House)")
+            severity = "high"
+        elif p.is_retrograde:
+            reasons.append("বক্রী (Retrograde Motion)")
+        elif p.house in (6, 8, 12) and p.planet in ("Moon", "Jupiter", "Venus", "Mercury"):
+            reasons.append(f"{p.house}ম দুঃস্থানে পীড়িত")
+            if severity == "low":
+                severity = "medium"
+
+        if reasons:
+            symptom_map = {
+                "Moon": ("মানসিক অস্থিরতা, অতিরিক্ত চিন্তা ও অনিদ্রা।", "Emotional anxiety, restlessness and overthinking."),
+                "Mercury": ("সিদ্ধান্ত গ্রহণে দ্বিধা, ব্যবসা বা চুক্তিতে বিভ্রান্তি।", "Indecisiveness, communication roadblocks or contract delays."),
+                "Venus": ("সম্পর্কে টানাপোড়েন ও বৈষয়িক অপ্রাপ্তি।", "Relationship friction, dissatisfaction in comforts or partnerships."),
+                "Mars": ("আকস্মিক রাগ, রক্তচাপ ও কাজের শেষ মুহূর্তে বিঘ্ন।", "Impulsiveness, anger spikes and sudden hurdles at the finish line."),
+                "Jupiter": ("গুরুজনের পরামর্শ উপেক্ষা বা আর্থিক বিনিয়োগে স্থবিরতা।", "Dilemma in big life directions, delayed expansion or investments."),
+                "Saturn": ("কঠোর পরিশ্রমের তুলনায় ধীর ফল ও মানসিক চাপ।", "Protracted delays, heaviness and feeling undervalued."),
+                "Sun": ("আত্মবিশ্বাসে আঘাত বা কর্মক্ষেত্রে কর্তৃপক্ষের সাথে দূরত্ব।", "Ego clashes with authority, self-doubt or vitality dips."),
+                "Rahu": ("অলীক চিন্তা, অতিরিক্ত মোহ ও হঠাৎ বিভ্রান্তি।", "Obsessive thoughts, anxiety and sudden illusory hopes."),
+                "Ketu": ("অনাসক্তি, দিকভ্রান্তি বা কাছের মানুষ থেকে বিচ্ছিন্নতা।", "Detachment, feeling aloof or sudden disinterest in routine goals."),
+            }
+            symptom_bn, symptom_en = symptom_map.get(
+                p.planet,
+                (f"{p.planet_bn} পীড়িত হওয়ায় সংশ্লিষ্ট ক্ষেত্রে বিঘ্ন।", f"Affliction to {p.planet} causes delays in its natural significations.")
+            )
+            afflicted_planets.append({
+                "planet": p.planet,
+                "planet_bn": PLANET_BN.get(p.planet, p.planet),
+                "house": p.house,
+                "sign": p.sign,
+                "sign_bn": RASHI_META.get(p.sign, {}).get("bn", p.sign),
+                "reasons": reasons,
+                "severity": severity,
+                "symptom_bn": symptom_bn,
+                "symptom_en": symptom_en,
+            })
+
+    # 4. Consultation Pillar House Analysis
+    raw_pillar = appointment.consultation_pillar or "career_wealth"
+    pillar_key = raw_pillar.lower().strip()
+    if pillar_key not in PILLAR_HOUSES_MAP:
+        pillar_key = "career_wealth"
+
+    p_conf = PILLAR_HOUSES_MAP[pillar_key]
+    houses_dict = {h.name.replace("house ", ""): h for h in kres.houses_table}
+
+    pillar_houses_details = []
+    for h_num in p_conf["houses"]:
+        h_str = str(h_num)
+        h_info = houses_dict.get(h_str)
+        sign_name = h_info.sign if h_info else "Aries"
+        sign_meta = RASHI_META.get(sign_name, {"bn": sign_name, "lord": "Mars", "lord_bn": "মঙ্গল"})
+        occupying = [
+            f"{PLANET_BN.get(p.planet, p.planet)} ({p.dignity_bn})"
+            for p in kres.planetary_dignities
+            if p.house == h_num
+        ]
+        occupying_en = [
+            f"{p.planet} ({p.dignity})"
+            for p in kres.planetary_dignities
+            if p.house == h_num
+        ]
+        
+        status_bn = f"{sign_meta['bn']} রাশি, রাশিপতি {sign_meta['lord_bn']}।"
+        if occupying:
+            status_bn += f" অবস্থানরত গ্রহ: {', '.join(occupying)}।"
+        else:
+            status_bn += " কোনো প্রত্যক্ষ পাপ বা শুভ গ্রহের দৃষ্টিনির্ভর।"
+
+        pillar_houses_details.append({
+            "house_num": h_num,
+            "title_bn": p_conf["titles_bn"].get(h_num, f"{h_num}ম ভাব"),
+            "title_en": p_conf["titles_en"].get(h_num, f"House {h_num}"),
+            "sign": sign_name,
+            "sign_bn": sign_meta["bn"],
+            "lord": sign_meta["lord"],
+            "lord_bn": sign_meta["lord_bn"],
+            "occupying_planets": occupying,
+            "occupying_planets_en": occupying_en,
+            "summary_bn": status_bn,
+        })
+
+    # 5. Executive Cosmic Diagnosis (কী সমস্যায় ভুগছে & 1-glance summary)
+    top_affliction = afflicted_planets[0] if afflicted_planets else None
+    if top_affliction:
+        core_distress_bn = (
+            f"ক্লায়েন্ট মূলত {p_conf['default_distress_bn']} এর পাশাপাশি "
+            f"{top_affliction['planet_bn']} এর প্রতিকূলতার কারণে {top_affliction['symptom_bn']}"
+        )
+        core_distress_en = (
+            f"Client is experiencing {p_conf['default_distress_en'].lower()} compounded by "
+            f"afflicted {top_affliction['planet']} causing {top_affliction['symptom_en'].lower()}"
+        )
+    else:
+        core_distress_bn = p_conf["default_distress_bn"]
+        core_distress_en = p_conf["default_distress_en"]
+
+    cheat_sheet = [
+        f"লগ্ন {core_identity['lagna_bn']} ও চন্দ্র {core_identity['chandra_rashi_bn']} ({core_identity['nakshatra_bn']} নক্ষত্র)।",
+        f"চলতি দশা: {current_vimshottari_dasha['mahadasha_lord_bn']} মহাদশায় {current_vimshottari_dasha['antardasha_lord_bn']} অন্তর্দশা।",
+        f"মূল সংবেদনশীল গ্রহ: {', '.join(a['planet_bn'] + ' (' + a['reasons'][0] + ')' for a in afflicted_planets[:2]) if afflicted_planets else 'গ্রহাবস্থান ভারসাম্যপূর্ণ'}।",
+        f"পরামর্শের মূল লক্ষ্য: {p_conf['titles_bn'].get(p_conf['houses'][0], 'প্রধান ভাব')} কেন্দ্রিক সমাধান প্রদান।",
+    ]
+
+    # Pre-calculated remedial directions
+    gemstone_map = {
+        "Aries": "লাল প্রবাল (Red Coral)",
+        "Taurus": "হীরা বা ওপাল (Diamond / White Opal)",
+        "Gemini": "পান্না (Emerald)",
+        "Cancer": "মুক্তা বা মুনস্টোন (Natural Pearl / Moonstone)",
+        "Leo": "রুবি বা চুনী (Ruby)",
+        "Virgo": "পান্না (Emerald)",
+        "Libra": "ওপাল বা সাদা পোখরাজ (White Zircon / Opal)",
+        "Scorpio": "লাল প্রবাল (Red Coral)",
+        "Sagittarius": "হলুদ পোখরাজ (Yellow Sapphire)",
+        "Capricorn": "নীলা বা অ্যামেথিস্ট (Blue Sapphire / Amethyst)",
+        "Aquarius": "নীলা বা নীলাভ জামাক (Blue Sapphire)",
+        "Pisces": "হলুদ পোখরাজ (Yellow Sapphire)",
+    }
+    prescribed_gem = gemstone_map.get(asc_sign, "হলুদ পোখরাজ বা পান্না")
+
+    executive_diagnosis = {
+        "core_distress_bn": core_distress_bn,
+        "core_distress_en": core_distress_en,
+        "one_glance_cheat_sheet": cheat_sheet,
+        "opening_ice_breaker_bn": p_conf["ice_breaker_bn"],
+        "opening_ice_breaker_en": p_conf["ice_breaker_en"],
+        "remedial_blueprint": {
+            "gemstone": prescribed_gem,
+            "rudraksha": "৫ মুখী বা ৭ মুখী নেপালি রুদ্রাক্ষ",
+            "mantra": f"ॐ {PLANET_BN.get(maha_lord, 'সূর্য')}য় নমঃ (১০৮ বার প্রাতঃকালে জপ)",
+            "charity_ritual": "বুধবার গরুকে সবুজ ঘাস অথবা শনিবার অভাবী ব্যক্তিদের অন্নদান।",
+        },
+    }
+
+    # Consolidated Dossier
     dossier = {
         "generated_at": utcnow().isoformat(),
         "client_name": client_name,
-        "focus_topic": pillar,
+        "client_email": client_email,
+        "is_birth_details_available": is_birth_details_available,
+        "chart_mode": chart_mode,
+        "chart_mode_bn": chart_mode_bn,
+        "focus_topic": raw_pillar.replace("_", " ").title(),
+        "focus_topic_key": pillar_key,
         "birth_snapshot": {
-            "dob": dob,
-            "tob": tob,
-            "pob": pob,
+            "dob": f"{b_year:04d}-{b_month:02d}-{b_day:02d}" if is_birth_details_available else "Not provided (Horary Used)",
+            "tob": f"{b_hour:02d}:{b_minute:02d}" if is_birth_details_available else "Appointment Time",
+            "pob": b_place,
+            "lat": b_lat,
+            "lon": b_lon,
+            "timezone": b_tz,
         },
+        "core_identity": core_identity,
+        "current_vimshottari_dasha": current_vimshottari_dasha,
+        "afflicted_planets": afflicted_planets,
+        "pillar_house_analysis": {
+            "pillar_key": pillar_key,
+            "relevant_houses": p_conf["houses"],
+            "houses_details": pillar_houses_details,
+        },
+        "executive_cosmic_diagnosis": executive_diagnosis,
+        "cosmic_synergy_score": appointment.cosmic_synergy_score or 88,
         "planetary_transits": {
-            "saturn_gochar": "Saturn transiting 10th/11th house axis — period of disciplined restructuring",
-            "jupiter_gochar": "Jupiter in friendly trine aspect — spiritual protection and gradual growth",
+            "saturn_gochar": "Saturn transiting karmic axis — disciplined restructuring",
+            "jupiter_gochar": "Jupiter in friendly trine aspect — divine protection",
             "rahu_ketu_axis": "Karmic nodal alignment in nodal axis — sudden pivots and mental unrest",
         },
-        "active_vimshottari_dasha": {
-            "mahadasha": "Planetary Mahadasha cycle active",
-            "antardasha": "Sub-period indicating karmic inflection point",
-        },
-        "ai_executive_summary": [
-            f"Client seeks divine guidance specifically on '{pillar}'. Note: {appointment.user_note or 'Seeking overall planetary alignment and guidance.'}",
-            "Lagna & Chandra indicate high sensitivity to current Saturn transit; validate their patience and provide clear chronological timelines.",
-            "Suggested remedial trajectory: Recommend consecrated gemstone along with daily Japa mantra.",
-        ],
-        "cosmic_synergy_score": appointment.cosmic_synergy_score or 88,
+        "ai_executive_summary": cheat_sheet,
     }
 
-    # Persist in appointment
+    # Persist in appointment document
     appointment.preflight_dossier = dossier
     await appointment.save()
     return dossier
