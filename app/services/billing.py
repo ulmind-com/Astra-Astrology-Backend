@@ -50,7 +50,8 @@ def _default_rate(platform: PlatformSettings, mode: ConsultationMode) -> int:
         ConsultationMode.CHAT: platform.default_chat_coins_per_minute,
         ConsultationMode.CALL: platform.default_call_coins_per_minute,
         ConsultationMode.VIDEO: platform.default_video_coins_per_minute,
-    }[mode]
+        ConsultationMode.APPOINTMENT: platform.default_video_coins_per_minute,
+    }.get(mode, platform.default_video_coins_per_minute)
 
 
 def _own_rate(profile: Astrologer, mode: ConsultationMode) -> int | None:
@@ -58,7 +59,8 @@ def _own_rate(profile: Astrologer, mode: ConsultationMode) -> int | None:
         ConsultationMode.CHAT: profile.rates.chat_coins_per_minute,
         ConsultationMode.CALL: profile.rates.call_coins_per_minute,
         ConsultationMode.VIDEO: profile.rates.video_coins_per_minute,
-    }[mode]
+        ConsultationMode.APPOINTMENT: None,
+    }.get(mode, None)
 
 
 def coin_value_paise(coins_per_rupee: int) -> int:

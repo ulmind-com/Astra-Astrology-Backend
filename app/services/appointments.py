@@ -1491,6 +1491,12 @@ async def complete(
         except Exception as exc:
             logger.error("Failed to capture held coins for appointment {}: {}", appointment.id, exc)
 
+    # Record appointment earnings in astrologer's ledger
+    try:
+        await record_appointment_earning(appointment)
+    except Exception as exc:
+        logger.error("Failed to record earnings for appointment {}: {}", appointment.id, exc)
+
     # Generate consecrated Divya Paramarsha certificate
     try:
         from app.services.cosmic_intelligence import generate_divya_paramarsha_certificate_data
@@ -1532,6 +1538,80 @@ async def complete(
         logger.debug("Realtime complete publish skipped: {}", exc)
 
     return appointment
+
+
+async def record_appointment_earning(appointment: Appointment) -> None:
+    """Creates a consolidated EarningEntry for a completed appointment.
+
+    Guarantees the astrologer is credited for the appointment in their
+    earnings ledger, and the platform commission is recorded.
+    """
+    from app.models.earning import EarningEntry
+    from app.models.enums import ConsultationMode
+
+    existing = await EarningEntry.find_one({"session_id": appointment.id})
+    if existing:
+        return
+
+    gross_paise = appointment.price_paise or 0
+    if gross_paise <= 0:
+        return
+
+    commission_percent = getattr(appointment, "commission_percent", 0.0) or 0.0
+    commission_paise = round(gross_paise * commission_percent / 100)
+    earning_paise = max(0, gross_paise - commission_paise)
+
+    deposit_coins = getattr(appointment, "deposit_coins", 0) or 0
+    held_coins = getattr(appointment, "held_coins", 0) or 0
+    total_coins = deposit_coins + held_coins
+    if total_coins <= 0:
+        total_coins = max(1, gross_paise // 100)
+
+    now = appointment.completed_at or utcnow()
+    await EarningEntry(
+        astrologer_id=appointment.astrologer_id,
+        astrologer_user_id=appointment.astrologer_user_id,
+        user_id=appointment.user_id,
+        mode=ConsultationMode.APPOINTMENT,
+        session_id=appointment.id,
+        minute_index=max(1, appointment.minutes),
+        coins_charged=total_coins,
+        gross_paise=gross_paise,
+        commission_percent=commission_percent,
+        commission_paise=commission_paise,
+        earning_paise=earning_paise,
+        created_at=now,
+    ).insert()
+    logger.info(
+        "Created EarningEntry for appointment {}: gross={} paise, astrologer_earned={} paise",
+        appointment.id,
+        gross_paise,
+        earning_paise,
+    )
+
+
+async def backfill_completed_appointment_earnings(
+    astrologer_user_id: PydanticObjectId | None = None,
+) -> int:
+    """Backfills any completed appointments that may be missing an EarningEntry."""
+    from app.models.earning import EarningEntry
+    from app.models.enums import AppointmentStatus
+
+    q: dict[str, Any] = {"status": AppointmentStatus.COMPLETED}
+    if astrologer_user_id:
+        q["astrologer_user_id"] = astrologer_user_id
+
+    completed_appts = await Appointment.find(q).to_list()
+    count = 0
+    for appt in completed_appts:
+        existing = await EarningEntry.find_one({"session_id": appt.id})
+        if not existing:
+            try:
+                await record_appointment_earning(appt)
+                count += 1
+            except Exception as e:
+                logger.error("Failed to backfill appointment earning {}: {}", appt.id, e)
+    return count
 
 
 # ------------------------------------------------------------------ prescription
@@ -2300,6 +2380,11 @@ async def red_flag_appointment(
                 appointment.held_status = "captured"
             except Exception as exc:
                 logger.error("Failed to capture held coins on red-flag for appointment {}: {}", appointment.id, exc)
+
+        try:
+            await record_appointment_earning(appointment)
+        except Exception as exc:
+            logger.error("Failed to record earnings on red-flag for appointment {}: {}", appointment.id, exc)
 
     await appointment.save()
 

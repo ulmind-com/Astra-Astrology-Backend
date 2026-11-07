@@ -408,3 +408,72 @@ class AdminEarningsSummary(BaseModel):
     payout_paise: int
     coins_charged: int
     sessions: int
+
+
+class AstrologerEarningsBalanceOut(BaseModel):
+    total_earned_paise: int
+    total_settled_paise: int
+    total_pending_paise: int
+    withdrawable_balance_paise: int
+    min_payout_amount_paise: int = 100000
+    bank_name: str | None = None
+    account_holder_name: str | None = None
+    account_number_last4: str | None = None
+    ifsc: str | None = None
+    upi_id: str | None = None
+    pan_card: str | None = None
+    has_bank_details: bool = False
+
+
+class PayoutRequestIn(BaseModel):
+    amount_paise: int = Field(ge=50000)
+    payout_method: str = "bank_transfer"
+    bank_name: str | None = None
+    account_holder_name: str | None = None
+    account_number: str | None = None
+    ifsc: str | None = None
+    upi_id: str | None = None
+
+
+class PayoutOut(BaseModel):
+    id: str
+    astrologer_id: str
+    astrologer_name: str | None = None
+    amount_paise: int
+    tds_percent: float = 0.0
+    tds_paise: int = 0
+    net_payable_paise: int
+    payout_method: str
+    bank_name: str | None = None
+    account_holder_name: str | None = None
+    account_number_last4: str | None = None
+    account_number_masked: str | None = None
+    ifsc: str | None = None
+    upi_id: str | None = None
+    status: str
+    utr_number: str | None = None
+    admin_notes: str | None = None
+    rejection_reason: str | None = None
+    requested_at: datetime
+    approved_at: datetime | None = None
+    settled_at: datetime | None = None
+    rejected_at: datetime | None = None
+
+
+class SettlePayoutIn(BaseModel):
+    utr_number: str = Field(min_length=3, max_length=100)
+    admin_notes: str | None = None
+
+
+class RejectPayoutIn(BaseModel):
+    rejection_reason: str = Field(min_length=3, max_length=500)
+
+
+class BankDetailsUpdateIn(BaseModel):
+    account_holder_name: str | None = None
+    account_number: str | None = None
+    ifsc: str | None = None
+    bank_name: str | None = None
+    upi_id: str | None = None
+    pan_card: str | None = None
+

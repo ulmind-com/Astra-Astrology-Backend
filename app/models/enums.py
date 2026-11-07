@@ -69,6 +69,7 @@ class ConsultationMode(StrEnum):
     CHAT = "chat"
     CALL = "call"
     VIDEO = "video"
+    APPOINTMENT = "appointment"
 
 
 class OtpChannel(StrEnum):

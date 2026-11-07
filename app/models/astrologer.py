@@ -107,10 +107,12 @@ class ServiceDuration(BaseModel):
 
 class BankDetails(BaseModel):
     account_holder_name: str | None = None
+    account_number: str | None = None
     account_number_last4: str | None = Field(default=None, max_length=4)
     ifsc: str | None = Field(default=None, max_length=20)
     bank_name: str | None = Field(default=None, max_length=120)
     upi_id: str | None = Field(default=None, max_length=120)
+    pan_card: str | None = Field(default=None, max_length=20)
 
 
 class GoogleCalendarSync(BaseModel):

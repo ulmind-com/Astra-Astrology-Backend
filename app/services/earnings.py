@@ -7,6 +7,7 @@ explicit about that. An admin sees the whole split.
 
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from beanie import PydanticObjectId
 
@@ -14,13 +15,26 @@ from app.models.earning import EarningEntry
 
 
 def _windows(now: datetime | None = None) -> dict[str, datetime]:
-    now = now or datetime.now(UTC)
-    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    ist = ZoneInfo("Asia/Kolkata")
+    now_utc = now or datetime.now(UTC)
+    now_ist = now_utc.astimezone(ist)
+
+    # Midnight in IST, converted back to UTC for exact timestamp comparison
+    midnight_ist = now_ist.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_utc = midnight_ist.astimezone(UTC)
+
+    # The week starts on Monday in IST
+    week_start_ist = midnight_ist - timedelta(days=midnight_ist.weekday())
+    this_week_utc = week_start_ist.astimezone(UTC)
+
+    # Start of month in IST
+    month_start_ist = midnight_ist.replace(day=1)
+    this_month_utc = month_start_ist.astimezone(UTC)
+
     return {
-        # The week starts on Monday, which is how most people read "this week".
-        "today": midnight,
-        "this_week": midnight - timedelta(days=midnight.weekday()),
-        "this_month": midnight.replace(day=1),
+        "today": today_utc,
+        "this_week": this_week_utc,
+        "this_month": this_month_utc,
         "all_time": datetime(1970, 1, 1, tzinfo=UTC),
     }
 
@@ -54,6 +68,13 @@ async def _totals(match: dict[str, Any]) -> dict[str, int]:
 
 
 async def for_astrologer(astrologer_user_id: PydanticObjectId) -> dict[str, dict[str, int]]:
+    # Sync any completed appointments not yet in ledger
+    try:
+        from app.services.appointments import backfill_completed_appointment_earnings
+        await backfill_completed_appointment_earnings(astrologer_user_id)
+    except Exception:
+        pass
+
     out: dict[str, dict[str, int]] = {}
     for name, since in _windows().items():
         out[name] = await _totals(
@@ -81,22 +102,30 @@ _SESSION_GROUP = {
 }
 
 
-async def _grouped(match: dict[str, Any], limit: int) -> list[dict[str, Any]]:
-    pipeline = [
+async def _grouped(match: dict[str, Any], limit: int, skip: int = 0) -> list[dict[str, Any]]:
+    pipeline: list[dict[str, Any]] = [
         {"$match": match},
         {"$group": _SESSION_GROUP},
         {"$sort": {"created_at": -1}},
-        {"$limit": limit},
     ]
+    if skip > 0:
+        pipeline.append({"$skip": skip})
+    pipeline.append({"$limit": limit})
     cursor = await EarningEntry.get_pymongo_collection().aggregate(pipeline)
     return [row async for row in cursor]
 
 
 async def recent_for_astrologer(
-    astrologer_user_id: PydanticObjectId, limit: int = 50
+    astrologer_user_id: PydanticObjectId,
+    limit: int = 50,
+    skip: int = 0,
+    mode: str | None = None,
 ) -> list[dict[str, Any]]:
     """One row per consultation, not per minute."""
-    return await _grouped({"astrologer_user_id": astrologer_user_id}, limit)
+    match: dict[str, Any] = {"astrologer_user_id": astrologer_user_id}
+    if mode:
+        match["mode"] = mode
+    return await _grouped(match, limit, skip)
 
 
 async def platform_totals(since: datetime | None = None) -> dict[str, int]:
@@ -106,5 +135,5 @@ async def platform_totals(since: datetime | None = None) -> dict[str, int]:
     return await _totals(match)
 
 
-async def recent_all(limit: int = 100) -> list[dict[str, Any]]:
-    return await _grouped({}, limit)
+async def recent_all(limit: int = 100, skip: int = 0) -> list[dict[str, Any]]:
+    return await _grouped({}, limit, skip)

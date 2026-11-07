@@ -8,6 +8,7 @@ from app.models.astrologer import Astrologer
 from app.models.call import CallSession, ZegoCallbackEvent
 from app.models.chat import ChatMessage, ChatRead, ChatSession
 from app.models.earning import EarningEntry
+from app.models.payout import AstrologerPayout
 from app.models.favorite import AstrologerFavorite
 from app.models.otp import OtpCode
 from app.models.pending_registration import PendingRegistration
@@ -65,6 +66,7 @@ DOCUMENT_MODELS: list[type[Document]] = [
     Review,
     AbuseReport,
     EarningEntry,
+    AstrologerPayout,
     AstrologerFavorite,
     AIKnowledgeDoc,
     AICustomRule,
@@ -102,6 +104,7 @@ __all__ = [
     "PalmRule",
     "Review",
     "EarningEntry",
+    "AstrologerPayout",
     "CoinRateChange",
     "OtpCode",
     "PaymentOrder",

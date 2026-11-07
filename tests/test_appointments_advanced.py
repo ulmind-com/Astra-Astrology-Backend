@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
@@ -821,6 +822,44 @@ async def test_auspicious_transit_surge_detection_and_activation():
         assert deact["windows_affected_count"] == 1
         assert mock_window.is_tatkal is False
         assert mock_window.tatkal_multiplier == 1.0
+
+
+@pytest.mark.asyncio
+async def test_appointment_earning_recording_and_payout_balance():
+    from app.models.appointment import Appointment
+    from app.models.earning import EarningEntry
+    from app.models.enums import ConsultationMode
+    from app.services.appointments import record_appointment_earning
+    from beanie import PydanticObjectId
+
+    mock_appt = MagicMock(spec=Appointment)
+    mock_appt.id = PydanticObjectId()
+    mock_appt.astrologer_id = PydanticObjectId()
+    mock_appt.astrologer_user_id = PydanticObjectId()
+    mock_appt.user_id = PydanticObjectId()
+    mock_appt.price_paise = 200000  # ₹2,000
+    mock_appt.commission_percent = 20.0  # 20%
+    mock_appt.minutes = 45
+    mock_appt.deposit_coins = 500
+    mock_appt.held_coins = 1500
+    mock_appt.completed_at = datetime(2026, 11, 7, 12, 0, tzinfo=UTC)
+
+    with patch("app.models.earning.EarningEntry") as mock_entry_cls:
+        mock_entry_cls.find_one = AsyncMock(return_value=None)
+        mock_instance = MagicMock()
+        mock_instance.insert = AsyncMock()
+        mock_entry_cls.return_value = mock_instance
+
+        await record_appointment_earning(mock_appt)
+
+        assert mock_entry_cls.called
+        kwargs = mock_entry_cls.call_args[1]
+        assert kwargs["gross_paise"] == 200000
+        assert kwargs["commission_paise"] == 40000  # 20% of 200,000
+        assert kwargs["earning_paise"] == 160000   # 80% of 200,000
+        assert kwargs["mode"] == ConsultationMode.APPOINTMENT
+        assert mock_instance.insert.called
+
 
 
 
