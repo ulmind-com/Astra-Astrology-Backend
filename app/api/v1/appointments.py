@@ -455,6 +455,28 @@ async def my_schedule(
     )
 
 
+@router.get(
+    "/panchang-shield",
+    summary="Get Vedic Panchang, Rahu Kaal, Yamaghanta & Auspicious Muhurats for a date",
+)
+async def panchang_shield(
+    on: Annotated[str | None, Query(description="The date, as YYYY-MM-DD")] = None,
+) -> ApiResponse[dict[str, Any]]:
+    if on:
+        try:
+            target_date = datetime.strptime(on, "%Y-%m-%d").date()
+        except ValueError:
+            raise BadRequestError("Invalid date format. Use YYYY-MM-DD.", error_code="bad_date")
+    else:
+        target_date = datetime.now(UTC).date()
+
+    shield_data = service.get_daily_panchang_shield(target_date)
+    return ApiResponse(
+        message="Daily Panchang Shield fetched successfully.",
+        data=shield_data,
+    )
+
+
 # ================================================================ the user's
 @router.get(
     "/astrologers/{astrologer_id}/day",

@@ -18,21 +18,46 @@ from app.services.appointments import (
 
 
 def test_vedic_choghadiya_and_muhurat_calculation():
-    """Verify Choghadiya, Hora & Abhijit Muhurat calculation."""
+    """Verify Choghadiya, Hora, Rahu Kaal, Yamaghanta, Gulika & Abhijit Muhurat calculation."""
+    from app.services.appointments import get_daily_panchang_shield
+
     # Test Abhijit Muhurat time (12:00 PM IST = 06:30 AM UTC)
     t_abhijit = datetime(2026, 11, 4, 6, 30, tzinfo=UTC)
     res_abhijit = calculate_slot_muhurat(t_abhijit)
     assert res_abhijit["is_abhijit"] is True
     assert res_abhijit["quality"] == "super_auspicious"
     assert "অভিজিৎ" in res_abhijit["badge_bn"]
+    assert res_abhijit["tag_color"] == "gold"
 
-    # Test an evening time (8:00 PM IST = 14:30 UTC)
-    t_evening = datetime(2026, 11, 4, 14, 30, tzinfo=UTC)
-    res_evening = calculate_slot_muhurat(t_evening)
-    assert "choghadiya" in res_evening
-    assert "badge_bn" in res_evening
-    assert "badge_hi" in res_evening
-    assert "badge_en" in res_evening
+    # Test Sunday Rahu Kaal (17:00 IST = 11:30 UTC on 2026-11-08)
+    # Sunday Rahu Kaal is 16:30 - 18:00 IST
+    t_rahu = datetime(2026, 11, 8, 11, 30, tzinfo=UTC)
+    res_rahu = calculate_slot_muhurat(t_rahu)
+    assert res_rahu["is_rahu_kaal"] is True
+    assert res_rahu["quality"] == "inauspicious"
+    assert res_rahu["tag_color"] == "red"
+    assert "রাহুকাল" in res_rahu["short_tag_bn"]
+
+    # Test Sunday Yamaghanta Kaal (12:30 IST = 07:00 UTC on 2026-11-08)
+    # Sunday Yamaghanta is 12:00 - 13:30 IST
+    t_yama = datetime(2026, 11, 8, 7, 0, tzinfo=UTC)
+    res_yama = calculate_slot_muhurat(t_yama)
+    assert res_yama["is_yamaghanta"] is True
+    assert res_yama["tag_color"] in ("gold", "amber")  # may overlap abhijit (11:45-12:35)
+
+    # Test Sunday Gulika Kaal (15:30 IST = 10:00 UTC on 2026-11-08)
+    # Sunday Gulika is 15:00 - 16:30 IST
+    t_gulika = datetime(2026, 11, 8, 10, 0, tzinfo=UTC)
+    res_gulika = calculate_slot_muhurat(t_gulika)
+    assert res_gulika["is_gulika"] is True
+    assert res_gulika["tag_color"] == "amber"
+
+    # Test Daily Panchang Shield summary
+    shield = get_daily_panchang_shield(datetime(2026, 11, 8).date())
+    assert shield["rahu_kaal"]["formatted_ist"] == "4:30 PM – 6:00 PM"
+    assert shield["yamaghanta_kaal"]["formatted_ist"] == "12:00 PM – 1:30 PM"
+    assert shield["gulika_kaal"]["formatted_ist"] == "3:00 PM – 4:30 PM"
+    assert len(shield["hourly_muhurat"]) == 24
 
 
 @pytest.mark.asyncio

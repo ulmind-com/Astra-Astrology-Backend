@@ -99,9 +99,40 @@ RAHU_KAAL_WINDOWS = {
     6: (16.5, 18.0),  # Sun 16:30 - 18:00
 }
 
+YAMAGHANTA_WINDOWS = {
+    0: (10.5, 12.0),  # Mon 10:30 - 12:00
+    1: (9.0, 10.5),   # Tue 09:00 - 10:30
+    2: (7.5, 9.0),    # Wed 07:30 - 09:00
+    3: (6.0, 7.5),    # Thu 06:00 - 07:30
+    4: (15.0, 16.5),  # Fri 15:00 - 16:30
+    5: (13.5, 15.0),  # Sat 13:30 - 15:00
+    6: (12.0, 13.5),  # Sun 12:00 - 13:30
+}
+
+GULIKA_WINDOWS = {
+    0: (13.5, 15.0),  # Mon 13:30 - 15:00
+    1: (12.0, 13.5),  # Tue 12:00 - 13:30
+    2: (10.5, 12.0),  # Wed 10:30 - 12:00
+    3: (9.0, 10.5),   # Thu 09:00 - 10:30
+    4: (7.5, 9.0),    # Fri 07:30 - 09:00
+    5: (6.0, 7.5),    # Sat 06:00 - 07:30
+    6: (15.0, 16.5),  # Sun 15:00 - 16:30
+}
+
+
+def _format_decimal_hours_ist(dec: float) -> str:
+    h = int(dec)
+    m = int(round((dec - h) * 60))
+    if m >= 60:
+        h += 1
+        m = 0
+    period = "AM" if h < 12 else "PM"
+    display_h = 12 if h in (0, 12) else (h % 12)
+    return f"{display_h}:{m:02d} {period}"
+
 
 def calculate_slot_muhurat(moment_utc: datetime) -> dict[str, Any]:
-    """Computes Vedic Choghadiya, Hora & Rahu Kaal quality for any time slot."""
+    """Computes Vedic Choghadiya, Hora, Rahu Kaal, Yamaghanta & Gulika quality for any time slot."""
     # Convert UTC to Indian Standard Time (+05:30)
     ist = moment_utc + timedelta(hours=5, minutes=30)
     weekday = ist.weekday()  # Monday = 0, Sunday = 6
@@ -113,7 +144,19 @@ def calculate_slot_muhurat(moment_utc: datetime) -> dict[str, Any]:
         if r_start <= hour_decimal < r_end:
             is_rahu = True
 
-    is_abhijit = 11.75 <= hour_decimal < 12.55  # ~11:45 AM - 12:35 PM
+    is_yamaghanta = False
+    if weekday in YAMAGHANTA_WINDOWS:
+        y_start, y_end = YAMAGHANTA_WINDOWS[weekday]
+        if y_start <= hour_decimal < y_end:
+            is_yamaghanta = True
+
+    is_gulika = False
+    if weekday in GULIKA_WINDOWS:
+        g_start, g_end = GULIKA_WINDOWS[weekday]
+        if g_start <= hour_decimal < g_end:
+            is_gulika = True
+
+    is_abhijit = 11.75 <= hour_decimal < 12.58  # ~11:45 AM - 12:35 PM
 
     # Day Choghadiya: 06:00 to 18:00 (8 parts of 1.5h = 90m)
     # Night Choghadiya: 18:00 to 06:00
@@ -127,48 +170,156 @@ def calculate_slot_muhurat(moment_utc: datetime) -> dict[str, Any]:
         part_idx = max(0, min(7, part_idx))
         choghadiya = NIGHT_CHOGHADIYA[weekday][part_idx]
 
+    is_amrit = (choghadiya == "amrit")
+    is_ravi_yoga = (choghadiya in ("shubh", "labh") and not is_rahu and not is_yamaghanta)
+
+    # Precedence: Abhijit > Amrit > Rahu Kaal (Alert) > Yamaghanta (Alert) > Gulika > Shubh/Labh > Char > Normal
     if is_abhijit:
         quality = "super_auspicious"
+        tag_color = "gold"
         badge_bn = "অভিজিৎ মুহূর্ত (সর্বাধিক শুভ)"
         badge_hi = "अभिजित मुहूर्त (परम शुभ)"
         badge_en = "Abhijit Muhurat (Highest Auspicious)"
-    elif choghadiya == "amrit":
+        short_tag_bn = "অভিজিৎ"
+        short_tag_en = "Abhijit"
+    elif is_amrit:
         quality = "super_auspicious"
+        tag_color = "gold"
         badge_bn = "অমৃত মুহূর্ত (পরম শুভ)"
         badge_hi = "अमृत मुहूर्त (परम शुभ)"
         badge_en = "Amrit Muhurat (Divine Best)"
+        short_tag_bn = "অমৃত কাল"
+        short_tag_en = "Amrit Kaal"
+    elif is_rahu:
+        quality = "inauspicious"
+        tag_color = "red"
+        badge_bn = "রাহু কাল (অশুভ সময় / প্রতিকার অনুকূল)"
+        badge_hi = "राहु काल (अशुभ समय)"
+        badge_en = "Rahu Kaal (Inauspicious / Remedial Only)"
+        short_tag_bn = "রাহুকাল"
+        short_tag_en = "Rahu Kaal"
+    elif is_yamaghanta:
+        quality = "inauspicious"
+        tag_color = "amber"
+        badge_bn = "যমঘণ্ট কাল (অশুভ সময়)"
+        badge_hi = "यमघंट काल (अशुभ समय)"
+        badge_en = "Yamaghanta Kaal (Inauspicious)"
+        short_tag_bn = "যমঘণ্ট"
+        short_tag_en = "Yamaghanta"
+    elif is_gulika:
+        quality = "inauspicious"
+        tag_color = "amber"
+        badge_bn = "গুলিকা কাল (সতর্ক সময়)"
+        badge_hi = "गुलिका काल (अशुभ समय)"
+        badge_en = "Gulika Kaal (Cautionary)"
+        short_tag_bn = "গুলিকা"
+        short_tag_en = "Gulika"
     elif choghadiya in ("shubh", "labh"):
         quality = "auspicious"
+        tag_color = "green"
         name_bn = "শুভ" if choghadiya == "shubh" else "লাভ"
         name_hi = "शुभ" if choghadiya == "shubh" else "लाभ"
         name_en = "Shubh" if choghadiya == "shubh" else "Labh"
-        badge_bn = f"{name_bn} চোঘড়িয়া (কল্যাণকর)"
-        badge_hi = f"{name_hi} मुहूर्त (शुभ)"
-        badge_en = f"{name_en} Muhurat (Auspicious)"
+        badge_bn = f"{name_bn} চোঘড়িয়া / রবি যোগ (কল্যাণকর)"
+        badge_hi = f"{name_hi} मुहूर्त / रवि योग (शुभ)"
+        badge_en = f"{name_en} Muhurat / Ravi Yoga (Auspicious)"
+        short_tag_bn = f"{name_bn} যোগ"
+        short_tag_en = f"{name_en} Yoga"
     elif choghadiya == "char":
         quality = "neutral"
+        tag_color = "slate"
         badge_bn = "চর মুহূর্ত (গতিশীল)"
         badge_hi = "चर मुहूर्त (गतिशील)"
         badge_en = "Char Muhurat (Active)"
-    elif is_rahu:
-        quality = "remedial"
-        badge_bn = "রাহু কাল (প্রতিকার অনুকূল)"
-        badge_hi = "राहु काल (उपाय चर्चा)"
-        badge_en = "Rahu Kaal (Remedial Focus)"
+        short_tag_bn = "চর কাল"
+        short_tag_en = "Char Kaal"
     else:
         quality = "normal"
+        tag_color = "slate"
         badge_bn = "সাধারণ সময়"
         badge_hi = "सामान्य समय"
         badge_en = "Standard Slot"
+        short_tag_bn = "সাধারণ"
+        short_tag_en = "Standard"
 
     return {
         "choghadiya": choghadiya,
         "quality": quality,
+        "tag_color": tag_color,
         "is_rahu_kaal": is_rahu,
+        "is_yamaghanta": is_yamaghanta,
+        "is_gulika": is_gulika,
         "is_abhijit": is_abhijit,
+        "is_amrit": is_amrit,
+        "is_ravi_yoga": is_ravi_yoga,
         "badge_bn": badge_bn,
         "badge_hi": badge_hi,
         "badge_en": badge_en,
+        "short_tag_bn": short_tag_bn,
+        "short_tag_en": short_tag_en,
+    }
+
+
+def get_daily_panchang_shield(target_date: date_type) -> dict[str, Any]:
+    """Generates a complete Vedic Panchang & Rahu Kaal Shield summary for a calendar day."""
+    from zoneinfo import ZoneInfo
+    IST = ZoneInfo("Asia/Kolkata")
+    dt = datetime(target_date.year, target_date.month, target_date.day, 12, 0, tzinfo=IST)
+    weekday = dt.weekday()
+
+    r_start, r_end = RAHU_KAAL_WINDOWS.get(weekday, (16.5, 18.0))
+    y_start, y_end = YAMAGHANTA_WINDOWS.get(weekday, (12.0, 13.5))
+    g_start, g_end = GULIKA_WINDOWS.get(weekday, (15.0, 16.5))
+
+    rahu_label = f"{_format_decimal_hours_ist(r_start)} – {_format_decimal_hours_ist(r_end)}"
+    yama_label = f"{_format_decimal_hours_ist(y_start)} – {_format_decimal_hours_ist(y_end)}"
+    gulika_label = f"{_format_decimal_hours_ist(g_start)} – {_format_decimal_hours_ist(g_end)}"
+    abhijit_label = "11:45 AM – 12:35 PM"
+
+    # Generate 24-hour breakdown (0..23 in IST)
+    hourly = []
+    for h in range(24):
+        slot_dt = datetime(target_date.year, target_date.month, target_date.day, h, 0, tzinfo=IST)
+        utc_dt = slot_dt.astimezone(UTC)
+        muhurat = calculate_slot_muhurat(utc_dt)
+        hourly.append({
+            "hour": h,
+            "time_ist": f"{12 if h in (0, 12) else h % 12}:00 {'AM' if h < 12 else 'PM'}",
+            **muhurat,
+        })
+
+    return {
+        "date": target_date.isoformat(),
+        "weekday": weekday,
+        "rahu_kaal": {
+            "start_decimal": r_start,
+            "end_decimal": r_end,
+            "formatted_ist": rahu_label,
+            "warning_bn": f"আজকের রাহুকাল {rahu_label}। এই সময়ে নতুন কোনো শুভ কাজ বর্জনীয়।",
+            "warning_en": f"Today {rahu_label} is Rahu Kaal. Inauspicious for initiating new activities.",
+        },
+        "yamaghanta_kaal": {
+            "start_decimal": y_start,
+            "end_decimal": y_end,
+            "formatted_ist": yama_label,
+            "warning_bn": f"আজকের যমঘণ্ট কাল {yama_label}।",
+            "warning_en": f"Today {yama_label} is Yamaghanta Kaal.",
+        },
+        "gulika_kaal": {
+            "start_decimal": g_start,
+            "end_decimal": g_end,
+            "formatted_ist": gulika_label,
+            "warning_bn": f"আজকের গুলিকা কাল {gulika_label}।",
+            "warning_en": f"Today {gulika_label} is Gulika Kaal.",
+        },
+        "abhijit_muhurat": {
+            "start_decimal": 11.75,
+            "end_decimal": 12.58,
+            "formatted_ist": abhijit_label,
+            "blessing_bn": "অভিজিৎ মুহূর্ত সর্বকার্য সিদ্ধিদায়ক পরম শুভ মুহূর্ত।",
+            "blessing_en": "Abhijit Muhurat grants supreme victory and clears all doshas.",
+        },
+        "hourly_muhurat": hourly,
     }
 
 
