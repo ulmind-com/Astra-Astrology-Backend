@@ -477,13 +477,15 @@ async def _book_locked(
             error_code="single_appointment_limit",
         )
 
+    buffer_mins = getattr(card, "buffer_minutes", 0) or 0
     ends_at = starts_at + timedelta(minutes=minutes)
+    needed_ends_at = ends_at + timedelta(minutes=buffer_mins)
 
-    windows = await _windows_for(astrologer.id, starts_at, ends_at, include_private=True)
-    covering_window = _find_covering_window(windows, starts_at, ends_at)
+    windows = await _windows_for(astrologer.id, starts_at, needed_ends_at, include_private=True)
+    covering_window = _find_covering_window(windows, starts_at, needed_ends_at)
     if not covering_window:
         raise BadRequestError(
-            "The astrologer is not available for that whole time.",
+            "The astrologer is not available for that whole time (including required meditation buffer).",
             error_code="outside_availability",
         )
 
@@ -1248,18 +1250,20 @@ async def reschedule(
             error_code="beyond_horizon",
         )
 
+    astro_profile = await Astrologer.get(appointment.astrologer_id)
+    buffer_mins = getattr(getattr(astro_profile, "appointment", None), "buffer_minutes", 0) or 0
     new_ends_at = new_starts_at + timedelta(minutes=appointment.minutes)
+    needed_ends_at = new_ends_at + timedelta(minutes=buffer_mins)
 
-    # 3. Verify target falls inside an open AvailabilityWindow
-    windows = await _windows_for(appointment.astrologer_id, new_starts_at, new_ends_at)
-    if not _covered_by_a_window(windows, new_starts_at, new_ends_at):
+    # 3. Verify target falls inside an open AvailabilityWindow (including meditation buffer)
+    windows = await _windows_for(appointment.astrologer_id, new_starts_at, needed_ends_at)
+    if not _covered_by_a_window(windows, new_starts_at, needed_ends_at):
         raise BadRequestError(
-            "The selected slot is outside your availability windows. Please pick a time within your open schedule.",
+            "The selected slot is outside your availability windows (including required meditation buffer). Please pick a time within your open schedule.",
             error_code="outside_availability",
         )
 
     # 4. Atomic slot swap: release old slots, claim new slots
-    astro_profile = await Astrologer.get(appointment.astrologer_id)
     if (
         astro_profile
         and astro_profile.brahma_pause_until
@@ -1278,7 +1282,6 @@ async def reschedule(
         AppointmentSlot.appointment_id == appointment.id
     ).delete()
 
-    buffer_mins = getattr(getattr(astro_profile, "appointment", None), "buffer_minutes", 0) or 0
     total_blocked_minutes = appointment.minutes + buffer_mins
 
     new_claimed: list[AppointmentSlot] = []
@@ -1662,16 +1665,17 @@ async def handle_brahma_pause_rescue_action(
         ):
             raise BadRequestError("Cannot reschedule into active Brahma Pause emergency break.", error_code="slot_during_brahma_pause")
 
+        buffer_mins = getattr(getattr(astro_profile, "appointment", None), "buffer_minutes", 0) or 0
         new_ends_at = new_starts_at + timedelta(minutes=appointment.minutes)
-        windows = await _windows_for(appointment.astrologer_id, new_starts_at, new_ends_at)
-        if not _covered_by_a_window(windows, new_starts_at, new_ends_at):
-            raise BadRequestError("Selected slot is outside the astrologer's open schedule.", error_code="outside_availability")
+        needed_ends_at = new_ends_at + timedelta(minutes=buffer_mins)
+        windows = await _windows_for(appointment.astrologer_id, new_starts_at, needed_ends_at)
+        if not _covered_by_a_window(windows, new_starts_at, needed_ends_at):
+            raise BadRequestError("Selected slot is outside the astrologer's open schedule (including required meditation buffer).", error_code="outside_availability")
 
         # Slot swap
         old_slots = await AppointmentSlot.find({"appointment_id": appointment.id}).to_list()
         await AppointmentSlot.find({"appointment_id": appointment.id}).delete()
 
-        buffer_mins = getattr(getattr(astro_profile, "appointment", None), "buffer_minutes", 0) or 0
         total_blocked_minutes = appointment.minutes + buffer_mins
 
         new_claimed: list[AppointmentSlot] = []

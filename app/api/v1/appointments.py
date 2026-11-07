@@ -495,6 +495,8 @@ async def day(
             slot_minutes=SLOT_MINUTES,
             min_minutes=platform.min_appointment_minutes,
             max_minutes=platform.max_appointment_minutes,
+            muhurat_ratings=view.get("muhurat_ratings"),
+            buffer_minutes=view.get("buffer_minutes", 0),
         ),
     )
 
@@ -533,8 +535,10 @@ async def quote(payload: QuoteRequest, user: CurrentUser) -> ApiResponse[Appoint
     tatkal_multiplier = 1.0
     tatkal_fixed_paise = None
     if starts and ends:
-        windows = await service._windows_for(profile.id, starts, ends, include_private=True)
-        covering = service._find_covering_window(windows, starts, ends)
+        buffer_mins = getattr(getattr(profile, "appointment", None), "buffer_minutes", 0) or 0
+        needed_ends = ends + timedelta(minutes=buffer_mins)
+        windows = await service._windows_for(profile.id, starts, needed_ends, include_private=True)
+        covering = service._find_covering_window(windows, starts, needed_ends)
         if covering and getattr(covering, "is_tatkal", False):
             is_tatkal_slot = True
             tatkal_multiplier = getattr(covering, "tatkal_multiplier", 1.5) or 1.5

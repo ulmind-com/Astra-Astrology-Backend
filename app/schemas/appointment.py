@@ -87,6 +87,7 @@ class DayView(BaseModel):
     min_minutes: int
     max_minutes: int
     muhurat_ratings: dict[str, dict] | None = None
+    buffer_minutes: int = 0
 
 
 # ------------------------------------------------------------------ booking

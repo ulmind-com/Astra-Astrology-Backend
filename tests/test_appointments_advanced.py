@@ -177,6 +177,7 @@ async def test_private_astrological_vault_notes(client: AsyncClient):
 
     client_user = await User(
         email="seeker.vault@divinlink.com",
+        first_name="Seeker",
         phone="+919988776654",
         role="user",
     ).insert()
@@ -348,6 +349,97 @@ async def test_availability_window_timezone_date_truncation_fix(client: AsyncCli
     )
     # The stored day MUST be 2026-11-15 (IST date), NOT 2026-11-14 (UTC truncated date)!
     assert w_tatkal.day == datetime(2026, 11, 15).date(), f"Expected 2026-11-15 but got {w_tatkal.day}"
+
+
+@pytest.mark.asyncio
+async def test_meditation_buffer_window_boundary_spill_guard(client: AsyncClient):
+    """Verify that an appointment's meditation buffer cannot spill outside the astrologer's availability window."""
+    from app.core.exceptions import BadRequestError
+    from app.services import appointments as appt_service
+    from app.models.astrologer import AppointmentCard
+
+    # 1. Setup user & astrologer with 15-minute meditation buffer
+    astro_user = await User(
+        email="buffer_astro@astra.com",
+        first_name="Buffer",
+        last_name="Pandit",
+    ).insert()
+
+    astro = await Astrologer(
+        user_id=astro_user.id,
+        display_name="Acharya Buffer",
+        skills=[Skill.VEDIC_ASTROLOGY],
+        languages=["English"],
+        appointment=AppointmentCard(
+            enabled=True,
+            price_paise=10000,
+            block_minutes=30,
+            buffer_minutes=15,
+        ),
+    ).insert()
+
+    client_user = await User(
+        email="buffer_client@astra.com",
+        first_name="Client",
+        last_name="One",
+    ).insert()
+
+    # Credit client wallet
+    await wallet_service.credit(
+        user_id=client_user.id,
+        amount_coins=10000,
+        reason=TransactionReason.RECHARGE,
+        idempotency_key="seed:buffer_client:10000",
+    )
+
+    # 2. Astrologer opens window: 17:00 - 18:00 (5:00 PM - 6:00 PM)
+    base_time = (datetime.now(UTC) + timedelta(days=2)).replace(minute=0, second=0, microsecond=0)
+    w_start = base_time.replace(hour=17)
+    w_end = base_time.replace(hour=18)
+
+    await AvailabilityWindow(
+        astrologer_id=astro.id,
+        day=w_start.date(),
+        starts_at=w_start,
+        ends_at=w_end,
+    ).insert()
+
+    # 3. Test day_view exposes buffer_minutes == 15
+    d_view = await appt_service.day_view(
+        astrologer=astro,
+        day_start=base_time.replace(hour=0),
+        day_end=base_time.replace(hour=23, minute=59),
+    )
+    assert d_view["buffer_minutes"] == 15
+
+    # 4. Attempt Booking at 17:30 for 30 minutes:
+    # Consultation ends at 18:00, but meditation buffer extends to 18:15 (spills past 18:00 window).
+    # MUST be rejected with error_code="outside_availability"!
+    slot_spilling = base_time.replace(hour=17, minute=30)
+    with pytest.raises(BadRequestError) as exc_info:
+        await appt_service._book_locked(
+            user=client_user,
+            astrologer=astro,
+            starts_at=slot_spilling,
+            minutes=30,
+        )
+    assert exc_info.value.error_code == "outside_availability"
+    assert "meditation buffer" in exc_info.value.message
+
+    # 5. Attempt Booking at 17:00 for 30 minutes:
+    # Consultation ends at 17:30, meditation buffer ends at 17:45 (well within 18:00 window).
+    # MUST succeed!
+    slot_fitting = base_time.replace(hour=17, minute=0)
+    appt = await appt_service._book_locked(
+        user=client_user,
+        astrologer=astro,
+        starts_at=slot_fitting,
+        minutes=30,
+    )
+    assert appt is not None
+    assert appt.starts_at == slot_fitting
+    assert appt.ends_at == slot_fitting + timedelta(minutes=30)
+
 
 
 
