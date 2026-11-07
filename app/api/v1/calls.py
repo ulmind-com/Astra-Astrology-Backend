@@ -26,7 +26,7 @@ from app.schemas.call import (
     SweepResult,
 )
 from app.schemas.common import ApiResponse, Paginated, build_page
-from app.schemas.copilot import CoPilotSummary
+from app.schemas.copilot import CoPilotBirthDetailsInput, CoPilotSummary
 from app.services import billing
 from app.services import call as call_service
 from app.services import copilot as copilot_service
@@ -285,6 +285,26 @@ async def copilot(
         session_id=session_id, viewer=user, language=language
     )
     return ApiResponse(message="Co-Pilot ready.", data=summary)
+
+
+@router.post(
+    "/{session_id}/copilot/birth-details",
+    response_model=ApiResponse[CoPilotSummary],
+    summary="Update client birth details directly from the live chamber",
+)
+async def update_copilot_birth_details(
+    session_id: PydanticObjectId,
+    payload: CoPilotBirthDetailsInput,
+    user: CurrentUser,
+    language: Annotated[
+        str | None,
+        Query(description="en, bn or hi. Defaults to the astrologer's own language."),
+    ] = None,
+) -> ApiResponse[CoPilotSummary]:
+    summary = await copilot_service.update_client_birth_details(
+        session_id=session_id, viewer=user, payload=payload, language=language
+    )
+    return ApiResponse(message="Birth details updated and chart calculated.", data=summary)
 
 
 # ------------------------------------------------------- maintenance + hooks

@@ -45,7 +45,6 @@ class BirthDetails(BaseModel):
             self.date_of_birth is not None
             and self.latitude is not None
             and self.longitude is not None
-            and self.timezone is not None
         )
 
 

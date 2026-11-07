@@ -89,6 +89,20 @@ async def update_profile(user: User, payload: ProfileUpdate) -> User:
             if payload.birth is None
             else _merge_nested(user.birth, payload.birth, BirthDetails)
         )
+        if user.birth.date_of_birth is not None and (user.birth.latitude is None or user.birth.longitude is None):
+            place_q = (user.birth.place or user.birth.city or user.birth.state or "").strip()
+            if place_q:
+                try:
+                    from app.services.astrology.geocoder import geocode_place
+                    geo_res = await geocode_place(place_q)
+                    if geo_res and len(geo_res) > 0:
+                        best = geo_res[0]
+                        user.birth.latitude = float(best["latitude"])
+                        user.birth.longitude = float(best["longitude"])
+                        user.birth.timezone = best.get("timezone_name") or user.birth.timezone or "Asia/Kolkata"
+                        user.birth.timezone_offset = float(best.get("timezone") or 5.5)
+                except Exception as exc:
+                    logger.warning("Geocoding during profile update failed: {}", exc)
 
     if "current_location" in updates:
         updates.pop("current_location")

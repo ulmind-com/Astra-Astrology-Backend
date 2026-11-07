@@ -49,6 +49,31 @@ class CoPilotRemedyFocus(BaseModel):
     gemstone_day: str = ""
 
 
+class CoPilotPlanetPosition(BaseModel):
+    """Vedic planetary placement for the astrologer's quick cheat-sheet."""
+
+    name: str = Field(description="Sun, Moon, Mars, Mercury, Jupiter, Venus, Saturn, Rahu, Ketu")
+    label: str = Field(description="Localized planet name")
+    sign: str = Field(description="Aries, Taurus, etc.")
+    sign_label: str = Field(description="Localized sign name")
+    house: int = Field(ge=1, le=12, description="Vedic Bhava (1 to 12)")
+    degree_formatted: str = Field(default="", description="e.g. 14° 22'")
+    is_retrograde: bool = False
+
+
+class CoPilotBirthDetailsInput(BaseModel):
+    """Input payload from astrologer to update or rectify client birth details in-session."""
+
+    date_of_birth: str = Field(description="YYYY-MM-DD or DD-MM-YYYY")
+    time_of_birth: str | None = Field(default=None, description="HH:MM (24-hour local time)")
+    is_time_known: bool = True
+    place: str = Field(min_length=2, max_length=200, description="Birthplace city or district")
+    latitude: float | None = None
+    longitude: float | None = None
+    timezone: str | None = None
+    timezone_offset: float | None = None
+
+
 class CoPilotSummary(BaseModel):
     """What the panel shows for one session.
 
@@ -70,8 +95,16 @@ class CoPilotSummary(BaseModel):
     is_birth_time_known: bool = True
     accuracy_note: str = ""
 
+    ascendant: str = ""
+    ascendant_degree: str = ""
+    birth_date_str: str = ""
+    birth_time_str: str = ""
+    birth_place_str: str = ""
+
     moon_sign: str = ""
     nakshatra: str = ""
+
+    planets: list[CoPilotPlanetPosition] = Field(default_factory=list)
 
     mahadasha: CoPilotDashaPeriod | None = None
     antardasha: CoPilotDashaPeriod | None = None

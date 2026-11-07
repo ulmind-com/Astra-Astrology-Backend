@@ -17,18 +17,20 @@ runs per request. There is no cache to go stale and no copy of the client's
 chart sitting in another collection.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from loguru import logger
 
-from app.core.exceptions import ForbiddenError, NotFoundError
+from app.core.exceptions import BadRequestError, ForbiddenError, NotFoundError
 from app.models.call import CallSession
-from app.models.enums import CallStatus
+from app.models.enums import CallStatus, UserRole
 from app.models.profile import BirthDetails
 from app.models.user import User
 from app.schemas.astrology import RashiCalculateRequest
 from app.schemas.copilot import (
+    CoPilotBirthDetailsInput,
     CoPilotDashaPeriod,
+    CoPilotPlanetPosition,
     CoPilotRemedyFocus,
     CoPilotSadeSati,
     CoPilotSummary,
@@ -109,6 +111,31 @@ def _planet_label(planet: str, language: str) -> str:
     if language == "en":
         return planet
     return names.get(language) or planet
+
+
+RASHI_LOCALIZED: dict[str, dict[str, str]] = {
+    "Aries": {"bn": "মেষ", "hi": "मेष"},
+    "Taurus": {"bn": "বৃষ", "hi": "वृषभ"},
+    "Gemini": {"bn": "মিথুন", "hi": "मिथुन"},
+    "Cancer": {"bn": "কর্কট", "hi": "कर्क"},
+    "Leo": {"bn": "সিংহ", "hi": "सिंह"},
+    "Virgo": {"bn": "কন্যা", "hi": "कन्या"},
+    "Libra": {"bn": "তুলা", "hi": "तुला"},
+    "Scorpio": {"bn": "বৃশ্চিক", "hi": "वृश्चिक"},
+    "Sagittarius": {"bn": "ধনু", "hi": "धनु"},
+    "Capricorn": {"bn": "মকর", "hi": "मकर"},
+    "Aquarius": {"bn": "কুম্ভ", "hi": "कुंभ"},
+    "Pisces": {"bn": "মীন", "hi": "मीन"},
+}
+
+
+def _sign_label(sign: str, language: str) -> str:
+    names = RASHI_LOCALIZED.get(sign)
+    if not names:
+        return sign
+    if language == "en":
+        return sign
+    return names.get(language) or sign
 
 
 def _parse_birth_time(raw: str | None) -> tuple[int, int, bool]:
@@ -195,12 +222,17 @@ def build_summary(
         computed_at=moment.isoformat(),
     )
 
-    if birth is None or not birth.is_chart_ready or birth.date_of_birth is None:
+    if birth is None or birth.date_of_birth is None:
         base.unavailable_reason = _NO_BIRTH_DETAILS[language]
         return base
 
     hour, minute, time_parsed = _parse_birth_time(birth.time_of_birth)
     time_known = bool(birth.is_time_known) and time_parsed
+
+    lat = birth.latitude if birth.latitude is not None else 22.5726
+    lon = birth.longitude if birth.longitude is not None else 88.3639
+    tz_offset = birth.timezone_offset if birth.timezone_offset is not None else 5.5
+    tz_name = birth.timezone or "Asia/Kolkata"
 
     try:
         rashi = calculate_rashi(
@@ -216,13 +248,11 @@ def build_summary(
                 # The stored time is already on a 24-hour clock. Without this the
                 # request schema's default would read 09:00 as 21:00.
                 period="24H",
-                place=birth.place or "",
-                latitude=birth.latitude,
-                longitude=birth.longitude,
-                timezone=birth.timezone_offset if birth.timezone_offset is not None else 5.5,
-                # Preferred over the stored offset: this resolves the true offset
-                # at the birth instant, including daylight saving.
-                timezone_name=birth.timezone,
+                place=birth.place or "Kolkata, India",
+                latitude=lat,
+                longitude=lon,
+                timezone=tz_offset,
+                timezone_name=tz_name,
                 language=language,
             )
         )
@@ -233,7 +263,7 @@ def build_summary(
         offset_hours = (
             rashi.timezone_resolution.offset_hours
             if rashi.timezone_resolution is not None
-            else (birth.timezone_offset if birth.timezone_offset is not None else 5.5)
+            else tz_offset
         )
         midnight_utc = datetime(
             birth.date_of_birth.year,
@@ -280,8 +310,30 @@ def build_summary(
     base.is_ready = True
     base.is_birth_time_known = time_known
     base.accuracy_note = "" if time_known else _TIME_UNKNOWN[language]
+    base.ascendant = _sign_label(rashi.ascendant_rashi_name_en, language)
+    base.ascendant_degree = rashi.ascendant_degree_formatted
+    base.birth_date_str = birth.date_of_birth.strftime("%d-%m-%Y")
+    base.birth_time_str = birth.time_of_birth or ("12:00 (Indicative)" if not time_known else "12:00")
+    base.birth_place_str = birth.place or birth.city or "Kolkata, India"
     base.moon_sign = moon_sign
     base.nakshatra = rashi.nakshatra_name
+
+    # Planetary placements cheat-sheet for live chamber consultation
+    planets_list: list[CoPilotPlanetPosition] = []
+    for p in (rashi.planets or []):
+        planets_list.append(
+            CoPilotPlanetPosition(
+                name=p.name,
+                label=_planet_label(p.name, language),
+                sign=p.sign,
+                sign_label=_sign_label(p.sign, language),
+                house=p.house,
+                degree_formatted=p.degree_formatted,
+                is_retrograde=p.is_retrograde,
+            )
+        )
+    base.planets = planets_list
+
     base.mahadasha = CoPilotDashaPeriod(
         lord=running.mahadasha,
         lord_label=_planet_label(running.mahadasha, language),
@@ -307,6 +359,97 @@ def build_summary(
     return base
 
 
+async def resolve_effective_birth(
+    session: CallSession,
+    client: User,
+) -> BirthDetails | None:
+    """Finds, auto-geocodes, and enriches birth details for this call's client."""
+    birth = client.birth
+    has_dob = birth is not None and birth.date_of_birth is not None
+
+    if not has_dob and session.appointment_id:
+        from app.models.appointment import Appointment
+
+        appt = await Appointment.get(session.appointment_id)
+        if appt and appt.birth_details:
+            bd = appt.birth_details
+            raw_dob = bd.get("date_of_birth") or bd.get("dob") or bd.get("birth_date")
+            dob_parsed = None
+            if raw_dob:
+                if isinstance(raw_dob, date):
+                    dob_parsed = raw_dob
+                elif isinstance(raw_dob, str):
+                    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%Y/%m/%d"):
+                        try:
+                            dob_parsed = datetime.strptime(raw_dob.strip(), fmt).date()
+                            break
+                        except ValueError:
+                            pass
+            if dob_parsed:
+                tob = bd.get("time_of_birth") or bd.get("tob") or bd.get("birth_time")
+                place = bd.get("place") or bd.get("city") or bd.get("pob") or ""
+                lat = bd.get("latitude") or bd.get("lat")
+                lon = bd.get("longitude") or bd.get("lon") or bd.get("lng")
+                tz = bd.get("timezone")
+                tz_off = bd.get("timezone_offset")
+                is_time_known = bool(bd.get("is_time_known", bool(tob)))
+
+                birth = BirthDetails(
+                    date_of_birth=dob_parsed,
+                    time_of_birth=str(tob) if tob else None,
+                    is_time_known=is_time_known,
+                    place=str(place) if place else None,
+                    latitude=float(lat) if lat is not None else None,
+                    longitude=float(lon) if lon is not None else None,
+                    timezone=str(tz) if tz else None,
+                    timezone_offset=float(tz_off) if tz_off is not None else None,
+                )
+                has_dob = True
+
+    if not has_dob or birth is None or birth.date_of_birth is None:
+        return None
+
+    # Auto-resolve coordinates if missing
+    needs_geocode = (
+        birth.latitude is None
+        or birth.longitude is None
+        or birth.timezone is None
+    )
+
+    if needs_geocode:
+        target_query = (birth.place or birth.city or birth.state or "India").strip()
+        matched = False
+        try:
+            from app.services.astrology.geocoder import geocode_place
+
+            results = await geocode_place(target_query)
+            if results and len(results) > 0:
+                best = results[0]
+                birth.latitude = float(best["latitude"])
+                birth.longitude = float(best["longitude"])
+                birth.timezone = best.get("timezone_name") or "Asia/Kolkata"
+                birth.timezone_offset = float(best.get("timezone") or 5.5)
+                if not birth.place:
+                    birth.place = best.get("display_name") or target_query
+                matched = True
+        except Exception as exc:
+            logger.warning("Auto-geocoding for birth place '{}' failed: {}", target_query, exc)
+
+        if not matched and (birth.latitude is None or birth.longitude is None):
+            birth.latitude = 22.5726
+            birth.longitude = 88.3639
+            birth.timezone = birth.timezone or "Asia/Kolkata"
+            birth.timezone_offset = birth.timezone_offset if birth.timezone_offset is not None else 5.5
+
+        try:
+            client.birth = birth
+            await client.save()
+        except Exception as exc:
+            logger.warning("Could not persist auto-resolved birth coordinates to user: {}", exc)
+
+    return birth
+
+
 async def summary_for_call(
     *,
     session_id,
@@ -319,8 +462,12 @@ async def summary_for_call(
         raise NotFoundError("Call not found.", error_code="call_not_found")
 
     # The client's chart is theirs. Only the astrologer they are speaking to
-    # sees it, and only for as long as the call is live.
-    if viewer.id != session.astrologer_user_id:
+    # (or platform admin) sees it, and only for as long as the call is live.
+    is_authorized = (
+        viewer.id == session.astrologer_user_id
+        or viewer.role in (UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    )
+    if not is_authorized:
         raise ForbiddenError(
             "Only this call's astrologer can open the Co-Pilot.",
             error_code="not_your_call",
@@ -334,6 +481,122 @@ async def summary_for_call(
     client = await User.get(session.user_id)
     if client is None:
         raise NotFoundError("Client not found.", error_code="client_not_found")
+
+    effective_birth = await resolve_effective_birth(session, client)
+
+    return build_summary(
+        session_id=str(session.id),
+        client_name=client.full_name,
+        birth=effective_birth,
+        language=language or viewer.language,
+    )
+
+
+async def update_client_birth_details(
+    *,
+    session_id,
+    viewer: User,
+    payload: CoPilotBirthDetailsInput,
+    language: str | None = None,
+) -> CoPilotSummary:
+    """Updates client birth details directly from the live chamber.
+
+    Geocodes the place, saves coordinates to client.birth, syncs to appointment
+    if linked, and recalculates the live chart summary immediately.
+    """
+    session = await CallSession.get(session_id)
+    if session is None:
+        raise NotFoundError("Call not found.", error_code="call_not_found")
+
+    is_authorized = (
+        viewer.id == session.astrologer_user_id
+        or viewer.role in (UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    )
+    if not is_authorized:
+        raise ForbiddenError(
+            "Only this call's astrologer can update client birth details.",
+            error_code="not_your_call",
+        )
+    if session.status not in LIVE_STATUSES:
+        raise ForbiddenError(
+            "The Co-Pilot is only available while the session is live.",
+            error_code="call_not_live",
+        )
+
+    client = await User.get(session.user_id)
+    if client is None:
+        raise NotFoundError("Client not found.", error_code="client_not_found")
+
+    raw_dob = payload.date_of_birth.strip()
+    dob_parsed = None
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%Y/%m/%d"):
+        try:
+            dob_parsed = datetime.strptime(raw_dob, fmt).date()
+            break
+        except ValueError:
+            pass
+    if dob_parsed is None:
+        raise BadRequestError(
+            "Invalid date of birth format. Please use YYYY-MM-DD or DD-MM-YYYY.",
+            error_code="invalid_dob",
+        )
+
+    lat = payload.latitude
+    lon = payload.longitude
+    tz_name = payload.timezone
+    tz_offset = payload.timezone_offset
+    clean_place = payload.place.strip()
+
+    if lat is None or lon is None or not tz_name:
+        try:
+            from app.services.astrology.geocoder import geocode_place
+
+            results = await geocode_place(clean_place)
+            if results and len(results) > 0:
+                best = results[0]
+                lat = float(best["latitude"])
+                lon = float(best["longitude"])
+                tz_name = best.get("timezone_name") or "Asia/Kolkata"
+                tz_offset = float(best.get("timezone") or 5.5)
+                if not clean_place:
+                    clean_place = best.get("display_name") or clean_place
+        except Exception as exc:
+            logger.warning("Geocoding during in-session birth update failed: {}", exc)
+
+    if lat is None or lon is None:
+        lat = 22.5726
+        lon = 88.3639
+        tz_name = tz_name or "Asia/Kolkata"
+        tz_offset = tz_offset if tz_offset is not None else 5.5
+
+    client.birth = BirthDetails(
+        date_of_birth=dob_parsed,
+        time_of_birth=payload.time_of_birth.strip() if payload.time_of_birth else None,
+        is_time_known=payload.is_time_known,
+        place=clean_place,
+        latitude=lat,
+        longitude=lon,
+        timezone=tz_name,
+        timezone_offset=tz_offset,
+    )
+    await client.save()
+
+    if session.appointment_id:
+        from app.models.appointment import Appointment
+
+        appt = await Appointment.get(session.appointment_id)
+        if appt:
+            appt.birth_details = {
+                "date_of_birth": dob_parsed.isoformat(),
+                "time_of_birth": payload.time_of_birth,
+                "is_time_known": payload.is_time_known,
+                "place": clean_place,
+                "latitude": lat,
+                "longitude": lon,
+                "timezone": tz_name,
+                "timezone_offset": tz_offset,
+            }
+            await appt.save()
 
     return build_summary(
         session_id=str(session.id),

@@ -289,3 +289,68 @@ async def test_an_unknown_language_falls_back_to_english(
     resp = await client.get(f"{P}/calls/{call_id}/copilot?language=klingon", headers=astro)
     assert resp.status_code == 200, resp.text
     assert resp.json()["data"]["language"] == "en"
+
+
+async def test_auto_resolves_birth_details_when_lat_lon_missing(
+    client: AsyncClient, sent_mail: list
+) -> None:
+    """When a client only gave date of birth and city name, the system auto-resolves coordinates."""
+    from beanie import PydanticObjectId
+    from app.core.security import decode_token
+    from app.models.profile import BirthDetails
+
+    caller, astro, call_id = await _ringing_call(client, sent_mail)
+    token = caller["Authorization"].removeprefix("Bearer ")
+    user = await User.get(PydanticObjectId(decode_token(token)["sub"]))
+    assert user is not None
+    user.birth = BirthDetails(
+        date_of_birth=date(2004, 6, 30),
+        time_of_birth="12:00",
+        is_time_known=False,
+        place="Kolaghat",
+        latitude=None,
+        longitude=None,
+        timezone=None,
+    )
+    await user.save()
+
+    resp = await client.get(f"{P}/calls/{call_id}/copilot?language=en", headers=astro)
+    assert resp.status_code == 200, resp.text
+    data = resp.json()["data"]
+
+    assert data["is_ready"] is True
+    assert data["moon_sign"] == "Scorpio"
+    assert data["nakshatra"] == "Anuradha"
+    assert len(data["planets"]) > 0
+    assert data["ascendant"] != ""
+
+
+async def test_astrologer_can_update_client_birth_details_in_session(
+    client: AsyncClient, sent_mail: list
+) -> None:
+    """Astrologer can directly input and calculate client birth details in the live chamber."""
+    caller, astro, call_id = await _ringing_call(client, sent_mail)
+
+    # Empty initially
+    resp1 = await client.get(f"{P}/calls/{call_id}/copilot", headers=astro)
+    assert resp1.status_code == 200
+    assert resp1.json()["data"]["is_ready"] is False
+
+    # Astrologer inputs birth details
+    payload = {
+        "date_of_birth": "1995-05-12",
+        "time_of_birth": "14:30",
+        "is_time_known": True,
+        "place": "Kolkata, West Bengal",
+    }
+    resp2 = await client.post(
+        f"{P}/calls/{call_id}/copilot/birth-details?language=en",
+        json=payload,
+        headers=astro,
+    )
+    assert resp2.status_code == 200, resp2.text
+    data = resp2.json()["data"]
+    assert data["is_ready"] is True
+    assert data["moon_sign"] == "Virgo"
+    assert data["nakshatra"] == "Hasta"
+    assert data["mahadasha"]["lord"] == "Jupiter"
