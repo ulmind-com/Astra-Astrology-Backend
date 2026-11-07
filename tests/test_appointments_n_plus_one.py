@@ -20,7 +20,14 @@ from app.models.user import User
 P = "/api/v1"
 pytestmark = pytest.mark.usefixtures("fake_firebase")
 
-BOOKINGS = 7
+# One booked appointment each, from this many different clients.
+CLIENTS = 7
+# Past appointments the signed-in client also has with that astrologer.
+HISTORY = 6
+# What the astrologer's own schedule therefore holds.
+SCHEDULE_TOTAL = CLIENTS + HISTORY
+# What the signed-in client's own list holds: their one booked, plus history.
+MY_TOTAL = 1 + HISTORY
 
 
 class _FindCounter(monitoring.CommandListener):
@@ -63,7 +70,15 @@ async def _signed_in(client: AsyncClient, email: str, name: str) -> dict:
 
 
 async def _seed(client: AsyncClient) -> tuple[dict, dict]:
-    """One astrologer, one client, and BOOKINGS appointments between them."""
+    """An astrologer with a full schedule, and one signed-in client.
+
+    A user may hold only one *booked* appointment at a time — the
+    `unique_active_user_booking` partial index enforces it — so the
+    astrologer's bookings come from CLIENTS different clients, which is the
+    shape Sentry caught: one `find users` per booking, each a different user.
+    The signed-in client's own list is one booked plus a run of completed
+    ones, all with the same astrologer.
+    """
     client_headers = await _signed_in(client, "n1client@test.dev", "Ananya")
     astro_headers = await _signed_in(client, "n1astro@test.dev", "Ramesh")
 
@@ -83,17 +98,35 @@ async def _seed(client: AsyncClient) -> tuple[dict, dict]:
     ).insert()
 
     start = (datetime.now(UTC) + timedelta(days=1)).replace(minute=0, second=0, microsecond=0)
-    for i in range(BOOKINGS):
+
+    async def book(user_id, hour: int, status: AppointmentStatus) -> None:
         await Appointment(
-            user_id=client_user.id,
+            user_id=user_id,
             astrologer_id=profile.id,
             astrologer_user_id=astro_user.id,
-            starts_at=start + timedelta(hours=i),
-            ends_at=start + timedelta(hours=i, minutes=30),
+            starts_at=start + timedelta(hours=hour),
+            ends_at=start + timedelta(hours=hour, minutes=30),
             minutes=30,
             price_paise=500_00,
-            status=AppointmentStatus.BOOKED,
+            status=status,
         ).insert()
+
+    # The astrologer's schedule: CLIENTS clients, one booking each. The
+    # signed-in client is the first of them, so their own list starts with a
+    # booked appointment.
+    await book(client_user.id, 0, AppointmentStatus.BOOKED)
+    for i in range(1, CLIENTS):
+        other = await User(
+            email=f"n1peer{i}@test.dev",
+            first_name="Ananya",
+            last_name=None,
+        ).insert()
+        await book(other.id, i, AppointmentStatus.BOOKED)
+
+    # ...and enough history on the signed-in client to make their own list
+    # worth batching too.
+    for i in range(HISTORY):
+        await book(client_user.id, 100 + i, AppointmentStatus.COMPLETED)
 
     return client_headers, astro_headers
 
@@ -113,10 +146,10 @@ async def test_the_astrologers_schedule_does_not_query_per_booking(
         COUNTER.watching = False
 
     assert resp.status_code == 200, resp.text
-    assert len(resp.json()["data"]) == BOOKINGS
+    assert len(resp.json()["data"]) == SCHEDULE_TOTAL
 
-    # The peer of every booking is the same client, so one `find users` covers
-    # the lot. Auth looks the astrologer up as well, hence the small allowance.
+    # CLIENTS different clients, resolved in a single `find users` with an
+    # $in. Auth looks the astrologer up as well, hence the small allowance.
     assert COUNTER.counts.get("users", 0) <= 2, COUNTER.counts
 
 
@@ -133,9 +166,10 @@ async def test_the_clients_list_does_not_query_per_booking(client: AsyncClient) 
         COUNTER.watching = False
 
     assert resp.status_code == 200, resp.text
-    assert len(resp.json()["data"]) == BOOKINGS
+    assert len(resp.json()["data"]) == MY_TOTAL
 
-    # Same again from the other side: one `find astrologers` for all of them.
+    # Same again from the other side: one `find astrologers` for all of them,
+    # even though every booking names the same astrologer.
     assert COUNTER.counts.get("astrologers", 0) <= 1, COUNTER.counts
 
 
@@ -146,7 +180,10 @@ async def test_every_booking_still_names_the_other_person(client: AsyncClient) -
     schedule = await client.get(
         f"{P}/appointments/me/schedule?upcoming_only=false", headers=astro_headers
     )
-    assert [a["peer"]["name"] for a in schedule.json()["data"]] == ["Ananya"] * BOOKINGS
+    # Every booking is a different client, and all of them are named.
+    names = [a["peer"]["name"] for a in schedule.json()["data"]]
+    assert len(names) == SCHEDULE_TOTAL
+    assert all(name == "Ananya" for name in names), names
 
     mine = await client.get(f"{P}/appointments/mine?upcoming_only=false", headers=client_headers)
-    assert [a["peer"]["name"] for a in mine.json()["data"]] == ["Pt. Ramesh"] * BOOKINGS
+    assert [a["peer"]["name"] for a in mine.json()["data"]] == ["Pt. Ramesh"] * MY_TOTAL

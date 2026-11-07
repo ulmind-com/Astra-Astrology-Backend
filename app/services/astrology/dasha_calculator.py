@@ -620,6 +620,25 @@ def _calculate_uncompressed_vimshottari(
     return balance_str, dashas_result, running_info
 
 
+def running_vimshottari(
+    birth_dt: datetime,
+    moon_longitude: float,
+    current_dt: datetime | None = None,
+) -> CurrentRunningDashaInfo:
+    """The Vimshottari period running at `current_dt`, and nothing else.
+
+    The full engine above returns the whole hierarchy, which callers that only
+    need "what is running now" would have to pick apart. `birth_dt` must be
+    the birth instant in UTC and `moon_longitude` its sidereal Moon.
+    """
+    _, _, running = _calculate_uncompressed_vimshottari(
+        birth_dt=birth_dt,
+        moon_lon=moon_longitude,
+        current_dt=current_dt or datetime.now(UTC),
+    )
+    return running
+
+
 def _calculate_dasha_sandhi_and_chidra(
     running_info: CurrentRunningDashaInfo,
     dashas: list[KPDashaPeriod],

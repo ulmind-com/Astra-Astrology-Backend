@@ -6,28 +6,29 @@ from app.api.v1 import (
     admin_astrologers,
     admin_settings,
     admin_wallets,
+    ai_astrologer,
     appointments,
     astrologers,
     astrology,
     auth,
     calls,
     chats,
+    cms,
     earnings,
     face_reading,
-    palm_reading,
     health,
-    reviews,
-    users,
-    wallet,
-    ws,
-    ai_astrologer,
+    milan,
     numerology,
-    vastu,
-    cms,
+    palm_reading,
     passkeys,
-    tarot,
+    reviews,
     support,
+    tarot,
+    users,
+    vastu,
+    wallet,
     whiteboard,
+    ws,
 )
 
 api_router = APIRouter()
@@ -48,6 +49,12 @@ api_router.include_router(admin_settings.router)
 api_router.include_router(calls.router)
 api_router.include_router(calls.maintenance_router)
 api_router.include_router(calls.webhook_router)
+# The guest routes go first: their literal paths would otherwise be captured
+# by /milan/{room_id}/... and a guest's check-in would be asked for a bearer
+# token they do not have.
+api_router.include_router(milan.guest_router)
+api_router.include_router(milan.router)
+api_router.include_router(milan.maintenance_router)
 api_router.include_router(chats.router)
 api_router.include_router(chats.maintenance_router)
 api_router.include_router(astrologers.maintenance_router)

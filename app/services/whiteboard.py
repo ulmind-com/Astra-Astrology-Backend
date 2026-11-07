@@ -209,8 +209,8 @@ async def get_or_create_whiteboard(
     if client_user:
         client_name = client_user.full_name
         if client_user.birth and client_user.birth.is_chart_ready:
-            birth_date = client_user.birth.date or birth_date
-            birth_time = client_user.birth.time or birth_time
+            birth_date = str(client_user.birth.date_of_birth or birth_date)
+            birth_time = client_user.birth.time_of_birth or birth_time
             birth_place = client_user.birth.place or birth_place
             lat = client_user.birth.latitude or lat
             lon = client_user.birth.longitude or lon

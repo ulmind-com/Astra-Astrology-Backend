@@ -130,6 +130,19 @@ async def start_call(
         raise ConflictError(
             "This astrologer is on another call.", error_code="astrologer_busy"
         )
+    # A multi-party chamber lives in its own collection, so the check above
+    # cannot see it. Without this an astrologer could be rung into a 1:1 call
+    # while hosting a family session, and both would bill at once.
+    from app.services import milan as milan_service
+
+    if await milan_service.live_room_for(user.id) is not None:
+        raise ConflictError(
+            "You are already in a chamber.", error_code="already_in_room"
+        )
+    if await milan_service.live_room_for(profile.user_id) is not None:
+        raise ConflictError(
+            "This astrologer is in a chamber.", error_code="astrologer_busy"
+        )
 
     # Price it and check the wallet before anyone's phone rings — being cut off
     # two seconds in is worse than being told up front.

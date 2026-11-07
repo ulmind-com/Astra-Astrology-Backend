@@ -26,8 +26,10 @@ from app.schemas.call import (
     SweepResult,
 )
 from app.schemas.common import ApiResponse, Paginated, build_page
+from app.schemas.copilot import CoPilotSummary
 from app.services import billing
 from app.services import call as call_service
+from app.services import copilot as copilot_service
 from app.services import settings as settings_service
 from app.services import wallet as wallet_service
 from app.services import zego
@@ -264,6 +266,25 @@ async def extend_call(
 async def heartbeat(session_id: PydanticObjectId, user: CurrentUser) -> ApiResponse[CallOut]:
     session = await call_service.heartbeat(session_id=session_id, user=user)
     return ApiResponse(message="Noted.", data=await to_call(session, user))
+
+
+@router.get(
+    "/{session_id}/copilot",
+    response_model=ApiResponse[CoPilotSummary],
+    summary="The live Co-Pilot summary for this call's client",
+)
+async def copilot(
+    session_id: PydanticObjectId,
+    user: CurrentUser,
+    language: Annotated[
+        str | None,
+        Query(description="en, bn or hi. Defaults to the astrologer's own language."),
+    ] = None,
+) -> ApiResponse[CoPilotSummary]:
+    summary = await copilot_service.summary_for_call(
+        session_id=session_id, viewer=user, language=language
+    )
+    return ApiResponse(message="Co-Pilot ready.", data=summary)
 
 
 # ------------------------------------------------------- maintenance + hooks

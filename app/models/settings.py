@@ -63,6 +63,12 @@ class PlatformSettings(TimestampedDocument):
     min_appointment_minutes: int = Field(default=15, ge=5, le=600)
     max_appointment_minutes: int = Field(default=180, ge=5, le=600)
 
+    # How many guests a multi-party Milan chamber seats besides the host. The
+    # default is a groom, a bride and a guardian; raising it costs more in
+    # media minutes without earning more, since the host pays one rate
+    # however many people are in the room.
+    milan_max_guests: int = Field(default=3, ge=0, le=8)
+
     # How far ahead the calendar opens. Beyond this an astrologer's windows
     # are not offered, so a booking cannot be made for a date nobody has
     # thought about yet.

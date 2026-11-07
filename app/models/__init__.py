@@ -32,6 +32,7 @@ from app.models.wallet import (
     WalletTransaction,
     WebhookEvent,
 )
+from app.models.milan import MilanRoom
 from app.models.whiteboard import CallWhiteboard
 
 DOCUMENT_MODELS: list[type[Document]] = [
@@ -72,6 +73,7 @@ DOCUMENT_MODELS: list[type[Document]] = [
     AIChatFeedback,
     SupportTicket,
     CallWhiteboard,
+    MilanRoom,
 ]
 
 __all__ = [
@@ -86,6 +88,7 @@ __all__ = [
     "AstrologerFavorite",
     "CallSession",
     "CallWhiteboard",
+    "MilanRoom",
     "Appointment",
     "AppointmentSlot",
     "AvailabilityWindow",
