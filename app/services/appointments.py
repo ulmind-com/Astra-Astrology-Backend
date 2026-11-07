@@ -1019,9 +1019,9 @@ async def complete(
             raise ForbiddenError("Not authorized to complete this appointment.")
 
     now = utcnow()
-    if appointment.starts_at > now:
+    if now < appointment.starts_at:
         raise BadRequestError(
-            "Cannot complete an appointment before its scheduled start time.",
+            "Cannot complete a session before it starts.",
             error_code="premature_completion",
         )
 

@@ -139,6 +139,15 @@ async def test_appointment_booking_with_pillar_and_prescription(client: AsyncCli
             prescription_data=prescription_data,
         )
 
+    # Guard check: Premature completion of future booking MUST be blocked!
+    from app.services.appointments import complete
+    from app.core.exceptions import BadRequestError
+
+    with pytest.raises(BadRequestError) as exc_info:
+        await complete(appointment=booking, by=astro_user)
+    assert exc_info.value.error_code == "premature_completion"
+    assert "Cannot complete a session before it starts" in str(exc_info.value.message)
+
     # Cancel appointment
     cancelled = await cancel(appointment=booking, by=client_user, reason="Need to reschedule")
     assert cancelled.status == AppointmentStatus.CANCELLED
