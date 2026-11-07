@@ -341,13 +341,13 @@ async def add_window(
             f"Use {SLOT_MINUTES}-minute marks.", error_code="unaligned_window"
         )
 
-    from beanie.operators import GTE, LT, And
+    from beanie.operators import GT, LT, And
 
     clash = await AvailabilityWindow.find_one(
         And(
             AvailabilityWindow.astrologer_id == profile.id,
             LT(AvailabilityWindow.starts_at, ends),
-            GTE(AvailabilityWindow.ends_at, starts),
+            GT(AvailabilityWindow.ends_at, starts),
         )
     )
     if clash is not None:

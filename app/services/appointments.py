@@ -1018,8 +1018,15 @@ async def complete(
         if getattr(by, "role", None) != "admin":
             raise ForbiddenError("Not authorized to complete this appointment.")
 
+    now = utcnow()
+    if appointment.starts_at > now:
+        raise BadRequestError(
+            "Cannot complete an appointment before its scheduled start time.",
+            error_code="premature_completion",
+        )
+
     appointment.status = AppointmentStatus.COMPLETED
-    appointment.completed_at = utcnow()
+    appointment.completed_at = now
 
     # Rule 2: Capture held balance coins
     if getattr(appointment, "held_coins", 0) > 0 and getattr(appointment, "held_status", "") == "held":
