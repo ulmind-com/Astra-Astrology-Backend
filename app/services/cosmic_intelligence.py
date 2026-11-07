@@ -241,6 +241,274 @@ def calculate_cosmic_synergy(
     }
 
 
+BN_MONTHS = {
+    1: "জানুয়ারি",
+    2: "ফেব্রুয়ারি",
+    3: "মার্চ",
+    4: "এপ্রিল",
+    5: "মে",
+    6: "জুন",
+    7: "জুলাই",
+    8: "আগস্ট",
+    9: "সেপ্টেম্বর",
+    10: "অক্টোবর",
+    11: "নভেম্বর",
+    12: "ডিসেম্বর",
+}
+
+BN_DIGITS = {
+    "0": "০", "1": "১", "2": "২", "3": "৩", "4": "৪",
+    "5": "৫", "6": "৬", "7": "৭", "8": "৮", "9": "৯",
+}
+
+
+def to_bn_digits(val: Any) -> str:
+    return "".join(BN_DIGITS.get(ch, ch) for ch in str(val))
+
+
+def format_date_bn(dt: datetime) -> str:
+    ist = dt + timedelta(hours=5, minutes=30)
+    return f"{to_bn_digits(ist.day)} {BN_MONTHS.get(ist.month, '')} {to_bn_digits(ist.year)}"
+
+
+PILLAR_NAMES_BN = {
+    "career_wealth": "ক্যারিয়ার ও অর্থভাগ্য",
+    "love_marriage": "দাম্পত্য ও প্রেম সম্পর্ক",
+    "health_longevity": "স্বাস্থ্য ও দীর্ঘায়ু",
+    "business_expansion": "বাণিজ্য বিস্তার ও অংশীদারি",
+    "dosha_graha_shanti": "গ্রহদোষ ও শান্তি কবচ",
+    "spiritual_guidance": "আধ্যাত্মিক সাধনা ও আত্মিক শান্তি",
+}
+
+PILLAR_NAMES_EN = {
+    "career_wealth": "Career & Wealth",
+    "love_marriage": "Love & Marriage",
+    "health_longevity": "Health & Longevity",
+    "business_expansion": "Business Expansion",
+    "dosha_graha_shanti": "Dosha & Graha Shanti",
+    "spiritual_guidance": "Spiritual Guidance",
+}
+
+
+async def build_karmic_consultation_vault(appointment: Appointment) -> dict[str, Any]:
+    """Builds the Karmic Consultation History Vault for a client with this astrologer.
+
+    Tracks past appointments, previous discussion topics, prescribed remedies (gemstone,
+    mantra, rudraksha), follow-up outcomes, review feedback, and generates a personalized
+    repeat-client rapport ice-breaker for the astrologer.
+    """
+    from beanie.operators import In, Or
+    from app.models.review import Review
+
+    astro_ids: list[Any] = [appointment.astrologer_id]
+    if getattr(appointment, "astrologer_user_id", None):
+        astro_ids.append(appointment.astrologer_user_id)
+
+    try:
+        astro_profile = await Astrologer.get(appointment.astrologer_id)
+        if astro_profile:
+            astro_ids.append(astro_profile.id)
+            if getattr(astro_profile, "user_id", None):
+                astro_ids.append(astro_profile.user_id)
+    except Exception as exc:
+        logger.debug("Could not resolve astrologer profile in karmic vault: {}", exc)
+
+    # Fetch prior appointments of this client with this astrologer
+    query = {
+        "user_id": appointment.user_id,
+        "$or": [
+            {"astrologer_id": {"$in": astro_ids}},
+            {"astrologer_user_id": {"$in": astro_ids}},
+        ],
+        "_id": {"$ne": appointment.id},
+    }
+
+    try:
+        past_appointments = await Appointment.find(query).sort("-starts_at").to_list()
+    except Exception as exc:
+        logger.debug("Could not query past appointments for karmic vault: {}", exc)
+        past_appointments = []
+
+    total_past = len(past_appointments)
+    session_sequence = total_past + 1
+    is_repeat = total_past > 0
+
+    if session_sequence == 1:
+        relationship_tier = "new"
+        relationship_badge_bn = "নবাগত জাতক/জাতিকা (১ম আগমন)"
+        relationship_badge_en = "First-Time Seeker (1st Visit)"
+    elif session_sequence == 2:
+        relationship_tier = "returning"
+        relationship_badge_bn = "পুনরাগমনকারী আত্মিক সংযোগ (২য় আগমন)"
+        relationship_badge_en = "Returning Seeker (2nd Visit)"
+    elif session_sequence == 3:
+        relationship_tier = "loyal"
+        relationship_badge_bn = "বিশ্বস্ত আশ্রিত ক্লায়েন্ট (৩য় আগমন)"
+        relationship_badge_en = "Loyal Devoted Seeker (3rd Visit)"
+    else:
+        relationship_tier = "vip_bonded"
+        bn_seq = to_bn_digits(session_sequence)
+        relationship_badge_bn = f"চিরস্থায়ী কর্মিক বান্ধব ({bn_seq}তম আগমন)"
+        relationship_badge_en = f"Karmic Bonded Client ({session_sequence}th Visit)"
+
+    timeline: list[dict[str, Any]] = []
+    for past in past_appointments:
+        dt_bn = format_date_bn(past.starts_at)
+        ist_dt = past.starts_at + timedelta(hours=5, minutes=30)
+        dt_en = ist_dt.strftime("%d %b %Y, %I:%M %p IST")
+        pillar_key = (past.consultation_pillar or "career_wealth").lower().strip()
+        pillar_bn = PILLAR_NAMES_BN.get(pillar_key, "পরামর্শ ও দিকনির্দেশনা")
+        pillar_en = PILLAR_NAMES_EN.get(pillar_key, "Consultation")
+
+        pres = past.prescription or {}
+        gemstone = pres.get("gemstone") or pres.get("consecrated_gemstone")
+        rudraksha = pres.get("rudraksha") or pres.get("sacred_rudraksha")
+        mantra = pres.get("mantra") or pres.get("vedic_mantra")
+        mantra_count = pres.get("mantra_count") or pres.get("japa_count")
+        daan = pres.get("daan_remedy") or pres.get("daan_charity_ritual")
+        sankalpa = pres.get("sankalpa")
+        astrologer_guidance = pres.get("astrologer_notes") or pres.get("astrologer_guidance")
+
+        # Check for client review on this past session
+        review_obj = None
+        try:
+            review_obj = await Review.find_one({"session_id": past.id})
+        except Exception:
+            pass
+        review_data = None
+        if review_obj:
+            review_data = {
+                "stars": review_obj.stars,
+                "text": review_obj.text,
+            }
+
+        # Check for follow-up notes or client outcome message
+        follow_up_data = None
+        if past.follow_up_notes or getattr(past, "follow_up_thread", None):
+            latest_msg = (
+                past.follow_up_thread[-1].get("text")
+                if getattr(past, "follow_up_thread", None)
+                else None
+            )
+            follow_up_data = {
+                "notes": past.follow_up_notes,
+                "latest_update": latest_msg or past.follow_up_notes,
+                "thread_count": len(getattr(past, "follow_up_thread", None) or []),
+            }
+
+        # Build dynamic karmic milestone summary
+        summary_chunks = [f"{dt_bn}: {pillar_bn} নিয়ে আলোচনা"]
+        if gemstone:
+            summary_chunks.append(f"{gemstone} প্রেসক্রাইব করা হয়েছিল")
+        elif rudraksha:
+            summary_chunks.append(f"{rudraksha} ধারণের নির্দেশ ছিল")
+        elif mantra:
+            summary_chunks.append(f"{mantra} জপ বিধান দেওয়া হয়েছিল")
+
+        if review_data and review_data.get("text"):
+            summary_chunks.append(f"ক্লায়েন্ট জানিয়েছেন: '{review_data['text']}'")
+        elif follow_up_data and follow_up_data.get("latest_update"):
+            summary_chunks.append(f"ফলো-আপে ক্লায়েন্ট জানিয়েছে: '{follow_up_data['latest_update']}'")
+
+        karmic_summary_bn = " — ".join(summary_chunks)
+
+        timeline.append({
+            "appointment_id": str(past.id),
+            "starts_at": past.starts_at.isoformat(),
+            "date_bn": dt_bn,
+            "date_en": dt_en,
+            "status": past.status,
+            "duration_minutes": past.minutes,
+            "pillar": pillar_key,
+            "pillar_bn": pillar_bn,
+            "pillar_en": pillar_en,
+            "client_query": past.note,
+            "prescribed_remedies": {
+                "gemstone": gemstone,
+                "rudraksha": rudraksha,
+                "mantra": mantra,
+                "mantra_count": mantra_count,
+                "daan": daan,
+                "sankalpa": sankalpa,
+                "guidance": astrologer_guidance,
+            },
+            "has_prescription": bool(
+                gemstone or rudraksha or mantra or daan or sankalpa or astrologer_guidance
+            ),
+            "certificate_id": (past.certificate_data or {}).get("certificate_id"),
+            "review": review_data,
+            "follow_up": follow_up_data,
+            "karmic_summary_bn": karmic_summary_bn,
+        })
+
+    # Repeat client rapport ice-breaker
+    repeat_rapport_ice_breaker_bn = None
+    repeat_rapport_ice_breaker_en = None
+    if is_repeat and past_appointments:
+        latest_past = past_appointments[0]
+        latest_dt_bn = format_date_bn(latest_past.starts_at)
+        latest_pillar_key = (latest_past.consultation_pillar or "career_wealth").lower().strip()
+        latest_pillar_bn = PILLAR_NAMES_BN.get(latest_pillar_key, "পরামর্শ")
+        latest_pres = latest_past.prescription or {}
+        latest_gem = latest_pres.get("gemstone") or latest_pres.get("consecrated_gemstone")
+
+        reported_outcome = None
+        lat_rev = None
+        try:
+            lat_rev = await Review.find_one({"session_id": latest_past.id})
+        except Exception:
+            pass
+        if lat_rev and lat_rev.text:
+            reported_outcome = lat_rev.text
+        elif latest_past.follow_up_notes:
+            reported_outcome = latest_past.follow_up_notes
+        elif getattr(latest_past, "follow_up_thread", None):
+            reported_outcome = latest_past.follow_up_thread[-1].get("text")
+
+        if latest_gem and reported_outcome:
+            repeat_rapport_ice_breaker_bn = (
+                f"নমস্কার! গত {latest_dt_bn}-এ আমরা {latest_pillar_bn} নিয়ে আলোচনা করেছিলাম এবং আপনাকে {latest_gem} প্রেসক্রাইব করেছিলাম। "
+                f"আপনি জানিয়েছেন যে বিষয়টিতে ইতিবাচক অগ্রগতি হয়েছে—বর্তমান অবস্থা এবং আজকের সেশনে কোন বিষয়ে আলোকপাত করতে চান?"
+            )
+            repeat_rapport_ice_breaker_en = (
+                f"Welcome back! In our previous session on {latest_past.starts_at.strftime('%d %b %Y')}, we discussed {latest_past.consultation_pillar} and prescribed {latest_gem}. "
+                f"Following your positive update, how is the current situation evolving, and what specific guidance can I offer today?"
+            )
+        elif latest_gem:
+            repeat_rapport_ice_breaker_bn = (
+                f"নমস্কার! গত {latest_dt_bn}-এ আমরা আপনার {latest_pillar_bn} নিয়ে কথা বলেছিলাম এবং {latest_gem} ধারণের পরামর্শ দিয়েছিলাম। "
+                f"এর পর থেকে আপনার সার্বিক কাজের বাধাগুলো কতটা দূর হয়েছে এবং বর্তমানে কেমন চলছে?"
+            )
+            repeat_rapport_ice_breaker_en = (
+                f"Welcome back! On {latest_past.starts_at.strftime('%d %b %Y')}, we addressed your {latest_past.consultation_pillar} and recommended {latest_gem}. "
+                f"How has the energetic shift felt for you since our last consultation?"
+            )
+        else:
+            repeat_rapport_ice_breaker_bn = (
+                f"নমস্কার! গত {latest_dt_bn}-এ আমরা আপনার {latest_pillar_bn} নিয়ে বিস্তারিত আলোচনা করেছিলাম। "
+                f"সেই বিষয়ের বর্তমান অগ্রগতি কেমন এবং আজ কোন বিশেষ বিষয়ে আপনার দিকনির্দেশনা প্রয়োজন?"
+            )
+            repeat_rapport_ice_breaker_en = (
+                f"Welcome back! During our session on {latest_past.starts_at.strftime('%d %b %Y')}, we explored your {latest_past.consultation_pillar}. "
+                f"How have matters progressed, and what focus area should we prioritize today?"
+            )
+
+    return {
+        "total_sessions_with_this_astrologer": session_sequence,
+        "past_sessions_count": total_past,
+        "session_sequence_number": session_sequence,
+        "is_repeat_client": is_repeat,
+        "relationship_badge_bn": relationship_badge_bn,
+        "relationship_badge_en": relationship_badge_en,
+        "relationship_tier": relationship_tier,
+        "repeat_rapport_ice_breaker_bn": repeat_rapport_ice_breaker_bn,
+        "repeat_rapport_ice_breaker_en": repeat_rapport_ice_breaker_en,
+        "first_consultation_date_bn": timeline[-1]["date_bn"] if timeline else None,
+        "last_consultation_date_bn": timeline[0]["date_bn"] if timeline else None,
+        "timeline": timeline,
+    }
+
+
 async def generate_preflight_dossier(appointment: Appointment) -> dict[str, Any]:
     """Generates an executive AI Pre-Flight Cosmic Dossier for the astrologer.
     
@@ -517,6 +785,13 @@ async def generate_preflight_dossier(appointment: Appointment) -> dict[str, Any]
         },
     }
 
+    # Build Karmic Consultation History Vault for this client with this astrologer
+    karmic_vault = await build_karmic_consultation_vault(appointment)
+    if karmic_vault.get("is_repeat_client") and karmic_vault.get("repeat_rapport_ice_breaker_bn"):
+        executive_diagnosis["opening_ice_breaker_bn"] = karmic_vault["repeat_rapport_ice_breaker_bn"]
+        if karmic_vault.get("repeat_rapport_ice_breaker_en"):
+            executive_diagnosis["opening_ice_breaker_en"] = karmic_vault["repeat_rapport_ice_breaker_en"]
+
     # Consolidated Dossier
     dossier = {
         "generated_at": utcnow().isoformat(),
@@ -551,6 +826,7 @@ async def generate_preflight_dossier(appointment: Appointment) -> dict[str, Any]
             "rahu_ketu_axis": "Karmic nodal alignment in nodal axis — sudden pivots and mental unrest",
         },
         "ai_executive_summary": cheat_sheet,
+        "karmic_vault": karmic_vault,
     }
 
     # Persist in appointment document

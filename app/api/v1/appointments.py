@@ -1061,6 +1061,32 @@ async def get_preflight(
 
 
 @router.get(
+    "/{appointment_id}/karmic-vault",
+    response_model=ApiResponse[dict],
+    summary="Get Karmic Consultation History Vault for client with this astrologer",
+)
+async def get_karmic_vault(
+    appointment_id: PydanticObjectId,
+    user: CurrentUser,
+) -> ApiResponse[dict]:
+    appointment = await service.get(appointment_id)
+    profile = await Astrologer.find_one(Astrologer.user_id == user.id)
+    is_authorized = (
+        appointment.astrologer_user_id == user.id
+        or (profile and profile.id == appointment.astrologer_id)
+        or appointment.user_id == user.id
+        or getattr(user, "role", None) == "admin"
+    )
+    if not is_authorized:
+        raise ForbiddenError("Not authorized to view karmic vault for this appointment.")
+
+    from app.services.cosmic_intelligence import build_karmic_consultation_vault
+
+    vault = await build_karmic_consultation_vault(appointment)
+    return ApiResponse(message="Karmic Consultation History Vault fetched.", data=vault)
+
+
+@router.get(
     "/{appointment_id}/certificate",
     response_model=ApiResponse[dict],
     summary="Get Divya Paramarsha Sacred Certificate data",

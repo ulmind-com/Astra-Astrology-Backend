@@ -656,6 +656,102 @@ def test_divya_paramarsha_certificate_and_qr_verification_generation():
     assert "qr-img" in html
 
 
+@pytest.mark.asyncio
+async def test_karmic_consultation_vault_repeat_timeline():
+    """Verify Karmic Consultation History Vault generates timeline, sequence, and repeat rapport ice-breaker."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from app.services.cosmic_intelligence import build_karmic_consultation_vault
+
+    curr_appointment = MagicMock()
+    curr_appointment.id = "app_current_003"
+    curr_appointment.user_id = "user_client_101"
+    curr_appointment.astrologer_id = "astro_prof_202"
+    curr_appointment.astrologer_user_id = "astro_user_202"
+    curr_appointment.starts_at = datetime(2026, 4, 1, 10, 0, tzinfo=UTC)
+
+    # Past session 1: Jan 15, 2026 (Career, Emerald prescribed)
+    past_1 = MagicMock()
+    past_1.id = "app_past_001"
+    past_1.starts_at = datetime(2026, 1, 15, 12, 0, tzinfo=UTC)
+    past_1.status = "completed"
+    past_1.minutes = 45
+    past_1.consultation_pillar = "career_wealth"
+    past_1.note = "কর্মক্ষেত্রে পদোন্নতি ও আর্থিক বাধা সংক্রান্ত পরামর্শ"
+    past_1.prescription = {
+        "gemstone": "পান্না (Emerald)",
+        "mantra": "ॐ ब्रां ब्रीं ब्रौं सः बुधाय नमः",
+        "astrologer_notes": "সকালে বুধের বীজমন্ত্র জপ ও পান্না রত্ন ধারণের নির্দেশ",
+    }
+    past_1.certificate_data = {"certificate_id": "ASTRA-DIVYA-001"}
+    past_1.follow_up_notes = "ক্লায়েন্ট জানিয়েছে পদোন্নতি হয়েছে ও নতুন দায়িত্ব পেয়েছে।"
+    past_1.follow_up_thread = [{"sender": "client", "text": "ক্লায়েন্ট জানিয়েছে পদোন্নতি হয়েছে।"}]
+
+    # Past session 2: March 10, 2026 (Follow-up)
+    past_2 = MagicMock()
+    past_2.id = "app_past_002"
+    past_2.starts_at = datetime(2026, 3, 10, 11, 0, tzinfo=UTC)
+    past_2.status = "completed"
+    past_2.minutes = 30
+    past_2.consultation_pillar = "career_wealth"
+    past_2.note = "ফলো-আপ ও পরবর্তী পদোন্নতি প্রস্তুতি"
+    past_2.prescription = {
+        "gemstone": "পান্না (Emerald)",
+        "rudraksha": "৪ মুখী রুদ্রাক্ষ",
+        "astrologer_notes": "পূর্বের পান্না যথারীতি ধারণ অব্যাহত রাখার পরামর্শ",
+    }
+    past_2.certificate_data = None
+    past_2.follow_up_notes = None
+    past_2.follow_up_thread = []
+
+    # Mock DB queries
+    with patch("app.models.astrologer.Astrologer.get", new_callable=AsyncMock) as mock_astro_get, \
+         patch("app.models.appointment.Appointment.find") as mock_app_find, \
+         patch("app.models.review.Review.find_one", new_callable=AsyncMock) as mock_rev_find:
+
+        mock_astro = MagicMock()
+        mock_astro.id = "astro_prof_202"
+        mock_astro.user_id = "astro_user_202"
+        mock_astro_get.return_value = mock_astro
+
+        # Return the 2 past appointments
+        mock_query = MagicMock()
+        mock_query.sort.return_value.to_list = AsyncMock(return_value=[past_2, past_1])
+        mock_app_find.return_value = mock_query
+
+        # Return a review for session 1
+        mock_review = MagicMock()
+        mock_review.stars = 5
+        mock_review.text = "পান্না ধারণের পর সত্যি পদোন্নতি হয়েছে! ধন্যবাদ আচার্যজী।"
+        mock_rev_find.return_value = mock_review
+
+        vault = await build_karmic_consultation_vault(curr_appointment)
+
+        # 1. Sequence & Repeat Status
+        assert vault["is_repeat_client"] is True
+        assert vault["total_sessions_with_this_astrologer"] == 3
+        assert vault["session_sequence_number"] == 3
+        assert "৩য় আগমন" in vault["relationship_badge_bn"]
+        assert vault["relationship_tier"] == "loyal"
+
+        # 2. Timeline items
+        assert len(vault["timeline"]) == 2
+        timeline_0 = vault["timeline"][0]
+        assert timeline_0["appointment_id"] == "app_past_002"
+        assert "মার্চ" in timeline_0["date_bn"]
+
+        timeline_1 = vault["timeline"][1]
+        assert timeline_1["appointment_id"] == "app_past_001"
+        assert "১৫ জানুয়ারি ২০২৬" in timeline_1["date_bn"]
+        assert timeline_1["prescribed_remedies"]["gemstone"] == "পান্না (Emerald)"
+        assert "পান্না" in timeline_1["karmic_summary_bn"]
+
+        # 3. Repeat rapport ice-breaker
+        assert vault["repeat_rapport_ice_breaker_bn"] is not None
+        assert "নমস্কার" in vault["repeat_rapport_ice_breaker_bn"]
+        assert "পান্না" in vault["repeat_rapport_ice_breaker_bn"]
+
+
+
 
 
 
