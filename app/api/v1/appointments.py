@@ -1,7 +1,7 @@
 """Scheduled appointments: the calendar, and booking a place in it."""
 
 from datetime import UTC, datetime, timedelta, timezone
-from typing import Annotated
+from typing import Annotated, Any
 from zoneinfo import ZoneInfo
 
 from beanie import PydanticObjectId
@@ -9,6 +9,7 @@ from beanie.operators import In
 from fastapi import APIRouter, Query, status
 from fastapi.responses import HTMLResponse
 from loguru import logger
+from pydantic import BaseModel
 
 from app.api.dependencies import AstrologerUser, CurrentAstrologer, CurrentUser
 from app.core.exceptions import BadRequestError, ForbiddenError, NotFoundError
