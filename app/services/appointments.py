@@ -260,6 +260,222 @@ def calculate_slot_muhurat(moment_utc: datetime) -> dict[str, Any]:
     }
 
 
+def get_auspicious_transit_for_date(target_date: date_type) -> dict[str, Any]:
+    """Detects auspicious Vedic tithis and celestial transits for dynamic Tatkal surge pricing.
+
+    Identifies:
+    - Amavasya (মহাপবিত্র অমাবস্যা - 10x remedial demand for Kaal Sarp & Pitru Dosha)
+    - Purnima (পবিত্র পূর্ণিমা তিথি - Satyanarayan, Chandra Shanti, prosperity)
+    - Shani Pradosh (মহাদুর্লভ শনি প্রদোষ - Saturday Trayodashi, Shani Sadesati & Mahadeva relief)
+    - Pradosh Vrat (প্রদোষ ব্রত তিথি - Trayodashi on other weekdays)
+    - Ekadashi (পবিত্র একাদশী ব্রত তিথি - Vishnu devotion & karma cleansing)
+    - Surya Grahan (সূর্যগ্রহণ মহাযোগ - Solar Eclipse)
+    - Chandra Grahan (চন্দ্রগ্রহণ মহালগ্ন - Lunar Eclipse)
+    - Masa Shivratri (মাসিক শিবরাত্রি - Krishna Chaturdashi)
+    - Guru / Ravi Pushya Yoga (বৃহস্পতি/রবি পুষ্য নক্ষত্র মহাযোগ)
+    """
+    import swisseph as swe
+    from zoneinfo import ZoneInfo
+
+    IST = ZoneInfo("Asia/Kolkata")
+    dt = datetime(target_date.year, target_date.month, target_date.day, 12, 0, tzinfo=IST)
+    weekday = dt.weekday()  # Monday = 0, Saturday = 5, Sunday = 6
+
+    # 1. Sidereal longitudes at 12:00 PM IST (06:30 UTC)
+    try:
+        jd = swe.julday(target_date.year, target_date.month, target_date.day, 6.5)
+        swe.set_sid_mode(swe.SIDM_LAHIRI)
+        sun_res = swe.calc_ut(jd, swe.SUN, swe.FLG_SIDEREAL)
+        sun_lon = float(sun_res[0][0]) % 360.0
+        moon_res = swe.calc_ut(jd, swe.MOON, swe.FLG_SIDEREAL)
+        moon_lon = float(moon_res[0][0]) % 360.0
+        rahu_res = swe.calc_ut(jd, swe.MEAN_NODE, swe.FLG_SIDEREAL)
+        rahu_lon = float(rahu_res[0][0]) % 360.0
+        ketu_lon = (rahu_lon + 180.0) % 360.0
+    except Exception as exc:
+        logger.warning("Could not calculate exact planetary positions with swisseph: {}", exc)
+        sun_lon = 0.0
+        moon_lon = 0.0
+        rahu_lon = 0.0
+        ketu_lon = 180.0
+
+    elongation = (moon_lon - sun_lon) % 360.0
+    tithi_index = int(elongation / 12.0)  # 0..29
+    tithi_num = (tithi_index % 15) + 1    # 1..15
+    is_shukla = tithi_index < 15
+    paksha_bn = "শুক্লপক্ষ" if is_shukla else "কৃষ্ণপক্ষ"
+    paksha_en = "Shukla Paksha" if is_shukla else "Krishna Paksha"
+
+    # Pushya Nakshatra check (Cancer 3°20' - 16°40' -> index 7 in 0-indexed nakshatras)
+    nak_idx = int(moon_lon / (360.0 / 27.0)) % 27
+    is_pushya = nak_idx == 7
+
+    # Node proximities for Eclipse detection
+    sun_rahu_dist = min(abs((sun_lon - rahu_lon + 180) % 360 - 180), abs((sun_lon - ketu_lon + 180) % 360 - 180))
+    moon_rahu_dist = min(abs((moon_lon - rahu_lon + 180) % 360 - 180), abs((moon_lon - ketu_lon + 180) % 360 - 180))
+
+    is_auspicious = False
+    event_key = None
+    event_name_bn = None
+    event_name_en = None
+    recommended_multiplier = 1.0
+    remedy_focus_bn = None
+    remedy_focus_en = None
+    spiritual_reason_bn = None
+    spiritual_reason_en = None
+    demand_factor = "1x"
+
+    # Evaluation priority
+    if tithi_index == 29 and sun_rahu_dist < 12.5:
+        # Solar Eclipse
+        is_auspicious = True
+        event_key = "surya_grahan"
+        event_name_bn = "সূর্যগ্রহণ মহাযোগ (Surya Grahan)"
+        event_name_en = "Solar Eclipse (Surya Grahan)"
+        recommended_multiplier = 2.0
+        demand_factor = "10x"
+        remedy_focus_bn = "গ্রহণদোষ শান্তি, তীব্র মহাকবচ ধারণ ও মন্ত্রসিদ্ধি"
+        remedy_focus_en = "Eclipse Dosha Shanti, Sacred Protection Kavach & Mantra Siddhi"
+        spiritual_reason_bn = "সূর্যগ্রহণের দিনে গ্রহদোষ শান্তি ও রক্ষাকবচ গ্রহণের চাহিদা সাধারণ দিনের চেয়ে বহু গুণ বেশি থাকে।"
+        spiritual_reason_en = "Demand surges up to 10x during Solar Eclipse for planetary remediation and protective talismans."
+
+    elif tithi_index == 14 and moon_rahu_dist < 12.5:
+        # Lunar Eclipse
+        is_auspicious = True
+        event_key = "chandra_grahan"
+        event_name_bn = "চন্দ্রগ্রহণ মহালগ্ন (Chandra Grahan)"
+        event_name_en = "Lunar Eclipse (Chandra Grahan)"
+        recommended_multiplier = 2.0
+        demand_factor = "10x"
+        remedy_focus_bn = "চন্দ্রদোষ নিবৃত্তি, মানসিক উদ্বেগ শান্তি ও আধ্যাত্মিক দীক্ষা"
+        remedy_focus_en = "Chandra Dosha Relief, Mental Anxiety Relief & Spiritual Initiation"
+        spiritual_reason_bn = "চন্দ্রগ্রহণের সময় বিশেষ মানসিক শান্তি ও চন্দ্র প্রতিকার নেওয়ার আধ্যাত্মিক চাহিদা ১০ গুণ বৃদ্ধি পায়।"
+        spiritual_reason_en = "Surging spiritual demand during Lunar Eclipse for mental tranquility and Moon remediation."
+
+    elif tithi_index == 29:
+        # Amavasya (New Moon)
+        is_auspicious = True
+        event_key = "amavasya"
+        event_name_bn = "মহাপবিত্র অমাবস্যা তিথি (Amavasya)"
+        event_name_en = "Sacred Amavasya (New Moon)"
+        recommended_multiplier = 2.0
+        demand_factor = "10x"
+        remedy_focus_bn = "কালসর্প দোষ খণ্ডন, পিতৃ তর্পণ, রাহু-কেতু শান্তিকবচ"
+        remedy_focus_en = "Kaal Sarp Dosha Remediation, Ancestral Pitru Tarpana & Rahu-Ketu Shanti"
+        spiritual_reason_bn = "অমাবস্যা তিথিতে কালসর্প ও পিতৃদোষ প্রতিকার নেওয়ার চাহিদা সাধারণ দিনের চেয়ে ১০ গুণ বেশি থাকে।"
+        spiritual_reason_en = "Remedial consultation demand surges up to 10x during Amavasya for Kaal Sarp and Pitru Dosha remedies."
+
+    elif tithi_index == 14:
+        # Purnima (Full Moon)
+        is_auspicious = True
+        event_key = "purnima"
+        event_name_bn = "পবিত্র পূর্ণিমা তিথি (Purnima)"
+        event_name_en = "Sacred Purnima (Full Moon)"
+        recommended_multiplier = 1.5
+        demand_factor = "8x"
+        remedy_focus_bn = "সত্যনারায়ণ পূজা সংকল্প, চন্দ্র শান্তি ও পারিবারিক শ্রীবৃদ্ধি"
+        remedy_focus_en = "Satyanarayan Sankalpa, Chandra Shanti & Family Prosperity"
+        spiritual_reason_bn = "পূর্ণিমা তিথিতে সত্যনারায়ণ, চন্দ্র শান্তি ও সমৃদ্ধির প্রতিকার নেওয়ার পরম শুভ চাহিদা থাকে।"
+        spiritual_reason_en = "Remedial consultations surge significantly during Purnima for prosperity, relationships and emotional clarity."
+
+    elif tithi_num == 13 and weekday == 5:
+        # Shani Pradosh (Saturday Trayodashi)
+        is_auspicious = True
+        event_key = "shani_pradosh"
+        event_name_bn = "মহাদুর্লভ শনি প্রদোষ মহাযোগ (Shani Pradosh)"
+        event_name_en = "Sacred Shani Pradosh (Saturday Trayodashi)"
+        recommended_multiplier = 2.0
+        demand_factor = "10x"
+        remedy_focus_bn = "শনির সাড়েসাতি ও ধাইয়া নিবৃত্তি, মহামৃত্যুঞ্জয় ও শিবকৃপা কবচ"
+        remedy_focus_en = "Shani Sadesati & Dhaiya Relief, Mahamrityunjaya & Shiva Blessings"
+        spiritual_reason_bn = "শনিবার ত্রয়োদশী তিথি পড়ায় এটি শনি প্রদোষ—শনির সাড়েসাতি ও দীর্ঘস্থায়ী কর্মবাধা কাটানোর বিরলতম সংযোগ।"
+        spiritual_reason_en = "Trayodashi falling on Saturday forms rare Shani Pradosh — unmatched demand for relieving Saturn affliction."
+
+    elif tithi_num == 11:
+        # Ekadashi
+        is_auspicious = True
+        event_key = "ekadashi"
+        event_name_bn = "পবিত্র একাদশী ব্রত তিথি (Ekadashi)"
+        event_name_en = "Sacred Ekadashi Vrat Tithi"
+        recommended_multiplier = 1.5
+        demand_factor = "6x"
+        remedy_focus_bn = "শ্রীবিষ্ণু আরাধনা, পাপমোচন সংকল্প ও আত্মিক কল্যাণ"
+        remedy_focus_en = "Lord Vishnu Devotion, Karma Cleansing & Spiritual Vows"
+        spiritual_reason_bn = "একাদশীর পবিত্র দিনে ব্রত সংকল্প ও বৃহস্পতি-বিষ্ণু প্রতিকার নেওয়ার ব্যাপক ভক্তিমূলক চাহিদা থাকে।"
+        spiritual_reason_en = "Spiritual demand surges on Ekadashi for devotional discipline and Jupiterian karmic resolutions."
+
+    elif is_pushya and weekday == 3:
+        # Guru Pushya Yoga
+        is_auspicious = True
+        event_key = "guru_pushya"
+        event_name_bn = "মহা শুভ গুরু পুষ্য যোগ (Guru Pushya Yoga)"
+        event_name_en = "Supreme Guru Pushya Mahayoga"
+        recommended_multiplier = 2.0
+        demand_factor = "10x"
+        remedy_focus_bn = "রত্ন ধারণ, স্বর্ণ ক্রয়, ধনপ্রাপ্তি ও সিদ্ধি সংকল্প"
+        remedy_focus_en = "Gemstone Consecration, Gold Acquisition & Wealth Siddhi"
+        spiritual_reason_bn = "বৃহস্পতিবার পুষ্য নক্ষত্রের সংযোগে তৈরি হওয়া গুরু পুষ্য যোগে রত্ন ও প্রতিকার ধারণে সর্বাধিক ফল লাভ হয়।"
+        spiritual_reason_en = "Guru Pushya Yoga is the most auspicious planetary alignment for gemstone activation and wealth remedies."
+
+    elif is_pushya and weekday == 6:
+        # Ravi Pushya Yoga
+        is_auspicious = True
+        event_key = "ravi_pushya"
+        event_name_bn = "মহা শুভ রবি পুষ্য যোগ (Ravi Pushya Yoga)"
+        event_name_en = "Supreme Ravi Pushya Mahayoga"
+        recommended_multiplier = 2.0
+        demand_factor = "10x"
+        remedy_focus_bn = "সূর্য প্রতিকার, মাণিক্য রত্ন ধারণ ও রাজ্যসুখ সংকল্প"
+        remedy_focus_en = "Sun Remediation, Ruby Gemstone Consecration & Leadership Siddhi"
+        spiritual_reason_bn = "রবিবার পুষ্য নক্ষত্রের সংযোগে গঠিত রবি পুষ্য যোগে প্রতিকার গ্রহণের চরম শুভ প্রভাব বিদ্যমান।"
+        spiritual_reason_en = "Ravi Pushya alignment grants immense planetary power for Solar remedies and executive breakthroughs."
+
+    elif tithi_num == 13:
+        # General Pradosh
+        is_auspicious = True
+        event_key = "pradosh"
+        event_name_bn = "পবিত্র প্রদোষ ব্রত তিথি (Pradosh Vrat)"
+        event_name_en = "Sacred Pradosh Vrat Tithi"
+        recommended_multiplier = 1.5
+        demand_factor = "5x"
+        remedy_focus_bn = "মহাদেব আরাধনা ও শারীরিক-মানসিক রোগ শান্তি"
+        remedy_focus_en = "Lord Shiva Worship & Health Dosha Remediation"
+        spiritual_reason_bn = "ত্রয়োদশীর প্রদোষ কালে মহাদেব আরাধনা ও গ্রহশান্তির বিশেষ চাহিদা থাকে।"
+        spiritual_reason_en = "Pradosh twilight window brings elevated seeker interest in health and emotional peace remedies."
+
+    elif tithi_index == 27:
+        # Masa Shivratri
+        is_auspicious = True
+        event_key = "shivratri"
+        event_name_bn = "পবিত্র মাসিক শিবরাত্রি (Masa Shivratri)"
+        event_name_en = "Sacred Masa Shivratri"
+        recommended_multiplier = 1.5
+        demand_factor = "7x"
+        remedy_focus_bn = "রুদ্রাভিষেক, শনি-রাহু উপশম ও আত্মিক সুরক্ষাকবচ"
+        remedy_focus_en = "Rudrabhishekam, Saturn-Rahu Mitigation & Protective Armor"
+        spiritual_reason_bn = "মাসিক শিবরাত্রিতে রুদ্রাভিষেক ও গ্রহদোষ নিবৃত্তির প্রবল ভক্তিমূলক চাহিদা পরিলক্ষিত হয়।"
+        spiritual_reason_en = "Elevated seeker demand during monthly Shivratri for profound spiritual protection."
+
+    return {
+        "date": target_date.isoformat(),
+        "is_auspicious_transit_day": is_auspicious,
+        "event_key": event_key,
+        "event_name_bn": event_name_bn,
+        "event_name_en": event_name_en,
+        "recommended_multiplier": recommended_multiplier,
+        "surge_multipliers": [1.5, 2.0] if is_auspicious else [1.0],
+        "demand_factor": demand_factor,
+        "remedy_focus_bn": remedy_focus_bn,
+        "remedy_focus_en": remedy_focus_en,
+        "spiritual_reason_bn": spiritual_reason_bn,
+        "spiritual_reason_en": spiritual_reason_en,
+        "tithi_index": tithi_index,
+        "tithi_num": tithi_num,
+        "paksha_bn": paksha_bn,
+        "paksha_en": paksha_en,
+    }
+
+
 def get_daily_panchang_shield(target_date: date_type) -> dict[str, Any]:
     """Generates a complete Vedic Panchang & Rahu Kaal Shield summary for a calendar day."""
     from zoneinfo import ZoneInfo
@@ -288,9 +504,12 @@ def get_daily_panchang_shield(target_date: date_type) -> dict[str, Any]:
             **muhurat,
         })
 
+    auspicious_transit = get_auspicious_transit_for_date(target_date)
+
     return {
         "date": target_date.isoformat(),
         "weekday": weekday,
+        "auspicious_transit": auspicious_transit,
         "rahu_kaal": {
             "start_decimal": r_start,
             "end_decimal": r_end,
@@ -510,6 +729,7 @@ async def day_view(
             "sync_enabled": bool(gc and gc.sync_enabled),
             "last_synced_at": gc.last_synced_at.isoformat() if gc and gc.last_synced_at else None,
         },
+        "auspicious_transit": get_auspicious_transit_for_date(day_start.date()),
     }
 
 
@@ -2933,6 +3153,146 @@ async def open_quick_tatkal_window(
         multiplier,
     )
     return window
+
+
+async def activate_auspicious_transit_surge(
+    *,
+    astrologer: Astrologer,
+    target_date: date_type,
+    multiplier: float = 1.5,
+    custom_title: str | None = None,
+    open_surge_window: bool = True,
+    from_time: str = "10:00",
+    to_time: str = "22:00",
+    timezone_name: str | None = "Asia/Kolkata",
+) -> dict[str, Any]:
+    """1-Click activation of Auspicious Day Tatkal Surge (1.5x / 2.0x).
+
+    Finds existing windows on target_date and turns them into VIP Tatkal windows with
+    the dynamic transit multiplier, or opens a new prime-hours window on that day if none exists.
+    """
+    assert astrologer.id is not None
+    transit = get_auspicious_transit_for_date(target_date)
+    event_name = transit.get("event_name_bn") or "শুভ তিথি"
+    resolved_title = custom_title or f"{event_name} শুভ তিথি তৎকাল সার্জ ({multiplier}x)"
+
+    existing_windows = await AvailabilityWindow.find({
+        "astrologer_id": astrologer.id,
+        "day": target_date,
+    }).to_list()
+
+    affected_windows = 0
+    if existing_windows:
+        for w in existing_windows:
+            w.is_tatkal = True
+            w.tatkal_multiplier = multiplier
+            w.custom_title = resolved_title
+            await w.save()
+            affected_windows += 1
+    elif open_surge_window:
+        from zoneinfo import ZoneInfo
+        IST = ZoneInfo("Asia/Kolkata")
+        tz = IST
+        if timezone_name:
+            try:
+                tz = ZoneInfo(timezone_name)
+            except Exception:
+                tz = IST
+
+        try:
+            f_h, f_m = [int(p) for p in from_time.split(":")[:2]]
+            t_h, t_m = [int(p) for p in to_time.split(":")[:2]]
+        except Exception:
+            f_h, f_m = 10, 0
+            t_h, t_m = 22, 0
+
+        starts_local = datetime(target_date.year, target_date.month, target_date.day, f_h, f_m, tzinfo=tz)
+        ends_local = datetime(target_date.year, target_date.month, target_date.day, t_h, t_m, tzinfo=tz)
+        starts_utc = starts_local.astimezone(UTC).replace(second=0, microsecond=0)
+        ends_utc = ends_local.astimezone(UTC).replace(second=0, microsecond=0)
+
+        clash = await AvailabilityWindow.find_one({
+            "astrologer_id": astrologer.id,
+            "starts_at": {"$lt": ends_utc},
+            "ends_at": {"$gt": starts_utc},
+        })
+        if clash is None:
+            new_w = AvailabilityWindow(
+                astrologer_id=astrologer.id,
+                day=target_date,
+                starts_at=starts_utc,
+                ends_at=ends_utc,
+                is_tatkal=True,
+                tatkal_multiplier=multiplier,
+                custom_title=resolved_title,
+            )
+            await new_w.insert()
+            affected_windows += 1
+
+    astrologer.appointment.tatkal_enabled = True
+    astrologer.appointment.tatkal_default_multiplier = multiplier
+    await astrologer.save()
+
+    logger.info(
+        "Auspicious Transit Surge activated for astrologer {} on {} (x{}, {} windows affected)",
+        astrologer.id,
+        target_date,
+        multiplier,
+        affected_windows,
+    )
+
+    return {
+        "success": True,
+        "day": target_date.isoformat(),
+        "is_auspicious_transit_day": transit.get("is_auspicious_transit_day", False),
+        "event_key": transit.get("event_key"),
+        "event_name_bn": transit.get("event_name_bn"),
+        "event_name_en": transit.get("event_name_en"),
+        "multiplier": multiplier,
+        "custom_title": resolved_title,
+        "windows_affected_count": affected_windows,
+        "spiritual_reason_bn": transit.get("spiritual_reason_bn"),
+        "remedy_focus_bn": transit.get("remedy_focus_bn"),
+        "demand_factor": transit.get("demand_factor", "1x"),
+        "message": f"{event_name} শুভ তিথি তৎকাল সার্জ ({multiplier}x) সফলভাবে সক্রিয় করা হয়েছে।",
+    }
+
+
+async def deactivate_auspicious_transit_surge(
+    *,
+    astrologer: Astrologer,
+    target_date: date_type,
+) -> dict[str, Any]:
+    """1-Click deactivation of Auspicious Day Tatkal Surge, returning windows to standard 1.0x rate."""
+    assert astrologer.id is not None
+    existing_windows = await AvailabilityWindow.find({
+        "astrologer_id": astrologer.id,
+        "day": target_date,
+    }).to_list()
+
+    affected_windows = 0
+    for w in existing_windows:
+        if w.is_tatkal:
+            w.is_tatkal = False
+            w.tatkal_multiplier = 1.0
+            w.custom_title = None
+            await w.save()
+            affected_windows += 1
+
+    logger.info(
+        "Auspicious Transit Surge deactivated for astrologer {} on {} ({} windows reverted)",
+        astrologer.id,
+        target_date,
+        affected_windows,
+    )
+
+    return {
+        "success": True,
+        "day": target_date.isoformat(),
+        "windows_affected_count": affected_windows,
+        "message": "শুভ তিথি তৎকাল সার্জ সফলভাবে নিষ্ক্রিয় করা হয়েছে এবং স্বাভাবিক মূল্যমান পুনঃস্থাপিত হয়েছে।",
+    }
+
 
 
 

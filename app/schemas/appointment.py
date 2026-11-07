@@ -409,4 +409,35 @@ class UpdatePrivateNotesRequest(BaseModel):
     notes: str = Field(default="", max_length=5000)
 
 
+# ------------------------------------------------------------- Vedic Transit Surge Pricing
+class AuspiciousTransitSurgeRequest(BaseModel):
+    day: str = Field(description="The date as YYYY-MM-DD")
+    multiplier: float = Field(default=1.5, ge=1.0, le=5.0, description="Surge multiplier (e.g. 1.5x or 2.0x)")
+    custom_title: str | None = Field(default=None, max_length=120)
+    open_surge_window: bool = Field(default=True, description="Open availability window if none exists")
+    from_time: str = Field(default="10:00", description="Start time in HH:MM (IST)")
+    to_time: str = Field(default="22:00", description="End time in HH:MM (IST)")
+
+
+class DeactivateTransitSurgeRequest(BaseModel):
+    day: str = Field(description="The date as YYYY-MM-DD")
+
+
+class AuspiciousTransitSurgeOut(BaseModel):
+    success: bool
+    day: str
+    is_auspicious_transit_day: bool
+    event_key: str | None = None
+    event_name_bn: str | None = None
+    event_name_en: str | None = None
+    multiplier: float
+    custom_title: str | None = None
+    windows_affected_count: int
+    spiritual_reason_bn: str | None = None
+    remedy_focus_bn: str | None = None
+    demand_factor: str
+    message: str
+
+
+
 

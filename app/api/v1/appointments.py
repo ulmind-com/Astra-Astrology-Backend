@@ -29,6 +29,8 @@ from app.schemas.appointment import (
     AppointmentOut,
     AppointmentPeer,
     AppointmentQuote,
+    AuspiciousTransitSurgeOut,
+    AuspiciousTransitSurgeRequest,
     BlacklistedClientOut,
     BookRequest,
     BrahmaPauseActionRequest,
@@ -36,6 +38,7 @@ from app.schemas.appointment import (
     CancelRequest,
     CreatePrivateInviteLinkRequest,
     DayView,
+    DeactivateTransitSurgeRequest,
     ExtensionActionRequest,
     IssueFollowUpPassRequest,
     NoShowRequest,
@@ -1594,6 +1597,82 @@ async def open_tatkal_window(
             is_private=window.is_private,
         ),
     )
+
+
+@router.post(
+    "/me/auspicious-transit-surge",
+    response_model=ApiResponse[AuspiciousTransitSurgeOut],
+    summary="1-Click activate Auspicious Day Tatkal Surge (1.5x / 2.0x) on Amavasya, Purnima, Pradosh, Grahan",
+)
+async def activate_auspicious_surge(
+    payload: AuspiciousTransitSurgeRequest,
+    profile: CurrentAstrologer,
+) -> ApiResponse[AuspiciousTransitSurgeOut]:
+    try:
+        target_date = datetime.strptime(payload.day, "%Y-%m-%d").date()
+    except ValueError:
+        raise BadRequestError("Invalid date format. Use YYYY-MM-DD.", error_code="bad_date")
+
+    result = await service.activate_auspicious_transit_surge(
+        astrologer=profile,
+        target_date=target_date,
+        multiplier=payload.multiplier,
+        custom_title=payload.custom_title,
+        open_surge_window=payload.open_surge_window,
+        from_time=payload.from_time,
+        to_time=payload.to_time,
+    )
+    return ApiResponse(
+        message=result["message"],
+        data=AuspiciousTransitSurgeOut(**result),
+    )
+
+
+@router.post(
+    "/me/auspicious-transit-surge/deactivate",
+    response_model=ApiResponse[dict[str, Any]],
+    summary="1-Click deactivate Auspicious Day Tatkal Surge and revert to standard rates",
+)
+async def deactivate_auspicious_surge(
+    payload: DeactivateTransitSurgeRequest,
+    profile: CurrentAstrologer,
+) -> ApiResponse[dict[str, Any]]:
+    try:
+        target_date = datetime.strptime(payload.day, "%Y-%m-%d").date()
+    except ValueError:
+        raise BadRequestError("Invalid date format. Use YYYY-MM-DD.", error_code="bad_date")
+
+    result = await service.deactivate_auspicious_transit_surge(
+        astrologer=profile,
+        target_date=target_date,
+    )
+    return ApiResponse(
+        message=result["message"],
+        data=result,
+    )
+
+
+@router.get(
+    "/auspicious-transit",
+    summary="Check whether a calendar date is an auspicious Vedic transit day with surge indicators",
+)
+async def get_auspicious_transit(
+    on: Annotated[str | None, Query(description="The date, as YYYY-MM-DD")] = None,
+) -> ApiResponse[dict[str, Any]]:
+    if on:
+        try:
+            target_date = datetime.strptime(on, "%Y-%m-%d").date()
+        except ValueError:
+            raise BadRequestError("Invalid date format. Use YYYY-MM-DD.", error_code="bad_date")
+    else:
+        target_date = datetime.now(UTC).date()
+
+    transit = service.get_auspicious_transit_for_date(target_date)
+    return ApiResponse(
+        message="Auspicious transit data fetched.",
+        data=transit,
+    )
+
 
 
 

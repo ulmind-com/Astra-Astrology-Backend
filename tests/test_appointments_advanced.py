@@ -751,6 +751,79 @@ async def test_karmic_consultation_vault_repeat_timeline():
         assert "পান্না" in vault["repeat_rapport_ice_breaker_bn"]
 
 
+@pytest.mark.asyncio
+async def test_auspicious_transit_surge_detection_and_activation():
+    """Verify Auspicious Transit Surge detection (Amavasya, Purnima) and 1-click activation/deactivation."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from datetime import date
+    from app.services.appointments import (
+        get_auspicious_transit_for_date,
+        activate_auspicious_transit_surge,
+        deactivate_auspicious_transit_surge,
+    )
+
+    # 1. Detection of Amavasya
+    amavasya_date = date(2026, 11, 8)
+    amavasya_transit = get_auspicious_transit_for_date(amavasya_date)
+    assert amavasya_transit["is_auspicious_transit_day"] is True
+    assert amavasya_transit["event_key"] == "amavasya"
+    assert "অমাবস্যা" in amavasya_transit["event_name_bn"]
+    assert amavasya_transit["recommended_multiplier"] == 2.0
+    assert amavasya_transit["demand_factor"] == "10x"
+
+    # 2. Detection of Purnima
+    purnima_date = date(2026, 11, 24)
+    purnima_transit = get_auspicious_transit_for_date(purnima_date)
+    assert purnima_transit["is_auspicious_transit_day"] is True
+    assert purnima_transit["event_key"] == "purnima"
+    assert "পূর্ণিমা" in purnima_transit["event_name_bn"]
+    assert purnima_transit["recommended_multiplier"] == 1.5
+
+    # 3. 1-Click Surge Activation on Existing Window
+    mock_astrologer = MagicMock()
+    mock_astrologer.id = "astro_123"
+    mock_astrologer.appointment = MagicMock()
+    mock_astrologer.appointment.tatkal_enabled = False
+    mock_astrologer.appointment.tatkal_default_multiplier = 1.0
+    mock_astrologer.save = AsyncMock()
+
+    mock_window = MagicMock()
+    mock_window.id = "win_123"
+    mock_window.day = amavasya_date
+    mock_window.is_tatkal = False
+    mock_window.tatkal_multiplier = 1.0
+    mock_window.save = AsyncMock()
+
+    with patch("app.models.appointment.AvailabilityWindow.find") as mock_find:
+        mock_find.return_value.to_list = AsyncMock(return_value=[mock_window])
+
+        res = await activate_auspicious_transit_surge(
+            astrologer=mock_astrologer,
+            target_date=amavasya_date,
+            multiplier=2.0,
+        )
+
+        assert res["success"] is True
+        assert res["multiplier"] == 2.0
+        assert res["windows_affected_count"] == 1
+        assert mock_window.is_tatkal is True
+        assert mock_window.tatkal_multiplier == 2.0
+        assert "অমাবস্যা" in mock_window.custom_title
+        assert mock_astrologer.appointment.tatkal_enabled is True
+        assert mock_astrologer.appointment.tatkal_default_multiplier == 2.0
+
+        # 4. 1-Click Surge Deactivation
+        deact = await deactivate_auspicious_transit_surge(
+            astrologer=mock_astrologer,
+            target_date=amavasya_date,
+        )
+        assert deact["success"] is True
+        assert deact["windows_affected_count"] == 1
+        assert mock_window.is_tatkal is False
+        assert mock_window.tatkal_multiplier == 1.0
+
+
+
 
 
 
