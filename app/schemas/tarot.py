@@ -30,11 +30,19 @@ class TarotCardSchema(BaseModel):
     element: str  # "Fire", "Water", "Air", "Earth", "Spirit"
     astrology: str  # e.g. "Aries", "Uranus", "Venus"
     vedic_graha: str  # e.g. "Surya", "Chandra", "Mangal"
+    image_slug: str
+    numerology: str | None = None
+    timing_window: str | None = None
+    timing_season: str | None = None
+    timing_speed: str | None = None
+    yes_no: str | None = None
+    one_liner: str | None = None
+    symbols: list[str] = Field(default_factory=list)
+    professions: list[str] = Field(default_factory=list)
     upright: CardAspectInterpretation
     reversed: CardAspectInterpretation
     remedy: str
     affirmation: str
-    image_slug: str
 
 
 class SpreadPosition(BaseModel):
@@ -65,6 +73,14 @@ class DrawnCardDetail(BaseModel):
     keywords: list[str]
     advice: str
     elemental_harmony: str | None = None
+    numerology: str | None = None
+    timing_window: str | None = None
+    timing_season: str | None = None
+    timing_speed: str | None = None
+    yes_no: str | None = None
+    one_liner: str | None = None
+    symbols: list[str] = Field(default_factory=list)
+    professions: list[str] = Field(default_factory=list)
 
 
 class TarotDrawRequest(BaseModel):
@@ -98,6 +114,7 @@ class TarotDrawResponse(BaseModel):
     vedic_mantra: str
     predicted_timeframe: str | None = None
     divine_verdict: str | None = None
+    timing_breakdown: dict[str, Any] | None = None
     favorable_score: int | None = None
     auspicious_day: str | None = None
     auspicious_color: str | None = None

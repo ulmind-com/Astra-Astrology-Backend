@@ -334,8 +334,8 @@ def _calculate_timing_and_verdict(
     dominant_elem: str,
     lang: str,
     category: str,
-) -> tuple[str, str, int, str, str]:
-    """Calculate precise timing window, divine verdict score, and astrological day/color."""
+) -> tuple[str, str, int, str, str, dict[str, Any]]:
+    """Calculate precise timing window, divine verdict score, astrological day/color, and master course breakdown."""
     upright_count = sum(1 for c in drawn_cards if c.orientation == "upright")
     total = len(drawn_cards)
     ratio = upright_count / total if total > 0 else 0.5
@@ -346,27 +346,36 @@ def _calculate_timing_and_verdict(
     elif base_score < 55:
         base_score = 55
 
-    last_card = drawn_cards[-1].card
-    last_elem = last_card.element
+    last_card_detail = drawn_cards[-1]
+    last_card = last_card_detail.card
+    last_orientation = last_card_detail.orientation
+
+    card_speed = last_card.timing_speed or "Days to Weeks"
+    card_season = last_card.timing_season or "Spring"
+    card_window = last_card.timing_window or "Upcoming Solar Cycle"
+    card_yes_no = last_card.yes_no or "YES"
+    if last_orientation == "reversed":
+        effective_yes_no = "NO / Caution (Reversed)"
+    else:
+        effective_yes_no = card_yes_no
+
+    timing_breakdown = {
+        "speed": card_speed,
+        "season": card_season,
+        "window": card_window,
+        "verdict_card": last_card.name,
+        "orientation": last_orientation,
+        "card_yes_no": effective_yes_no,
+    }
 
     if lang == "bn":
-        if last_card.arcana == "major":
-            timeframe = "আসন্ন ৩ থেকে ৬ মাসের মধ্যে (মহাজাগতিক গ্রহ ট্রানজিট ও শুভ গোচরে নিশ্চিত রূপান্তর)"
-        elif last_elem == "Fire":
-            timeframe = "আগামী ২ থেকে ৪ সপ্তাহের মধ্যে (অত্যন্ত দ্রুত গতিতে অগ্রগতি ও সুযোগ প্রাপ্তি)"
-        elif last_elem == "Water":
-            timeframe = "আগামী ১ থেকে ৩ চান্দ্রমাসের মধ্যে (মানসিক স্থিতি ও অনুকূল সংযোগ সৃষ্টি)"
-        elif last_elem == "Air":
-            timeframe = "আগামী ৩ থেকে ৫ মাসের মধ্যে (কৌশলগত পরিকল্পনা ও আলোচনা সফল হবে)"
+        timeframe = f"প্রকাশের গতি: {card_speed} | ঋতু: {card_season} | মহাজাগতিক কাল: {card_window}"
+        if "NO" in effective_yes_no.upper():
+            verdict = f"সতর্কতা / না ({effective_yes_no}) — অনুকূল সম্ভাবনা: {base_score}%"
+        elif "MAYBE" in effective_yes_no.upper():
+            verdict = f"সম্ভাব্য কিন্তু শর্তসাপেক্ষ ({effective_yes_no}) — সম্ভাবনা: {base_score}%"
         else:
-            timeframe = "আগামী ৫ থেকে ৮ মাসের মধ্যে (দীর্ঘমেয়াদী ও স্থায়ী ভিত্তি লাভ)"
-
-        if base_score >= 80:
-            verdict = f"অত্যন্ত অনুকূল ও শুভ সংকেত ({base_score}% ইতিবাচক সম্ভাবনা)"
-        elif base_score >= 65:
-            verdict = f"অনুকূল কিন্তু সচেতন প্রচেষ্টা আবশ্যক ({base_score}% সম্ভাবনা)"
-        else:
-            verdict = f"সতর্কতা ও আত্মশুদ্ধি প্রয়োজন ({base_score}% সম্ভাবনা)"
+            verdict = f"অত্যন্ত শুভ ও অনুকূল সংকেত (হাঁ / {effective_yes_no}) — সম্ভাবনা: {base_score}%"
 
         graha_colors_bn = {
             "Surya": ("রবিবার", "সোনালী / প্রদীপ্ত লাল"),
@@ -383,23 +392,13 @@ def _calculate_timing_and_verdict(
         day, color = graha_colors_bn.get(lead_graha, ("বৃহস্পতিবার", "সোনালী হলুদ"))
 
     elif lang == "hi":
-        if last_card.arcana == "major":
-            timeframe = "आगामी 3 से 6 माह में (ब्रह्मांडीय ग्रह गोचर द्वारा निश्चित फल)"
-        elif last_elem == "Fire":
-            timeframe = "आगामी 2 से 4 सप्ताह में (अत्यंत तीव्र गति से अवसर प्राप्ति)"
-        elif last_elem == "Water":
-            timeframe = "आगामी 1 से 3 चंद्र मास में (सकारात्मक बदलाव)"
-        elif last_elem == "Air":
-            timeframe = "आगामी 3 से 5 माह में (योजनाबद्ध सफलता)"
+        timeframe = f"फल प्राप्ति गति: {card_speed} | ऋतु: {card_season} | ब्रह्मांडीय काल: {card_window}"
+        if "NO" in effective_yes_no.upper():
+            verdict = f"सावधानी / नहीं ({effective_yes_no}) — संभावना: {base_score}%"
+        elif "MAYBE" in effective_yes_no.upper():
+            verdict = f"संभावित / विचारणीय ({effective_yes_no}) — संभावना: {base_score}%"
         else:
-            timeframe = "आगामी 5 से 8 माह में (स्थिर व दीर्घकालिक लाभ)"
-
-        if base_score >= 80:
-            verdict = f"अत्यंत शुभ व सकारात्मक संकेत ({base_score}% संभावना)"
-        elif base_score >= 65:
-            verdict = f"सकारात्मक किंतु निरंतर प्रयास आवश्यक ({base_score}% संभावना)"
-        else:
-            verdict = f"सावधानी व आत्म-मंथन आवश्यक ({base_score}% संभावना)"
+            verdict = f"अत्यंत शुभ व सकारात्मक (हाँ / {effective_yes_no}) — संभावना: {base_score}%"
 
         graha_colors_hi = {
             "Surya": ("रविवार", "सुनहरा / लाल"),
@@ -416,23 +415,13 @@ def _calculate_timing_and_verdict(
         day, color = graha_colors_hi.get(lead_graha, ("गुरुवार", "पीला सुनहरा"))
 
     else:
-        if last_card.arcana == "major":
-            timeframe = "Within 3 to 6 months (Catalyzed by planetary transit & cosmic alignment)"
-        elif last_elem == "Fire":
-            timeframe = "Within 2 to 4 weeks (Rapid momentum & immediate breakthrough)"
-        elif last_elem == "Water":
-            timeframe = "Within 1 to 3 lunar cycles (Emotional readiness & new avenues)"
-        elif last_elem == "Air":
-            timeframe = "Within 3 to 5 months (Strategic negotiations & clear vision)"
+        timeframe = f"{card_speed} | Season: {card_season} | Window: {card_window}"
+        if "NO" in effective_yes_no.upper():
+            verdict = f"Caution / NO ({effective_yes_no}) — {base_score}% Alignment"
+        elif "MAYBE" in effective_yes_no.upper():
+            verdict = f"Conditional / MAYBE ({effective_yes_no}) — {base_score}% Alignment"
         else:
-            timeframe = "Within 5 to 8 months (Enduring material foundation & authority)"
-
-        if base_score >= 80:
-            verdict = f"Strongly Favorable & Auspicious ({base_score}% positive likelihood)"
-        elif base_score >= 65:
-            verdict = f"Promising with Deliberate Action ({base_score}% likelihood)"
-        else:
-            verdict = f"Requires Vigilance & Cleansing ({base_score}% likelihood)"
+            verdict = f"Strongly Favorable / YES ({effective_yes_no}) — {base_score}% Alignment"
 
         graha_colors_en = {
             "Surya": ("Sunday", "Golden Yellow / Sunburst Orange"),
@@ -448,7 +437,7 @@ def _calculate_timing_and_verdict(
         lead_graha = drawn_cards[0].card.vedic_graha
         day, color = graha_colors_en.get(lead_graha, ("Thursday", "Royal Gold"))
 
-    return timeframe, verdict, base_score, day, color
+    return timeframe, verdict, base_score, day, color, timing_breakdown
 
 
 def draw_tarot_spread(request: TarotDrawRequest) -> TarotDrawResponse:
@@ -575,6 +564,14 @@ def draw_tarot_spread(request: TarotDrawRequest) -> TarotDrawResponse:
                 relevant_interpretation=relevant_interp,
                 keywords=interp_data.get("keywords", []),
                 advice=advice,
+                numerology=card_schema.numerology,
+                timing_window=card_schema.timing_window,
+                timing_season=card_schema.timing_season,
+                timing_speed=card_schema.timing_speed,
+                yes_no=card_schema.yes_no if orientation == "upright" else "NO Card (Reversed)",
+                one_liner=card_schema.one_liner,
+                symbols=card_schema.symbols,
+                professions=card_schema.professions,
             )
         )
 
@@ -624,8 +621,8 @@ def draw_tarot_spread(request: TarotDrawRequest) -> TarotDrawResponse:
         "aligned_with_active_dasha": bool(request.active_dasha_lord),
     }
 
-    # High-precision Timing Window and Verdict
-    timeframe, verdict, score, auspicious_day, auspicious_color = _calculate_timing_and_verdict(
+    # High-precision Timing Window and Verdict adhering to Tarot Master Course
+    timeframe, verdict, score, auspicious_day, auspicious_color, timing_breakdown = _calculate_timing_and_verdict(
         drawn_cards_details, dominant_elem, lang, request.category
     )
 
@@ -785,6 +782,7 @@ def draw_tarot_spread(request: TarotDrawRequest) -> TarotDrawResponse:
         vedic_mantra=vedic_mantra,
         predicted_timeframe=timeframe,
         divine_verdict=verdict,
+        timing_breakdown=timing_breakdown,
         favorable_score=score,
         auspicious_day=auspicious_day,
         auspicious_color=auspicious_color,

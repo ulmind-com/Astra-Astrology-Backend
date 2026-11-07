@@ -44,6 +44,15 @@ def test_deck_completeness_and_canonical_structure():
         assert "vedic_graha" in c
         assert "remedy" in c and len(c["remedy"]) > 10
         assert "affirmation" in c
+        # Master Course canon fields
+        assert "numerology" in c and len(c["numerology"]) > 0
+        assert "timing_window" in c and len(c["timing_window"]) > 0
+        assert "timing_season" in c and len(c["timing_season"]) > 0
+        assert "timing_speed" in c and len(c["timing_speed"]) > 0
+        assert "yes_no" in c and len(c["yes_no"]) > 0
+        assert "one_liner" in c and len(c["one_liner"]) > 0
+        assert "symbols" in c and len(c["symbols"]) > 0
+        assert "professions" in c and len(c["professions"]) > 0
 
         for orientation in ("upright", "reversed"):
             interp = c[orientation]
@@ -97,6 +106,17 @@ def test_draw_engine_execution():
     assert len(res.actionable_guidance) > 20
     assert len(res.prescribed_remedy) > 10
     assert "ॐ" in res.vedic_mantra
+    assert res.predicted_timeframe is not None
+    assert res.divine_verdict is not None
+    assert res.timing_breakdown is not None
+    assert "speed" in res.timing_breakdown
+    assert "season" in res.timing_breakdown
+    assert "window" in res.timing_breakdown
+    for c in res.drawn_cards:
+        assert c.numerology is not None
+        assert len(c.symbols) > 0
+        assert len(c.professions) > 0
+        assert c.one_liner is not None
 
     # Test Celtic Cross (10 cards)
     cc_req = TarotDrawRequest(
