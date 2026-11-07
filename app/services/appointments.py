@@ -2642,7 +2642,7 @@ async def open_quick_tatkal_window(
         {
             "astrologer_id": astrologer.id,
             "starts_at": {"$lt": ends},
-            "ends_at": {"$gte": starts},
+            "ends_at": {"$gt": starts},
         }
     )
     if clash is not None:

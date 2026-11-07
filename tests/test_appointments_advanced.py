@@ -153,6 +153,7 @@ async def test_private_astrological_vault_notes(client: AsyncClient):
 
     astro_user = await User(
         email="pandit.vault@divinlink.com",
+        first_name="Pandit",
         phone="+919988776655",
         role="astrologer",
     ).insert()
@@ -214,4 +215,90 @@ async def test_private_astrological_vault_notes(client: AsyncClient):
             astrologer_user_id=client_user.id,
             notes="Hacked note",
         )
+
+
+@pytest.mark.asyncio
+async def test_contiguous_availability_windows_boundary_collision(client: AsyncClient):
+    """Verify that adjacent/contiguous slots (e.g. 5-6 PM and 6-7 PM) do NOT trigger false overlap errors."""
+    from beanie.operators import GT, LT, And
+    from app.core.exceptions import BadRequestError
+    from app.services.appointments import open_quick_tatkal_window
+
+    astro_user = await User(
+        email="contiguous_astro@astra.com",
+        first_name="Contiguous",
+        last_name="Pandit",
+    ).insert()
+
+    astro = await Astrologer(
+        user_id=astro_user.id,
+        display_name="Acharya Contiguous",
+        skills=[Skill.VEDIC_ASTROLOGY],
+        languages=["Bengali", "English"],
+    ).insert()
+
+    base_time = (datetime.now(UTC) + timedelta(days=2)).replace(minute=0, second=0, microsecond=0)
+    w1_start = base_time.replace(hour=17)
+    w1_end = base_time.replace(hour=18)
+
+    # Window 1: 17:00 - 18:00
+    w1 = await AvailabilityWindow(
+        astrologer_id=astro.id,
+        day=w1_start.date(),
+        starts_at=w1_start,
+        ends_at=w1_end,
+    ).insert()
+
+    # Contiguous Window 2: 18:00 - 19:00 (Boundary touches w1_end, MUST NOT clash!)
+    w2_start = base_time.replace(hour=18)
+    w2_end = base_time.replace(hour=19)
+
+    clash_contiguous = await AvailabilityWindow.find_one(
+        And(
+            AvailabilityWindow.astrologer_id == astro.id,
+            LT(AvailabilityWindow.starts_at, w2_end),
+            GT(AvailabilityWindow.ends_at, w2_start),
+        )
+    )
+    assert clash_contiguous is None, "Contiguous adjacent slot (18:00-19:00) falsely clashed with (17:00-18:00)!"
+
+    w2 = await AvailabilityWindow(
+        astrologer_id=astro.id,
+        day=w2_start.date(),
+        starts_at=w2_start,
+        ends_at=w2_end,
+    ).insert()
+
+    # Truly Overlapping Window 3: 17:30 - 18:30 (Overlaps both w1 and w2, MUST clash!)
+    w3_start = base_time.replace(hour=17, minute=30)
+    w3_end = base_time.replace(hour=18, minute=30)
+
+    clash_overlapping = await AvailabilityWindow.find_one(
+        And(
+            AvailabilityWindow.astrologer_id == astro.id,
+            LT(AvailabilityWindow.starts_at, w3_end),
+            GT(AvailabilityWindow.ends_at, w3_start),
+        )
+    )
+    assert clash_overlapping is not None, "Overlapping slot (17:30-18:30) failed to detect clash!"
+
+    # Contiguous VIP Tatkal slot: 19:00 - 19:30 (Right after w2_end, MUST succeed without clash)
+    w_tatkal = await open_quick_tatkal_window(
+        astrologer=astro,
+        starts_at=base_time.replace(hour=19),
+        minutes=30,
+        multiplier=2.0,
+    )
+    assert w_tatkal is not None
+    assert w_tatkal.starts_at == base_time.replace(hour=19)
+    assert w_tatkal.ends_at == base_time.replace(hour=19, minute=30)
+
+    # Overlapping VIP Tatkal slot: 18:45 - 19:15 (Overlaps w2 and tatkal, MUST raise BadRequestError)
+    with pytest.raises(BadRequestError):
+        await open_quick_tatkal_window(
+            astrologer=astro,
+            starts_at=base_time.replace(hour=18, minute=45),
+            minutes=30,
+        )
+
 
