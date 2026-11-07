@@ -270,6 +270,7 @@ class PrescriptionUpdateRequest(BaseModel):
     mantra: str | None = Field(default=None, max_length=500)
     mantra_count: int | None = Field(default=108, ge=1)
     daan_remedy: str | None = Field(default=None, max_length=300)
+    sankalpa: str | None = Field(default=None, max_length=500)
     astrologer_notes: str | None = Field(default=None, max_length=2000)
 
 

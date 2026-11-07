@@ -389,3 +389,4 @@ async def disconnect_google_calendar(astrologer: Astrologer) -> None:
 def uuid_hex() -> str:
     import uuid
     return uuid.uuid4().hex[:12]
+

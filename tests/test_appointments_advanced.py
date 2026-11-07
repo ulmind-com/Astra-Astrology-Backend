@@ -597,5 +597,65 @@ async def test_meditation_buffer_window_boundary_spill_guard(client: AsyncClient
     assert appt.ends_at == slot_fitting + timedelta(minutes=30)
 
 
+def test_divya_paramarsha_certificate_and_qr_verification_generation():
+    """Verify Royal Vedic Divya Paramarsha Certificate data and HTML generation."""
+    from unittest.mock import MagicMock
+    from app.services.cosmic_intelligence import (
+        generate_divya_paramarsha_certificate_data,
+        generate_certificate_html,
+    )
+
+    appointment = MagicMock()
+    appointment.id = "672bb192a0e28f323c10b192"
+    appointment.minutes = 45
+    appointment.consultation_pillar = "career_wealth"
+    appointment.prescription = {
+        "gemstone": "Natural Emerald (Panna) 4.5 Carats in Gold on Little Finger",
+        "rudraksha": "4 Mukhi Consecrated Mercury Rudraksha",
+        "mantra": "ॐ ब्रां ब्रीं ब्रौं सः बुधाय नमः",
+        "mantra_count": 108,
+        "daan_remedy": "Donate green moong dal and feed green grass to cows on Wednesday morning",
+        "sankalpa": "May my communication and intellect remain aligned with cosmic truth and clarity",
+        "astrologer_notes": "Chant Budha Beej mantra during sunrise for 21 days with copper water",
+    }
+
+    astrologer = MagicMock()
+    astrologer.display_name = "Acharya Ramanathan"
+    astrologer.avatar_url = "https://astra.com/avatar.jpg"
+
+    client = MagicMock()
+    client.full_name = "Arjun Sen"
+    client.first_name = "Arjun"
+    client.email = "arjun@example.com"
+
+    # 1. Generate certificate data
+    cert = generate_divya_paramarsha_certificate_data(appointment, astrologer, client)
+
+    assert cert["certificate_id"].startswith("ASTRA-DIVYA-")
+    assert cert["client"]["name"] == "Arjun Sen"
+    assert cert["astrologer"]["name"] == "Acharya Ramanathan"
+    assert "Career Wealth" in cert["consultation_pillar"]
+    assert cert["sacred_prescription"]["consecrated_gemstone"] == appointment.prescription["gemstone"]
+    assert cert["sacred_prescription"]["sacred_rudraksha"] == appointment.prescription["rudraksha"]
+    assert cert["sacred_prescription"]["sankalpa"] == appointment.prescription["sankalpa"]
+    assert cert["digital_seal"]["status"] == "Authentic & Consecrated"
+    assert "qr_code_url" in cert
+    assert "verify/prescription" in cert["verification_url"]
+    assert len(cert["vedic_shlokas"]) >= 2
+    assert "गायत्री" in cert["vedic_shlokas"][0]["sanskrit"] or "भूर्भुवः" in cert["vedic_shlokas"][0]["sanskrit"]
+
+    # 2. Render HTML certificate
+    html = generate_certificate_html(cert)
+    assert "Divya Paramarsha Certificate" in html
+    assert "Arjun Sen" in html
+    assert "Acharya Ramanathan" in html
+    assert "Emerald" in html
+    assert "Budhay" in html or "बुधाय" in html
+    assert "Print & Save PDF" in html
+    assert "ASTRA SEAL" in html
+    assert "qr-img" in html
+
+
+
 
 

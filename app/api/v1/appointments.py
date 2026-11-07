@@ -1073,7 +1073,7 @@ async def get_certificate(
         raise ForbiddenError("This is not your appointment.")
 
     cert = appointment.certificate_data
-    if not cert and appointment.status == AppointmentStatus.COMPLETED:
+    if not cert:
         from app.services.cosmic_intelligence import generate_divya_paramarsha_certificate_data
 
         astro = await Astrologer.get(appointment.astrologer_id)
@@ -1084,7 +1084,7 @@ async def get_certificate(
             await appointment.save()
 
     if not cert:
-        raise BadRequestError("Certificate is only generated once consultation is completed.")
+        raise BadRequestError("Certificate could not be generated for this consultation.")
     return ApiResponse(message="Certificate fetched.", data=cert)
 
 
@@ -1102,7 +1102,7 @@ async def get_certificate_html_endpoint(
         raise ForbiddenError("This is not your appointment.")
 
     cert = appointment.certificate_data
-    if not cert and appointment.status == AppointmentStatus.COMPLETED:
+    if not cert:
         from app.services.cosmic_intelligence import generate_divya_paramarsha_certificate_data
 
         astro = await Astrologer.get(appointment.astrologer_id)
@@ -1113,12 +1113,67 @@ async def get_certificate_html_endpoint(
             await appointment.save()
 
     if not cert:
-        raise BadRequestError("Certificate is only generated once consultation is completed.")
+        raise BadRequestError("Certificate could not be generated for this consultation.")
 
     from app.services.cosmic_intelligence import generate_certificate_html
 
     html_content = generate_certificate_html(cert)
     return HTMLResponse(content=html_content)
+
+
+@router.get(
+    "/prescription/{appointment_id}/verify",
+    response_model=ApiResponse[dict],
+    summary="Public verification endpoint for Divya Paramarsha Certificate",
+)
+async def verify_prescription_certificate_endpoint(
+    appointment_id: PydanticObjectId,
+) -> ApiResponse[dict]:
+    """Public verification route.
+
+    Scanned from the certificate's QR code. Returns authentic verification details
+    without requiring authentication.
+    """
+    appointment = await service.get(appointment_id)
+    if not appointment:
+        raise NotFoundError("Appointment record not found.")
+
+    astro = await Astrologer.get(appointment.astrologer_id)
+    client_u = await User.get(appointment.user_id)
+    if not astro or not client_u:
+        raise NotFoundError("Astrological record incomplete.")
+
+    cert = appointment.certificate_data
+    if not cert:
+        from app.services.cosmic_intelligence import generate_divya_paramarsha_certificate_data
+
+        cert = generate_divya_paramarsha_certificate_data(appointment, astro, client_u)
+        appointment.certificate_data = cert
+        await appointment.save()
+
+    return ApiResponse(
+        message="Authentic Vedic Certificate Verified.",
+        data={
+            "verified": True,
+            "certificate_id": cert.get("certificate_id"),
+            "issued_at": cert.get("issued_at"),
+            "status": "Authentic & Consecrated",
+            "astrologer": {
+                "name": astro.display_name,
+                "title": "Certified Vedic Astrologer & Sacred Counselor",
+                "avatar_url": astro.avatar_url,
+                "verified": True,
+            },
+            "client": {
+                "name": client_u.full_name or client_u.first_name or "Seeker",
+            },
+            "consultation_pillar": cert.get("consultation_pillar"),
+            "session_duration_minutes": cert.get("session_duration_minutes"),
+            "sacred_prescription": cert.get("sacred_prescription", {}),
+            "digital_seal": cert.get("digital_seal", {}),
+            "vedic_shlokas": cert.get("vedic_shlokas", []),
+        },
+    )
 
 
 @router.post(

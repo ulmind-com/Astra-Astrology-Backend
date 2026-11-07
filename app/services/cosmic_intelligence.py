@@ -570,6 +570,9 @@ def generate_divya_paramarsha_certificate_data(
     cert_id = f"ASTRA-DIVYA-{uuid.uuid4().hex[:8].upper()}"
     now = utcnow()
     prescription = appointment.prescription or {}
+    verify_url = f"https://astra-astrology-web.vercel.app/verify/prescription/{appointment.id}"
+    qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=260x260&data={verify_url.replace(':', '%3A').replace('/', '%2F')}&color=1a1306&bgcolor=fdf8ee"
+    verification_hash = hashlib.sha256(f"{cert_id}:{appointment.id}:{now.isoformat()}".encode()).hexdigest()
 
     return {
         "certificate_id": cert_id,
@@ -577,6 +580,7 @@ def generate_divya_paramarsha_certificate_data(
         "astrologer": {
             "name": astrologer.display_name,
             "title": "Certified Vedic Astrologer & Sacred Counselor",
+            "avatar_url": astrologer.avatar_url,
         },
         "client": {
             "name": client.full_name or client.first_name or "Seeker",
@@ -589,12 +593,30 @@ def generate_divya_paramarsha_certificate_data(
             "sacred_rudraksha": prescription.get("rudraksha") or "Not prescribed in this session",
             "vedic_mantra": prescription.get("mantra") or "ॐ नमो भगवते वासुदेवाय",
             "japa_count": prescription.get("mantra_count", 108),
-            "daan_charity_ritual": prescription.get("daan_remedy") or "Feed cows / birds on Wednesday/Thursday mornings",
+            "daan_charity_ritual": prescription.get("daan_remedy") or "Feed cows / birds on auspicious morning",
+            "sankalpa": prescription.get("sankalpa") or "May my consciousness align with cosmic harmony, dissolving karmic obstacles through spiritual perseverance.",
             "astrologer_guidance": prescription.get("astrologer_notes") or "Maintain daily meditative practice and follow prescribed remedies diligently.",
         },
+        "vedic_shlokas": [
+            {
+                "sanskrit": "ॐ भूर्भुवः स्वः तत्सवितुर्वरेण्यं भर्गो देवस्य धीमहि धियो यो नः प्रचोदयात्॥",
+                "transliteration": "Om Bhūr Bhuvaḥ Svaḥ Tat-Savitur-Vareṇyaṁ Bhargo Devasya Dhīmahi Dhiyo Yo Naḥ Pracodayāt",
+                "meaning": "May the supreme divine radiance illuminate our intellect and direct our righteous karmic path.",
+            },
+            {
+                "sanskrit": "शुभं करोति कल्याणमारोग्यं धनसंपदः। शत्रुबुद्धिविनाशाय दीपज्योतिर्नमोऽस्तुते॥",
+                "transliteration": "Śubhaṁ Karoti Kalyāṇam Ārogyaṁ Dhana-Saṁpadaḥ Śatru-Buddhi-Vināśāya Dīpa-Jyotir-Namo'stute",
+                "meaning": "Salutations to the divine illumination that bestows auspiciousness, radiant vitality, and celestial peace.",
+            },
+        ],
+        "verification_url": verify_url,
+        "qr_code_url": qr_url,
         "digital_seal": {
-            "verification_hash": hashlib.sha256(f"{cert_id}:{appointment.id}:{now}".encode()).hexdigest(),
+            "verification_hash": verification_hash,
+            "seal_title": "ASTRA ASTROLOGY • CONSECRATED VEDIC SEAL",
+            "seal_motto": "सत्यमेव जयते नानृतम् • DIVINLINK AUTHENTICITY",
             "status": "Authentic & Consecrated",
+            "signature": f"Acharya {astrologer.display_name}",
         },
     }
 
@@ -610,14 +632,17 @@ def generate_certificate_html(cert: dict[str, Any]) -> str:
     pillar = cert.get("consultation_pillar", "Vedic Astrology")
     duration = cert.get("session_duration_minutes", 30)
     rx = cert.get("sacred_prescription", {})
-    gemstone = rx.get("consecrated_gemstone", "N/A")
-    rudraksha = rx.get("sacred_rudraksha", "N/A")
+    gemstone = rx.get("consecrated_gemstone", "Not prescribed")
+    rudraksha = rx.get("sacred_rudraksha", "Not prescribed")
     mantra = rx.get("vedic_mantra", "ॐ नमो भगवते वासुदेवाय")
     japa_count = rx.get("japa_count", 108)
-    daan = rx.get("daan_charity_ritual", "N/A")
-    guidance = rx.get("astrologer_guidance", "May the celestial planets guide your path with health and wisdom.")
+    daan = rx.get("daan_charity_ritual", "Not prescribed")
+    sankalpa = rx.get("sankalpa", "May my consciousness align with cosmic harmony, dissolving karmic obstacles through spiritual perseverance.")
+    guidance = rx.get("astrologer_guidance", "Maintain daily meditative practice and follow prescribed remedies diligently.")
     issued_date = cert.get("issued_at", "")[:10]
-    verification_hash = cert.get("digital_seal", {}).get("verification_hash", "")[:24]
+    verification_hash = cert.get("digital_seal", {}).get("verification_hash", "")[:32]
+    verify_url = cert.get("verification_url", f"https://astra-astrology-web.vercel.app/verify/prescription/{cert_id}")
+    qr_url = cert.get("qr_code_url") or f"https://api.qrserver.com/v1/create-qr-code/?size=260x260&data={verify_url.replace(':', '%3A').replace('/', '%2F')}&color=1a1306&bgcolor=fdf8ee"
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -625,7 +650,7 @@ def generate_certificate_html(cert: dict[str, Any]) -> str:
   <meta charset="UTF-8">
   <title>Divya Paramarsha Certificate — {cert_id}</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Great+Vibes&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
     
     * {{
       box-sizing: border-box;
@@ -633,70 +658,107 @@ def generate_certificate_html(cert: dict[str, Any]) -> str:
       padding: 0;
     }}
     body {{
-      background: #0B0E14;
-      color: #E6EDF3;
+      background: #080B11;
+      color: #E2E8F0;
       font-family: 'Plus Jakarta Sans', sans-serif;
       display: flex;
       justify-content: center;
       align-items: center;
       min-height: 100vh;
-      padding: 24px;
+      padding: 32px 20px;
     }}
     .certificate-container {{
       position: relative;
       width: 100%;
-      max-width: 860px;
-      background: linear-gradient(145deg, #121722 0%, #0D111A 100%);
+      max-width: 920px;
+      background: linear-gradient(150deg, #131A29 0%, #0C101A 50%, #151421 100%);
       border: 3px solid #D4AF37;
-      border-radius: 20px;
-      padding: 48px 44px;
-      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7), 0 0 40px rgba(212, 175, 55, 0.15);
+      border-radius: 24px;
+      padding: 44px 40px;
+      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.8), 0 0 50px rgba(212, 175, 55, 0.2);
       overflow: hidden;
     }}
     .inner-border {{
       position: absolute;
-      top: 12px;
-      left: 12px;
-      right: 12px;
-      bottom: 12px;
-      border: 1px solid rgba(212, 175, 55, 0.35);
-      border-radius: 14px;
+      top: 10px;
+      left: 10px;
+      right: 10px;
+      bottom: 10px;
+      border: 1px solid rgba(212, 175, 55, 0.45);
+      border-radius: 18px;
       pointer-events: none;
     }}
+    .corner-decor {{
+      position: absolute;
+      font-size: 20px;
+      color: #D4AF37;
+      opacity: 0.8;
+      pointer-events: none;
+    }}
+    .tl {{ top: 14px; left: 18px; }}
+    .tr {{ top: 14px; right: 18px; }}
+    .bl {{ bottom: 14px; left: 18px; }}
+    .br {{ bottom: 14px; right: 18px; }}
+
     .header {{
       text-align: center;
-      margin-bottom: 28px;
+      margin-bottom: 20px;
     }}
     .om-symbol {{
-      font-size: 38px;
-      color: #D4AF37;
-      margin-bottom: 8px;
+      font-size: 42px;
+      color: #F5E6AB;
+      margin-bottom: 4px;
       display: inline-block;
-      text-shadow: 0 0 15px rgba(212, 175, 55, 0.5);
+      text-shadow: 0 0 20px rgba(212, 175, 55, 0.6);
     }}
     .title {{
       font-family: 'Cinzel', serif;
-      font-size: 28px;
-      font-weight: 700;
-      letter-spacing: 2px;
-      color: #F5E6AB;
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: 3px;
+      color: #F8E7B4;
       text-transform: uppercase;
-      margin-bottom: 6px;
+      margin-bottom: 4px;
     }}
     .subtitle {{
-      font-size: 13px;
-      letter-spacing: 4px;
-      color: #94A3B8;
+      font-size: 11px;
+      letter-spacing: 3px;
+      color: #CBD5E1;
       text-transform: uppercase;
+      font-weight: 600;
     }}
+
+    .shloka-banner {{
+      margin: 18px auto;
+      max-width: 720px;
+      padding: 10px 18px;
+      background: rgba(212, 175, 55, 0.08);
+      border-top: 1px solid rgba(212, 175, 55, 0.3);
+      border-bottom: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 8px;
+      text-align: center;
+    }}
+    .shloka-sanskrit {{
+      font-size: 13px;
+      color: #FDE047;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      margin-bottom: 2px;
+    }}
+    .shloka-meaning {{
+      font-size: 11px;
+      color: #94A3B8;
+      font-style: italic;
+    }}
+
     .recipient-block {{
       text-align: center;
-      margin: 28px 0;
+      margin: 18px 0;
     }}
     .certifies-that {{
-      font-size: 13px;
+      font-size: 11px;
       color: #94A3B8;
-      letter-spacing: 1.5px;
+      letter-spacing: 2px;
       text-transform: uppercase;
       margin-bottom: 6px;
     }}
@@ -707,121 +769,202 @@ def generate_certificate_html(cert: dict[str, Any]) -> str:
       color: #FFFFFF;
       border-bottom: 1px solid rgba(212, 175, 55, 0.4);
       display: inline-block;
-      padding: 4px 32px;
-      margin-bottom: 8px;
+      padding: 2px 28px;
+      margin-bottom: 6px;
     }}
     .session-desc {{
-      font-size: 14px;
+      font-size: 12.5px;
       color: #CBD5E1;
-      max-width: 600px;
+      max-width: 660px;
       margin: 0 auto;
       line-height: 1.6;
     }}
+
     .grid-prescription {{
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 16px;
-      margin: 28px 0;
+      gap: 12px;
+      margin: 22px 0;
     }}
     .card {{
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(212, 175, 55, 0.2);
+      background: rgba(255, 255, 255, 0.035);
+      border: 1px solid rgba(212, 175, 55, 0.22);
       border-radius: 12px;
-      padding: 16px 18px;
+      padding: 12px 16px;
     }}
     .card-label {{
-      font-size: 11px;
-      font-weight: 700;
+      font-size: 10px;
+      font-weight: 800;
       letter-spacing: 1.5px;
       color: #D4AF37;
       text-transform: uppercase;
-      margin-bottom: 6px;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }}
     .card-value {{
-      font-size: 14px;
-      color: #F1F5F9;
-      line-height: 1.5;
+      font-size: 13px;
+      color: #F8FAFC;
+      line-height: 1.45;
     }}
     .mantra-card {{
       grid-column: span 2;
-      background: rgba(212, 175, 55, 0.05);
-      border: 1px solid rgba(212, 175, 55, 0.3);
+      background: rgba(212, 175, 55, 0.06);
+      border: 1px solid rgba(212, 175, 55, 0.35);
       text-align: center;
-      padding: 18px;
+      padding: 14px;
     }}
     .mantra-text {{
-      font-size: 18px;
-      color: #FDE047;
-      font-weight: 600;
-      margin: 6px 0;
+      font-size: 17px;
+      color: #FEF08A;
+      font-weight: 700;
+      margin: 4px 0;
+      letter-spacing: 0.5px;
     }}
+    .sankalpa-card {{
+      grid-column: span 2;
+      background: rgba(99, 102, 241, 0.06);
+      border: 1px solid rgba(165, 180, 252, 0.3);
+    }}
+
     .footer {{
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-end;
-      margin-top: 32px;
-      padding-top: 20px;
-      border-top: 1px dashed rgba(212, 175, 55, 0.25);
+      display: grid;
+      grid-template-columns: 1.3fr 1fr 0.9fr;
+      gap: 16px;
+      align-items: center;
+      margin-top: 24px;
+      padding-top: 18px;
+      border-top: 1px dashed rgba(212, 175, 55, 0.3);
     }}
     .sign-block {{
       text-align: left;
     }}
+    .signature-calligraphy {{
+      font-family: 'Great Vibes', cursive;
+      font-size: 28px;
+      color: #F5E6AB;
+      line-height: 1.1;
+      margin-bottom: 2px;
+    }}
     .sign-name {{
       font-family: 'Cinzel', serif;
-      font-size: 16px;
+      font-size: 13px;
       font-weight: 700;
-      color: #F5E6AB;
+      color: #F8FAFC;
     }}
     .sign-title {{
-      font-size: 11px;
+      font-size: 10px;
       color: #94A3B8;
       text-transform: uppercase;
       letter-spacing: 1px;
     }}
+    .sign-date {{
+      font-size: 10px;
+      color: #64748B;
+      margin-top: 4px;
+    }}
+
     .seal-block {{
-      text-align: right;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }}
+    .seal-graphic {{
+      width: 72px;
+      height: 72px;
+      border: 2px solid #D4AF37;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(212,175,55,0.2) 0%, rgba(212,175,55,0.02) 70%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 16px rgba(212, 175, 55, 0.3);
+      margin-bottom: 6px;
+    }}
+    .seal-icon {{
+      font-size: 18px;
+      color: #FDE047;
+    }}
+    .seal-text-ring {{
+      font-size: 7.5px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      color: #D4AF37;
+      text-transform: uppercase;
     }}
     .seal-badge {{
       display: inline-block;
-      padding: 4px 12px;
+      padding: 3px 10px;
       background: rgba(212, 175, 55, 0.15);
       border: 1px solid #D4AF37;
       border-radius: 9999px;
       color: #D4AF37;
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 1.5px;
+      font-size: 9.5px;
+      font-weight: 800;
+      letter-spacing: 1.2px;
       text-transform: uppercase;
-      margin-bottom: 4px;
+      margin-bottom: 3px;
     }}
     .hash-id {{
-      font-size: 10px;
+      font-size: 9px;
       color: #64748B;
       font-family: monospace;
     }}
+
+    .qr-block {{
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      text-align: right;
+    }}
+    .qr-frame {{
+      background: #FDF8EE;
+      padding: 5px;
+      border-radius: 8px;
+      border: 1px solid #D4AF37;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+      display: inline-block;
+    }}
+    .qr-img {{
+      width: 68px;
+      height: 68px;
+      display: block;
+    }}
+    .qr-label {{
+      font-size: 8.5px;
+      color: #94A3B8;
+      margin-top: 4px;
+      max-width: 110px;
+      line-height: 1.3;
+    }}
+
     .actions-bar {{
       position: fixed;
-      bottom: 20px;
+      bottom: 24px;
       display: flex;
       gap: 12px;
       z-index: 100;
     }}
     .action-btn {{
-      padding: 10px 22px;
-      background: #D4AF37;
+      padding: 12px 26px;
+      background: linear-gradient(135deg, #D4AF37 0%, #AA771C 100%);
       color: #0B0E14;
-      font-weight: 700;
+      font-weight: 800;
       font-size: 13px;
       border: none;
       border-radius: 9999px;
       cursor: pointer;
-      box-shadow: 0 4px 14px rgba(212, 175, 55, 0.4);
+      box-shadow: 0 4px 18px rgba(212, 175, 55, 0.45);
       transition: all 0.2s ease;
     }}
     .action-btn:hover {{
       transform: translateY(-2px);
-      box-shadow: 0 6px 20px rgba(212, 175, 55, 0.6);
+      box-shadow: 0 8px 24px rgba(212, 175, 55, 0.65);
     }}
+
     @media print {{
       body {{
         background: #FFFFFF;
@@ -830,86 +973,128 @@ def generate_certificate_html(cert: dict[str, Any]) -> str:
       }}
       .certificate-container {{
         box-shadow: none;
-        border: 2px solid #000;
-        background: #FFF;
+        border: 2px solid #8B6508;
+        background: #FFFFFF;
+        color: #000;
+        max-width: 100%;
+        padding: 30px;
+      }}
+      .inner-border {{
+        border: 1px solid #C89B3C;
       }}
       .actions-bar {{
         display: none !important;
       }}
-      .client-name, .title {{
-        color: #000;
+      .client-name, .title, .om-symbol {{
+        color: #000000;
       }}
       .card {{
-        border: 1px solid #CCC;
-        background: #F9F9F9;
+        border: 1px solid #CCCCCC;
+        background: #F8F9FA;
       }}
       .card-value, .mantra-text {{
-        color: #000;
+        color: #000000;
+      }}
+      .shloka-banner {{
+        background: #FAF8F2;
+        border-color: #C89B3C;
+      }}
+      .shloka-sanskrit {{
+        color: #8B6508;
+      }}
+      .signature-calligraphy {{
+        color: #000000;
       }}
     }}
   </style>
 </head>
 <body>
   <div class="actions-bar">
-    <button class="action-btn" onclick="window.print()">🖨️ Print & Save PDF</button>
+    <button class="action-btn" onclick="window.print()">🖨️ Print & Save PDF Certificate</button>
   </div>
 
   <div class="certificate-container">
     <div class="inner-border"></div>
+    <div class="corner-decor tl">⚜</div>
+    <div class="corner-decor tr">⚜</div>
+    <div class="corner-decor bl">⚜</div>
+    <div class="corner-decor br">⚜</div>
 
     <div class="header">
       <div class="om-symbol">ॐ</div>
       <div class="title">Divya Paramarsha Certificate</div>
-      <div class="subtitle">Sacred Astrological Consultation & Remedial Directive</div>
+      <div class="subtitle">Sacred Vedic Astrological Remedial Consecration</div>
+    </div>
+
+    <div class="shloka-banner">
+      <div class="shloka-sanskrit">ॐ भूर्भुवः स्वः तत्सवितुर्वरेण्यं भर्गो देवस्य धीमहि धियो यो नः प्रचोदयात्॥</div>
+      <div class="shloka-meaning">"May the supreme divine illumination awaken and direct our inner consciousness."</div>
     </div>
 
     <div class="recipient-block">
-      <div class="certifies-that">This Consecrated Record Certifies That</div>
+      <div class="certifies-that">This Consecrated Astrological Record Certifies That</div>
       <div class="client-name">{client_name}</div>
       <div class="session-desc">
-        Has successfully concluded a sacred {duration}-minute Vedic consultation in <strong>{pillar}</strong>, receiving divine planetary diagnostics and authentic astrological remedies.
+        Has concluded a sacred {duration}-minute Vedic consultation in <strong>{pillar}</strong>, receiving certified celestial planetary diagnostics and authentic remedies consecrated by <strong>Acharya {astro_name}</strong>.
       </div>
     </div>
 
     <div class="grid-prescription">
       <div class="card">
-        <div class="card-label">💎 Prescribed Gemstone</div>
+        <div class="card-label">💎 Consecrated Gemstone (রত্ন প্রতিকার)</div>
         <div class="card-value">{gemstone}</div>
       </div>
 
       <div class="card">
-        <div class="card-label">📿 Sacred Rudraksha</div>
+        <div class="card-label">📿 Sacred Rudraksha (রুদ্রাক্ষ বিধান)</div>
         <div class="card-value">{rudraksha}</div>
       </div>
 
       <div class="card mantra-card">
-        <div class="card-label">🕉️ Daily Vedic Japa Mantra</div>
+        <div class="card-label">🕉️ Sacred Vedic Beej Mantra & Japa Count (বীজমন্ত্র ও জপ)</div>
         <div class="mantra-text">{mantra}</div>
-        <div style="font-size: 12px; color: #94A3B8;">Recommended: {japa_count} chants daily during Brahma Muhurat / Morning Pooja</div>
+        <div style="font-size: 11px; color: #CBD5E1;">Recommended: {japa_count} chants daily during Brahma Muhurat / Morning Pooja</div>
       </div>
 
       <div class="card">
-        <div class="card-label">🌾 Daan & Seva Ritual</div>
+        <div class="card-label">🌾 Daan & Seva Ritual (দান ও পূজার বিধান)</div>
         <div class="card-value">{daan}</div>
       </div>
 
       <div class="card">
-        <div class="card-label">📜 Astrologer Directives</div>
+        <div class="card-label">📜 Astrologer Guidance (বিশেষ নির্দেশিকা)</div>
         <div class="card-value">{guidance}</div>
+      </div>
+
+      <div class="card sankalpa-card">
+        <div class="card-label">🧘 Sacred Vedic Sankalpa (সংকল্প বাক্য)</div>
+        <div class="card-value" style="font-style: italic;">"{sankalpa}"</div>
       </div>
     </div>
 
     <div class="footer">
       <div class="sign-block">
+        <div class="signature-calligraphy">Acharya {astro_name}</div>
         <div class="sign-name">{astro_name}</div>
-        <div class="sign-title">Certified Vedic Counselor & Jyotish Acharya</div>
-        <div style="font-size: 11px; color: #64748B; margin-top: 4px;">Date of Consecration: {issued_date}</div>
+        <div class="sign-title">Certified Vedic Astrologer & Jyotish Acharya</div>
+        <div class="sign-date">Consecration Date: {issued_date}</div>
       </div>
 
       <div class="seal-block">
+        <div class="seal-graphic">
+          <div class="seal-icon">☸</div>
+          <div class="seal-text-ring">ASTRA SEAL</div>
+        </div>
         <div class="seal-badge">Authentic & Consecrated</div>
         <div class="hash-id">UID: {cert_id}</div>
-        <div class="hash-id">Seal: {verification_hash}...</div>
+        <div class="hash-id">Seal: {verification_hash[:16]}...</div>
+      </div>
+
+      <div class="qr-block">
+        <div class="qr-frame">
+          <img src="{qr_url}" alt="Verification QR Code" class="qr-img" />
+        </div>
+        <div class="qr-label">Scan to verify authenticity at astra.ulmind.com</div>
       </div>
     </div>
   </div>

@@ -1334,6 +1334,22 @@ async def update_prescription(
     }
     await appointment.save()
 
+    # Automatically generate or refresh Divya Paramarsha Certificate
+    try:
+        from app.models.astrologer import Astrologer
+        from app.models.user import User
+        from app.services.cosmic_intelligence import generate_divya_paramarsha_certificate_data
+
+        astro = await Astrologer.get(appointment.astrologer_id)
+        client_u = await User.get(appointment.user_id)
+        if astro and client_u:
+            appointment.certificate_data = generate_divya_paramarsha_certificate_data(
+                appointment, astro, client_u
+            )
+            await appointment.save()
+    except Exception as exc:
+        logger.warning("Could not auto-generate certificate data on prescription update: {}", exc)
+
     try:
         from app.services import realtime
         await realtime.publish_appointment_event(
@@ -1343,6 +1359,7 @@ async def update_prescription(
             {
                 "id": str(appointment.id),
                 "prescription": appointment.prescription,
+                "certificate_data": appointment.certificate_data,
             },
         )
     except Exception as exc:
