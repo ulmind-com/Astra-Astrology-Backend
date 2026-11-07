@@ -250,3 +250,4 @@ async def reject_payout(
     await payout.save()
     logger.info("Admin {} rejected payout {}: {}", admin_user_id, payout_id, rejection_reason)
     return payout
+

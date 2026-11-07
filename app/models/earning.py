@@ -48,6 +48,24 @@ class EarningEntry(TimestampedDocument):
                 ],
                 name="earning_astrologer_recent",
             ),
+            # Mode-filtered queries with date ordering
+            pymongo.IndexModel(
+                [
+                    ("astrologer_user_id", pymongo.ASCENDING),
+                    ("mode", pymongo.ASCENDING),
+                    ("created_at", pymongo.DESCENDING),
+                ],
+                name="earning_astrologer_mode_recent",
+            ),
+            # Session grouping index
+            pymongo.IndexModel(
+                [
+                    ("astrologer_user_id", pymongo.ASCENDING),
+                    ("session_id", pymongo.ASCENDING),
+                ],
+                name="earning_astrologer_session",
+            ),
             pymongo.IndexModel([("created_at", pymongo.DESCENDING)], name="earning_recent"),
             pymongo.IndexModel([("session_id", pymongo.ASCENDING)], name="earning_session"),
+            pymongo.IndexModel([("user_id", pymongo.ASCENDING)], name="earning_user"),
         ]

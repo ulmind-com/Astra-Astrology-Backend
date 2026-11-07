@@ -68,3 +68,4 @@ class AstrologerPayout(TimestampedDocument):
                 name="payout_status_recent",
             ),
         ]
+

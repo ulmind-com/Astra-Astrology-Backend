@@ -14,7 +14,7 @@ from app.api.dependencies import AdminUser, CurrentAstrologer, CurrentUser
 from app.models.astrologer import Astrologer
 from app.models.payout import PayoutMethod, PayoutStatus
 from app.models.user import User
-from app.schemas.common import ApiResponse
+from app.schemas.common import ApiResponse, Paginated, build_page
 from app.schemas.wallet import (
     AdminEarningRow,
     AdminEarningsSummary,
@@ -83,8 +83,11 @@ async def my_recent_earnings(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     skip: Annotated[int, Query(ge=0)] = 0,
     mode: Annotated[str | None, Query()] = None,
+    search: Annotated[str | None, Query()] = None,
 ) -> ApiResponse[list[EarningRow]]:
-    rows = await earnings_service.recent_for_astrologer(user.id, limit=limit, skip=skip, mode=mode)
+    rows = await earnings_service.recent_for_astrologer(
+        user.id, limit=limit, skip=skip, mode=mode, search=search
+    )
     user_ids = [r["user_id"] for r in rows if r.get("user_id")]
     user_map = {}
     if user_ids:
@@ -117,6 +120,68 @@ async def my_recent_earnings(
     return ApiResponse(
         message=f"{len(rows)} consultation{'' if len(rows) == 1 else 's'}.",
         data=data,
+    )
+
+
+@router.get(
+    "/paginated",
+    response_model=ApiResponse[Paginated[EarningRow]],
+    summary="Paginated consultation history with search and mode filters",
+)
+async def my_paginated_earnings(
+    _: CurrentAstrologer,
+    user: CurrentUser,
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=200)] = 10,
+    mode: Annotated[str | None, Query()] = None,
+    search: Annotated[str | None, Query()] = None,
+    window: Annotated[str | None, Query()] = None,
+) -> ApiResponse[Paginated[EarningRow]]:
+    since = None
+    if window:
+        windows = earnings_service._windows()
+        since = windows.get(window)
+
+    rows, total = await earnings_service.paginated_for_astrologer(
+        astrologer_user_id=user.id,
+        page=page,
+        limit=limit,
+        mode=mode,
+        search=search,
+        since=since,
+    )
+    user_ids = [r["user_id"] for r in rows if r.get("user_id")]
+    user_map = {}
+    if user_ids:
+        users = await User.find({"_id": {"$in": user_ids}}).to_list()
+        user_map = {u.id: u for u in users}
+
+    data: list[EarningRow] = []
+    for r in rows:
+        uid = r.get("user_id")
+        u = user_map.get(uid) if uid else None
+        uname = u.full_name if u else None
+        uavatar = u.avatar_url if u else None
+
+        data.append(
+            EarningRow(
+                id=str(r["_id"]),
+                mode=r["mode"],
+                minutes=r["minutes"],
+                earning_paise=r["earning_paise"],
+                created_at=r["created_at"],
+                user_id=str(uid) if uid else None,
+                user_name=uname,
+                user_avatar=uavatar,
+                user_image_url=uavatar,
+                coins_charged=r.get("coins_charged"),
+                gross_paise=r.get("gross_paise"),
+            )
+        )
+
+    return ApiResponse(
+        message=f"Page {page} of {build_page(data, total, page, limit).meta.total_pages} consultations.",
+        data=build_page(data, total, page, limit),
     )
 
 
@@ -266,9 +331,13 @@ async def platform_earnings(_: AdminUser) -> ApiResponse[AdminEarningsSummary]:
     summary="Recent earnings, with the split",
 )
 async def recent_platform_earnings(
-    _: AdminUser, limit: Annotated[int, Query(ge=1, le=200)] = 100
+    _: AdminUser,
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    skip: Annotated[int, Query(ge=0)] = 0,
+    mode: Annotated[str | None, Query()] = None,
+    search: Annotated[str | None, Query()] = None,
 ) -> ApiResponse[list[AdminEarningRow]]:
-    rows = await earnings_service.recent_all(limit)
+    rows = await earnings_service.recent_all(limit=limit, skip=skip, mode=mode, search=search)
     names = {
         a.id: a.display_name
         for a in await Astrologer.find(
@@ -310,6 +379,65 @@ async def recent_platform_earnings(
     return ApiResponse(
         message=f"{len(rows)} consultation{'' if len(rows) == 1 else 's'}.",
         data=admin_data,
+    )
+
+
+@admin_router.get(
+    "/paginated",
+    response_model=ApiResponse[Paginated[AdminEarningRow]],
+    summary="Paginated platform consultation earnings split",
+)
+async def paginated_platform_earnings(
+    _: AdminUser,
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=200)] = 20,
+    mode: Annotated[str | None, Query()] = None,
+    search: Annotated[str | None, Query()] = None,
+) -> ApiResponse[Paginated[AdminEarningRow]]:
+    rows, total = await earnings_service.paginated_all(
+        page=page, limit=limit, mode=mode, search=search
+    )
+    names = {
+        a.id: a.display_name
+        for a in await Astrologer.find(
+            {"_id": {"$in": [r["astrologer_id"] for r in rows]}}
+        ).to_list()
+    }
+    user_ids = [r["user_id"] for r in rows if r.get("user_id")]
+    user_map = {}
+    if user_ids:
+        users = await User.find({"_id": {"$in": user_ids}}).to_list()
+        user_map = {u.id: u for u in users}
+
+    admin_data: list[AdminEarningRow] = []
+    for r in rows:
+        uid = r.get("user_id")
+        u = user_map.get(uid) if uid else None
+        uname = u.full_name if u else None
+        uavatar = u.avatar_url if u else None
+        admin_data.append(
+            AdminEarningRow(
+                id=str(r["_id"]),
+                mode=r["mode"],
+                minutes=r["minutes"],
+                earning_paise=r["earning_paise"],
+                created_at=r["created_at"],
+                astrologer_id=str(r["astrologer_id"]),
+                astrologer_name=names.get(r["astrologer_id"]),
+                coins_charged=r["coins_charged"],
+                gross_paise=r["gross_paise"],
+                commission_percent=r["commission_percent"],
+                commission_paise=r["commission_paise"],
+                user_id=str(uid) if uid else None,
+                user_name=uname,
+                user_avatar=uavatar,
+                user_image_url=uavatar,
+            )
+        )
+
+    return ApiResponse(
+        message=f"Page {page} of {build_page(admin_data, total, page, limit).meta.total_pages} consultations.",
+        data=build_page(admin_data, total, page, limit),
     )
 
 
