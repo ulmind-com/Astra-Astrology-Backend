@@ -1,7 +1,8 @@
 """Scheduled appointments: the calendar, and booking a place in it."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 from beanie import PydanticObjectId
 from beanie.operators import In
@@ -355,9 +356,21 @@ async def add_window(
             "That overlaps hours you have already opened.", error_code="window_overlap"
         )
 
+    IST = ZoneInfo("Asia/Kolkata")
+    resolved_tz = IST
+    if payload.timezone:
+        try:
+            resolved_tz = ZoneInfo(payload.timezone)
+        except Exception:
+            resolved_tz = IST
+    elif payload.starts_at.tzinfo and payload.starts_at.tzinfo not in (UTC, timezone.utc):
+        resolved_tz = payload.starts_at.tzinfo
+
+    resolved_day = payload.day or payload.starts_at.astimezone(resolved_tz).date()
+
     window = AvailabilityWindow(
         astrologer_id=profile.id,
-        day=starts.date(),
+        day=resolved_day,
         starts_at=starts,
         ends_at=ends,
         is_tatkal=payload.is_tatkal,

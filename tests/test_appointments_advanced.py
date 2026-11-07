@@ -311,3 +311,43 @@ async def test_contiguous_availability_windows_boundary_collision(client: AsyncC
         )
 
 
+@pytest.mark.asyncio
+async def test_availability_window_timezone_date_truncation_fix(client: AsyncClient):
+    """Verify that slots scheduled past midnight in IST (e.g. 01:00 AM IST) do not get truncated to the previous day in UTC."""
+    from zoneinfo import ZoneInfo
+    from app.services.appointments import open_quick_tatkal_window
+
+    astro_user = await User(
+        email="tz_astro@astra.com",
+        first_name="Timezone",
+        last_name="Pandit",
+    ).insert()
+
+    astro = await Astrologer(
+        user_id=astro_user.id,
+        display_name="Acharya Timezone",
+        skills=[Skill.VEDIC_ASTROLOGY],
+        languages=["Bengali", "English"],
+    ).insert()
+
+    IST = ZoneInfo("Asia/Kolkata")
+    # Astrologer in Kolkata wants to open a window on 2026-11-15 at 01:00 AM IST to 02:00 AM IST
+    # In UTC, 01:00 AM IST on 2026-11-15 is 19:30 UTC on 2026-11-14!
+    ist_start = datetime(2026, 11, 15, 1, 0, tzinfo=IST)
+    utc_start = ist_start.astimezone(UTC)
+
+    assert utc_start.date() == datetime(2026, 11, 14).date(), "Sanity check: in UTC date is 14th"
+    assert ist_start.date() == datetime(2026, 11, 15).date(), "Sanity check: in IST date is 15th"
+
+    # Quick tatkal window
+    w_tatkal = await open_quick_tatkal_window(
+        astrologer=astro,
+        starts_at=utc_start,
+        minutes=30,
+        timezone_name="Asia/Kolkata",
+    )
+    # The stored day MUST be 2026-11-15 (IST date), NOT 2026-11-14 (UTC truncated date)!
+    assert w_tatkal.day == datetime(2026, 11, 15).date(), f"Expected 2026-11-15 but got {w_tatkal.day}"
+
+
+

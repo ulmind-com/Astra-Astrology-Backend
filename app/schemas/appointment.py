@@ -14,6 +14,8 @@ class WindowInput(BaseModel):
 
     starts_at: datetime
     ends_at: datetime
+    day: date_type | None = None
+    timezone: str | None = None
     is_tatkal: bool = False
     tatkal_multiplier: float = 1.5
     tatkal_fixed_paise: int | None = None

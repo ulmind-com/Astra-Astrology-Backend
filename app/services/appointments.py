@@ -16,7 +16,8 @@ moves rather than after.
 """
 
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date as date_type, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import Any
 
 from beanie import PydanticObjectId
@@ -2632,8 +2633,9 @@ async def open_quick_tatkal_window(
     fixed_paise: int | None = None,
     custom_title: str | None = "VIP Emergency Tatkal Slot",
     is_private: bool = False,
+    day: date_type | None = None,
+    timezone_name: str | None = None,
 ) -> AvailabilityWindow:
-    from datetime import UTC
     assert astrologer.id is not None
     starts = starts_at.astimezone(UTC).replace(second=0, microsecond=0)
     ends = starts + timedelta(minutes=minutes)
@@ -2651,9 +2653,21 @@ async def open_quick_tatkal_window(
             error_code="window_overlap",
         )
 
+    IST = ZoneInfo("Asia/Kolkata")
+    tz = IST
+    if timezone_name:
+        try:
+            tz = ZoneInfo(timezone_name)
+        except Exception:
+            tz = IST
+    elif starts_at.tzinfo and starts_at.tzinfo not in (UTC, timezone.utc):
+        tz = starts_at.tzinfo
+
+    resolved_day = day or starts_at.astimezone(tz).date()
+
     window = AvailabilityWindow(
         astrologer_id=astrologer.id,
-        day=starts.date(),
+        day=resolved_day,
         starts_at=starts,
         ends_at=ends,
         is_tatkal=True,
