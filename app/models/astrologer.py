@@ -6,6 +6,7 @@ linked by `user_id`.
 """
 
 from datetime import datetime
+from typing import Any
 
 import pymongo
 from beanie import PydanticObjectId
@@ -112,6 +113,20 @@ class BankDetails(BaseModel):
     upi_id: str | None = Field(default=None, max_length=120)
 
 
+class GoogleCalendarSync(BaseModel):
+    """Two-way Google Calendar OAuth sync settings, tokens & external busy blocks."""
+
+    connected: bool = False
+    email: str | None = None
+    access_token: str | None = None
+    refresh_token: str | None = None
+    token_expiry: datetime | None = None
+    sync_enabled: bool = True
+    last_synced_at: datetime | None = None
+    # External busy intervals that block Astra appointment slots
+    busy_intervals: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class Astrologer(TimestampedDocument):
     user_id: PydanticObjectId
 
@@ -162,6 +177,9 @@ class Astrologer(TimestampedDocument):
 
     # Client Screening & Abuse Shield (Blacklisted users blocked from booking)
     blacklisted_user_ids: list[PydanticObjectId] = Field(default_factory=list)
+
+    # Two-Way Bidirectional Google Calendar Sync
+    google_calendar: GoogleCalendarSync = Field(default_factory=GoogleCalendarSync)
 
     # ------------------------------------------------------------ curation
     is_listed: bool = Field(default=True, description="Shown in the public directory")

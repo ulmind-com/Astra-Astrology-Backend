@@ -76,6 +76,8 @@ class Range(BaseModel):
     tatkal_fixed_paise: int | None = None
     custom_title: str | None = None
     is_private: bool = False
+    source: str | None = None
+    is_external: bool = False
 
 
 class DayView(BaseModel):
@@ -88,6 +90,7 @@ class DayView(BaseModel):
     max_minutes: int
     muhurat_ratings: dict[str, dict] | None = None
     buffer_minutes: int = 0
+    google_sync: dict | None = None
 
 
 # ------------------------------------------------------------------ booking

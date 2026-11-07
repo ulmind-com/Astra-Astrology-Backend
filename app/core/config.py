@@ -113,6 +113,11 @@ class Settings(BaseSettings):
     # used to hammer Razorpay.
     RECHARGE_ORDERS_PER_HOUR: int = 20
 
+    # --------------------------------------------------- google calendar sync
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_CALENDAR_REDIRECT_URI: str = "http://localhost:3000/appointments?google_sync=callback"
+
     # ----------------------------------------------------------- zegocloud
     # Voice & video calling. The ServerSecret signs room tokens here on the
     # server; it must never be sent to a browser, so only the AppID and the

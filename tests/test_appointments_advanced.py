@@ -131,6 +131,67 @@ async def test_ai_preflight_cosmic_dossier_synthesis():
 
 
 @pytest.mark.asyncio
+async def test_two_way_google_calendar_sync_and_collision_guard():
+    """Verify two-way Google Calendar OAuth, token exchange, busy interval caching and slot collision blocking."""
+    from unittest.mock import AsyncMock, patch
+    from beanie import PydanticObjectId
+    from app.services import google_calendar as gcal_service
+    from app.models.astrologer import GoogleCalendarSync
+
+    astro_id = PydanticObjectId()
+    astro = Astrologer.model_construct(
+        id=astro_id,
+        user_id=PydanticObjectId(),
+        display_name="Acharya Sharma",
+        slug="acharya-sharma",
+        appointment=None,
+        google_calendar=GoogleCalendarSync(connected=False),
+    )
+
+    # 1. Test get_auth_url
+    auth_data = gcal_service.get_auth_url(astro_id)
+    assert "auth_url" in auth_data
+    assert "configured" in auth_data
+
+    # 2. Test exchange_code_for_tokens (in simulation/mock mode)
+    with patch("app.models.astrologer.Astrologer.save", new_callable=AsyncMock) as mock_save, \
+         patch("app.models.astrologer.Astrologer.get", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = astro
+        res = await gcal_service.exchange_code_for_tokens(astro, f"mock_google_code_{astro_id}")
+        assert res["connected"] is True
+        assert astro.google_calendar.connected is True
+        assert "acharya-sharma@gmail.com" in astro.google_calendar.email
+
+    # 3. Test day_view blocks colliding Google Calendar busy slots
+    tomorrow = datetime.now(UTC).date() + timedelta(days=1)
+    day_start = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 0, 0, tzinfo=UTC)
+    day_end = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 23, 59, tzinfo=UTC)
+
+    # Inject busy interval (10:00 AM - 11:30 AM UTC)
+    busy_start = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 10, 0, tzinfo=UTC)
+    busy_end = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 11, 30, tzinfo=UTC)
+    astro.google_calendar.busy_intervals = [{
+        "starts_at": busy_start.isoformat(),
+        "ends_at": busy_end.isoformat(),
+        "title": "Dr. Appointment / Family Commitment",
+        "source": "google_calendar",
+        "is_external": True,
+    }]
+
+    with patch("app.services.appointments._windows_for", new_callable=AsyncMock) as mock_windows, \
+         patch("app.services.appointments.booked_between", new_callable=AsyncMock) as mock_taken:
+        mock_windows.return_value = []
+        mock_taken.return_value = []
+
+        view = await day_view(astrologer=astro, day_start=day_start, day_end=day_end)
+        assert len(view["booked"]) >= 1
+        google_booked = [b for b in view["booked"] if b.get("source") == "google_calendar"]
+        assert len(google_booked) == 1
+        assert google_booked[0]["title"] == "Dr. Appointment / Family Commitment"
+        assert view["google_sync"]["connected"] is True
+
+
+@pytest.mark.asyncio
 async def test_appointment_booking_with_pillar_and_prescription(client: AsyncClient):
     """Verify appointment creation with consultation pillar, Muhurat, and prescription workflow."""
     # Create test user

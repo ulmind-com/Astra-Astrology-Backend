@@ -214,6 +214,9 @@ class Appointment(TimestampedDocument):
     astrologer_private_notes: str | None = None
     astrologer_private_notes_updated_at: datetime | None = None
 
+    # Two-Way Google Calendar Synced Event ID
+    google_calendar_event_id: str | None = None
+
     class Settings:
         name = "appointments"
         indexes = [

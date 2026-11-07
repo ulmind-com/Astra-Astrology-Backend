@@ -462,6 +462,29 @@ async def day_view(
         if pause_start < pause_end:
             booked_ranges.append({"starts_at": pause_start, "ends_at": pause_end})
 
+    # Two-Way Google Calendar Sync: Block external personal & doctor commitments
+    gc = getattr(astrologer, "google_calendar", None)
+    if gc and gc.connected and gc.sync_enabled:
+        for b in getattr(gc, "busy_intervals", []):
+            try:
+                b_start = datetime.fromisoformat(b["starts_at"]) if isinstance(b["starts_at"], str) else b["starts_at"]
+                b_end = datetime.fromisoformat(b["ends_at"]) if isinstance(b["ends_at"], str) else b["ends_at"]
+                if b_start.tzinfo is None:
+                    b_start = b_start.replace(tzinfo=UTC)
+                if b_end.tzinfo is None:
+                    b_end = b_end.replace(tzinfo=UTC)
+
+                if b_start < day_end and b_end > day_start:
+                    booked_ranges.append({
+                        "starts_at": b_start,
+                        "ends_at": b_end,
+                        "source": "google_calendar",
+                        "title": b.get("title", "Google Calendar: Busy / Private Event"),
+                        "is_external": True,
+                    })
+            except Exception as g_err:
+                logger.debug("Failed to parse google busy interval: {}", g_err)
+
     return {
         "windows": [
             {
@@ -481,6 +504,12 @@ async def day_view(
         "is_on_brahma_pause": bool(astrologer.brahma_pause_until and now < astrologer.brahma_pause_until),
         "brahma_pause_until": astrologer.brahma_pause_until.isoformat() if astrologer.brahma_pause_until and now < astrologer.brahma_pause_until else None,
         "brahma_pause_reason": astrologer.brahma_pause_reason if astrologer.brahma_pause_until and now < astrologer.brahma_pause_until else None,
+        "google_sync": {
+            "connected": bool(gc and gc.connected),
+            "email": getattr(gc, "email", None),
+            "sync_enabled": bool(gc and gc.sync_enabled),
+            "last_synced_at": gc.last_synced_at.isoformat() if gc and gc.last_synced_at else None,
+        },
     }
 
 
@@ -639,6 +668,28 @@ async def _book_locked(
             "The astrologer is not available for that whole time (including required meditation buffer).",
             error_code="outside_availability",
         )
+
+    # --- Two-Way Google Calendar Conflict Check ---
+    gc = getattr(astrologer, "google_calendar", None)
+    if gc and gc.connected and gc.sync_enabled:
+        for b in getattr(gc, "busy_intervals", []):
+            try:
+                b_start = datetime.fromisoformat(b["starts_at"]) if isinstance(b["starts_at"], str) else b["starts_at"]
+                b_end = datetime.fromisoformat(b["ends_at"]) if isinstance(b["ends_at"], str) else b["ends_at"]
+                if b_start.tzinfo is None:
+                    b_start = b_start.replace(tzinfo=UTC)
+                if b_end.tzinfo is None:
+                    b_end = b_end.replace(tzinfo=UTC)
+
+                if starts_at < b_end and needed_ends_at > b_start:
+                    raise BadRequestError(
+                        "The astrologer has an external commitment scheduled on their Google Calendar during this time. Please select another slot.",
+                        error_code="google_calendar_busy_conflict",
+                    )
+            except BadRequestError:
+                raise
+            except Exception as g_err:
+                logger.debug("Failed checking google busy collision: {}", g_err)
 
     # --- Private Link Validation ---
     invite_link: PrivateInviteLink | None = None
@@ -944,6 +995,13 @@ async def _book_locked(
     except Exception as exc:
         logger.warning("Auto-generation of pre-flight dossier on booking skipped for {}: {}", appointment_id, exc)
 
+    # Two-Way Google Calendar Sync: Push booking to astrologer's connected Google Calendar
+    try:
+        from app.services import google_calendar as gcal_service
+        await gcal_service.push_appointment_to_google(appointment, astrologer)
+    except Exception as g_push_err:
+        logger.warning("Could not push appointment {} to Google Calendar: {}", appointment_id, g_push_err)
+
     # Realtime notification to both client and astrologer
     try:
         from app.services import realtime
@@ -1127,6 +1185,16 @@ async def cancel(
         )
     except Exception as exc:
         logger.debug("Realtime cancel publish skipped: {}", exc)
+
+    # Two-Way Google Calendar Sync: Delete synced event from Google Calendar
+    if getattr(appointment, "google_calendar_event_id", None):
+        try:
+            from app.services import google_calendar as gcal_service
+            astro = await Astrologer.get(appointment.astrologer_id)
+            if astro:
+                await gcal_service.delete_google_event(appointment, astro)
+        except Exception as g_del_err:
+            logger.warning("Could not delete Google Calendar event for {}: {}", appointment.id, g_del_err)
 
     return appointment
 

@@ -477,6 +477,114 @@ async def panchang_shield(
     )
 
 
+class GoogleCalendarCallbackRequest(BaseModel):
+    code: str
+    redirect_uri: str | None = None
+
+
+@router.get(
+    "/google-calendar/auth-url",
+    summary="Get Google OAuth authorization URL for two-way calendar sync",
+)
+async def get_google_calendar_auth_url(
+    user: CurrentUser,
+    redirect_uri: Annotated[str | None, Query(description="OAuth redirect callback URI")] = None,
+) -> ApiResponse[dict[str, Any]]:
+    profile = await Astrologer.find_one(Astrologer.user_id == user.id)
+    if profile is None and getattr(user, "role", None) != "admin":
+        raise ForbiddenError("Only registered astrologers can connect Google Calendar.")
+
+    astro_id = profile.id if profile else user.id
+    from app.services import google_calendar as gcal_service
+
+    auth_data = gcal_service.get_auth_url(astro_id, redirect_uri=redirect_uri)
+    return ApiResponse(message="Google Calendar auth URL generated.", data=auth_data)
+
+
+@router.post(
+    "/google-calendar/callback",
+    summary="Exchange Google OAuth code and connect astrologer's Google Calendar",
+)
+async def google_calendar_callback(
+    payload: GoogleCalendarCallbackRequest,
+    user: CurrentUser,
+) -> ApiResponse[dict[str, Any]]:
+    profile = await Astrologer.find_one(Astrologer.user_id == user.id)
+    if profile is None and getattr(user, "role", None) != "admin":
+        raise ForbiddenError("Only registered astrologers can connect Google Calendar.")
+
+    if not profile:
+        raise NotFoundError("Astrologer profile not found.", error_code="astrologer_not_found")
+
+    from app.services import google_calendar as gcal_service
+
+    result = await gcal_service.exchange_code_for_tokens(profile, payload.code, payload.redirect_uri)
+    return ApiResponse(message="Google Calendar connected successfully.", data=result)
+
+
+@router.post(
+    "/google-calendar/sync",
+    summary="Manually trigger synchronization of external Google Calendar busy intervals",
+)
+async def sync_google_calendar(
+    user: CurrentUser,
+) -> ApiResponse[dict[str, Any]]:
+    profile = await Astrologer.find_one(Astrologer.user_id == user.id)
+    if profile is None and getattr(user, "role", None) != "admin":
+        raise ForbiddenError("Only registered astrologers can sync Google Calendar.")
+
+    if not profile:
+        raise NotFoundError("Astrologer profile not found.", error_code="astrologer_not_found")
+
+    from app.services import google_calendar as gcal_service
+
+    result = await gcal_service.sync_astrologer_calendar(profile.id)
+    return ApiResponse(message="Google Calendar synced successfully.", data=result)
+
+
+@router.post(
+    "/google-calendar/disconnect",
+    summary="Disconnect Google Calendar and clear external busy blocks",
+)
+async def disconnect_google_calendar(
+    user: CurrentUser,
+) -> ApiResponse[dict[str, Any]]:
+    profile = await Astrologer.find_one(Astrologer.user_id == user.id)
+    if profile is None and getattr(user, "role", None) != "admin":
+        raise ForbiddenError("Only registered astrologers can disconnect Google Calendar.")
+
+    if not profile:
+        raise NotFoundError("Astrologer profile not found.", error_code="astrologer_not_found")
+
+    from app.services import google_calendar as gcal_service
+
+    await gcal_service.disconnect_google_calendar(profile)
+    return ApiResponse(message="Google Calendar disconnected successfully.", data={"connected": False})
+
+
+@router.get(
+    "/google-calendar/status",
+    summary="Get Google Calendar connection and sync status",
+)
+async def get_google_calendar_status(
+    user: CurrentUser,
+) -> ApiResponse[dict[str, Any]]:
+    profile = await Astrologer.find_one(Astrologer.user_id == user.id)
+    if profile is None and getattr(user, "role", None) != "admin":
+        raise ForbiddenError("Only registered astrologers can check Google Calendar status.")
+
+    gc = getattr(profile, "google_calendar", None) if profile else None
+    data = {
+        "connected": bool(gc and gc.connected),
+        "email": getattr(gc, "email", None),
+        "sync_enabled": bool(gc and gc.sync_enabled),
+        "last_synced_at": gc.last_synced_at.isoformat() if gc and gc.last_synced_at else None,
+        "busy_count": len(getattr(gc, "busy_intervals", [])),
+        "busy_intervals": getattr(gc, "busy_intervals", []),
+    }
+    return ApiResponse(message="Google Calendar status fetched.", data=data)
+
+
 # ================================================================ the user's
 @router.get(
     "/astrologers/{astrologer_id}/day",
