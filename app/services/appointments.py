@@ -1115,6 +1115,26 @@ async def update_prescription(
     return appointment
 
 
+# ------------------------------------------------------------- private vault notes
+async def update_private_notes(
+    *,
+    appointment: Appointment,
+    astrologer_user_id: PydanticObjectId,
+    notes: str,
+) -> Appointment:
+    """Saves the astrologer's confidential dossier notes (strictly hidden from seeker)."""
+    if appointment.astrologer_user_id != astrologer_user_id:
+        raise ForbiddenError(
+            "Only the consulting astrologer can edit confidential vault notes.",
+            error_code="not_consulting_astrologer",
+        )
+
+    appointment.astrologer_private_notes = notes.strip() if notes and notes.strip() else None
+    appointment.astrologer_private_notes_updated_at = utcnow()
+    await appointment.save()
+    return appointment
+
+
 # ------------------------------------------------------------------ reading
 async def get(appointment_id: PydanticObjectId) -> Appointment:
     appointment = await Appointment.get(appointment_id)

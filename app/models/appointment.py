@@ -210,6 +210,10 @@ class Appointment(TimestampedDocument):
     is_private: bool = False
     invite_code: str | None = None
 
+    # Private Astrological Dossier / Vault (Confidential Astrologer Notes - Hidden from Seeker)
+    astrologer_private_notes: str | None = None
+    astrologer_private_notes_updated_at: datetime | None = None
+
     class Settings:
         name = "appointments"
         indexes = [

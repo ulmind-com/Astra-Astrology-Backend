@@ -48,6 +48,7 @@ from app.schemas.appointment import (
     RescheduleRequest,
     SendFollowUpMessageRequest,
     UpdateBTRRequest,
+    UpdatePrivateNotesRequest,
     ValidatePrivateInviteResponse,
     VerifyPasscodeRequest,
     WindowInput,
@@ -208,6 +209,12 @@ async def _out(
         tatkal_premium_coins=getattr(appointment, "tatkal_premium_coins", 0),
         is_private=getattr(appointment, "is_private", False),
         invite_code=getattr(appointment, "invite_code", None),
+        astrologer_private_notes=(
+            None if is_client else getattr(appointment, "astrologer_private_notes", None)
+        ),
+        astrologer_private_notes_updated_at=(
+            None if is_client else getattr(appointment, "astrologer_private_notes_updated_at", None)
+        ),
         peer=(
             peers.get(appointment.id)
             if peers is not None
@@ -610,6 +617,26 @@ async def update_prescription_endpoint(
         prescription_data=payload.model_dump(exclude_unset=True),
     )
     return ApiResponse(message="Prescription saved.", data=await _out(updated, user))
+
+
+@router.patch(
+    "/{appointment_id}/private-notes",
+    response_model=ApiResponse[AppointmentOut],
+    summary="Update confidential astrologer dossier vault notes",
+)
+async def update_private_notes_endpoint(
+    appointment_id: PydanticObjectId,
+    payload: UpdatePrivateNotesRequest,
+    user: CurrentUser,
+) -> ApiResponse[AppointmentOut]:
+    appointment = await service.get(appointment_id)
+    updated = await service.update_private_notes(
+        appointment=appointment,
+        astrologer_user_id=user.id,
+        notes=payload.notes,
+    )
+    return ApiResponse(message="Private vault notes saved.", data=await _out(updated, user))
+
 
 
 @router.get(

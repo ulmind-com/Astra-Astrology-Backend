@@ -143,3 +143,75 @@ async def test_appointment_booking_with_pillar_and_prescription(client: AsyncCli
     cancelled = await cancel(appointment=booking, by=client_user, reason="Need to reschedule")
     assert cancelled.status == AppointmentStatus.CANCELLED
     assert cancelled.cancel_reason == "Need to reschedule"
+
+
+@pytest.mark.asyncio
+async def test_private_astrological_vault_notes(client: AsyncClient):
+    """Verify astrologer private vault notes are confidential and hidden from seeker."""
+    from app.api.v1.appointments import _out
+    from app.services.appointments import update_private_notes
+
+    astro_user = await User(
+        email="pandit.vault@divinlink.com",
+        phone="+919988776655",
+        role="astrologer",
+    ).insert()
+
+    astro_profile = await Astrologer(
+        user_id=astro_user.id,
+        display_name="Acharya Vault",
+        slug="acharya-vault",
+        is_verified=True,
+        is_listed=True,
+    ).insert()
+
+    client_user = await User(
+        email="seeker.vault@divinlink.com",
+        phone="+919988776654",
+        role="user",
+    ).insert()
+
+    starts_at = datetime.now(UTC) + timedelta(days=1)
+    ends_at = starts_at + timedelta(minutes=30)
+    booking = await Appointment(
+        user_id=client_user.id,
+        astrologer_id=astro_profile.id,
+        astrologer_user_id=astro_user.id,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        minutes=30,
+        price_paise=50000,
+        deposit_paise=10000,
+        deposit_coins=10,
+        balance_due_paise=40000,
+        status=AppointmentStatus.BOOKED,
+    ).insert()
+
+    # Astrologer writes confidential private notes
+    secret_note = "গোপন নোট: ক্লায়েন্টের মানসিক অস্থিরতা তীব্র, রাহু-চন্দ্রের গোচর প্রতিকূল।"
+    updated = await update_private_notes(
+        appointment=booking,
+        astrologer_user_id=astro_user.id,
+        notes=secret_note,
+    )
+    assert updated.astrologer_private_notes == secret_note
+    assert updated.astrologer_private_notes_updated_at is not None
+
+    # Seeker serialization MUST mask private notes to None
+    seeker_view = await _out(updated, client_user)
+    assert seeker_view.astrologer_private_notes is None
+    assert seeker_view.astrologer_private_notes_updated_at is None
+
+    # Astrologer serialization MUST show the confidential private notes
+    astro_view = await _out(updated, astro_user)
+    assert astro_view.astrologer_private_notes == secret_note
+    assert astro_view.astrologer_private_notes_updated_at is not None
+
+    # Unauthorized user (seeker) cannot update private notes
+    with pytest.raises(Exception):
+        await update_private_notes(
+            appointment=booking,
+            astrologer_user_id=client_user.id,
+            notes="Hacked note",
+        )
+

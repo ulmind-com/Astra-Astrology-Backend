@@ -227,6 +227,10 @@ class AppointmentOut(BaseModel):
     is_private: bool = False
     invite_code: str | None = None
 
+    # Private Astrological Dossier / Vault (Strictly Astrologer & Admin view only)
+    astrologer_private_notes: str | None = None
+    astrologer_private_notes_updated_at: datetime | None = None
+
     peer: AppointmentPeer | None = None
 
 
@@ -391,5 +395,11 @@ class QuickTatkalWindowRequest(BaseModel):
     fixed_paise: int | None = Field(default=None, ge=0, le=100_000_00)
     custom_title: str | None = Field(default="VIP Emergency Tatkal Slot", max_length=100)
     is_private: bool = False
+
+
+# ------------------------------------------------------------- Private Vault Notes
+class UpdatePrivateNotesRequest(BaseModel):
+    notes: str = Field(default="", max_length=5000)
+
 
 
