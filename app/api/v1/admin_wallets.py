@@ -220,7 +220,7 @@ async def reconcile_payment(order_id: PydanticObjectId, _: AdminUser) -> ApiResp
 async def get_wallet(user_id: PydanticObjectId, _: AdminUser) -> ApiResponse[WalletBalance]:
     await _require_user(user_id)
     wallet = await wallet_service.get_or_create_wallet(user_id)
-    return ApiResponse(message="Wallet fetched.", data=to_balance(wallet))
+    return ApiResponse(message="Wallet fetched.", data=await to_balance(wallet))
 
 
 @router.post(
@@ -252,7 +252,7 @@ async def adjust_wallet(
 
     wallet = await wallet_service.get_or_create_wallet(user_id)
     return ApiResponse(
-        message=f"Wallet adjusted by {txn.amount_coins} coins.", data=to_balance(wallet)
+        message=f"Wallet adjusted by {txn.amount_coins} coins.", data=await to_balance(wallet)
     )
 
 
@@ -270,7 +270,7 @@ async def freeze_wallet(
     )
     return ApiResponse(
         message="Wallet frozen." if payload.frozen else "Wallet unfrozen.",
-        data=to_balance(wallet),
+        data=await to_balance(wallet),
     )
 
 
