@@ -41,3 +41,4 @@ def test_earnings_windows_at_5am_ist():
 
     # Both must have the identical 'today' start boundary because they are both on Nov 8 IST!
     assert windows_520["today"] == windows_540["today"], "IST day boundary must not jump at 5:30 AM IST"
+
