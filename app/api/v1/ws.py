@@ -104,14 +104,17 @@ async def live(websocket: WebSocket, token: str | None = Query(default=None)) ->
                 try:
                     import json
                     msg = json.loads(raw_text)
-                    if msg.get("action") == "whiteboard_live" and msg.get("to_user"):
-                        realtime._broadcast(
-                            {
-                                "type": "whiteboard_live",
-                                "data": msg.get("data", {}),
-                            },
-                            to_user=str(msg["to_user"]),
-                        )
+                    event_type = msg.get("type") or msg.get("action")
+                    if event_type in ("whiteboard_live", "whiteboard_event", "whiteboard_sync"):
+                        payload = {
+                            "type": event_type,
+                            "data": msg.get("data", {}),
+                        }
+                        to_user = msg.get("to_user")
+                        if to_user:
+                            realtime._broadcast(payload, to_user=str(to_user))
+                        else:
+                            realtime._broadcast(payload)
                 except Exception:
                     pass
 
