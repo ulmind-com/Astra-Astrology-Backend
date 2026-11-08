@@ -65,17 +65,17 @@ async def send_email(
 
 async def send_otp_email(to: str, code: str, purpose: str, name: str | None = None) -> None:
     subjects = {
-        "signup": f"{code} is your Astra Astrology sign-up code",
-        "login": f"{code} is your Astra Astrology login code",
-        "email_verification": "Verify your email — Astra Astrology",
-        "password_reset": "Reset your Astra Astrology password",
+        "signup": f"{code} is your {settings.APP_NAME} sign-up code",
+        "login": f"{code} is your {settings.APP_NAME} login code",
+        "email_verification": f"Verify your email — {settings.APP_NAME}",
+        "password_reset": f"Reset your {settings.APP_NAME} password",
     }
     await send_email(
         to=to,
-        subject=subjects.get(purpose, f"{code} is your Astra Astrology code"),
+        subject=subjects.get(purpose, f"{code} is your {settings.APP_NAME} code"),
         html=otp_email_html(code=code, purpose=purpose, name=name),
         text=(
-            f"Your Astra Astrology verification code is {code}. "
+            f"Your {settings.APP_NAME} verification code is {code}. "
             f"It expires in {settings.OTP_EXPIRE_MINUTES} minutes."
         ),
     )

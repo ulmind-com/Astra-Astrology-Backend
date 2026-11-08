@@ -16,7 +16,9 @@ class Settings(BaseSettings):
     )
 
     # ---------------------------------------------------------------- app
-    APP_NAME: str = "Astra Astrology"
+    APP_NAME: str = "DivinLink"
+    APP_VERSION: str = "0.1.0"
+    FRONTEND_URL: str = "https://astra-astrology-web.vercel.app"
     APP_ENV: Literal["development", "staging", "production"] = "development"
     DEBUG: bool = True
     API_V1_PREFIX: str = "/api/v1"
@@ -75,7 +77,7 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------- resend
     RESEND_API_KEY: str = ""
     RESEND_FROM_EMAIL: str = "no-reply@example.com"
-    RESEND_FROM_NAME: str = "Astra Astrology"
+    RESEND_FROM_NAME: str = "DivinLink"
     SUPPORT_EMAIL: str = "support@example.com"
 
     # ---------------------------------------------------------- cloudinary
@@ -94,11 +96,11 @@ class Settings(BaseSettings):
 
     # ------------------------------------------------------------ razorpay
     # Money is held in integer paise everywhere; rupees appear only in the UI.
-    RAZORPAY_KEY_ID: str = ""
-    RAZORPAY_KEY_SECRET: str = ""
+    RAZORPAY_KEY_ID: str = "rzp_test_TBRo7AUeaKIhKB"
+    RAZORPAY_KEY_SECRET: str = "9bJqOT5wotpt58O0Mal60miC"
     # Set in the Razorpay dashboard under Settings -> Webhooks. Without it the
     # webhook cannot be trusted, so it is refused rather than processed.
-    RAZORPAY_WEBHOOK_SECRET: str = ""
+    RAZORPAY_WEBHOOK_SECRET: str = "Ulmind2026"
 
     WALLET_CURRENCY: str = "INR"
     WALLET_MIN_RECHARGE_PAISE: int = 1_000  # Rs 10
@@ -110,6 +112,11 @@ class Settings(BaseSettings):
     # How many orders one user may open per hour, so the endpoint cannot be
     # used to hammer Razorpay.
     RECHARGE_ORDERS_PER_HOUR: int = 20
+
+    # --------------------------------------------------- google calendar sync
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_CALENDAR_REDIRECT_URI: str = "http://localhost:3000/appointments?google_sync=callback"
 
     # ----------------------------------------------------------- zegocloud
     # Voice & video calling. The ServerSecret signs room tokens here on the
@@ -138,6 +145,44 @@ class Settings(BaseSettings):
     CALL_MAX_DURATION_SECONDS: int = 2 * 60 * 60
     # How long an unanswered call keeps ringing.
     CALL_RING_TIMEOUT_SECONDS: int = 45
+
+    # ------------------------------------------------------------- groq ai
+    GROQ_API_KEY: str = ""
+    GROQ_DEFAULT_MODEL: str = "openai/gpt-oss-120b"
+    GROQ_FALLBACK_MODEL: str = "qwen/qwen3.8-27b"
+
+    @property
+    def groq_configured(self) -> bool:
+        return bool(self.GROQ_API_KEY)
+
+    # ------------------------------------------------------------- bunny stream (lms)
+    BUNNY_STREAM_LIBRARY_ID: str = "803267"
+    BUNNY_STREAM_API_KEY: str = "1c3cab37-2ae3-4527-8592090e78bb-f243-4cf9"
+    BUNNY_STREAM_READONLY_API_KEY: str = "3f9b4689-ebab-4661-a622b0001495-91aa-4868"
+    BUNNY_STREAM_TOKEN_KEY: str = "1892c150-2ee8-4e64-8839-87dc10cf8a34"
+    BUNNY_STREAM_CDN_HOSTNAME: str = "vz-70a46f7e-43a.b-cdn.net"
+    BUNNY_ACCOUNT_API_KEY: str = "37448981-ab27-429a-8e73-b2af29444f8efdfd2b3c-179a-4fcf-ac5c-42ed51dad72a"
+
+    @property
+    def bunny_stream_configured(self) -> bool:
+        return bool(self.BUNNY_STREAM_LIBRARY_ID and self.BUNNY_STREAM_TOKEN_KEY)
+
+    # ---------------------------------------------------------- monitoring
+    # Sentry error tracking & APM performance
+    SENTRY_DSN: str = ""
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.2
+    SENTRY_PROFILES_SAMPLE_RATE: float = 0.0
+
+    # Grafana Cloud Loki log aggregation
+    GRAFANA_LOKI_URL: str = ""
+    GRAFANA_LOKI_USER: str = ""
+    GRAFANA_LOKI_TOKEN: str = ""
+
+    # Grafana Cloud OpenTelemetry (Logs, Metrics, Traces, System RAM/CPU)
+    OTEL_SERVICE_NAME: str = "divinlink"
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = ""
+    OTEL_EXPORTER_OTLP_PROTOCOL: str = "http/protobuf"
+    OTEL_EXPORTER_OTLP_HEADERS: str = ""
 
     @field_validator("RECHARGE_PACKS_PAISE", mode="before")
     @classmethod
@@ -188,6 +233,18 @@ class Settings(BaseSettings):
     @property
     def firebase_configured(self) -> bool:
         return bool(self.FIREBASE_CREDENTIALS_PATH or self.FIREBASE_CREDENTIALS_JSON)
+
+    @property
+    def sentry_configured(self) -> bool:
+        return bool(self.SENTRY_DSN)
+
+    @property
+    def loki_configured(self) -> bool:
+        return bool(self.GRAFANA_LOKI_URL and self.GRAFANA_LOKI_USER and self.GRAFANA_LOKI_TOKEN)
+
+    @property
+    def otel_configured(self) -> bool:
+        return bool(self.OTEL_EXPORTER_OTLP_ENDPOINT and self.OTEL_EXPORTER_OTLP_HEADERS)
 
 
 @lru_cache

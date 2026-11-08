@@ -715,3 +715,513 @@ def calculate_kp_sub_lord(nakshatra_lord: str, offset_in_nakshatra_deg: float) -
         accumulated += sub_span
 
     return nakshatra_lord
+
+
+# =============================================================================
+# Classical Planetary Dignities & Natural Friendships
+# Source: Resource Documents/Kundli/Basics of Kundali Reading Explained.pdf (pp. 1-5)
+# =============================================================================
+
+RASHI_PLANETARY_DIGNITIES: list[dict[str, Any]] = [
+    # 0 Aries (Mesha) - Mars
+    {
+        "exalted": {"en": ["Sun (Surya, 10°)"], "bn": ["সূর্য (১০°)"], "hi": ["सूर्य (१०°)"]},
+        "debilitated": {"en": ["Saturn (Shani, 20°)"], "bn": ["শনি (২০°)"], "hi": ["शनि (२०°)"]},
+        "own_lord": {"en": "Mars (Mangal)", "bn": "মঙ্গল", "hi": "मंगल"},
+        "moolatrikona": {"en": "Mars (0°-12°)", "bn": "মঙ্গল (০°-১২°)", "hi": "मंगल (०°-१२°)"},
+        "ruler_friends": {
+            "en": ["Sun (Surya)", "Moon (Chandra)", "Jupiter (Guru)"],
+            "bn": ["সূর্য", "চন্দ্র", "বৃহস্পতি"],
+            "hi": ["सूर्य", "चंद्र", "बृहस्पति"],
+        },
+        "ruler_enemies": {"en": ["Mercury (Budha)"], "bn": ["বুধ"], "hi": ["बुध"]},
+        "ruler_neutrals": {
+            "en": ["Venus (Shukra)", "Saturn (Shani)"],
+            "bn": ["শুক্র", "শনি"],
+            "hi": ["शुक्र", "शनि"],
+        },
+    },
+    # 1 Taurus (Vrisha) - Venus
+    {
+        "exalted": {"en": ["Moon (Chandra, 3°)"], "bn": ["চন্দ্র (৩°)"], "hi": ["चंद्र (३°)"]},
+        "debilitated": {"en": [], "bn": [], "hi": []},
+        "own_lord": {"en": "Venus (Shukra)", "bn": "শুক্র", "hi": "शुक्र"},
+        "moolatrikona": {"en": "Moon (4°-30°)", "bn": "চন্দ্র (৪°-৩০°)", "hi": "चंद्र (४°-३०°)"},
+        "ruler_friends": {
+            "en": ["Mercury (Budha)", "Saturn (Shani)"],
+            "bn": ["বুধ", "শনি"],
+            "hi": ["बुध", "शनि"],
+        },
+        "ruler_enemies": {
+            "en": ["Sun (Surya)", "Moon (Chandra)"],
+            "bn": ["সূর্য", "চন্দ্র"],
+            "hi": ["सूर्य", "चंद्र"],
+        },
+        "ruler_neutrals": {
+            "en": ["Mars (Mangal)", "Jupiter (Guru)"],
+            "bn": ["মঙ্গল", "বৃহস্পতি"],
+            "hi": ["मंगल", "बृहस्पति"],
+        },
+    },
+    # 2 Gemini (Mithuna) - Mercury
+    {
+        "exalted": {"en": ["Rahu (North Node)"], "bn": ["রাহু"], "hi": ["राहु"]},
+        "debilitated": {"en": ["Ketu (South Node)"], "bn": ["কেতু"], "hi": ["केतु"]},
+        "own_lord": {"en": "Mercury (Budha)", "bn": "বুধ", "hi": "बुध"},
+        "moolatrikona": {"en": "", "bn": "", "hi": ""},
+        "ruler_friends": {
+            "en": ["Sun (Surya)", "Venus (Shukra)"],
+            "bn": ["সূর্য", "শুক্র"],
+            "hi": ["सूर्य", "शुक्र"],
+        },
+        "ruler_enemies": {"en": ["Moon (Chandra)"], "bn": ["চন্দ্র"], "hi": ["चंद्र"]},
+        "ruler_neutrals": {
+            "en": ["Mars (Mangal)", "Jupiter (Guru)", "Saturn (Shani)"],
+            "bn": ["মঙ্গল", "বৃহস্পতি", "শনি"],
+            "hi": ["मंगल", "बृहस्पति", "शनि"],
+        },
+    },
+    # 3 Cancer (Karka) - Moon
+    {
+        "exalted": {"en": ["Jupiter (Guru, 5°)"], "bn": ["বৃহস্পতি (৫°)"], "hi": ["बृहस्पति (५°)"]},
+        "debilitated": {"en": ["Mars (Mangal, 28°)"], "bn": ["মঙ্গল (২৮°)"], "hi": ["मंगल (२८°)"]},
+        "own_lord": {"en": "Moon (Chandra)", "bn": "চন্দ্র", "hi": "चंद्र"},
+        "moolatrikona": {"en": "", "bn": "", "hi": ""},
+        "ruler_friends": {
+            "en": ["Sun (Surya)", "Mercury (Budha)"],
+            "bn": ["সূর্য", "বুধ"],
+            "hi": ["सूर्य", "बुध"],
+        },
+        "ruler_enemies": {"en": [], "bn": [], "hi": []},  # Moon has no natural enemies
+        "ruler_neutrals": {
+            "en": ["Mars (Mangal)", "Jupiter (Guru)", "Venus (Shukra)", "Saturn (Shani)"],
+            "bn": ["মঙ্গল", "বৃহস্পতি", "শুক্র", "শনি"],
+            "hi": ["मंगल", "बृहस्पति", "शुक्र", "शनि"],
+        },
+    },
+    # 4 Leo (Simha) - Sun
+    {
+        "exalted": {"en": [], "bn": [], "hi": []},
+        "debilitated": {"en": [], "bn": [], "hi": []},
+        "own_lord": {"en": "Sun (Surya)", "bn": "সূর্য", "hi": "सूर्य"},
+        "moolatrikona": {"en": "Sun (0°-20°)", "bn": "সূর্য (০°-২০°)", "hi": "सूर्य (०°-२०°)"},
+        "ruler_friends": {
+            "en": ["Moon (Chandra)", "Mars (Mangal)", "Jupiter (Guru)"],
+            "bn": ["চন্দ্র", "মঙ্গল", "বৃহস্পতি"],
+            "hi": ["चंद्र", "मंगल", "बृहस्पति"],
+        },
+        "ruler_enemies": {
+            "en": ["Saturn (Shani)", "Venus (Shukra)"],
+            "bn": ["শনি", "শুক্র"],
+            "hi": ["शनि", "शुक्र"],
+        },
+        "ruler_neutrals": {"en": ["Mercury (Budha)"], "bn": ["বুধ"], "hi": ["बुध"]},
+    },
+    # 5 Virgo (Kanya) - Mercury
+    {
+        "exalted": {"en": ["Mercury (Budha, 15°)"], "bn": ["বুধ (১৫°)"], "hi": ["बुध (१५°)"]},
+        "debilitated": {"en": ["Venus (Shukra, 27°)"], "bn": ["শুক্র (২৭°)"], "hi": ["शुक्र (२७°)"]},
+        "own_lord": {"en": "Mercury (Budha)", "bn": "বুধ", "hi": "बुध"},
+        "moolatrikona": {"en": "Mercury (16°-20°)", "bn": "বুধ (১৬°-২০°)", "hi": "बुध (१६°-२०°)"},
+        "ruler_friends": {
+            "en": ["Sun (Surya)", "Venus (Shukra)"],
+            "bn": ["সূর্য", "শুক্র"],
+            "hi": ["सूर्य", "शुक्र"],
+        },
+        "ruler_enemies": {"en": ["Moon (Chandra)"], "bn": ["চন্দ্র"], "hi": ["चंद्र"]},
+        "ruler_neutrals": {
+            "en": ["Mars (Mangal)", "Jupiter (Guru)", "Saturn (Shani)"],
+            "bn": ["মঙ্গল", "বৃহস্পতি", "শনি"],
+            "hi": ["मंगल", "बृहस्पति", "शनि"],
+        },
+    },
+    # 6 Libra (Tula) - Venus
+    {
+        "exalted": {"en": ["Saturn (Shani, 20°)"], "bn": ["শনি (২০°)"], "hi": ["शनि (२०°)"]},
+        "debilitated": {"en": ["Sun (Surya, 10°)"], "bn": ["সূর্য (১০°)"], "hi": ["सूर्य (१०°)"]},
+        "own_lord": {"en": "Venus (Shukra)", "bn": "শুক্র", "hi": "शुक्र"},
+        "moolatrikona": {"en": "Venus (0°-15°)", "bn": "শুক্র (০°-১৫°)", "hi": "शुक्र (०°-১৫°)"},
+        "ruler_friends": {
+            "en": ["Mercury (Budha)", "Saturn (Shani)"],
+            "bn": ["বুধ", "শনি"],
+            "hi": ["बुध", "शनि"],
+        },
+        "ruler_enemies": {
+            "en": ["Sun (Surya)", "Moon (Chandra)"],
+            "bn": ["সূর্য", "চন্দ্র"],
+            "hi": ["सूर्य", "चंद्र"],
+        },
+        "ruler_neutrals": {
+            "en": ["Mars (Mangal)", "Jupiter (Guru)"],
+            "bn": ["মঙ্গল", "বৃহস্পতি"],
+            "hi": ["मंगल", "बृहस्पति"],
+        },
+    },
+    # 7 Scorpio (Vrischika) - Mars
+    {
+        "exalted": {"en": [], "bn": [], "hi": []},
+        "debilitated": {"en": ["Moon (Chandra, 3°)"], "bn": ["চন্দ্র (৩°)"], "hi": ["चंद्र (३°)"]},
+        "own_lord": {"en": "Mars (Mangal)", "bn": "মঙ্গল", "hi": "मंगल"},
+        "moolatrikona": {"en": "", "bn": "", "hi": ""},
+        "ruler_friends": {
+            "en": ["Sun (Surya)", "Moon (Chandra)", "Jupiter (Guru)"],
+            "bn": ["সূর্য", "চন্দ্র", "বৃহস্পতি"],
+            "hi": ["सूर्य", "चंद्र", "बृहस्पति"],
+        },
+        "ruler_enemies": {"en": ["Mercury (Budha)"], "bn": ["বুধ"], "hi": ["बुध"]},
+        "ruler_neutrals": {
+            "en": ["Venus (Shukra)", "Saturn (Shani)"],
+            "bn": ["শুক্র", "শনি"],
+            "hi": ["शुक्र", "शनि"],
+        },
+    },
+    # 8 Sagittarius (Dhanu) - Jupiter
+    {
+        "exalted": {"en": ["Ketu (South Node)"], "bn": ["কেতু"], "hi": ["केतु"]},
+        "debilitated": {"en": ["Rahu (North Node)"], "bn": ["রাহু"], "hi": ["राहु"]},
+        "own_lord": {"en": "Jupiter (Guru)", "bn": "বৃহস্পতি", "hi": "बृहस्पति"},
+        "moolatrikona": {"en": "Jupiter (0°-10°)", "bn": "বৃহস্পতি (০°-১০°)", "hi": "बृहस्पति (०°-१०°)"},
+        "ruler_friends": {
+            "en": ["Sun (Surya)", "Moon (Chandra)", "Mars (Mangal)"],
+            "bn": ["সূর্য", "চন্দ্র", "মঙ্গল"],
+            "hi": ["सूर्य", "चंद्र", "मंगल"],
+        },
+        "ruler_enemies": {
+            "en": ["Mercury (Budha)", "Venus (Shukra)"],
+            "bn": ["বুধ", "শুক্র"],
+            "hi": ["बुध", "शुक्र"],
+        },
+        "ruler_neutrals": {"en": ["Saturn (Shani)"], "bn": ["শনি"], "hi": ["शनि"]},
+    },
+    # 9 Capricorn (Makara) - Saturn
+    {
+        "exalted": {"en": ["Mars (Mangal, 28°)"], "bn": ["মঙ্গল (২৮°)"], "hi": ["मंगल (२८°)"]},
+        "debilitated": {"en": ["Jupiter (Guru, 5°)"], "bn": ["বৃহস্পতি (৫°)"], "hi": ["बृहस्पति (५°)"]},
+        "own_lord": {"en": "Saturn (Shani)", "bn": "শনি", "hi": "शनि"},
+        "moolatrikona": {"en": "", "bn": "", "hi": ""},
+        "ruler_friends": {
+            "en": ["Mercury (Budha)", "Venus (Shukra)"],
+            "bn": ["বুধ", "শুক্র"],
+            "hi": ["बुध", "शुक्र"],
+        },
+        "ruler_enemies": {
+            "en": ["Sun (Surya)", "Moon (Chandra)", "Mars (Mangal)"],
+            "bn": ["সূর্য", "চন্দ্র", "মঙ্গল"],
+            "hi": ["सूर्य", "चंद्र", "मंगल"],
+        },
+        "ruler_neutrals": {"en": ["Jupiter (Guru)"], "bn": ["বৃহস্পতি"], "hi": ["बृहस्पति"]},
+    },
+    # 10 Aquarius (Kumbha) - Saturn
+    {
+        "exalted": {"en": [], "bn": [], "hi": []},
+        "debilitated": {"en": [], "bn": [], "hi": []},
+        "own_lord": {"en": "Saturn (Shani)", "bn": "শনি", "hi": "शनि"},
+        "moolatrikona": {"en": "Saturn (0°-20°)", "bn": "শনি (০°-২০°)", "hi": "शनि (०°-२०°)"},
+        "ruler_friends": {
+            "en": ["Mercury (Budha)", "Venus (Shukra)"],
+            "bn": ["বুধ", "শুক্র"],
+            "hi": ["बुध", "शुक्र"],
+        },
+        "ruler_enemies": {
+            "en": ["Sun (Surya)", "Moon (Chandra)", "Mars (Mangal)"],
+            "bn": ["সূর্য", "চন্দ্র", "মঙ্গল"],
+            "hi": ["सूर्य", "चंद्र", "मंगल"],
+        },
+        "ruler_neutrals": {"en": ["Jupiter (Guru)"], "bn": ["বৃহস্পতি"], "hi": ["बृहस्पति"]},
+    },
+    # 11 Pisces (Meena) - Jupiter
+    {
+        "exalted": {"en": ["Venus (Shukra, 27°)"], "bn": ["শুক্র (২৭°)"], "hi": ["शुक्र (२७°)"]},
+        "debilitated": {"en": ["Mercury (Budha, 15°)"], "bn": ["বুধ (১৫°)"], "hi": ["बुध (१५°)"]},
+        "own_lord": {"en": "Jupiter (Guru)", "bn": "বৃহস্পতি", "hi": "बृहस्पति"},
+        "moolatrikona": {"en": "", "bn": "", "hi": ""},
+        "ruler_friends": {
+            "en": ["Sun (Surya)", "Moon (Chandra)", "Mars (Mangal)"],
+            "bn": ["সূর্য", "চন্দ্র", "মঙ্গল"],
+            "hi": ["सूर्य", "चंद्र", "मंगल"],
+        },
+        "ruler_enemies": {
+            "en": ["Mercury (Budha)", "Venus (Shukra)"],
+            "bn": ["বুধ", "শুক্র"],
+            "hi": ["बुध", "शुक्र"],
+        },
+        "ruler_neutrals": {"en": ["Saturn (Shani)"], "bn": ["শনি"], "hi": ["शनि"]},
+    },
+]
+
+
+def get_rashi_planetary_dignity(rashi_idx: int, lang: str = "en") -> dict[str, Any]:
+    """Returns the exalted/debilitated and friendship matrix for a given rashi."""
+    d = RASHI_PLANETARY_DIGNITIES[rashi_idx % 12]
+    l_key = lang if lang in ("en", "bn", "hi") else "en"
+    return {
+        "exalted_planets": d["exalted"].get(l_key, d["exalted"]["en"]),
+        "debilitated_planets": d["debilitated"].get(l_key, d["debilitated"]["en"]),
+        "own_lord": d["own_lord"].get(l_key, d["own_lord"]["en"]),
+        "moolatrikona": d["moolatrikona"].get(l_key, d["moolatrikona"]["en"]),
+        "ruler_friends": d["ruler_friends"].get(l_key, d["ruler_friends"]["en"]),
+        "ruler_enemies": d["ruler_enemies"].get(l_key, d["ruler_enemies"]["en"]),
+        "ruler_neutrals": d["ruler_neutrals"].get(l_key, d["ruler_neutrals"]["en"]),
+    }
+
+
+def calculate_chandra_bala(natal_rashi_idx: int, curr_moon_sign_idx: int, lang: str = "en") -> dict[str, Any]:
+    """Calculates classical Chandra Bala (Moon's transit strength relative to Janma Rashi).
+    Auspicious houses (1, 3, 6, 7, 10, 11).
+    Moderate houses (2, 5, 9).
+    Inauspicious / Extreme Caution (4 Kantaka, 8 Chandrashtama, 12 Vyaya).
+    """
+    house = ((curr_moon_sign_idx - natal_rashi_idx) % 12) + 1
+    is_auspicious = house in (1, 3, 6, 7, 10, 11)
+    l_key = lang if lang in ("en", "bn", "hi") else "en"
+
+    labels = {
+        "shubh": {
+            "en": "Shubh Chandra Bala (Auspicious Moon Transit)",
+            "bn": "শুভ চন্দ্র বল (অনুকূল চন্দ্র গোচর)",
+            "hi": "शुभ चंद्र बल (अनुकूल चंद्र गोचर)",
+        },
+        "madhyam": {
+            "en": "Madhyam Chandra Bala (Neutral / Moderate)",
+            "bn": "মধ্যম চন্দ্র বল (সাধারণ / নিরপেক্ষ)",
+            "hi": "मध्यम चंद्र बल (सामान्य / मध्यम)",
+        },
+        "ashubh": {
+            "en": "Ashubh Chandra Bala (Inauspicious / Caution Needed)",
+            "bn": "অশুভ চন্দ্র বল (সতর্কতা আবশ্যক)",
+            "hi": "अशुभ चंद्र बल (सावधानी आवश्यक)",
+        },
+        "chandrashtama": {
+            "en": "Chandrashtama (8th House Moon - Critical Caution)",
+            "bn": "চন্দ্রাষ্টম (৮ম ভাবে চন্দ্র - বিশেষ সতর্কতা)",
+            "hi": "चंद्राष्टम (८वें भाव में चंद्र - विशेष सावधानी)",
+        },
+    }
+
+    descriptions: dict[int, dict[str, str]] = {
+        1: {
+            "en": "Transiting 1st House (Janma): Enhances personal charm, bodily comfort, and vitality. Ideal for confident presentations and social interactions.",
+            "bn": "১ম ভাবে গোচর (জন্ম চন্দ্র): শারীরিক প্রফুল্লতা, সম্মান ও মানসিক তৃপ্তি। নতুন ভাবনায় মনোনিবেশ করার শুভ সময়।",
+            "hi": "प्रथम भाव में गोचर (जन्म चंद्र): शारीरिक स्फूर्ति, सम्मान और मानसिक प्रसन्नता। नए कार्यों पर विचार हेतु शुभ।",
+        },
+        2: {
+            "en": "Transiting 2nd House: Moderate period; focus on family discussions and financial prudence. Practice thoughtful speech in disagreements.",
+            "bn": "২য় ভাবে গোচর: পারিবারিক আলোচনা ও আর্থিক স্থিতি। বাক্যে মাধুর্য বজায় রাখুন এবং আবেগপ্রবণ খরচ এড়িয়ে চলুন।",
+            "hi": "द्वितीय भाव में गोचर: पारिवारिक चर्चा और वित्तीय संतुलन। वाणी में मधुरता रखें और अनावश्यक व्यय से बचें।",
+        },
+        3: {
+            "en": "Transiting 3rd House: Highly auspicious; bolsters initiative, courage, sibling cooperation, and triumph in competitive endeavors.",
+            "bn": "৩য় ভাবে গোচর: অত্যন্ত শুভ; সাহস বৃদ্ধি, ভাইবোনদের সহযোগিতা ও প্রতিযোগিতায় জয়লাভ নির্দেশ করে।",
+            "hi": "तृतीय भाव में गोचर: अत्यंत शुभ; पराक्रम में वृद्धि, बंधु-बांधवों का सहयोग और प्रयासों में विजय।",
+        },
+        4: {
+            "en": "Transiting 4th House (Kantaka Chandra): Emotional restlessness, domestic obligations, and potential vehicle strain. Guard peace of mind.",
+            "bn": "৪র্থ ভাবে গোচর (কন্টক চন্দ্র): পারিবারিক মানসিক উদ্বেগ ও অস্বস্তি। তাড়াহুড়ো করে যাত্রা বা গৃহসংক্রান্ত বিবাদ পরিহার করুন।",
+            "hi": "चतुर्थ भाव में गोचर (कंटक चंद्र): मानसिक अशांति व घरेलू चिंताएं। यात्रा में सावधानी और विवादों से दूरी रखें।",
+        },
+        5: {
+            "en": "Transiting 5th House: Moderate period; stimulates creative contemplation, spiritual chanting, and guidance towards children's needs.",
+            "bn": "৫ম ভাবে গোচর: বুদ্ধিবৃত্তিক সাধনা ও আধ্যাত্মিক চিন্তা। নতুন বিনিয়োগে আবেগ নিয়ন্ত্রণ করে যুক্তি প্রয়োগ করুন।",
+            "hi": "पंचम भाव में गोचर: बौद्धिक कार्य एवं आध्यात्मिक चिंतन। भावुकता के बजाय विवेक से निर्णय लें।",
+        },
+        6: {
+            "en": "Transiting 6th House: Supreme victory; extinguishes adversarial obstacles, revitalizes physical stamina, and expedites debt resolutions.",
+            "bn": "৬ষ্ঠ ভাবে গোচর: শত্রু ও বাধা নিবারণ, কর্মক্ষেত্রে প্রাধান্য এবং শারীরিক সুস্থতা বৃদ্ধি। ঋণ পরিশোধে শুভ।",
+            "hi": "षष्ठ भाव में गोचर: शत्रु परास्त, कार्यक्षेत्र में दबदबा और स्वास्थ्य लाभ। विवादों में विजय।",
+        },
+        7: {
+            "en": "Transiting 7th House: Auspicious harmony; deepens marital warmth, elevates collaborative trade, and brings enjoyable journeys.",
+            "bn": "৭ম ভাবে গোচর: বৈবাহিক সৌহার্দ্য, সামাজিক প্রতিষ্ঠা ও ব্যবসায়িক লাভজনক অংশীদারি। আনন্দদায়ক ভ্রমণের যোগ।",
+            "hi": "सप्तम भाव में गोचर: दांपत्य सुख, सामाजिक प्रतिष्ठा और व्यावसायिक साझेदारी में लाभ। सुखद यात्रा।",
+        },
+        8: {
+            "en": "Transiting 8th House (CHANDRASHTAMA): Classical caution period! Delay high-stakes speculative contracts, avoid heated debates, and prioritize mindful meditation.",
+            "bn": "৮ম ভাবে গোচর (চন্দ্রাষ্টম): শাস্ত্রীয় সতর্কাবস্থা! বড় আর্থিক চুক্তি বা ঝুঁকিপূর্ণ সিদ্ধান্ত স্থগিত রাখুন। শান্ত থাকুন ও ওম নমঃ শিবায় জপ করুন।",
+            "hi": "अष्टम भाव में गोचर (चंद्राष्टम): सर्वाधिक सावधानी का समय! बड़े वित्तीय अनुबंध टालें, वाद-विवाद से बचें और ॐ नमः शिवाय का जप करें।",
+        },
+        9: {
+            "en": "Transiting 9th House: Moderate to positive; inspires righteous contemplation, spiritual reading, and philosophical insights.",
+            "bn": "৯ম ভাবে গোচর: ধর্মীয় চিন্তা, গুরুজনদের আশীর্বাদ ও দূরদৃষ্টি বৃদ্ধি। আধ্যাত্মিক ক্ষেত্রে শুভ সময়।",
+            "hi": "नवम भाव में गोचर: धर्म-कर्म में रुचि, गुरुजनों का आशीर्वाद और आध्यात्मिक शांति।",
+        },
+        10: {
+            "en": "Transiting 10th House: Eminent professional success; grants favorable recognition from authorities, executive clarity, and career prestige.",
+            "bn": "১০ম ভাবে গোচর: কর্মক্ষেত্রে প্রভূত সাফল্য, ঊর্ধ্বতনদের প্রশংসা এবং গুরুত্বপূর্ণ দায়িত্ব পালনে প্রতিষ্ঠা।",
+            "hi": "दशम भाव में गोचर: कार्यक्षेत्र में उत्कृष्ट सफलता, पद-प्रतिष्ठा में वृद्धि और अधिकारियों से सहयोग।",
+        },
+        11: {
+            "en": "Transiting 11th House: Magnificent fulfillment; brings financial inflows, warm camaraderie with trusted friends, and realization of aspirations.",
+            "bn": "১১শ ভাবে গোচর: সর্বতোমুখী লাভ, আকাঙ্ক্ষা পূরণ, নতুন আয়ের উৎস এবং বন্ধুদের সমর্থন লাভ।",
+            "hi": "एकादश भाव में गोचर: सर्वतोमुखी लाभ, मनोकामना पूर्ति और मित्रों से भरपूर सहयोग।",
+        },
+        12: {
+            "en": "Transiting 12th House (Vyaya Chandra): High expenses and physical weariness. Practice solitude, yoga, and avoid late-night overthinking.",
+            "bn": "১২শ ভাবে গোচর: ব্যয় বৃদ্ধি, মানসিক ক্লান্তি ও অনিদ্রা। অতিরিক্ত দুশ্চিন্তা পরিহার করে ধ্যান ও বিশ্রামে সময় দিন।",
+            "hi": "द्वादश भाव में गोचर: व्यय की अधिकता व मानसिक थकान। विश्राम करें और अनावश्यक तनाव से बचें।",
+        },
+    }
+
+    if house == 8:
+        status_code = "chandrashtama"
+    elif house in (1, 3, 6, 7, 10, 11):
+        status_code = "shubh"
+    elif house in (2, 5, 9):
+        status_code = "madhyam"
+    else:
+        status_code = "ashubh"
+
+    curr_rashi_en = RASHIS_DATA[curr_moon_sign_idx]["name_en"]
+    curr_rashi_name = (
+        curr_rashi_en
+        if l_key == "en"
+        else (RASHIS_DATA[curr_moon_sign_idx]["name_bn"] if l_key == "bn" else RASHIS_DATA[curr_moon_sign_idx]["name_hi"])
+    )
+
+    return {
+        "current_moon_sign_index": curr_moon_sign_idx,
+        "current_moon_sign_name": curr_rashi_name,
+        "house_from_natal_moon": house,
+        "is_auspicious": is_auspicious,
+        "status_label": labels[status_code][l_key],
+        "description": descriptions.get(house, {}).get(l_key, descriptions[house]["en"]),
+    }
+
+
+def calculate_sade_sati(natal_rashi_idx: int, curr_saturn_sign_idx: int, lang: str = "en") -> dict[str, Any]:
+    """Calculates Saturn's Sade Sati (12th, 1st, 2nd from natal Moon) and Dhaiya (4th, 8th)."""
+    sat_house = ((curr_saturn_sign_idx - natal_rashi_idx) % 12) + 1
+    l_key = lang if lang in ("en", "bn", "hi") else "en"
+
+    curr_sat_rashi_en = RASHIS_DATA[curr_saturn_sign_idx]["name_en"]
+    curr_sat_rashi_name = (
+        curr_sat_rashi_en
+        if l_key == "en"
+        else (RASHIS_DATA[curr_saturn_sign_idx]["name_bn"] if l_key == "bn" else RASHIS_DATA[curr_saturn_sign_idx]["name_hi"])
+    )
+
+    if sat_house == 12:
+        is_active = True
+        phase_code = "rising"
+        title = {
+            "en": "Sade Sati Phase 1 (Rising Phase / Aadya Dhaiya)",
+            "bn": "সাড়ে সাতি ১ম পর্যায় (আরোহণ পর্ব / আদ্য ঢাইয়া)",
+            "hi": "साढ़े साती प्रथम चरण (आरोहण / आद्य ढैया)",
+        }
+        impact = "medium"
+        desc = {
+            "en": "Saturn transits the 12th house from your natal Moon. Tests budget discipline, prompts relocation or foreign travels, and encourages spiritual introspection.",
+            "bn": "শনি আপনার জন্ম রাশি থেকে ১২শ ভাবে অবস্থান করছে। এটি অতিরিক্ত ব্যয় নিয়ন্ত্রণ, বাসস্থান পরিবর্তন বা দূর ভ্রমণের ইঙ্গিত দেয়। ধৈর্য ধরুন।",
+            "hi": "शनि आपकी जन्म राशि से १२वें भाव में गोचरस्थ हैं। यह व्यय नियंत्रण, स्थान परिवर्तन और आध्यात्मिक आत्ममंथन की प्रेरणा देता है।",
+        }
+        remedy = {
+            "en": "Recite Hanuman Chalisa or Shani Stotram on Saturdays. Light a mustard oil lamp under a Peepal tree in the evening.",
+            "bn": "প্রতি শনিবার সন্ধ্যায় অসথ্য বৃক্ষমূলে সর্ষের তেলের প্রদীপ প্রজ্জ্বলন করুন এবং হনুমান চালিশা পাঠ করুন।",
+            "hi": "प्रत्येक शनिवार को पीपल के नीचे सरसों के तेल का दीपक जलाएं तथा हनुमान चालीसा का पाठ करें।",
+        }
+    elif sat_house == 1:
+        is_active = True
+        phase_code = "peak"
+        title = {
+            "en": "Sade Sati Phase 2 (Peak / Janma Shani / Madhya Dhaiya)",
+            "bn": "সাড়ে সাতি ২য় পর্যায় (শীর্ষ পর্ব / মধ্য ঢাইয়া - জন্ম শনি)",
+            "hi": "साढ़े साती द्वितीय चरण (शिखर / मध्य ढैया - जन्म शनि)",
+        }
+        impact = "high"
+        desc = {
+            "en": "Saturn transits directly over your natal Moon (Janma Shani). Demands unyielding dedication, builds profound mental maturity, and rewards righteous persistence.",
+            "bn": "শনি আপনার চন্দ্র রাশির উপর দিয়ে গোচর করছে (জন্ম শনি)। মানসিক পরিপক্কতা অর্জন ও অতিরিক্ত পরিশ্রমের সময়। অহংকার বর্জন করলে দীর্ঘস্থায়ী সাফল্য আসবে।",
+            "hi": "शनि आपकी चंद्र राशि पर ही गोचर कर रहे हैं (जन्म शनि)। अत्यधिक परिश्रम, अनुशासन और धैर्य की आवश्यकता है। निष्ठा से स्थाई सफलता मिलेगी।",
+        }
+        remedy = {
+            "en": "Chant 'Om Sham Shanaicharaya Namah' 108 times on Saturday mornings. Serve elderly, disabled, or needy workers with food or warm clothes.",
+            "bn": "শনিবার সকালে 'ওঁ শং শনৈশ্চরায় নমঃ' ১০৮ বার জপ করুন। অসহায় ও বৃদ্ধ ব্যক্তিদের অন্ন ও বস্ত্র দান করুন।",
+            "hi": "शनिवार को 'ॐ शं शनैश्चराय नमः' का १०८ बार जप करें। वृद्ध व असहायजनों की सेवा व अन्नदान करें।",
+        }
+    elif sat_house == 2:
+        is_active = True
+        phase_code = "setting"
+        title = {
+            "en": "Sade Sati Phase 3 (Setting Phase / Antya Dhaiya)",
+            "bn": "সাড়ে সাতি ৩য় পর্যায় (অবরোহণ পর্ব / অন্ত্য ঢাইয়া)",
+            "hi": "साढ़े साती तृतीय चरण (अवरोहण / अंत्य ढैया)",
+        }
+        impact = "medium"
+        desc = {
+            "en": "Saturn transits the 2nd house from natal Moon. Reorganizes domestic assets and family finances. Pressure on the mind gradually lifts as hard lessons bear fruit.",
+            "bn": "শনি আপনার জন্ম রাশি থেকে ২য় ভাবে গোচর করছে। পারিবারিক দায়িত্ব বৃদ্ধি ও সঞ্চয় সুসংহত করার সময়। মানসিক চাপ ক্রমশ হ্রাস পাবে।",
+            "hi": "शनि आपकी जन्म राशि से द्वितीय भाव में हैं। पारिवारिक उत्तरदायित्व और संचित धन के सदुपयोग का समय। मानसिक तनाव धीरे-धीरे कम होगा।",
+        }
+        remedy = {
+            "en": "Donate black sesame seeds, iron vessels, or mustard oil on Saturdays. Maintain sweet, gentle speech with family elders.",
+            "bn": "কালো তিল বা সর্ষের তেল দান করুন। গুরুজনদের সাথে কথোপকথনে নম্রতা ও সংযম বজায় রাখুন।",
+            "hi": "काले तिल अथवा सरसों के तेल का दान करें। वाणी में संयम रखें और बड़ों का सम्मान करें।",
+        }
+    elif sat_house == 4:
+        is_active = True
+        phase_code = "kantaka"
+        title = {
+            "en": "Kantaka Shani (4th House Dhaiya / Ardhashtama)",
+            "bn": "কন্টক শনি (৪র্থ স্থান / অর্দ্ধাষ্টম শনি)",
+            "hi": "कंटक शनि (चतुर्थ भाव / अर्धाष्टम शनि)",
+        }
+        impact = "medium"
+        desc = {
+            "en": "Saturn transits the 4th house from natal Moon. Prioritize inner calm, attend to mother's wellness, and inspect property and vehicle maintenance.",
+            "bn": "শনি আপনার জন্ম রাশি থেকে ৪র্থ ভাবে গোচর করছে। মায়ের স্বাস্থ্যের যত্ন নিন, গৃহশান্তি রক্ষা করুন এবং যানবাহন সতর্কতার সাথে চালান।",
+            "hi": "शनि चंद्र राशि से चतुर्थ भाव में हैं। माता के स्वास्थ्य का ध्यान रखें, गृह शांति बनाए रखें और वाहन सावधानी से चलाएं।",
+        }
+        remedy = {
+            "en": "Offer water to the Peepal tree on Saturdays without touching. Keep a blue square cloth in your pocket.",
+            "bn": "শনিবার অসথ্য গাছে জল অর্পণ করুন এবং সৎকর্মে মনোনিবেশ করুন।",
+            "hi": "शनिवार को पीपल वृक्ष पर जल अर्पित करें और सात्विक दिनचर्या अपनाएं।",
+        }
+    elif sat_house == 8:
+        is_active = True
+        phase_code = "ashtama"
+        title = {
+            "en": "Ashtama Shani (8th House Dhaiya - Deep Karmic Reset)",
+            "bn": "অষ্টম শনি (৮ম স্থান / মহা ঢাইয়া - গভীর কর্মসংস্কার)",
+            "hi": "अष्टम शनि (अष्टम भाव / बड़ी ढैया - कर्म शोधन)",
+        }
+        impact = "high"
+        desc = {
+            "en": "Saturn transits the 8th house from natal Moon. Demands absolute integrity, careful driving, and routine medical checkups. Teaches profound detachment and resilience.",
+            "bn": "শনি আপনার জন্ম রাশি থেকে ৮ম ভাবে অবস্থান করছে (অষ্টম শনি)। স্বাস্থ্যের প্রতি যত্নবান হন, অসদুপায় এড়িয়ে চলুন এবং নিত্য যোগাভ্যাস করুন।",
+            "hi": "शनि आपकी राशि से अष्टम भाव में हैं। स्वास्थ्य के प्रति सजग रहें, अनैतिक कार्यों से बचें और नियमित योग-प्राणायाम करें।",
+        }
+        remedy = {
+            "en": "Perform Shiva Abhishek on Saturdays with milk and black sesame. Donate dark footwear or an umbrella to a needy person.",
+            "bn": "শনিবার শিবলিঙ্গে দুধ ও কালো তিল অর্পণ করে জলাভিষেক করুন। কোনো অভাবী মানুষকে কালো ছাতা বা পাদুকা দান করুন।",
+            "hi": "शनिवार को शिवलिंग पर कच्चा दूध व काले तिल चढ़ाकर अभिषेक करें। किसी निर्धन को काले जूते अथवा छाता दान करें।",
+        }
+    else:
+        is_active = False
+        phase_code = "none"
+        title = {
+            "en": "Shani Anukool (No Sade Sati or Dhaiya Currently Active)",
+            "bn": "শনির অনুকূল অবস্থান (বর্তমানে কোনো সাড়ে সাতি বা ঢাইয়া নেই)",
+            "hi": "शनि अनुकूल स्थिति (वर्तमान में कोई साढ़े साती या ढैया नहीं)",
+        }
+        impact = "favorable"
+        desc = {
+            "en": f"Saturn is transiting your {sat_house}th house from natal Moon, which is an unhindered or auspicious position. Mind and career enjoy stability.",
+            "bn": f"শনি আপনার জন্ম রাশি থেকে {sat_house}ম ভাবে অবস্থান করছে, যা কোনো প্রতিকূল প্রভাব বিস্তার করে না। কর্মে ও মনে স্বাভাবিক স্থায়িত্ব বজায় থাকবে।",
+            "hi": f"शनि आपकी चंद्र राशि से {sat_house}वें भाव में अनुकूल गोचर कर रहे हैं। मन और कर्मक्षेत्र में शांति बनी रहेगी।",
+        }
+        remedy = {
+            "en": "Maintain honesty, respect laborers and subordinates, and support charitable endeavors.",
+            "bn": "শ্রমজীবী মানুষের প্রতি সহমর্মী হোন এবং নিত্য সৎকর্মে অবিচল থাকুন।",
+            "hi": "श्रमजीवियों का सम्मान करें और निष्कपट भाव से धर्म का पालन करें।",
+        }
+
+    return {
+        "is_active": is_active,
+        "phase_code": phase_code,
+        "phase_title": title[l_key],
+        "saturn_sign_index": curr_saturn_sign_idx,
+        "saturn_sign_name": curr_sat_rashi_name,
+        "saturn_house_from_moon": sat_house,
+        "impact_level": impact,
+        "description": desc[l_key],
+        "remedy_summary": remedy[l_key],
+    }

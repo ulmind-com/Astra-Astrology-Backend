@@ -66,6 +66,9 @@ CREASE_ELEMENTAL = {
     "head": "Air line",
     "life": "Earth line",
     "fate": "Fire line",
+    "sun": "Sun line",
+    "mercury": "Mercury line",
+    "mars": "Mars line",
 }
 
 
@@ -96,7 +99,7 @@ class TracedCrease:
     def as_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
-            "elemental_name": CREASE_ELEMENTAL[self.name],
+            "elemental_name": CREASE_ELEMENTAL.get(self.name, f"{self.name.title()} line"),
             "found": self.found,
             "strength": round(self.strength, 4),
             "continuity": round(self.continuity, 4),
@@ -357,58 +360,123 @@ def _valley_response(canonical_rgb: np.ndarray, config: PalmScanConfig) -> np.nd
 
 def _trace_horizontal(
     response: np.ndarray,
-    row_lo: int,
-    row_hi: int,
+    row_lo: int | list[int] | np.ndarray,
+    row_hi: int | list[int] | np.ndarray,
     col_lo: int,
     col_hi: int,
     config: PalmScanConfig,
 ) -> tuple[list[tuple[int, int]], float]:
     """Best left-to-right path through a band, by dynamic programming.
 
-    At each column the path may move at most `trace_max_step` rows, and paying a
+    At each column the path may move at most `trace_max_step` rows, paying a
     `trace_smoothness` penalty per row moved. That keeps it on one crease instead
     of hopping between neighbouring ones whenever the next is marginally brighter.
+
+    Supports both fixed rectangular bands (scalar int row bounds) and anatomically
+    curved corridors (column-wise int arrays for row bounds).
     """
-    row_lo = max(0, row_lo)
-    row_hi = min(response.shape[0], row_hi)
     col_lo = max(0, col_lo)
     col_hi = min(response.shape[1], col_hi)
-    if row_hi - row_lo < 3 or col_hi - col_lo < 8:
+    cols = col_hi - col_lo
+    if cols < 8:
         return [], 0.0
 
-    band = response[row_lo:row_hi, col_lo:col_hi]
-    rows, cols = band.shape
+    h, w = response.shape
+    is_dynamic = isinstance(row_lo, (list, tuple, np.ndarray)) or isinstance(row_hi, (list, tuple, np.ndarray))
 
-    cost = np.full((rows, cols), -np.inf, dtype=np.float32)
-    back = np.zeros((rows, cols), dtype=np.int32)
-    cost[:, 0] = band[:, 0]
+    if not is_dynamic:
+        r_lo = max(0, int(row_lo))  # type: ignore[call-overload]
+        r_hi = min(h, int(row_hi))  # type: ignore[call-overload]
+        if r_hi - r_lo < 3:
+            return [], 0.0
+
+        band = response[r_lo:r_hi, col_lo:col_hi]
+        rows, _ = band.shape
+
+        cost = np.full((rows, cols), -np.inf, dtype=np.float32)
+        back = np.zeros((rows, cols), dtype=np.int32)
+        cost[:, 0] = band[:, 0]
+
+        step = config.trace_max_step
+        penalty = config.trace_smoothness
+
+        for col in range(1, cols):
+            for offset in range(-step, step + 1):
+                shifted = np.roll(cost[:, col - 1], offset)
+                if offset > 0:
+                    shifted[:offset] = -np.inf
+                elif offset < 0:
+                    shifted[offset:] = -np.inf
+                candidate = shifted - penalty * abs(offset)
+                better = candidate > cost[:, col]
+                cost[better, col] = candidate[better]
+                back[better, col] = offset
+            cost[:, col] += band[:, col]
+
+        end_row = int(np.argmax(cost[:, cols - 1]))
+        path: list[tuple[int, int]] = []
+        row = end_row
+        for col in range(cols - 1, -1, -1):
+            path.append((col + col_lo, row + r_lo))
+            row = int(np.clip(row - back[row, col], 0, rows - 1))
+        path.reverse()
+
+        total = float(np.mean([band[min(rows - 1, max(0, y - r_lo)), x - col_lo] for x, y in path]))
+        return path, total
+
+    # Column-dependent row bounds for anatomically curved crease corridors
+    lo_arr = [int(row_lo[c]) if hasattr(row_lo, "__getitem__") else int(row_lo) for c in range(col_lo, col_hi)]  # type: ignore[index]
+    hi_arr = [int(row_hi[c]) if hasattr(row_hi, "__getitem__") else int(row_hi) for c in range(col_lo, col_hi)]  # type: ignore[index]
+
+    cost_dict: dict[int, dict[int, float]] = {}
+    back_dict: dict[int, dict[int, int]] = {}
+
+    r0_lo = max(0, lo_arr[0])
+    r0_hi = min(h, hi_arr[0])
+    if r0_hi <= r0_lo:
+        return [], 0.0
+    cost_dict[0] = {r: float(response[r, col_lo]) for r in range(r0_lo, r0_hi)}
 
     step = config.trace_max_step
     penalty = config.trace_smoothness
 
-    for col in range(1, cols):
-        for offset in range(-step, step + 1):
-            shifted = np.roll(cost[:, col - 1], offset)
-            if offset > 0:
-                shifted[:offset] = -np.inf
-            elif offset < 0:
-                shifted[offset:] = -np.inf
-            candidate = shifted - penalty * abs(offset)
-            better = candidate > cost[:, col]
-            cost[better, col] = candidate[better]
-            back[better, col] = offset
-        cost[:, col] += band[:, col]
+    for c_idx in range(1, cols):
+        curr_col = col_lo + c_idx
+        rc_lo = max(0, lo_arr[c_idx])
+        rc_hi = min(h, hi_arr[c_idx])
+        prev_costs = cost_dict[c_idx - 1]
+        c_cost: dict[int, float] = {}
+        c_back: dict[int, int] = {}
+        for r in range(rc_lo, rc_hi):
+            best_val = -1e9
+            best_off = 0
+            for offset in range(-step, step + 1):
+                prev_r = r - offset
+                if prev_r in prev_costs:
+                    cand = prev_costs[prev_r] - penalty * abs(offset)
+                    if cand > best_val:
+                        best_val = cand
+                        best_off = offset
+            if best_val > -1e8:
+                c_cost[r] = best_val + float(response[r, curr_col])
+                c_back[r] = best_off
+        cost_dict[c_idx] = c_cost
+        back_dict[c_idx] = c_back
 
-    end_row = int(np.argmax(cost[:, cols - 1]))
-    path: list[tuple[int, int]] = []
-    row = end_row
-    for col in range(cols - 1, -1, -1):
-        path.append((col + col_lo, row + row_lo))
-        row = int(np.clip(row - back[row, col], 0, rows - 1))
-    path.reverse()
+    last_idx = cols - 1
+    if not cost_dict.get(last_idx):
+        return [], 0.0
 
-    total = float(np.mean([band[min(rows - 1, max(0, y - row_lo)), x - col_lo] for x, y in path]))
-    return path, total
+    best_end_r = max(cost_dict[last_idx].items(), key=lambda kv: kv[1])[0]
+    dyn_path: list[tuple[int, int]] = []
+    curr_r = best_end_r
+    for c_idx in range(last_idx, -1, -1):
+        dyn_path.append((col_lo + c_idx, curr_r))
+        if c_idx in back_dict and curr_r in back_dict[c_idx]:
+            curr_r = curr_r - back_dict[c_idx][curr_r]
+    dyn_path.reverse()
+    total_score = float(np.mean([response[y, x] for x, y in dyn_path]))
+    return dyn_path, total_score
 
 
 def _trace_vertical(
@@ -565,6 +633,58 @@ def _termination_zone(point: tuple[float, float], knuckles: dict[str, tuple[floa
     return f"{height} {classical}"
 
 
+def smooth_path(
+    path_norm: list[tuple[float, float]],
+    window: int = 21,
+    sigma: float = 4.0,
+) -> list[tuple[float, float]]:
+    """Apply 1D Gaussian kernel smoothing to path coordinates to eliminate discretization staircases."""
+    if len(path_norm) < 5:
+        return list(path_norm)
+    w = min(window, len(path_norm))
+    if w % 2 == 0:
+        w -= 1
+    xs = np.array([p[0] for p in path_norm], dtype=np.float32)
+    ys = np.array([p[1] for p in path_norm], dtype=np.float32)
+    radius = w // 2
+    kernel = cv2.getGaussianKernel(w, sigma).flatten()
+    xs_padded = np.pad(xs, radius, mode="edge")
+    ys_padded = np.pad(ys, radius, mode="edge")
+    xs_smooth = np.convolve(xs_padded, kernel, mode="valid")
+    ys_smooth = np.convolve(ys_padded, kernel, mode="valid")
+    return [(float(x), float(y)) for x, y in zip(xs_smooth, ys_smooth)]
+
+
+def trim_path(
+    path_px: list[tuple[int, int]],
+    response: np.ndarray,
+    threshold: float = 0.12,
+) -> list[tuple[int, int]]:
+    """Trim leading and trailing points where valley response drops into flat skin."""
+    if not path_px:
+        return []
+    h, w = response.shape
+    start_idx = 0
+    while start_idx < len(path_px):
+        x, y = path_px[start_idx]
+        val = response[min(h - 1, max(0, y)), min(w - 1, max(0, x))]
+        if val >= threshold:
+            break
+        start_idx += 1
+
+    end_idx = len(path_px) - 1
+    while end_idx > start_idx:
+        x, y = path_px[end_idx]
+        val = response[min(h - 1, max(0, y)), min(w - 1, max(0, x))]
+        if val >= threshold:
+            break
+        end_idx -= 1
+
+    if end_idx - start_idx < 10:
+        return path_px
+    return path_px[start_idx : end_idx + 1]
+
+
 def trace_creases(
     palm: CanonicalPalm, config: PalmScanConfig = DEFAULT_CONFIG
 ) -> dict[str, TracedCrease]:
@@ -586,8 +706,10 @@ def trace_creases(
         if not path_px:
             return TracedCrease(name=name, found=False, notes=notes + ["No path could be traced."])
 
-        strength, continuity, contrast = _score_path(response, path_px, config)
-        path_norm = [(x / size, y / size) for x, y in path_px]
+        # Trim flat skin ends where crease has petered out
+        trimmed_px = trim_path(path_px, response, threshold=0.12)
+        strength, continuity, contrast = _score_path(response, trimmed_px, config)
+        path_norm = [(x / size, y / size) for x, y in trimmed_px]
         found = (
             contrast >= config.min_contrast_ratio
             and strength >= config.min_line_response
@@ -598,66 +720,117 @@ def trace_creases(
                 "Traced, but the crease did not register strongly enough to report. "
                 "This usually means lighting or focus rather than an absent line."
             )
+
+        # Smooth with Gaussian subpixel interpolation when found
+        smooth_norm = smooth_path(path_norm, window=21, sigma=4.0) if found else []
+
         return TracedCrease(
             name=name,
             found=found,
-            path=path_norm if found else [],
+            path=smooth_norm,
             strength=strength,
             continuity=continuity,
             contrast=contrast,
-            length=_path_length(path_norm),
-            curvature=_curvature(path_norm),
-            start=path_norm[0] if found else None,
-            end=path_norm[-1] if found else None,
+            length=_path_length(smooth_norm),
+            curvature=_curvature(smooth_norm),
+            start=smooth_norm[0] if found else None,
+            end=smooth_norm[-1] if found else None,
             termination_zone=(
-                _termination_zone(path_norm[0], palm.knuckles_canonical) if found else None
+                _termination_zone(smooth_norm[0], palm.knuckles_canonical) if found else None
             ),
             notes=notes,
         )
 
-    # --- heart (water) line: upper palm, running across below the knuckles ----
-    heart_band = (int(0.08 * size), int(0.36 * size), int(0.10 * size), int(0.95 * size))
-    heart_path, _ = _trace_horizontal(
-        response, heart_band[0], heart_band[1], heart_band[2], heart_band[3], config
-    )
+    # Interpolate anatomical knuckle row across canonical columns so crease
+    # search corridors automatically conform to hand angle and physiological furrows.
+    knuckle_list = [
+        palm.knuckles_canonical[f]
+        for f in ("index", "middle", "ring", "pinky")
+        if f in palm.knuckles_canonical
+    ]
+    if knuckle_list:
+        kx = [k[0] * size for k in knuckle_list]
+        ky = [k[1] * size for k in knuckle_list]
+        cols_all = np.arange(size)
+        knuckle_y = np.interp(cols_all, kx, ky, left=ky[0], right=ky[-1])
+    else:
+        knuckle_y = np.full(size, 0.20 * size, dtype=np.float32)
+
+    # --- 1. heart (water) line: sub-knuckle furrow from index to percussion ---
+    heart_lo = knuckle_y + int(0.04 * size)
+    heart_hi = knuckle_y + int(0.20 * size)
+    heart_col_start = int(0.22 * size)
+    heart_col_end = int(0.95 * size)
+    heart_path, _ = _trace_horizontal(response, heart_lo, heart_hi, heart_col_start, heart_col_end, config)
     results["heart"] = finish("heart", heart_path)
 
-    # --- head (air) line: mid palm, across, starting near the thumb-index gap -
-    head_band = (int(0.34 * size), int(0.60 * size), int(0.08 * size), int(0.92 * size))
+    # --- 2. head (air) line: mid palm, transverse corridor ------------------
+    # Suppress the heart line furrow so head trace never hops onto heart.
+    resp_no_heart = response.copy()
+    if heart_path:
+        heart_mask = np.zeros_like(response, dtype=np.uint8)
+        cv2.polylines(heart_mask, [np.array(heart_path, dtype=np.int32)], False, 255, 22)
+        resp_no_heart[heart_mask > 0] = 0.0
+
+    # Dynamic transverse corridor from radial junction across to percussion
+    head_lo = np.interp(cols_all, [int(0.22 * size), int(0.86 * size)], [int(0.20 * size), int(0.38 * size)])
+    head_hi = np.interp(cols_all, [int(0.22 * size), int(0.86 * size)], [int(0.34 * size), int(0.55 * size)])
+    head_col_start = int(0.24 * size)
+    head_col_end = int(0.86 * size)
     head_path, _ = _trace_horizontal(
-        response, head_band[0], head_band[1], head_band[2], head_band[3], config
+        resp_no_heart, head_lo, head_hi, head_col_start, head_col_end, config
     )
     results["head"] = finish("head", head_path)
 
-    # --- life (earth) line: arcs around the ball of the thumb ----------------
-    # Traced vertically on the radial side, because the arc is closer to vertical
-    # than horizontal over most of its run.
-    # The life line arcs around the ball of the thumb, which in the normalised
-    # frame always sits at the lower left. The arc is swept about a centre just
-    # inside the thumb side of the palm base.
-    life_band = (int(0.22 * size), int(0.98 * size), int(0.04 * size), int(0.58 * size))
-    thumb_x, thumb_y = palm.thumb_base_canonical
-    life_centre = (
-        float(np.clip(thumb_x - 0.06, 0.0, 0.3) * size),
-        float(np.clip(thumb_y + 0.10, 0.6, 1.0) * size),
-    )
+    # --- 3. life (earth) line: physiological polar thenar arc ----------------
+    # Sweeps from the radial index-thumb junction smoothly around the thenar
+    # eminence (ball of thumb) all the way down to the wrist base.
+    resp_life = response.copy()
+    if head_path:
+        head_mask = np.zeros_like(response, dtype=np.uint8)
+        cv2.polylines(head_mask, [np.array(head_path, dtype=np.int32)], False, 255, 16)
+        resp_life[head_mask > 0] = 0.0
+
+    thenar_x = palm.thumb_canonical[0] * 0.40 + palm.thumb_base_canonical[0] * 0.60
+    thenar_y = palm.thumb_canonical[1] * 0.30 + palm.thumb_base_canonical[1] * 0.70
+    centre = (float(thenar_x * size), float(thenar_y * size))
+    angle_from = -np.pi * 0.45
+    angle_to = np.pi * 0.35
+    radius_from = float(0.12 * size)
+    radius_to = float(0.42 * size)
     life_path = _trace_polar(
-        response,
-        centre=life_centre,
-        # From pointing up (towards the index) round to pointing right (towards the
-        # middle of the palm base), which is the sweep the line actually takes.
-        angle_from=float(np.deg2rad(-88.0)),
-        angle_to=float(np.deg2rad(-6.0)),
-        radius_from=0.18 * size,
-        radius_to=0.72 * size,
-        config=config,
+        resp_life, centre, angle_from, angle_to, radius_from, radius_to, config
     )
+    if not life_path:
+        # Resilient fallback if polar center was off-frame
+        ix = palm.knuckles_canonical.get("index", (0.35, 0.11))[0]
+        tx = palm.thumb_canonical[0]
+        life_col_lo = int(max(0.12, tx * 0.9) * size)
+        life_col_hi = int(min(0.38, max(0.32, ix * 1.05)) * size)
+        life_row_lo = int(0.26 * size)
+        life_row_hi = int(0.86 * size)
+        life_path, _ = _trace_vertical(
+            resp_life, life_col_lo, life_col_hi, life_row_lo, life_row_hi, config
+        )
     results["life"] = finish("life", life_path)
 
-    # --- fate (fire) line: vertical, wrist towards the middle finger ----------
-    fate_band = (int(0.20 * size), int(0.98 * size), int(0.34 * size), int(0.70 * size))
+    # --- 4. fate (fire) line: central Saturn axis ---------------------------
+    # Mask out heart, head, and life lines so fate search never steals another crease.
+    resp_saturn = response.copy()
+    for p in (heart_path, head_path, life_path):
+        if p:
+            mask_p = np.zeros_like(response, dtype=np.uint8)
+            cv2.polylines(mask_p, [np.array(p, dtype=np.int32)], False, 255, 22)
+            resp_saturn[mask_p > 0] = 0.0
+
+    mid_knuckle = palm.knuckles_canonical.get("middle", (0.52, 0.14))
+    mx = mid_knuckle[0]
+    fate_col_lo = int(max(0.40, mx - 0.08) * size)
+    fate_col_hi = int(min(0.68, mx + 0.08) * size)
+    fate_row_lo = int(0.25 * size)
+    fate_row_hi = int(0.90 * size)
     fate_path, _ = _trace_vertical(
-        response, fate_band[2], fate_band[3], fate_band[0], fate_band[1], config
+        resp_saturn, fate_col_lo, fate_col_hi, fate_row_lo, fate_row_hi, config
     )
     results["fate"] = finish(
         "fate",

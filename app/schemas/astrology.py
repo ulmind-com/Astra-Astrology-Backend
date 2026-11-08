@@ -1,7 +1,9 @@
 """Schemas for Rashi (Moon Sign), Nakshatra & Astrology calculation."""
 
+import math
 from typing import Any, Literal
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class RashiCalculateRequest(BaseModel):
@@ -165,6 +167,54 @@ class CalculationMeta(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class AvakahadaChakra(BaseModel):
+    gana: str  # Deva (দেব), Manushya (মনুষ্য), Rakshasa (রাক্ষস)
+    yoni: str  # e.g. Horse, Elephant, Serpent, Lion, etc.
+    yoni_animal: str  # Male / Female animal classification
+    nadi: str  # Aadi (আদি), Madhya (মধ্য), Antya (অন্ত্য)
+    varna: str  # Brahmin, Kshatriya, Vaishya, Shudra
+    vashya: str  # Chatuspada, Dwipada/Nara, Jalachara, Keeta, Vanachara
+    tatva: str  # Prithvi, Jala, Agni, Vayu, Akasha
+    paya: str  # Gold (স্বর্ণ), Silver (রৌপ্য), Copper (তাম্র), Iron (লৌহ)
+
+
+class RashiPlanetaryDignity(BaseModel):
+    """Planetary exaltation, debilitation, and natural friendship matrix from client's Basics of Kundali Reading Explained."""
+
+    exalted_planets: list[str] = Field(default_factory=list)
+    debilitated_planets: list[str] = Field(default_factory=list)
+    own_lord: str = ""
+    moolatrikona: str = ""
+    ruler_friends: list[str] = Field(default_factory=list)
+    ruler_enemies: list[str] = Field(default_factory=list)
+    ruler_neutrals: list[str] = Field(default_factory=list)
+
+
+class ChandraBalaInfo(BaseModel):
+    """Classical Lunar strength in real-time transit relative to Janma Rashi."""
+
+    current_moon_sign_index: int
+    current_moon_sign_name: str
+    house_from_natal_moon: int
+    is_auspicious: bool
+    status_label: str
+    description: str
+
+
+class SadeSatiStatus(BaseModel):
+    """Saturn Sade Sati & Dhaiya real-time transit status relative to Janma Rashi."""
+
+    is_active: bool
+    phase_code: str  # "rising", "peak", "setting", "kantaka", "ashtama", "none"
+    phase_title: str
+    saturn_sign_index: int
+    saturn_sign_name: str
+    saturn_house_from_moon: int
+    impact_level: str  # "high", "medium", "favorable"
+    description: str
+    remedy_summary: str
+
+
 class RashiCalculateResponse(BaseModel):
     name: str
     gender: str
@@ -217,6 +267,19 @@ class RashiCalculateResponse(BaseModel):
     client_rules: ClientSignProfile | None = None
     ascendant_client_rules: ClientSignProfile | None = None
     kp_reference: dict[str, Any] = Field(default_factory=dict)
+
+    # Extended Classical Precision Fields (Avakahada, Navamsha, Chandra Lagna, Chandra Bala, Sade Sati)
+    avakahada_chakra: AvakahadaChakra | None = None
+    namakshar: str = ""
+    navamsha_rashi_index: int = 0
+    navamsha_rashi_name_en: str = ""
+    navamsha_rashi_name_bn: str = ""
+    navamsha_rashi_name_hi: str = ""
+    is_vargottama: bool = False
+    planetary_dignity: RashiPlanetaryDignity | None = None
+    chandra_lagna_planets: list[PlanetPosition] = Field(default_factory=list)
+    chandra_bala: ChandraBalaInfo | None = None
+    sade_sati_status: SadeSatiStatus | None = None
 
     # Transparency: how the offset was derived, the real cusps, and engine details
     timezone_resolution: TimezoneResolution | None = None
@@ -274,15 +337,6 @@ class NakshatraCalculateRequest(BaseModel):
     )
 
 
-class AvakahadaChakra(BaseModel):
-    gana: str  # Deva (দেব), Manushya (মনুষ্য), Rakshasa (রাক্ষস)
-    yoni: str  # e.g. Horse, Elephant, Serpent, Lion, etc.
-    yoni_animal: str  # Male / Female animal classification
-    nadi: str  # Aadi (আদি), Madhya (মধ্য), Antya (অন্ত্য)
-    varna: str  # Brahmin, Kshatriya, Vaishya, Shudra
-    vashya: str  # Chatuspada, Dwipada/Nara, Jalachara, Keeta, Vanachara
-    tatva: str  # Prithvi, Jala, Agni, Vayu, Akasha
-    paya: str  # Gold (স্বর্ণ), Silver (রৌপ্য), Copper (তাম্র), Iron (লৌহ)
 
 
 class NakshatraPadaDetail(BaseModel):
@@ -397,6 +451,92 @@ class ClientNakshatraRules(BaseModel):
     unavailable_note: str | None = None
 
 
+class GandantaInfo(BaseModel):
+    is_gandanta: bool = False
+    gandanta_type: str | None = None
+    junction_name_en: str | None = None
+    junction_name_bn: str | None = None
+    junction_name_hi: str | None = None
+    severity: str | None = None
+    description_en: str | None = None
+    description_bn: str | None = None
+    description_hi: str | None = None
+    remedies_en: list[str] = Field(default_factory=list)
+    remedies_bn: list[str] = Field(default_factory=list)
+    remedies_hi: list[str] = Field(default_factory=list)
+
+
+class PushkaraInfo(BaseModel):
+    is_pushkara_navamsha: bool = False
+    is_pushkara_bhaga: bool = False
+    navamsha_sign_en: str = ""
+    navamsha_sign_bn: str = ""
+    navamsha_sign_hi: str = ""
+    pada_number: int = 1
+    degree_in_sign: float = 0.0
+    degree_in_sign_formatted: str = ""
+    significance_en: str = ""
+    significance_bn: str = ""
+    significance_hi: str = ""
+
+
+class DashaBalanceAtBirth(BaseModel):
+    dasha_lord_en: str = ""
+    dasha_lord_bn: str = ""
+    dasha_lord_hi: str = ""
+    total_cycle_years: int = 0
+    balance_years: int = 0
+    balance_months: int = 0
+    balance_days: int = 0
+    balance_formatted_en: str = ""
+    balance_formatted_bn: str = ""
+    balance_formatted_hi: str = ""
+    elapsed_percentage: float = 0.0
+    remaining_percentage: float = 0.0
+
+
+class DailyTaraBalaInfo(BaseModel):
+    current_moon_nakshatra_index: int = 0
+    current_moon_nakshatra_name_en: str = ""
+    current_moon_nakshatra_name_bn: str = ""
+    current_moon_nakshatra_name_hi: str = ""
+    tara_step: int = 1
+    tara_name_en: str = ""
+    tara_name_bn: str = ""
+    tara_name_hi: str = ""
+    is_auspicious: bool = True
+    status_label_en: str = ""
+    status_label_bn: str = ""
+    status_label_hi: str = ""
+    guidance_en: str = ""
+    guidance_bn: str = ""
+    guidance_hi: str = ""
+
+
+class NakshatraDispositionInfo(BaseModel):
+    disposition_en: str = ""
+    disposition_bn: str = ""
+    disposition_hi: str = ""
+    gunas_en: str = ""
+    gunas_bn: str = ""
+    gunas_hi: str = ""
+    caste_varna_en: str = ""
+    caste_varna_bn: str = ""
+    caste_varna_hi: str = ""
+    gender_en: str = ""
+    gender_bn: str = ""
+    gender_hi: str = ""
+    direction_en: str = ""
+    direction_bn: str = ""
+    direction_hi: str = ""
+    sacred_bird_en: str = ""
+    sacred_bird_bn: str = ""
+    sacred_bird_hi: str = ""
+    suitable_activities_en: list[str] = Field(default_factory=list)
+    suitable_activities_bn: list[str] = Field(default_factory=list)
+    suitable_activities_hi: list[str] = Field(default_factory=list)
+
+
 class NakshatraCalculateResponse(BaseModel):
     name: str
     gender: str
@@ -467,6 +607,13 @@ class NakshatraCalculateResponse(BaseModel):
     # Classifications for the Moon's rashi, from the client's 01.pdf
     rashi_client_rules: ClientSignProfile | None = None
 
+    # Classical Advancements: Gandanta, Pushkara, Dasha Balance, Daily Live Tara Bala, Disposition
+    gandanta: GandantaInfo = Field(default_factory=GandantaInfo)
+    pushkara: PushkaraInfo = Field(default_factory=PushkaraInfo)
+    dasha_balance: DashaBalanceAtBirth = Field(default_factory=DashaBalanceAtBirth)
+    daily_tara_bala: DailyTaraBalaInfo = Field(default_factory=DailyTaraBalaInfo)
+    disposition: NakshatraDispositionInfo = Field(default_factory=NakshatraDispositionInfo)
+
     # Transparency: how the offset was derived and what engine produced the chart
     timezone_resolution: TimezoneResolution | None = None
     calculation: CalculationMeta | None = None
@@ -528,6 +675,9 @@ class KPCalculateRequest(BaseModel):
     language: Literal["en", "bn", "hi"] = Field(
         default="en", description="Output language (en, bn, hi)"
     )
+    horary_number: int | None = Field(
+        default=None, ge=1, le=249, description="Optional KP Horary Seed Number between 1 and 249"
+    )
 
 
 class KPPanchang(BaseModel):
@@ -564,6 +714,10 @@ class KPRulingPlanets(BaseModel):
     day_lord: str
     date_formatted: str
     time_formatted: str
+    is_lagna_star_retrograde: bool = False
+    is_moon_star_retrograde: bool = False
+    discarded_planets: list[str] = Field(default_factory=list)
+    fruitful_planets: list[str] = Field(default_factory=list)
 
 
 class KPCuspDetail(BaseModel):
@@ -575,6 +729,7 @@ class KPCuspDetail(BaseModel):
     sign_lord: str
     star_lord: str
     sub_lord: str
+    sub_sub_lord: str = ""
 
 
 class KPPlanetDetail(BaseModel):
@@ -591,9 +746,11 @@ class KPPlanetDetail(BaseModel):
     sign_lord: str
     star_lord: str
     sub_lord: str
+    sub_sub_lord: str = ""
     rashi_house: int  # 1 to 12 in Rashi chart
     bhav_house: int  # 1 to 12 in Nirayana Bhava Chalit chart
     is_retrograde: bool = False
+    is_untenanted: bool = False
 
 
 class KPDashaInsight(BaseModel):
@@ -611,13 +768,206 @@ class KPDashaInsight(BaseModel):
 
 class KPDashaPeriod(BaseModel):
     lord: str
-    level: int  # 1: Mahadasha, 2: Antardasha, 3: Pratyantardasha
+    level: int  # 1: Mahadasha, 2: Antardasha, 3: Pratyantardasha, 4: Sookshma, 5: Pran
     start_date: str
     end_date: str
     duration: str
     is_current: bool = False
+    start_time: str = ""
+    end_time: str = ""
     insight: KPDashaInsight | None = None
     sub_periods: list["KPDashaPeriod"] = Field(default_factory=list)
+
+
+# -----------------------------------------------------------------------------
+# Advanced KP Models (Significators, CSL Life Events, Horary, Aspects, Badhaka)
+# -----------------------------------------------------------------------------
+
+class KPPlanetSignificator(BaseModel):
+    planet: str
+    level_a: list[int] = Field(default_factory=list)  # Houses occupied by star lord (strongest)
+    level_b: list[int] = Field(default_factory=list)  # House occupied by the planet
+    level_c: list[int] = Field(default_factory=list)  # Houses owned by star lord
+    level_d: list[int] = Field(default_factory=list)  # Houses owned by the planet
+    all_signified_houses: list[int] = Field(default_factory=list)
+
+
+class KPHouseSignificator(BaseModel):
+    house: int
+    level_a: list[str] = Field(default_factory=list)  # Planets in star of planets in this house
+    level_b: list[str] = Field(default_factory=list)  # Planets occupying this house
+    level_c: list[str] = Field(default_factory=list)  # Planets in star of house lord
+    level_d: list[str] = Field(default_factory=list)  # House lord itself
+
+
+class KPEventAnalysisItem(BaseModel):
+    category: str  # "career", "marriage", "wealth", "property", "health", "foreign"
+    title: str
+    primary_cusp: int
+    cuspal_sub_lord: str
+    csl_star_lord: str
+    csl_sub_lord: str
+    favorable_houses: list[int] = Field(default_factory=list)
+    unfavorable_houses: list[int] = Field(default_factory=list)
+    signified_houses: list[int] = Field(default_factory=list)
+    promise_score: int = 50  # 0 to 100
+    verdict: str = ""
+    description: str = ""
+    timing_hint: str = ""
+
+
+class KPAspectItem(BaseModel):
+    planet_1: str
+    planet_2: str
+    aspect_name: str  # Conjunction, Sextile, Square, Trine, Opposition
+    aspect_symbol: str
+    angle_degrees: float
+    orb_degrees: float
+    nature: str  # Harmonious, Challenging, Neutral
+    significance: str
+
+
+class KPBadhakaMarakaInfo(BaseModel):
+    ascendant_type: str  # Movable, Fixed, Dual
+    badhaka_house: int  # 11 for Movable, 9 for Fixed, 7 for Dual
+    badhaka_sign: str
+    badhaka_lord: str
+    maraka_houses: list[int] = Field(default_factory=lambda: [2, 7])
+    maraka_lords: list[str] = Field(default_factory=list)
+    badhaka_planets: list[str] = Field(default_factory=list)
+    maraka_planets: list[str] = Field(default_factory=list)
+    notes: str = ""
+
+
+class KPHoraryInfo(BaseModel):
+    horary_number: int  # 1 to 249
+    sub_start_degree: float
+    sub_end_degree: float
+    sub_span_formatted: str
+    sign: str
+    sign_lord: str
+    star_lord: str
+    sub_lord: str
+    sub_sub_lord: str
+
+
+class KPRemedyItem(BaseModel):
+    planet: str
+    house_involved: int
+    problem: str
+    lal_kitab_upaya: str
+    vedic_mantra: str
+    charity_recommendation: str
+
+
+class CurrentRunningDashaInfo(BaseModel):
+    mahadasha: str
+    antardasha: str
+    pratyantardasha: str
+    sookshma_dasha: str = ""
+    pran_dasha: str = ""
+    active_path: str = ""
+    md_start: str = ""
+    md_end: str = ""
+    ad_start: str = ""
+    ad_end: str = ""
+    pd_start: str = ""
+    pd_end: str = ""
+    sd_start: str = ""
+    sd_end: str = ""
+    pran_start: str = ""
+    pran_end: str = ""
+    remaining_days_ad: int = 0
+    remaining_days_md: int = 0
+    percentage_completed_ad: float = 0.0
+    percentage_completed_md: float = 0.0
+    sookshma_periods: list[KPDashaPeriod] = Field(default_factory=list)
+    pran_periods: list[KPDashaPeriod] = Field(default_factory=list)
+
+
+class DashaSandhiChidraInfo(BaseModel):
+    is_in_chidra_dasha: bool = False
+    is_in_dasha_sandhi: bool = False
+    chidra_message: str = ""
+    sandhi_message: str = ""
+    current_md_lord: str = ""
+    next_md_lord: str = ""
+    transition_date: str = ""
+    days_to_transition: int = 0
+    alert_severity: str = "none"  # "none", "warning", "critical"
+    precautions: list[str] = Field(default_factory=list)
+    remedial_measures: list[str] = Field(default_factory=list)
+
+
+class PersonalizedDashaPhalaItem(BaseModel):
+    planet: str
+    lagna: str
+    functional_nature: str  # "Yogakaraka", "Functional Benefic", "Functional Malefic", "Maraka", "Neutral"
+    houses_owned: list[int] = Field(default_factory=list)
+    house_placed: int = 1
+    sign_placed: str = ""
+    dignity: str = ""  # "Exalted", "Moolatrikona", "Own Sign", "Friendly", "Neutral", "Enemy", "Debilitated"
+    is_retrograde: bool = False
+    favorability_score: int = 50  # 0 to 100
+    overall_impact: str = ""
+    career_impact: str = ""
+    wealth_impact: str = ""
+    relationship_impact: str = ""
+    health_impact: str = ""
+    gemstone_warning: str = ""
+    recommended_remedy: str = ""
+
+
+class YoginiPeriodItem(BaseModel):
+    name: str
+    ruler_planet: str
+    duration_years: int
+    start_date: str
+    end_date: str
+    is_current: bool = False
+    nature: str = ""  # "Benefic", "Malefic", "Neutral"
+    significance: str = ""
+    sub_periods: list["YoginiPeriodItem"] = Field(default_factory=list)
+
+
+class YoginiDashaSystem(BaseModel):
+    birth_nakshatra: str = ""
+    starting_yogini: str = ""
+    balance_str: str = ""
+    current_yogini: str = ""
+    current_sub_yogini: str = ""
+    current_cycle_number: int = 1
+    periods: list[YoginiPeriodItem] = Field(default_factory=list)
+    verdict: str = ""
+
+
+class DashaTransitSynergy(BaseModel):
+    md_lord: str = ""
+    md_transit_sign: str = ""
+    md_transit_house_from_moon: int = 1
+    md_transit_nature: str = ""
+    ad_lord: str = ""
+    ad_transit_sign: str = ""
+    ad_transit_house_from_moon: int = 1
+    ad_transit_nature: str = ""
+    sade_sati_active: bool = False
+    sade_sati_phase: str = "None"
+    sade_sati_description: str = ""
+    synergy_verdict: str = ""
+    synergy_score: int = 50
+
+
+class DashaTimelineSegment(BaseModel):
+    lord: str
+    start_date: str
+    end_date: str
+    age_start: int
+    age_end: int
+    duration_years: float
+    nature: str = "neutral"  # "favorable", "neutral", "challenging"
+    favorability_score: int = 50
+    theme: str = ""
+    is_current: bool = False
 
 
 class KPCalculateResponse(BaseModel):
@@ -637,6 +987,24 @@ class KPCalculateResponse(BaseModel):
     cusps: list[KPCuspDetail]
     planets: list[KPPlanetDetail]
     dashas: list[KPDashaPeriod]
+
+    # Advanced KP Capabilities
+    untenanted_planets: list[str] = Field(default_factory=list)
+    planet_significators: list[KPPlanetSignificator] = Field(default_factory=list)
+    house_significators: list[KPHouseSignificator] = Field(default_factory=list)
+    life_events: list[KPEventAnalysisItem] = Field(default_factory=list)
+    aspects: list[KPAspectItem] = Field(default_factory=list)
+    badhaka_maraka: KPBadhakaMarakaInfo | None = None
+    horary_details: KPHoraryInfo | None = None
+    remedies: list[KPRemedyItem] = Field(default_factory=list)
+
+    # Advanced Dasha Capabilities
+    current_running_dasha: CurrentRunningDashaInfo | None = None
+    dasha_sandhi_chidra: DashaSandhiChidraInfo | None = None
+    personalized_dasha_phala: list[PersonalizedDashaPhalaItem] = Field(default_factory=list)
+    yogini_dasha: YoginiDashaSystem | None = None
+    dasha_transit_synergy: DashaTransitSynergy | None = None
+    dasha_life_timeline: list[DashaTimelineSegment] = Field(default_factory=list)
 
     selected_language: str = "en"
     translations: dict[str, Any] = Field(default_factory=dict)
@@ -676,8 +1044,51 @@ class KundliCalculateRequest(BaseModel):
         "true_pushya",
     ] = Field(default="lahiri")
     house_system: Literal["placidus", "equal", "whole_sign", "koch"] = Field(default="placidus")
-    chart_style: Literal["north_indian", "south_indian", "east_indian", "wheel"] = Field(default="north_indian")
+    chart_style: Literal["north_indian", "south_indian", "east_indian", "wheel"] = Field(
+        default="north_indian"
+    )
     language: Literal["en", "bn", "hi"] = Field(default="en")
+
+    @field_validator("timezone", mode="before")
+    @classmethod
+    def _coerce_timezone(cls, v: Any) -> float:
+        if v is None or v == "":
+            return 5.5
+        try:
+            val = float(v)
+            if math.isnan(val):
+                return 5.5
+            return val
+        except (ValueError, TypeError):
+            return 5.5
+
+    @field_validator("gender", mode="before")
+    @classmethod
+    def _coerce_gender(cls, v: Any) -> str:
+        if isinstance(v, str):
+            v_lower = v.strip().lower()
+            if v_lower in ("male", "m"):
+                return "male"
+            if v_lower in ("female", "f"):
+                return "female"
+            if v_lower in ("other", "o"):
+                return "other"
+        return "male"
+
+    @field_validator("chart_style", mode="before")
+    @classmethod
+    def _coerce_chart_style(cls, v: Any) -> str:
+        if isinstance(v, str):
+            v_lower = v.strip().lower()
+            if v_lower in ("north", "north_indian"):
+                return "north_indian"
+            if v_lower in ("south", "south_indian"):
+                return "south_indian"
+            if v_lower in ("east", "east_indian"):
+                return "east_indian"
+            if v_lower == "wheel":
+                return "wheel"
+        return "north_indian"
 
 
 class KundliPersonalDetails(BaseModel):
@@ -739,17 +1150,31 @@ class KundliTableRow(BaseModel):
     full_degree_formatted: str  # "141° 35 ' 55\""
 
 
+class KundliDashaPratyantar(BaseModel):
+    lord: str
+    lord_bn: str = ""
+    start_date: str = ""
+    end_date: str = ""
+    is_current: bool = False
+
+
 class KundliDashaAntar(BaseModel):
     lord: str
     duration: str
     end_date: str
+    start_date: str = ""
+    is_current: bool = False
+    pratyantardashas: list[KundliDashaPratyantar] = Field(default_factory=list)
 
 
 class KundliDashaCard(BaseModel):
     title: str  # "Balance Mahadasha: Saturn 6 Y 0 M 6 D" or "Mahadasha: Mercury - 17 Years"
     lord: str
     years: int
-    antardashas: list[KundliDashaAntar]
+    start_date: str = ""
+    end_date: str = ""
+    is_current: bool = False
+    antardashas: list[KundliDashaAntar] = Field(default_factory=list)
 
 
 class KundliYogaItem(BaseModel):
@@ -765,6 +1190,210 @@ class KundliActiveYogaDetail(BaseModel):
     effects: str
 
 
+class PlanetaryDignityItem(BaseModel):
+    planet: str
+    planet_bn: str
+    planet_hi: str
+    sign: str
+    sign_bn: str
+    sign_hi: str | None = None
+    house: int
+    degree: float
+    degree_formatted: str
+    dignity: str  # Exalted, Own, Moolatrikona, Friend, Neutral, Enemy, Debilitated
+    dignity_bn: str
+    dignity_hi: str
+    is_combust: bool = False
+    is_retrograde: bool = False
+    avastha: str  # Bal, Kumar, Yuva, Vriddha, Mrita
+    avastha_bn: str
+    avastha_hi: str
+    neechabhanga: bool = False
+    neechabhanga_reason: str | None = None
+
+
+class HousePredictionItem(BaseModel):
+    house_number: int  # 1 to 12
+    house_name: str
+    house_name_bn: str
+    house_name_hi: str
+    sign: str
+    sign_bn: str
+    sign_hi: str | None = None
+    sign_lord: str
+    sign_lord_bn: str
+    sign_lord_hi: str | None = None
+    lord_placement_house: int
+    occupants: list[str] = Field(default_factory=list)
+    occupants_bn: list[str] = Field(default_factory=list)
+    occupants_hi: list[str] = Field(default_factory=list)
+    overview: str
+    overview_bn: str
+    overview_hi: str
+    career_wealth_effect: str
+    career_wealth_effect_bn: str
+    career_wealth_effect_hi: str
+    relationship_family_effect: str
+    relationship_family_effect_bn: str
+    relationship_family_effect_hi: str
+
+
+class ExtendedYogaItem(BaseModel):
+    name: str
+    name_bn: str
+    name_hi: str
+    category: str  # Pancha Mahapurusha, Raj Yoga, Dhana Yoga, Auspicious, Inauspicious
+    category_bn: str
+    category_hi: str | None = None
+    is_present: bool
+    description: str
+    description_bn: str
+    description_hi: str
+    effects: str
+    effects_bn: str
+    effects_hi: str
+
+
+class DoshaAnalysisItem(BaseModel):
+    dosha_name: str
+    dosha_name_bn: str
+    dosha_name_hi: str
+    is_present: bool
+    severity: str  # High, Moderate, Mild, Cancelled, None
+    severity_bn: str
+    severity_hi: str | None = None
+    percentage: int = 0  # 0 to 100%
+    specific_type: str | None = None
+    specific_type_bn: str | None = None
+    specific_type_hi: str | None = None
+    cancellation_reason: str | None = None
+    cancellation_reason_bn: str | None = None
+    cancellation_reason_hi: str | None = None
+    cancellation_rules_applied: list[str] = Field(default_factory=list)
+    cancellation_rules_applied_bn: list[str] = Field(default_factory=list)
+    cancellation_rules_applied_hi: list[str] = Field(default_factory=list)
+    remedy: str
+    remedy_bn: str
+    remedy_hi: str
+
+
+# =============================================================================
+# Ashtakavarga, Kaal Purusha & Nakshatra Deep Predictive Schemas
+# =============================================================================
+
+class AshtakavargaPlanetPoints(BaseModel):
+    planet: str
+    planet_bn: str
+    bindus: list[int]  # 12 houses (1 to 12)
+    total: int
+
+
+class AshtakavargaHouseSummary(BaseModel):
+    house_num: int
+    sign_name: str
+    sign_bn: str
+    sarvashtakavarga_points: int  # SAV points (average is 28)
+    strength: str  # "Very Strong" (>=32), "Strong" (28-31), "Moderate" (25-27), "Weak" (<25)
+    strength_bn: str
+    interpretation: str
+    interpretation_bn: str
+
+
+class AshtakavargaResult(BaseModel):
+    sav: list[int]  # 12 numbers for houses 1 to 12
+    total_sav_bindus: int = 337
+    bav_by_planet: list[AshtakavargaPlanetPoints] = Field(default_factory=list)
+    houses_summary: list[AshtakavargaHouseSummary] = Field(default_factory=list)
+
+
+class KaalPurushaInsight(BaseModel):
+    house_num: int
+    rashi_name: str
+    rashi_bn: str
+    body_part: str
+    body_part_bn: str
+    karmic_signification: str
+    karmic_signification_bn: str
+    planetary_influence: str
+    planetary_influence_bn: str
+    health_guidance: str
+    health_guidance_bn: str
+
+
+class NakshatraPredictiveInsight(BaseModel):
+    planet: str
+    planet_bn: str
+    nakshatra: str
+    nakshatra_bn: str
+    pada: int
+    rule_title: str
+    rule_title_bn: str
+    prediction: str
+    prediction_bn: str
+    remedy: str
+    remedy_bn: str
+
+
+class GemstoneItem(BaseModel):
+    category: str  # Life Stone (Lagna Lord), Lucky Stone (9th Lord), Career Stone (5th/10th Lord)
+    category_bn: str
+    category_hi: str | None = None
+    stone_name: str
+    stone_name_bn: str
+    stone_name_hi: str
+    sanskrit_name: str
+    ruling_planet: str
+    ruling_planet_bn: str
+    ruling_planet_hi: str | None = None
+    metal: str
+    metal_bn: str
+    metal_hi: str | None = None
+    finger: str
+    finger_bn: str
+    finger_hi: str | None = None
+    wearing_day: str
+    wearing_day_bn: str
+    wearing_day_hi: str | None = None
+    beej_mantra: str
+    benefit: str
+    benefit_bn: str
+    benefit_hi: str | None = None
+
+
+class PersonalRemedies(BaseModel):
+    life_stone: GemstoneItem
+    lucky_stone: GemstoneItem
+    career_stone: GemstoneItem
+    rudraksha_recommendation: str
+    rudraksha_recommendation_bn: str
+    rudraksha_recommendation_hi: str
+    ishta_devata: str
+    ishta_devata_bn: str
+    ishta_devata_hi: str
+    lucky_colors: list[str]
+    lucky_colors_bn: list[str]
+    lucky_numbers: list[int]
+    favorable_direction: str
+    favorable_direction_bn: str
+
+
+class CurrentDashaInfo(BaseModel):
+    mahadasha_lord: str
+    mahadasha_lord_bn: str
+    mahadasha_lord_hi: str | None = None
+    antardasha_lord: str
+    antardasha_lord_bn: str
+    antardasha_lord_hi: str | None = None
+    start_date: str
+    end_date: str
+    verdict: str
+    verdict_bn: str
+    verdict_hi: str
+    guidance: str
+    guidance_bn: str
+    guidance_hi: str
+
+
 class KundliCalculateResponse(BaseModel):
     personal_details: KundliPersonalDetails
     astronomical_info: KundliAstronomicalInfo
@@ -776,12 +1405,39 @@ class KundliCalculateResponse(BaseModel):
     d1_asc_sign: int  # 1-12
     d9_asc_sign: int  # 1-12
 
+    # Advanced Divisional Charts
+    d10_planets: list[KundliChartPlanet] = Field(default_factory=list)
+    d10_asc_sign: int = 1
+    d7_planets: list[KundliChartPlanet] = Field(default_factory=list)
+    d7_asc_sign: int = 1
+
+    # Chalit Chart (Bhava Chalit) & Chandra Kundli (Moon Chart)
+    chalit_planets: list[KundliChartPlanet] = Field(default_factory=list)
+    chalit_asc_sign: int = 1
+    moon_chart_planets: list[KundliChartPlanet] = Field(default_factory=list)
+    moon_chart_asc_sign: int = 1
+
     planets_table: list[KundliTableRow]
     houses_table: list[KundliTableRow]
     dashas_grid: list[KundliDashaCard]
 
     yogas_status: list[KundliYogaItem]
     active_yogas_details: list[KundliActiveYogaDetail]
+
+    # Advanced Classical Vedic Additions
+    planetary_dignities: list[PlanetaryDignityItem] = Field(default_factory=list)
+    house_predictions: list[HousePredictionItem] = Field(default_factory=list)
+    extended_yogas: list[ExtendedYogaItem] = Field(default_factory=list)
+    doshas_analysis: list[DoshaAnalysisItem] = Field(default_factory=list)
+    remedies: PersonalRemedies | None = None
+    current_dasha: CurrentDashaInfo | None = None
+
+    # Ashtakavarga (SAV & BAV)
+    ashtakavarga: AshtakavargaResult | None = None
+
+    # Kaal Purusha & Nakshatra Deep Predictive Insights
+    kaal_purusha_insights: list[KaalPurushaInsight] = Field(default_factory=list)
+    nakshatra_predictive_insights: list[NakshatraPredictiveInsight] = Field(default_factory=list)
 
     selected_language: str = "en"
     translations: dict[str, Any] = Field(default_factory=dict)
@@ -813,6 +1469,19 @@ class KundliMatchingPersonInput(BaseModel):
     )
     ayanamsa: Literal["lahiri", "krishnamurti", "bv_raman", "yukteshwar"] = Field(default="lahiri")
     house_system: Literal["placidus", "equal", "whole_sign"] = Field(default="placidus")
+
+    @field_validator("timezone", mode="before")
+    @classmethod
+    def _coerce_timezone(cls, v: Any) -> float:
+        if v is None or v == "":
+            return 5.5
+        try:
+            val = float(v)
+            if math.isnan(val):
+                return 5.5
+            return val
+        except (ValueError, TypeError):
+            return 5.5
 
 
 class KundliMatchingRequest(BaseModel):
@@ -884,6 +1553,120 @@ class MarriageLifeForecast(BaseModel):
     remedies_guidance: list[str] = Field(default_factory=list)
 
 
+class AvakahadaAttributeItem(BaseModel):
+    attribute: str
+    male: str
+    female: str
+    description: str = ""
+
+
+class DashakootItem(BaseModel):
+    attribute: str
+    male: str
+    female: str
+    out_of: float
+    received: float
+    description: str = ""
+    status: str = "Favorable"
+
+
+class DashakootResult(BaseModel):
+    items: list[DashakootItem] = Field(default_factory=list)
+    total_received: float = 0.0
+    total_out_of: float = 36.0
+    porutham_count: int = 0
+    is_favorable: bool = True
+    verdict: str = ""
+
+
+class DoshaCancellationInfo(BaseModel):
+    dosha_name: str
+    is_present: bool
+    is_cancelled: bool
+    cancellation_reason: str = ""
+    shastra_citation: str = ""
+    severity: str = "None"
+    remedy: str = ""
+
+
+class RajjuDoshaDetail(BaseModel):
+    is_present: bool
+    rajju_type: str = ""  # "Shiro", "Kantha", "Udara", "Kati", "Pada"
+    body_part: str = ""
+    classical_impact: str = ""
+    male_rajju: str = ""
+    female_rajju: str = ""
+    remedy: str = ""
+
+
+class PapasamyaPlanetDetail(BaseModel):
+    planet: str
+    house_from_lagna: int | None = None
+    house_from_moon: int | None = None
+    house_from_venus: int | None = None
+    points: float = 0.0
+
+
+class PapasamyaPersonScore(BaseModel):
+    total_points: float = 0.0
+    lagna_points: float = 0.0
+    moon_points: float = 0.0
+    venus_points: float = 0.0
+    details: list[PapasamyaPlanetDetail] = Field(default_factory=list)
+
+
+class PapasamyaResult(BaseModel):
+    groom_score: PapasamyaPersonScore
+    bride_score: PapasamyaPersonScore
+    difference: float = 0.0
+    is_balanced: bool = True
+    verdict: str = ""
+    description: str = ""
+
+
+class PersonalityTraitReport(BaseModel):
+    groom_positive_traits: list[str] = Field(default_factory=list)
+    groom_negative_traits: list[str] = Field(default_factory=list)
+    groom_summary: str = ""
+    bride_positive_traits: list[str] = Field(default_factory=list)
+    bride_negative_traits: list[str] = Field(default_factory=list)
+    bride_summary: str = ""
+    compatibility_summary: str = ""
+
+
+class DashaPeriodItem(BaseModel):
+    level: str
+    planet: str
+    start_date: str
+    end_date: str
+
+
+class PersonDashaOverview(BaseModel):
+    current_mahadasha: str = ""
+    current_antardasha: str = ""
+    current_pratyantardasha: str = ""
+    dasha_sequence: list[DashaPeriodItem] = Field(default_factory=list)
+
+
+class DashaComparisonResult(BaseModel):
+    groom_dasha: PersonDashaOverview
+    bride_dasha: PersonDashaOverview
+    dasha_sandhi_present: bool = False
+    dasha_compatibility_verdict: str = ""
+    dasha_compatibility_description: str = ""
+
+
+class ChartPlanetSet(BaseModel):
+    d1_planets: list[KundliChartPlanet] = Field(default_factory=list)
+    d9_planets: list[KundliChartPlanet] = Field(default_factory=list)
+    chalit_planets: list[KundliChartPlanet] = Field(default_factory=list)
+    moon_chart_planets: list[KundliChartPlanet] = Field(default_factory=list)
+    d1_asc_sign: int = 1
+    d9_asc_sign: int = 1
+    chalit_asc_sign: int = 1
+    moon_chart_asc_sign: int = 1
+
+
 class KundliMatchingResponse(BaseModel):
     groom: KundliMatchingPersonProfile
     bride: KundliMatchingPersonProfile
@@ -896,6 +1679,17 @@ class KundliMatchingResponse(BaseModel):
     selected_language: str = "en"
     translations: dict[str, Any] = Field(default_factory=dict)
     forecast: MarriageLifeForecast | None = None
+    dashakoot: DashakootResult | None = None
+    avakahada_comparison: list[AvakahadaAttributeItem] = Field(default_factory=list)
+    cancellations: list[DoshaCancellationInfo] = Field(default_factory=list)
+    rajju_detail: RajjuDoshaDetail | None = None
+    papasamya: PapasamyaResult | None = None
+    personality: PersonalityTraitReport | None = None
+    dasha_comparison: DashaComparisonResult | None = None
+    groom_charts: ChartPlanetSet | None = None
+    bride_charts: ChartPlanetSet | None = None
+    manglik_detail: dict[str, Any] = Field(default_factory=dict)
+    classical_recommendation: str = ""
 
 
 
@@ -909,6 +1703,152 @@ class DailyHoroscopeRequest(BaseModel):
     latitude: float = Field(default=22.5726, ge=-90.0, le=90.0, description="Observer latitude (default: Kolkata, 22.5726)")
     longitude: float = Field(default=88.3639, ge=-180.0, le=180.0, description="Observer longitude (default: Kolkata, 88.3639)")
     timezone: float = Field(default=5.5, ge=-12.0, le=14.0, description="Timezone offset from UTC (default: +5.5 for IST)")
+    # Personalization options
+    birth_nakshatra_index: int | None = Field(default=None, ge=0, le=26, description="Native's Janma Nakshatra index 0 to 26")
+    birth_date: str | None = Field(default=None, description="Native birth date YYYY-MM-DD for personalized transit chart")
+    birth_time: str | None = Field(default=None, description="Native birth time HH:MM")
+    birth_rashi_index: int | None = Field(default=None, ge=0, le=11, description="Native Janma Rashi index 0 to 11")
+    birth_lagna_index: int | None = Field(default=None, ge=0, le=11, description="Native Janma Lagna index 0 to 11")
+
+
+class HoraItem(BaseModel):
+    hora_index: int  # 1 to 24
+    hora_number: int  # 1 to 12 within Day/Night
+    is_day: bool
+    start_time: str
+    end_time: str
+    planet: str
+    planet_bn: str
+    planet_hi: str
+    planet_sa: str
+    is_auspicious: bool
+    category: str
+    category_bn: str
+    category_hi: str
+    verdict: str
+    verdict_bn: str = ""
+    verdict_hi: str = ""
+    best_activities: str
+    best_activities_bn: str
+    best_activities_hi: str
+
+
+class ChoghadiyaItem(BaseModel):
+    period_index: int  # 1 to 16
+    is_day: bool
+    name: str  # Amrit, Shubh, Labh, Char, Rog, Kaal, Udveg
+    name_bn: str
+    name_hi: str
+    ruler_planet: str
+    start_time: str
+    end_time: str
+    status: str  # auspicious, neutral, inauspicious
+    guidance: str
+    guidance_bn: str
+    guidance_hi: str
+
+
+class PlanetaryDrishtiItem(BaseModel):
+    aspecting_planet: str
+    aspect_type: str
+    yoga_name: str
+    yoga_name_bn: str
+    yoga_name_hi: str
+    is_positive: bool
+    impact: str
+    impact_bn: str
+    impact_hi: str
+    classical_remedy: str
+    classical_remedy_bn: str
+    classical_remedy_hi: str
+
+
+class PanchakStatus(BaseModel):
+    is_panchak: bool = False
+    panchak_type: str = "None"
+    panchak_type_bn: str = "কোনো পঞ্চক নেই"
+    panchak_type_hi: str = "कोई पंचक नहीं"
+    severity: str = "auspicious"  # auspicious, mild, caution, severe
+    description: str = ""
+    description_bn: str = ""
+    description_hi: str = ""
+    prohibited_activities: list[str] = Field(default_factory=list)
+
+
+class AshtakavargaTransitPoints(BaseModel):
+    sign_index: int
+    sarvashtakavarga_points: int = 28
+    moon_bhinnashtakavarga_points: int = 4
+    strength_grade: str = "Medium (Balanced)"
+    strength_grade_bn: str = "মধ্যম (ভারসাম্যপূর্ণ)"
+    strength_grade_hi: str = "मध्यम (संतुलित)"
+    score_multiplier: float = 1.0
+
+
+class NumerologyDailySynergy(BaseModel):
+    mulank: int  # 1 to 9
+    bhagyank: int  # 1 to 9
+    ruling_planet: str
+    day_relationship: str  # Friend, Neutral, Enemy
+    day_relationship_bn: str
+    day_relationship_hi: str
+    synergy_score_pct: int
+    advice: str
+    advice_bn: str
+    advice_hi: str
+
+
+class BiorhythmHour(BaseModel):
+    hour: int  # 0 to 23
+    time_label: str  # "06:00 - 07:00"
+    energy_score: int  # 0 to 100
+    dominant_graha: str
+    status: str
+    status_bn: str
+    status_hi: str
+
+
+class DualTransitInsight(BaseModel):
+    moon_transit_house: int
+    lagna_transit_house: int
+    lagna_sign_name: str
+    emotional_outlook: str
+    emotional_outlook_bn: str
+    emotional_outlook_hi: str
+    physical_event_outlook: str
+    physical_event_outlook_bn: str
+    physical_event_outlook_hi: str
+    synthesis_verdict: str
+    synthesis_verdict_bn: str
+    synthesis_verdict_hi: str
+    dual_harmony_score: int
+
+
+class TaraBalaSummary(BaseModel):
+    tara_index: int  # 1 to 9
+    tara_name: str
+    tara_name_bn: str
+    tara_name_hi: str
+    is_auspicious: bool
+    score_percent: int
+    verdict: str
+    verdict_bn: str
+    verdict_hi: str
+    guidance: str
+    guidance_bn: str
+    guidance_hi: str
+
+
+class PersonalizedNakshatraProfile(BaseModel):
+    birth_nakshatra_index: int
+    birth_nakshatra_name: str
+    birth_nakshatra_name_bn: str
+    birth_nakshatra_name_hi: str
+    birth_nakshatra_lord: str
+    birth_nakshatra_deity: str
+    sacred_tree: str
+    beej_mantra: str
+    tara_bala: TaraBalaSummary
 
 
 class DailySignHoroscope(BaseModel):
@@ -934,6 +1874,22 @@ class DailySignHoroscope(BaseModel):
     lucky_time: str
     remedy: str
     favorable_direction: str
+    # Classical Vedic expansions
+    is_chandrashtama: bool = False
+    chandrashtama_advice: str | None = None
+    vedha_active: bool = False
+    vedha_planet: str | None = None
+    vedha_description: str | None = None
+    sade_sati_status: str | None = None
+    guru_gochar_verdict: str | None = None
+    beej_mantra: str = ""
+    charity_dana: str = ""
+    tara_bala: TaraBalaSummary | None = None
+    # Advanced 100% precision additions
+    ashtakavarga: AshtakavargaTransitPoints | None = None
+    client_classifications: dict[str, Any] = Field(default_factory=dict)
+    nakshatra_pada_shift: dict[str, Any] = Field(default_factory=dict)
+    planetary_drishtis: list[PlanetaryDrishtiItem] = Field(default_factory=list)
 
 
 class DailyPanchangSummary(BaseModel):
@@ -948,6 +1904,12 @@ class DailyPanchangSummary(BaseModel):
     sunset: str
     abhijit_muhurat: str
     rahu_kaal: str
+    disha_shoola: str = ""
+    disha_remedy: str = ""
+    favorable_chandra_rashis: list[str] = Field(default_factory=list)
+    horas: list[HoraItem] = Field(default_factory=list)
+    choghadiya: list[ChoghadiyaItem] = Field(default_factory=list)
+    panchak: PanchakStatus = Field(default_factory=PanchakStatus)
 
 
 class DailyHoroscopeResponse(BaseModel):
@@ -960,7 +1922,50 @@ class DailyHoroscopeResponse(BaseModel):
     sun_sign: str
     panchang: DailyPanchangSummary
     signs: list[DailySignHoroscope]
+    personalized_profile: PersonalizedNakshatraProfile | None = None
+    numerology_synergy: NumerologyDailySynergy | None = None
+    biorhythm_timeline: list[BiorhythmHour] = Field(default_factory=list)
+    dual_transit: DualTransitInsight | None = None
     calculation_meta: dict[str, Any] = Field(default_factory=dict)
+
+
+class AnnualHoroscopeRequest(BaseModel):
+    date_of_birth: str = Field(..., description="Date of birth in YYYY-MM-DD format")
+    time_of_birth: str = Field(..., description="Time of birth in HH:MM format")
+    latitude: float = Field(default=22.5726, ge=-90.0, le=90.0)
+    longitude: float = Field(default=88.3639, ge=-180.0, le=180.0)
+    timezone: float = Field(default=5.5, ge=-12.0, le=14.0)
+    city_name: str | None = None
+    client_name: str | None = None
+    target_year: int | None = Field(default=None, ge=1900, le=2100)
+    language: Literal["en", "bn", "hi"] = "en"
+    primary_focus: Literal["general", "career", "finance", "health", "love", "family", "debt"] = "general"
+
+
+class AnnualHoroscopeResponse(BaseModel):
+    report_id: str
+    consecration_date: str
+    target_year: int
+    language: str
+    personal_details: dict[str, Any]
+    overall_score: int
+    annual_summary: str
+    pillars: list[dict[str, Any]]
+    quarters: list[dict[str, Any]]
+    shubh_phal: list[str]
+    ashubh_phal: list[str]
+    varshphal_planets: list[dict[str, Any]]
+    lal_kitab_remedies: list[dict[str, Any]]
+    primary_mahaupay: dict[str, Any]
+    all_special_mahaupay: list[dict[str, Any]]
+    gomti_chakra_remedies: list[dict[str, str]]
+    general_precautions: list[str]
+    digital_seal: dict[str, Any]
+    coins_spent: int = 0
+    wallet_balance: int | None = None
+    store_recommendations: list[dict[str, Any]] = Field(default_factory=list)
+
+
 
 
 

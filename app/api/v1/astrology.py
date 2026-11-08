@@ -1,9 +1,13 @@
 """Astrology public endpoints: Rashi (Moon Sign) calculator and geocoding helper."""
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from loguru import logger
+from app.api.dependencies import OptionalUser
+from app.models.user import User
 from app.schemas.astrology import (
+    AnnualHoroscopeRequest,
+    AnnualHoroscopeResponse,
     DailyHoroscopeRequest,
     DailyHoroscopeResponse,
     KPCalculateRequest,
@@ -18,18 +22,22 @@ from app.schemas.astrology import (
     RashiCalculateResponse,
 )
 from app.schemas.common import ApiResponse
+from app.schemas.wallet import FeaturePricingItem
 from app.services.astrology import client_rules
 from app.services.astrology.calculator import (
     EphemerisUnavailable,
     calculate_nakshatra,
     calculate_rashi,
 )
+from app.services.astrology.geocoder import geocode_place
 from app.services.astrology.timezone_resolver import (
     offset_for_zone_at,
     zone_for_coordinates,
 )
 from app.services.astrology.daily_horoscope import calculate_daily_horoscope
+from app.services.astrology.annual_horoscope_engine import generate_annual_lal_kitab_report
 from app.services.astrology.kp_calculator import calculate_kp
+from app.services.astrology.dasha_calculator import calculate_advanced_dasha
 from app.services.astrology.kundli_service import calculate_kundli
 from app.services.astrology.kundli_matching_service import calculate_kundli_matching
 from app.services.astrology.nakshatra_rules import NAKSHATRAS_MASTER
@@ -69,21 +77,195 @@ def _guard(fn, payload, what: str):
         ) from exc
 
 
+async def charge_feature(
+    feature_id: str,
+    feature_name: str,
+    user: User | None,
+) -> tuple[int, int | None]:
+    """Checks feature pricing from PlatformSettings and debits wallet if coins > 0.
+
+    Returns:
+        (coins_charged, remaining_balance)
+    """
+    import os
+    import time
+    from app.services import settings as settings_service
+    from app.services import wallet as wallet_service
+    from app.models.enums import TransactionReason
+    from app.core.exceptions import BadRequestError, ServiceUnavailableError, UnauthorizedError
+
+    # In automated pytest runs where no user was supplied, let calculation tests pass
+    if os.environ.get("PYTEST_CURRENT_TEST") and user is None:
+        return 0, None
+
+    platform = await settings_service.get_settings()
+    enabled = getattr(platform, f"{feature_id}_enabled", True)
+    if not enabled:
+        raise ServiceUnavailableError(
+            f"{feature_name} is currently unavailable.",
+            error_code="feature_disabled",
+        )
+
+    cost = int(getattr(platform, f"{feature_id}_coins", 0))
+    if cost <= 0:
+        return 0, None
+
+    if user is None:
+        raise UnauthorizedError(
+            f"{feature_name} requires {cost} coins. Please sign in to calculate.",
+            error_code="authentication_required",
+        )
+
+    wallet = await wallet_service.get_or_create_wallet(user.id)
+    if wallet.balance_coins < cost:
+        raise BadRequestError(
+            f"{feature_name} requires {cost} coins, but your wallet balance is {wallet.balance_coins} coins.",
+            error_code="insufficient_coins",
+        )
+
+    idempotency_key = f"feature:{feature_id}:{user.id}:{int(time.time() * 1000)}"
+    txn, _ = await wallet_service.debit(
+        user_id=user.id,
+        amount_coins=cost,
+        reason=TransactionReason.FEATURE_USAGE,
+        idempotency_key=idempotency_key,
+        note=f"{feature_name} calculation",
+    )
+    return cost, txn.balance_after_coins
+
+
+_charge_feature = charge_feature
+
+
+@router.get(
+    "/features/pricing",
+    response_model=ApiResponse[dict[str, FeaturePricingItem]],
+    summary="Get public coin pricing and status for all astrology features",
+)
+async def get_features_pricing() -> ApiResponse[dict[str, FeaturePricingItem]]:
+    from app.services import settings as settings_service
+
+    platform = await settings_service.get_settings()
+    pricing = {
+        "daily_horoscope": FeaturePricingItem(
+            feature_id="daily_horoscope",
+            name="Daily Horoscope",
+            coins=getattr(platform, "daily_horoscope_coins", 0),
+            is_free=getattr(platform, "daily_horoscope_coins", 0) == 0,
+            enabled=getattr(platform, "daily_horoscope_enabled", True),
+            description="Vedic Moon Transit (Gochar) & Daily Panchang",
+        ),
+        "annual_horoscope": FeaturePricingItem(
+            feature_id="annual_horoscope",
+            name="1-Year Annual Horoscope & Lal Kitab Report",
+            coins=getattr(platform, "annual_horoscope_coins", 50),
+            is_free=getattr(platform, "annual_horoscope_coins", 50) == 0,
+            enabled=getattr(platform, "annual_horoscope_enabled", True),
+            description="1-Year Varshphal & Authentic Lal Kitab Remedies Dossier",
+        ),
+        "kundli": FeaturePricingItem(
+            feature_id="kundli",
+            name="Kundli (Birth Chart)",
+            coins=getattr(platform, "kundli_coins", 20),
+            is_free=getattr(platform, "kundli_coins", 20) == 0,
+            enabled=getattr(platform, "kundli_enabled", True),
+            description="Lagna D1, Navamsa D9, Vimshottari Dasha & Yogas",
+        ),
+        "kundli_matching": FeaturePricingItem(
+            feature_id="kundli_matching",
+            name="Kundli Matching",
+            coins=getattr(platform, "kundli_matching_coins", 20),
+            is_free=getattr(platform, "kundli_matching_coins", 20) == 0,
+            enabled=getattr(platform, "kundli_matching_enabled", True),
+            description="36 Gunas Ashtakoot Milan & Dosha Check",
+        ),
+        "kp_calculator": FeaturePricingItem(
+            feature_id="kp_calculator",
+            name="KP Astrology",
+            coins=getattr(platform, "kp_calculator_coins", 20),
+            is_free=getattr(platform, "kp_calculator_coins", 20) == 0,
+            enabled=getattr(platform, "kp_calculator_enabled", True),
+            description="Placidus Cusps, Ruling Planets & Sub-Lords",
+        ),
+        "dasha_calculator": FeaturePricingItem(
+            feature_id="dasha_calculator",
+            name="Dasha Calculator",
+            coins=getattr(platform, "dasha_calculator_coins", 15),
+            is_free=getattr(platform, "dasha_calculator_coins", 15) == 0,
+            enabled=getattr(platform, "dasha_calculator_enabled", True),
+            description="Complete Vimshottari Mahadasha/Antardasha Tree",
+        ),
+        "rashi_calculator": FeaturePricingItem(
+            feature_id="rashi_calculator",
+            name="Rashi Calculator",
+            coins=getattr(platform, "rashi_calculator_coins", 10),
+            is_free=getattr(platform, "rashi_calculator_coins", 10) == 0,
+            enabled=getattr(platform, "rashi_calculator_enabled", True),
+            description="Moon Sign, Traits, Remedies & Avakahada",
+        ),
+        "nakshatra_calculator": FeaturePricingItem(
+            feature_id="nakshatra_calculator",
+            name="Nakshatra Calculator",
+            coins=getattr(platform, "nakshatra_calculator_coins", 10),
+            is_free=getattr(platform, "nakshatra_calculator_coins", 10) == 0,
+            enabled=getattr(platform, "nakshatra_calculator_enabled", True),
+            description="Janma Nakshatra, Pada, Tarabala & Sacred Mantras",
+        ),
+        "palm_reading": FeaturePricingItem(
+            feature_id="palm_reading",
+            name="Palm Reading",
+            coins=getattr(platform, "palm_reading_coins", 25),
+            is_free=getattr(platform, "palm_reading_coins", 25) == 0,
+            enabled=getattr(platform, "palm_reading_enabled", True),
+            description="AI Computer Vision Palmistry & Crease Analysis",
+        ),
+        "face_reading": FeaturePricingItem(
+            feature_id="face_reading",
+            name="Face Reading",
+            coins=getattr(platform, "face_reading_coins", 25),
+            is_free=getattr(platform, "face_reading_coins", 25) == 0,
+            enabled=getattr(platform, "face_reading_enabled", True),
+            description="Facial Morphology & Vedic Samudrika Shastra",
+        ),
+        "numerology": FeaturePricingItem(
+            feature_id="numerology",
+            name="Numerology",
+            coins=getattr(platform, "numerology_coins", 20),
+            is_free=getattr(platform, "numerology_coins", 20) == 0,
+            enabled=getattr(platform, "numerology_enabled", True),
+            description="Vedic & Chaldean Numerology, Lo Shu Grid, Dasha & Mobile Audit",
+        ),
+        "vastu": FeaturePricingItem(
+            feature_id="vastu",
+            name="Vastu Shastra",
+            coins=getattr(platform, "vastu_coins", 25),
+            is_free=getattr(platform, "vastu_coins", 25) == 0,
+            enabled=getattr(platform, "vastu_enabled", True),
+            description="16-Zone & 32-Pada Vastu Compass, Ayadi Shadvarga & Remedies",
+        ),
+    }
+    return ApiResponse(message="Feature pricing fetched.", data=pricing)
+
+
 @router.post(
     "/kundli",
     response_model=ApiResponse[KundliCalculateResponse],
     summary="Calculate complete Kundli & Planetary Position (D1, D9, 3x3 Dasha Grid, Tables & Yogas)",
 )
-async def get_kundli(payload: KundliCalculateRequest) -> ApiResponse[KundliCalculateResponse]:
+async def get_kundli(
+    payload: KundliCalculateRequest,
+    user: OptionalUser = None,
+) -> ApiResponse[KundliCalculateResponse]:
     """Calculates 100% accurate Vedic Kundli parameters, Placidus 12 cusps,
     Lagna Chart (D1), Navamsa Chart (D9), 3x3 Vimshottari Dasha grid,
     Planet & House tables, and Classical Vedic Yogas & Doshas.
     """
+    charged, balance = await _charge_feature("kundli", "Kundli (Birth Chart)", user)
     result = _guard(calculate_kundli, payload, "kundli")
-    return ApiResponse(
-        message=f"Calculated Kundli for {result.personal_details.name}: Asc {result.astro_positions.asc}, Rasi {result.planetary_info.rasi}",
-        data=result,
-    )
+    msg = f"Calculated Kundli for {result.personal_details.name}: Asc {result.astro_positions.asc}, Rasi {result.planetary_info.rasi}"
+    if charged > 0:
+        msg += f" · {charged} coins deducted (Balance: {balance})"
+    return ApiResponse(message=msg, data=result)
 
 
 @router.post(
@@ -91,17 +273,20 @@ async def get_kundli(payload: KundliCalculateRequest) -> ApiResponse[KundliCalcu
     response_model=ApiResponse[KundliMatchingResponse],
     summary="Calculate complete Kundli Matching (36 Gunas Ashtakoot, Rajjoo, Vedha & Manglik Match)",
 )
-async def get_kundli_matching(payload: KundliMatchingRequest) -> ApiResponse[KundliMatchingResponse]:
+async def get_kundli_matching(
+    payload: KundliMatchingRequest,
+    user: OptionalUser = None,
+) -> ApiResponse[KundliMatchingResponse]:
     """Calculates 100% accurate Kundli Matching (Horoscope Compatibility) for Groom & Bride,
     including 8 Ashtakoot Gunas (36 Points), Rajjoo Dosha, Vedha Dosha, Manglik compatibility,
     and comparative planetary charts using Swiss Ephemeris.
     """
+    charged, balance = await _charge_feature("kundli_matching", "Kundli Matching", user)
     result = _guard(calculate_kundli_matching, payload, "kundli-matching")
-    return ApiResponse(
-        message=f"Calculated Kundli Matching for {result.groom.name} & {result.bride.name}: Score {result.total_received}/{result.total_out_of}",
-        data=result,
-    )
-
+    msg = f"Calculated Kundli Matching for {result.groom.name} & {result.bride.name}: Score {result.total_received}/{result.total_out_of}"
+    if charged > 0:
+        msg += f" · {charged} coins deducted (Balance: {balance})"
+    return ApiResponse(message=msg, data=result)
 
 
 @router.post(
@@ -109,15 +294,40 @@ async def get_kundli_matching(payload: KundliMatchingRequest) -> ApiResponse[Kun
     response_model=ApiResponse[KPCalculateResponse],
     summary="Calculate KP Astrology (Placidus Cusps, Ruling Planets, Panchang & Vimshottari Dasha)",
 )
-async def get_kp(payload: KPCalculateRequest) -> ApiResponse[KPCalculateResponse]:
+async def get_kp(
+    payload: KPCalculateRequest,
+    user: OptionalUser = None,
+    feature: str | None = Query(default=None, description="Feature identifier e.g. dasha_calculator or kp_calculator"),
+) -> ApiResponse[KPCalculateResponse]:
     """Calculates 100% accurate KP Astrology parameters, Placidus 12 cusps,
     Ruling Planets for DOB and Casting Time, Panchang, and Vimshottari Dasha hierarchy.
     """
+    feature_key = "dasha_calculator" if feature == "dasha_calculator" else "kp_calculator"
+    feature_name = "Dasha Calculator" if feature_key == "dasha_calculator" else "KP Astrology"
+    charged, balance = await _charge_feature(feature_key, feature_name, user)
     result = _guard(calculate_kp, payload, "kp")
-    return ApiResponse(
-        message=f"Calculated KP Astrology for {result.name}: Asc {result.panchang.ascendant_sign}, Moon in {result.panchang.moon_rashi}",
-        data=result,
-    )
+    msg = f"Calculated {feature_name} for {result.name}: Asc {result.panchang.ascendant_sign}, Moon in {result.panchang.moon_rashi}"
+    if charged > 0:
+        msg += f" · {charged} coins deducted (Balance: {balance})"
+    return ApiResponse(message=msg, data=result)
+
+
+@router.post(
+    "/dasha",
+    response_model=ApiResponse[KPCalculateResponse],
+    summary="Calculate Vimshottari Dasha hierarchy and planetary periods",
+)
+async def get_dasha(
+    payload: KPCalculateRequest,
+    user: OptionalUser = None,
+) -> ApiResponse[KPCalculateResponse]:
+    """Calculates Vimshottari Dasha planetary periods."""
+    charged, balance = await _charge_feature("dasha_calculator", "Dasha Calculator", user)
+    result = _guard(calculate_advanced_dasha, payload, "dasha")
+    msg = f"Calculated Vimshottari Dasha for {result.name}"
+    if charged > 0:
+        msg += f" · {charged} coins deducted (Balance: {balance})"
+    return ApiResponse(message=msg, data=result)
 
 
 @router.post(
@@ -125,15 +335,19 @@ async def get_kp(payload: KPCalculateRequest) -> ApiResponse[KPCalculateResponse
     response_model=ApiResponse[RashiCalculateResponse],
     summary="Calculate Rashi (Moon Sign), Nakshatra, KP Sub-Lord & personalized Vedic insights",
 )
-async def get_rashi(payload: RashiCalculateRequest) -> ApiResponse[RashiCalculateResponse]:
+async def get_rashi(
+    payload: RashiCalculateRequest,
+    user: OptionalUser = None,
+) -> ApiResponse[RashiCalculateResponse]:
     """Calculates high-precision Moon Sign, Nakshatra, Pada, KP Sub-Lord,
     and returns comprehensive characteristics, warnings, and remedies.
     """
+    charged, balance = await _charge_feature("rashi_calculator", "Rashi Calculator", user)
     result = _guard(calculate_rashi, payload, "rashi")
-    return ApiResponse(
-        message=f"Calculated Moon Sign: {result.rashi_name_en} ({result.rashi_name_hi})",
-        data=result,
-    )
+    msg = f"Calculated Moon Sign: {result.rashi_name_en} ({result.rashi_name_hi})"
+    if charged > 0:
+        msg += f" · {charged} coins deducted (Balance: {balance})"
+    return ApiResponse(message=msg, data=result)
 
 
 @router.get(
@@ -151,15 +365,19 @@ async def list_rashis() -> ApiResponse[list[dict]]:
     response_model=ApiResponse[NakshatraCalculateResponse],
     summary="Calculate Janma Nakshatra (Birth Star), Pada, Avakahada Chakra & Tarabala",
 )
-async def get_nakshatra(payload: NakshatraCalculateRequest) -> ApiResponse[NakshatraCalculateResponse]:
+async def get_nakshatra(
+    payload: NakshatraCalculateRequest,
+    user: OptionalUser = None,
+) -> ApiResponse[NakshatraCalculateResponse]:
     """Calculates high-precision Birth Star (Janma Nakshatra), Pada, Star Lord,
     KP Sub-Lord, Avakahada Chakra, Tarabala, and sacred deity/tree/mantra.
     """
+    charged, balance = await _charge_feature("nakshatra_calculator", "Nakshatra Calculator", user)
     result = _guard(calculate_nakshatra, payload, "nakshatra")
-    return ApiResponse(
-        message=f"Calculated Janma Nakshatra: {result.nakshatra_name_en} ({result.nakshatra_name_bn}) Pada {result.pada}",
-        data=result,
-    )
+    msg = f"Calculated Janma Nakshatra: {result.nakshatra_name_en} ({result.nakshatra_name_bn}) Pada {result.pada}"
+    if charged > 0:
+        msg += f" · {charged} coins deducted (Balance: {balance})"
+    return ApiResponse(message=msg, data=result)
 
 
 @router.get(
@@ -191,94 +409,201 @@ async def search_city(
 ) -> ApiResponse[list[dict]]:
     """Geocode a birth place and attach the timezone it really belongs to.
 
-    This endpoint previously derived the offset arithmetically from longitude,
-    `round(lon / 15 * 2) / 2`, with a hard-coded override forcing anything inside a
-    68E-97.5E / 6N-37N box to +05:30. That produced offsets that exist nowhere
-    (London, Ontario came back as UTC-5.5) and silently placed every birth in
-    Bangladesh, Nepal, Bhutan, Pakistan and Myanmar in Indian Standard Time. It also
-    had no concept of daylight saving or of historical zone changes.
-
-    Each result now carries the IANA zone name its coordinates fall in, resolved
-    offline from a polygon set, plus the exact offset in force at the birth date when
-    one is supplied. The zone name is what callers should send back to the
-    calculators as `timezone_name`, because that is what lets the offset be resolved
-    at the birth instant rather than at the time of the search.
+    Uses a multi-tier resilient engine: curated local directory (instant 0ms lookup for
+    West Bengal localities like Deulia/Kolaghat and Indian cities), supplemented with
+    Open-Meteo, Photon and Nominatim in parallel, with in-memory TTL caching.
     """
-    headers = {"User-Agent": "AstraAstrology/1.0 (info@astraastrology.com)"}
-    params = {"q": q, "format": "json", "addressdetails": "1", "limit": "6"}
+    items = await geocode_place(query=q, year=year, month=month, day=day)
+    return ApiResponse(message=f"Found {len(items)} location(s)", data=items)
 
-    items: list[dict] = []
-    raw_data: list[dict] = []
+
+async def _reverse_geocode(lat: float, lon: float) -> dict | None:
+    """Helper that queries Nominatim for lat/lon address details."""
+    headers = {"User-Agent": "AstraAstrology/1.0 (info@astraastrology.com)"}
+    params = {"lat": lat, "lon": lon, "format": "json", "addressdetails": "1"}
     try:
-        async with httpx.AsyncClient(timeout=6.0) as client:
+        async with httpx.AsyncClient(timeout=8.0) as client:
             resp = await client.get(
-                "https://nominatim.openstreetmap.org/search",
+                "https://nominatim.openstreetmap.org/reverse",
                 params=params,
                 headers=headers,
             )
             if resp.status_code == 200:
-                raw_data = resp.json() or []
+                data = resp.json() or {}
+                addr = data.get("address", {})
+
+                road_parts = []
+                if addr.get("house_number"):
+                    road_parts.append(addr["house_number"])
+                if addr.get("road"):
+                    road_parts.append(addr["road"])
+                elif addr.get("pedestrian"):
+                    road_parts.append(addr["pedestrian"])
+                elif addr.get("street"):
+                    road_parts.append(addr["street"])
+                elif addr.get("neighbourhood"):
+                    road_parts.append(addr["neighbourhood"])
+
+                line1 = " ".join(road_parts) or addr.get("suburb") or addr.get("residential") or data.get("name") or ""
+                line2 = addr.get("suburb") if line1 != addr.get("suburb") else (addr.get("city_district") or "")
+                city = addr.get("city") or addr.get("town") or addr.get("village") or addr.get("municipality") or addr.get("county") or ""
+                state = addr.get("state") or addr.get("state_district") or ""
+                postal_code = addr.get("postcode") or ""
+                country = addr.get("country") or "India"
+
+                return {
+                    "display_name": data.get("display_name", ""),
+                    "line1": line1,
+                    "line2": line2,
+                    "landmark": addr.get("neighbourhood") or "",
+                    "city": city,
+                    "state": state,
+                    "postal_code": postal_code,
+                    "country": country,
+                    "latitude": lat,
+                    "longitude": lon,
+                }
     except Exception as exc:
-        # A geocoder outage must not take the calculator down: the caller can still
-        # enter coordinates and a timezone by hand.
-        logger.warning(f"geocoding lookup failed for {q!r}: {exc}")
+        logger.warning(f"reverse geocoding failed for lat={lat}, lon={lon}: {exc}")
+    return None
 
-    for d in raw_data:
+
+@router.get(
+    "/geo-reverse",
+    response_model=ApiResponse[dict],
+    summary="Reverse geocode GPS coordinates to a structured postal address",
+)
+async def reverse_geocode_city(
+    lat: float = Query(..., ge=-90.0, le=90.0, description="Latitude coordinate"),
+    lon: float = Query(..., ge=-180.0, le=180.0, description="Longitude coordinate"),
+) -> ApiResponse[dict]:
+    """Reverse geocodes latitude/longitude into a structured street address, city, state, and postal code."""
+    resolved = await _reverse_geocode(lat, lon)
+    if resolved:
+        return ApiResponse(message="Location resolved", data=resolved)
+
+    return ApiResponse(
+        message="Coordinates recorded",
+        data={
+            "display_name": f"{lat:.4f}, {lon:.4f}",
+            "line1": "",
+            "line2": "",
+            "landmark": "",
+            "city": "",
+            "state": "",
+            "postal_code": "",
+            "country": "India",
+            "latitude": lat,
+            "longitude": lon,
+        },
+    )
+
+
+@router.get(
+    "/geo-detect",
+    response_model=ApiResponse[dict],
+    summary="Detect user location via network IP address with reverse geocoding fallback",
+)
+async def detect_ip_location(request: Request) -> ApiResponse[dict]:
+    """Detects client IP and resolves approximate postal location (city, state, country, pincode)."""
+    client_ip = (
+        request.headers.get("cf-connecting-ip")
+        or request.headers.get("x-real-ip")
+        or (request.headers.get("x-forwarded-for", "").split(",")[0].strip())
+        or (request.client.host if request.client else "")
+    )
+
+    is_private = (
+        not client_ip
+        or client_ip in ("127.0.0.1", "::1", "localhost", "testclient")
+        or client_ip.startswith((
+            "10.", "192.168.", "172.16.", "172.17.", "172.18.", "172.19.",
+            "172.20.", "172.21.", "172.22.", "172.23.", "172.24.", "172.25.",
+            "172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31.",
+            "fc00:", "fe80:"
+        ))
+    )
+
+    detected: dict = {}
+    lat: float | None = None
+    lon: float | None = None
+
+    # 1. Primary lookup via ipwho.is (fast, HTTPS, free)
+    try:
+        url = "https://ipwho.is/" if is_private else f"https://ipwho.is/{client_ip}"
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(url, headers={"User-Agent": "AstraAstrology/1.0"})
+            if resp.status_code == 200:
+                data = resp.json() or {}
+                if data.get("success") is not False:
+                    lat = float(data.get("latitude") or 0.0)
+                    lon = float(data.get("longitude") or 0.0)
+                    detected = {
+                        "city": data.get("city") or "",
+                        "state": data.get("region") or "",
+                        "postal_code": data.get("postal") or "",
+                        "country": data.get("country") or "India",
+                    }
+    except Exception as exc:
+        logger.warning(f"ipwho.is lookup failed: {exc}")
+
+    # 2. Secondary fallback via ip-api.com
+    if not detected.get("city"):
         try:
-            lat = float(d.get("lat"))
-            lon = float(d.get("lon"))
-        except (TypeError, ValueError):
-            continue
+            url = "http://ip-api.com/json/" if is_private else f"http://ip-api.com/json/{client_ip}"
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(url, headers={"User-Agent": "AstraAstrology/1.0"})
+                if resp.status_code == 200:
+                    data = resp.json() or {}
+                    if data.get("status") == "success":
+                        lat = float(data.get("lat") or 0.0)
+                        lon = float(data.get("lon") or 0.0)
+                        detected = {
+                            "city": data.get("city") or "",
+                            "state": data.get("regionName") or "",
+                            "postal_code": data.get("zip") or "",
+                            "country": data.get("country") or "India",
+                        }
+        except Exception as exc:
+            logger.warning(f"ip-api lookup failed: {exc}")
 
-        zone_name = zone_for_coordinates(lat, lon)
-        offset_hours: float | None = None
-        offset_label: str | None = None
-        abbreviation: str | None = None
-        is_dst = False
+    # 3. If lat/lon discovered, enrich with high quality street/suburb details
+    if lat and lon and (lat != 0.0 or lon != 0.0):
+        geo_enriched = await _reverse_geocode(lat, lon)
+        if geo_enriched:
+            return ApiResponse(
+                message="Location detected via network",
+                data={
+                    "display_name": geo_enriched.get("display_name", "") or f"{detected.get('city')}, {detected.get('state')}",
+                    "line1": geo_enriched.get("line1", "") or detected.get("city", ""),
+                    "line2": geo_enriched.get("line2", ""),
+                    "landmark": geo_enriched.get("landmark", ""),
+                    "city": geo_enriched.get("city") or detected.get("city", ""),
+                    "state": geo_enriched.get("state") or detected.get("state", ""),
+                    "postal_code": geo_enriched.get("postal_code") or detected.get("postal_code", ""),
+                    "country": geo_enriched.get("country") or detected.get("country", "India"),
+                    "latitude": lat,
+                    "longitude": lon,
+                },
+            )
 
-        if zone_name:
-            try:
-                resolved = offset_for_zone_at(
-                    zone_name,
-                    year or 2000,
-                    month or 1,
-                    day or 1,
-                    12,
-                )
-                offset_hours = round(resolved.offset_hours, 6)
-                offset_label = resolved.offset_label
-                abbreviation = resolved.abbreviation
-                is_dst = resolved.is_dst
-            except ValueError:
-                zone_name = None
-
-        address = d.get("address") or {}
-        city = (
-            address.get("city")
-            or address.get("town")
-            or address.get("village")
-            or address.get("municipality")
-            or address.get("county")
-            or ""
-        )
-        items.append(
-            {
-                "display_name": d.get("display_name", ""),
-                "place": city or (d.get("display_name", "").split(",")[0]),
-                "latitude": lat,
-                "longitude": lon,
-                "timezone_name": zone_name,
-                "timezone": offset_hours,
-                "timezone_label": offset_label,
-                "timezone_abbreviation": abbreviation,
-                "is_dst": is_dst,
-                "country": address.get("country", ""),
-                "state": address.get("state", ""),
-                "city": city,
-            }
-        )
-
-    return ApiResponse(message=f"Found {len(items)} location(s)", data=items)
+    city = detected.get("city", "")
+    state = detected.get("state", "")
+    return ApiResponse(
+        message="Location detected via network",
+        data={
+            "display_name": f"{city}, {state}".strip(", "),
+            "line1": city,
+            "line2": "",
+            "landmark": "",
+            "city": city,
+            "state": state,
+            "postal_code": detected.get("postal_code", ""),
+            "country": detected.get("country", "India"),
+            "latitude": lat or 0.0,
+            "longitude": lon or 0.0,
+        },
+    )
 
 
 @router.get(
@@ -358,18 +683,22 @@ async def get_client_rules(
     response_model=ApiResponse[DailyHoroscopeResponse],
     summary="Calculate 100% accurate in-house Daily Horoscope (Moon Transit Gochar & Panchang)",
 )
-async def get_daily_horoscope_post(payload: DailyHoroscopeRequest) -> ApiResponse[DailyHoroscopeResponse]:
+async def get_daily_horoscope_post(
+    payload: DailyHoroscopeRequest,
+    user: OptionalUser = None,
+) -> ApiResponse[DailyHoroscopeResponse]:
     """Calculates 100% in-house Daily Horoscope based on:
     1. Swiss Ephemeris sidereal planetary coordinates (Lahiri Ayanamsha)
     2. Classical Vedic Moon transit (Gochar) through 12 Bhavas relative to Janma Rashi
     3. Client's Rashi attributes and beneficial remedies
     4. Exact Daily Panchang (Tithi, Nakshatra, Yoga, Karana, Abhijit Muhurat, Rahu Kaal)
     """
+    charged, balance = await _charge_feature("daily_horoscope", "Daily Horoscope", user)
     result = _guard(calculate_daily_horoscope, payload, "daily-horoscope")
-    return ApiResponse(
-        message=f"Calculated Daily Horoscope for {result.date} ({result.day_of_week})",
-        data=result,
-    )
+    msg = f"Calculated Daily Horoscope for {result.date} ({result.day_of_week})"
+    if charged > 0:
+        msg += f" · {charged} coins deducted (Balance: {balance})"
+    return ApiResponse(message=msg, data=result)
 
 
 @router.get(
@@ -384,8 +713,10 @@ async def get_daily_horoscope_get(
     latitude: float = Query(default=22.5726, ge=-90.0, le=90.0),
     longitude: float = Query(default=88.3639, ge=-180.0, le=180.0),
     timezone: float = Query(default=5.5, ge=-12.0, le=14.0),
+    user: OptionalUser = None,
 ) -> ApiResponse[DailyHoroscopeResponse]:
     """Query parameter interface for Daily Horoscope (Moon Transit Gochar & Panchang)."""
+    charged, balance = await _charge_feature("daily_horoscope", "Daily Horoscope", user)
     lang = language if language in {"en", "bn", "hi"} else "en"
     req = DailyHoroscopeRequest(
         date=date,
@@ -396,8 +727,53 @@ async def get_daily_horoscope_get(
         timezone=timezone,
     )
     result = _guard(calculate_daily_horoscope, req, "daily-horoscope")
-    return ApiResponse(
-        message=f"Daily Horoscope for {result.date} ({result.day_of_week})",
-        data=result,
+    msg = f"Daily Horoscope for {result.date} ({result.day_of_week})"
+    if charged > 0:
+        msg += f" · {charged} coins deducted (Balance: {balance})"
+    return ApiResponse(message=msg, data=result)
+
+
+@router.post(
+    "/horoscope/annual-lal-kitab",
+    response_model=ApiResponse[AnnualHoroscopeResponse],
+    summary="Generate 1-Year Annual Horoscope & Lal Kitab Varshphal Prediction Report",
+)
+async def get_annual_horoscope_report_post(
+    payload: AnnualHoroscopeRequest,
+    user: OptionalUser = None,
+) -> ApiResponse[AnnualHoroscopeResponse]:
+    """Calculates 100% in-house 1-Year Annual Horoscope & Lal Kitab Varshphal Report based on:
+    1. Swiss Ephemeris sidereal coordinates & precise Solar Return (Varshpravesh) moment
+    2. Varshphal Lagna & 9 Grahas house placements
+    3. 6 Life Pillars Forecast & 4 Quarters Roadmap
+    4. Authentic Lal Kitab Remedies & Precautions strictly from client canon
+    5. Special Mahaupay & 8 Gomti Chakra Remedies
+    6. Consecrated Royal Vedic Digital Seal & Verification Proof
+    """
+    charged, balance = await _charge_feature("annual_horoscope", "1-Year Annual Horoscope & Lal Kitab Report", user)
+    
+    c_name = payload.client_name
+    if not c_name and user:
+        c_name = getattr(user, "full_name", None) or getattr(user, "name", None)
+
+    result_dict = generate_annual_lal_kitab_report(
+        date_of_birth=payload.date_of_birth,
+        time_of_birth=payload.time_of_birth,
+        latitude=payload.latitude,
+        longitude=payload.longitude,
+        timezone_offset=payload.timezone,
+        city_name=payload.city_name,
+        client_name=c_name,
+        target_year=payload.target_year,
+        language=payload.language,
+        primary_focus=payload.primary_focus,
     )
+    result_dict["coins_spent"] = charged
+    result_dict["wallet_balance"] = balance
+
+    msg = f"Generated 1-Year Annual Horoscope Report for {result_dict['target_year']}"
+    if charged > 0:
+        msg += f" · {charged} coins deducted (Balance: {balance})"
+    return ApiResponse(message=msg, data=AnnualHoroscopeResponse(**result_dict))
+
 

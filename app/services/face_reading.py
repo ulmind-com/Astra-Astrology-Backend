@@ -15,6 +15,8 @@ Charging happens **after** the reading is composed. A wallet should not be
 debited for a reading that then failed to build.
 """
 
+from typing import Any
+
 from beanie import PydanticObjectId
 from loguru import logger
 
@@ -129,12 +131,25 @@ def validate(measurements: dict[str, float], quality: float) -> None:
 
 
 async def create(
-    *, user: User, measurements: dict[str, float], quality: float
+    *,
+    user: User,
+    measurements: dict[str, float],
+    quality: float,
+    birth_details: dict[str, Any] | None = None,
+    tri_zone_analysis: dict[str, Any] | None = None,
+    pancha_mahabhuta: dict[str, Any] | None = None,
+    kundli_sync: dict[str, Any] | None = None,
 ) -> FaceReading:
     """Reads a face, charges for it, and keeps the result."""
+    from typing import Any
     from app.models.enums import TransactionReason
     from app.services import settings as settings_service
     from app.services import wallet as wallet_service
+    from app.services.face_cv.measurements import (
+        calculate_pancha_mahabhuta,
+        calculate_tri_zone_analysis,
+    )
+    from app.services.face_reading_kundli import synchronize_face_with_kundli
 
     platform = await settings_service.get_settings()
     if not platform.face_reading_enabled:
@@ -154,12 +169,28 @@ async def create(
             error_code="rules_unavailable",
         )
 
+    if tri_zone_analysis is None:
+        tri_zone_analysis = calculate_tri_zone_analysis(measurements=measurements)
+    if pancha_mahabhuta is None:
+        pancha_mahabhuta = calculate_pancha_mahabhuta(measurements)
+
+    if kundli_sync is None and birth_details:
+        kundli_sync = synchronize_face_with_kundli(
+            birth_data=birth_details,
+            measurements=measurements,
+            tri_zone=tri_zone_analysis,
+            mahabhuta=pancha_mahabhuta,
+        )
+
     reading = FaceReading(
         user_id=user.id,
         measurements=measurements,
         sections=sections,
         coins_charged=platform.face_reading_coins,
         quality=round(quality, 3),
+        tri_zone_analysis=tri_zone_analysis,
+        pancha_mahabhuta=pancha_mahabhuta,
+        kundli_sync=kundli_sync,
     )
     # Inserted first so the charge can carry its id, which is what makes the
     # debit idempotent — a retried request cannot be billed twice.

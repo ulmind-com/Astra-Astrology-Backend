@@ -51,9 +51,13 @@ async def _identify(token: str | None) -> tuple[str | None, str | None]:
 
 async def _pump(connection: realtime.Connection) -> None:
     """Sends whatever has been queued for this client, in order."""
-    while True:
-        message = await connection.queue.get()
-        await connection.websocket.send_json(message)
+    try:
+        while True:
+            message = await connection.queue.get()
+            await connection.websocket.send_json(message)
+    except (WebSocketDisconnect, RuntimeError, Exception):
+        # A disconnected client or cancelled task is a normal end of the stream
+        pass
 
 
 @router.websocket("/live")
@@ -65,18 +69,51 @@ async def live(websocket: WebSocket, token: str | None = Query(default=None)) ->
     realtime.register(connection)
 
     # An astrologer holding this socket is an astrologer at their desk.
-    await _set_presence(user_id, role, online=True)
+    astrologer_profile: Any = None
+    if role == "astrologer" and user_id:
+        astrologer_profile = await _profile_for(user_id, role)
+    await _set_presence(astrologer_profile, online=True)
 
     sender = asyncio.create_task(_pump(connection))
     try:
         await websocket.send_json({"type": "ready", "data": {"signed_in": bool(user_id)}})
 
+        # Deliver current feature pricing immediately upon connection
+        try:
+            from app.services import settings as settings_service
+
+            platform = await settings_service.get_settings()
+            connection.offer(
+                {
+                    "type": "feature_pricing",
+                    "data": realtime.build_feature_pricing_payload(platform),
+                }
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Could not queue initial feature pricing: {}", exc)
+
         while True:
             # The client pings; anything arriving proves the socket is alive.
             # Nothing arriving for longer than the timeout means it is not.
-            await asyncio.wait_for(websocket.receive_text(), timeout=IDLE_TIMEOUT_SECONDS)
+            raw_text = await asyncio.wait_for(websocket.receive_text(), timeout=IDLE_TIMEOUT_SECONDS)
             connection.offer({"type": "pong"})
-            await _touch_presence(user_id, role)
+            await _touch_presence(astrologer_profile)
+
+            # Handle live collaborative whiteboard broadcast frames if sent over websocket
+            if raw_text and raw_text.startswith("{"):
+                try:
+                    import json
+                    msg = json.loads(raw_text)
+                    if msg.get("action") == "whiteboard_live" and msg.get("to_user"):
+                        realtime._broadcast(
+                            {
+                                "type": "whiteboard_live",
+                                "data": msg.get("data", {}),
+                            },
+                            to_user=str(msg["to_user"]),
+                        )
+                except Exception:
+                    pass
 
     except (TimeoutError, WebSocketDisconnect):
         pass
@@ -84,13 +121,13 @@ async def live(websocket: WebSocket, token: str | None = Query(default=None)) ->
         logger.debug("Live socket ended: {}", exc)
     finally:
         sender.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
+        with contextlib.suppress(asyncio.CancelledError, WebSocketDisconnect, Exception):
             await sender
         realtime.unregister(connection)
         # Only the *last* tab closing takes them offline — an astrologer with
         # the panel open twice is still at their desk.
         if not (user_id and realtime.is_connected(user_id)):
-            await _set_presence(user_id, role, online=False)
+            await _set_presence(astrologer_profile, online=False)
 
 
 # -------------------------------------------------------------- presence
@@ -106,12 +143,11 @@ async def _profile_for(user_id: str | None, role: str | None) -> Any:
     return await Astrologer.find_one(Astrologer.user_id == PydanticObjectId(user_id))
 
 
-async def _set_presence(user_id: str | None, role: str | None, *, online: bool) -> None:
+async def _set_presence(profile: Any, *, online: bool) -> None:
     """Opening the panel is going online; closing it is going offline."""
+    if profile is None:
+        return
     try:
-        profile = await _profile_for(user_id, role)
-        if profile is None:
-            return
         from app.services import presence
 
         if online:
@@ -119,17 +155,24 @@ async def _set_presence(user_id: str | None, role: str | None, *, online: bool) 
         else:
             await presence.go_offline(profile, reason="panel closed")
     except Exception as exc:  # noqa: BLE001 - presence must never break the socket
-        logger.warning("Could not update presence for {}: {}", user_id, exc)
+        logger.warning("Could not update presence: {}", exc)
 
 
-async def _touch_presence(user_id: str | None, role: str | None) -> None:
-    """Refreshes the stamp, so the read-time TTL keeps agreeing they are here."""
+async def _touch_presence(profile: Any) -> None:
+    """Refreshes the stamp, so the read-time TTL keeps agreeing they are here.
+
+    Throttled to only write to MongoDB every 25 seconds instead of every ping.
+    """
+    if profile is None:
+        return
     try:
-        profile = await _profile_for(user_id, role)
-        if profile is None:
-            return
+        from app.models.base import utcnow
         from app.services import presence
+
+        last_seen = getattr(profile.availability, "last_seen_at", None)
+        if last_seen and (utcnow() - last_seen).total_seconds() < 25:
+            return
 
         await presence.beat(profile)
     except Exception as exc:  # noqa: BLE001
-        logger.debug("Presence refresh skipped for {}: {}", user_id, exc)
+        logger.debug("Presence refresh skipped: {}", exc)

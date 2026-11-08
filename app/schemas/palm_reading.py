@@ -74,7 +74,7 @@ class PalmScanResponse(BaseModel):
     quality_checks: list[QualityCheckOut] = Field(default_factory=list)
 
     hand_type: dict[str, Any] = Field(default_factory=dict)
-    measurements: dict[str, float] = Field(default_factory=dict)
+    measurements: dict[str, Any] = Field(default_factory=dict)
     measurement_details: dict[str, Any] = Field(default_factory=dict)
 
     creases: list[CreaseOut] = Field(default_factory=list)
@@ -92,6 +92,21 @@ class PalmScanResponse(BaseModel):
     palm_cup_depth_mm: float = 0.0
     finger_flexibility_3d: dict[str, Any] = Field(default_factory=dict)
     finger_inclinations_3d: dict[str, float] = Field(default_factory=dict)
+
+    #: Astrological extensions: Secondary lines, Sacred marks, Timeline, Skin vitality, Loops, Marriage, Archetype, Medical, Kundli Sync
+    secondary_lines: dict[str, Any] = Field(default_factory=dict)
+    sacred_marks: list[dict[str, Any]] = Field(default_factory=list)
+    timeline: list[dict[str, Any]] = Field(default_factory=list)
+    skin_vitality: dict[str, Any] = Field(default_factory=dict)
+    karmic_summary: dict[str, Any] = Field(default_factory=dict)
+    dermatoglyphic_loops: list[dict[str, Any]] = Field(default_factory=list)
+    marriage_patterns: list[dict[str, Any]] = Field(default_factory=list)
+    temperament_archetype: dict[str, Any] = Field(default_factory=dict)
+    medical_constitution: dict[str, Any] = Field(default_factory=dict)
+    kundli_palm_sync: dict[str, Any] = Field(default_factory=dict)
+    fingers_thumb_analysis: dict[str, Any] = Field(default_factory=dict)
+    timeline_1year_summary: dict[str, Any] = Field(default_factory=dict)
+    dual_hand_synastry: dict[str, Any] = Field(default_factory=dict)
 
     #: The traced overlay, so the reading can be checked against what was read.
     overlay_image: str | None = None
@@ -119,11 +134,53 @@ class PalmReadingOut(BaseModel):
     finger_flexibility_3d: dict[str, Any] = Field(default_factory=dict)
     finger_inclinations_3d: dict[str, float] = Field(default_factory=dict)
 
+    secondary_lines: dict[str, Any] = Field(default_factory=dict)
+    sacred_marks: list[dict[str, Any]] = Field(default_factory=list)
+    timeline: list[dict[str, Any]] = Field(default_factory=list)
+    skin_vitality: dict[str, Any] = Field(default_factory=dict)
+    karmic_summary: dict[str, Any] = Field(default_factory=dict)
+    dermatoglyphic_loops: list[dict[str, Any]] = Field(default_factory=list)
+    marriage_patterns: list[dict[str, Any]] = Field(default_factory=list)
+    temperament_archetype: dict[str, Any] = Field(default_factory=dict)
+    medical_constitution: dict[str, Any] = Field(default_factory=dict)
+    kundli_palm_sync: dict[str, Any] = Field(default_factory=dict)
+    fingers_thumb_analysis: dict[str, Any] = Field(default_factory=dict)
+    timeline_1year_summary: dict[str, Any] = Field(default_factory=dict)
+    dual_hand_synastry: dict[str, Any] = Field(default_factory=dict)
+
     overlay_image: str | None = None
     coins_charged: int = 0
     quality_score: float = 1.0
     warnings: list[str] = Field(default_factory=list)
     created_at: datetime
+
+
+class DualHandMatchRequest(BaseModel):
+    left_hand_image: str | None = None
+    right_hand_image: str | None = None
+    left_hand_measurements: dict[str, Any] | None = None
+    right_hand_measurements: dict[str, Any] | None = None
+    primary_handedness: str = "Right"
+
+
+class DualHandMatchResponse(BaseModel):
+    is_harmonious: bool = True
+    karma_evolution_score: int
+    prarabdha_score: int
+    purushartha_score: int
+    dominant_hand: str
+    prarabdha_summary_en: str
+    prarabdha_summary_bn: str
+    prarabdha_summary_hi: str
+    purushartha_summary_en: str
+    purushartha_summary_bn: str
+    purushartha_summary_hi: str
+    transformation_strengths_en: list[str] = Field(default_factory=list)
+    transformation_strengths_bn: list[str] = Field(default_factory=list)
+    transformation_strengths_hi: list[str] = Field(default_factory=list)
+    karma_advice_en: str
+    karma_advice_bn: str
+    karma_advice_hi: str
 
 
 class PalmRuleOut(BaseModel):

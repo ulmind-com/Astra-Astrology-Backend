@@ -130,6 +130,19 @@ async def start_call(
         raise ConflictError(
             "This astrologer is on another call.", error_code="astrologer_busy"
         )
+    # A multi-party chamber lives in its own collection, so the check above
+    # cannot see it. Without this an astrologer could be rung into a 1:1 call
+    # while hosting a family session, and both would bill at once.
+    from app.services import milan as milan_service
+
+    if await milan_service.live_room_for(user.id) is not None:
+        raise ConflictError(
+            "You are already in a chamber.", error_code="already_in_room"
+        )
+    if await milan_service.live_room_for(profile.user_id) is not None:
+        raise ConflictError(
+            "This astrologer is in a chamber.", error_code="astrologer_busy"
+        )
 
     # Price it and check the wallet before anyone's phone rings — being cut off
     # two seconds in is worse than being told up front.
@@ -258,6 +271,25 @@ async def _close(
     session.duration_seconds = int((now - started).total_seconds()) if started else 0
     await session.save()
 
+    if status is CallStatus.ENDED and session.started_at:
+        try:
+            from app.models.astrologer import Astrologer, ServiceDuration
+            from app.models.enums import ConsultationMode
+
+            astro = await Astrologer.get(session.astrologer_id)
+            if astro:
+                minutes = max(1, round(session.duration_seconds / 60)) if session.duration_seconds > 0 else 1
+                if not hasattr(astro, "service_duration") or astro.service_duration is None:
+                    astro.service_duration = ServiceDuration()
+                if session.mode == ConsultationMode.VIDEO:
+                    astro.service_duration.video_minutes += minutes
+                else:
+                    astro.service_duration.call_minutes += minutes
+                astro.total_consultations += 1
+                await astro.save()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not update astrologer service duration for call {}: {}", session.id, exc)
+
     logger.info(
         "Call {} {} by {} after {}s", session.id, status.value, by.value, session.duration_seconds
     )
@@ -290,7 +322,7 @@ async def _charge(session: CallSession) -> billing.ChargeResult:
         cap_minutes=session.requested_minutes or None,
     )
 
-    if result.coins_charged:
+    if result.coins_charged or session.appointment_id:
         session.minutes_charged = result.minutes_charged
         session.coins_charged += result.coins_charged
         session.earning_paise += result.earning_paise

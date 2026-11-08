@@ -11,12 +11,14 @@ from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import setup_logging
 from app.core.middleware import register_middleware
+from app.core.sentry import init_sentry
+from app.core.telemetry import flush_telemetry, init_telemetry
 from app.db.mongodb import close_mongo_connection, connect_to_mongo
 from app.services.firebase import init_firebase
 from app.services.storage import configure_cloudinary
 
 DESCRIPTION = """
-Backend for the **Astra Astrology** platform — astrology, numerology and
+Backend for the **DivinLink** platform — astrology, numerology and
 astrologer consultations.
 
 * `auth` — registration via email+password (OTP verified) and Google sign-in,
@@ -88,6 +90,12 @@ def _check_config() -> None:
                 "recharge whose browser callback is lost (common on UPI) never credits."
             )
 
+        if settings.is_production:
+            if not settings.sentry_configured:
+                warnings.append("SENTRY_DSN is not set — error tracking is inactive.")
+            if not settings.loki_configured:
+                warnings.append("GRAFANA_LOKI_* is not set — logs will not reach Grafana Cloud.")
+
     if not settings.resend_configured:
         warnings.append("RESEND_API_KEY is not set — emails will not be delivered.")
     if not settings.cloudinary_configured:
@@ -112,6 +120,7 @@ def _check_config() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     setup_logging()
+    init_sentry()
     logger.info("Starting {} ({})", settings.APP_NAME, settings.APP_ENV)
     _check_config()
 
@@ -122,15 +131,41 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # Pre-warm MediaPipe Face Landmarker in background so first user scan is fast
     try:
         import asyncio
+
         from app.services.face_cv.detector import get_landmarker
         asyncio.get_running_loop().run_in_executor(None, get_landmarker)
     except Exception as e:
         logger.debug("Face CV warm-up deferred: {}", e)
 
+    # Start 5-minute automated appointment reminder worker
+    reminder_task: asyncio.Task | None = None
+    try:
+        from app.services.reminders import appointment_reminder_worker_loop
+        reminder_task = asyncio.create_task(appointment_reminder_worker_loop())
+    except Exception as e:
+        logger.warning("Could not start appointment reminder worker: {}", e)
+
+    # Start 24-hour automated Cloudinary orphan image garbage collection worker
+    cloudinary_cleaner_task: asyncio.Task | None = None
+    try:
+        from app.services.shop_cloudinary_cleaner import periodic_cloudinary_orphan_cleaner_loop
+        cloudinary_cleaner_task = asyncio.create_task(periodic_cloudinary_orphan_cleaner_loop())
+    except Exception as e:
+        logger.warning("Could not start Cloudinary orphan cleaner worker: {}", e)
+
     logger.success("{} is ready on port {}.", settings.APP_NAME, settings.PORT)
     yield
 
     logger.info("Shutting down...")
+    for bg_task in (reminder_task, cloudinary_cleaner_task):
+        if bg_task and not bg_task.done():
+            bg_task.cancel()
+            try:
+                await bg_task
+            except (asyncio.CancelledError, Exception):
+                pass
+
+    flush_telemetry()
     await close_mongo_connection()
 
 
@@ -148,9 +183,12 @@ def create_app() -> FastAPI:
 
     register_middleware(app)
     register_exception_handlers(app)
+    init_telemetry(app)
+    from app.api.v1.health import router as health_router
+    app.include_router(health_router, include_in_schema=False)
     app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
-    @app.get("/", include_in_schema=False)
+    @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
     async def root() -> dict[str, str]:
         return {
             "name": f"{settings.APP_NAME} API",
@@ -159,6 +197,13 @@ def create_app() -> FastAPI:
             "docs": "/docs",
             "health": f"{settings.API_V1_PREFIX}/health",
         }
+
+    @app.get("/sentry-debug", include_in_schema=False)
+    async def trigger_sentry_error(trigger: bool = False) -> dict[str, str]:
+        """Verify Sentry integration without crashing on automated requests."""
+        if trigger and not settings.is_production:
+            _ = 1 / 0
+        return {"status": "ok", "message": "Sentry is active", "environment": settings.APP_ENV}
 
     return app
 

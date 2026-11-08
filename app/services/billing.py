@@ -50,7 +50,8 @@ def _default_rate(platform: PlatformSettings, mode: ConsultationMode) -> int:
         ConsultationMode.CHAT: platform.default_chat_coins_per_minute,
         ConsultationMode.CALL: platform.default_call_coins_per_minute,
         ConsultationMode.VIDEO: platform.default_video_coins_per_minute,
-    }[mode]
+        ConsultationMode.APPOINTMENT: platform.default_video_coins_per_minute,
+    }.get(mode, platform.default_video_coins_per_minute)
 
 
 def _own_rate(profile: Astrologer, mode: ConsultationMode) -> int | None:
@@ -58,7 +59,8 @@ def _own_rate(profile: Astrologer, mode: ConsultationMode) -> int | None:
         ConsultationMode.CHAT: profile.rates.chat_coins_per_minute,
         ConsultationMode.CALL: profile.rates.call_coins_per_minute,
         ConsultationMode.VIDEO: profile.rates.video_coins_per_minute,
-    }[mode]
+        ConsultationMode.APPOINTMENT: None,
+    }.get(mode, None)
 
 
 def coin_value_paise(coins_per_rupee: int) -> int:
@@ -71,9 +73,14 @@ def coin_value_paise(coins_per_rupee: int) -> int:
     return 100 // max(coins_per_rupee, 1)
 
 
-async def price_for(profile: Astrologer, mode: ConsultationMode) -> Price:
+async def price_for(
+    profile: Astrologer,
+    mode: ConsultationMode,
+    platform: PlatformSettings | None = None,
+) -> Price:
     """This astrologer's price for this kind of session, right now."""
-    platform = await settings_service.get_settings()
+    if platform is None:
+        platform = await settings_service.get_settings()
 
     rate = _own_rate(profile, mode) or _default_rate(platform, mode)
     commission = (
@@ -231,47 +238,59 @@ async def charge_due(
     earning_total = 0
     out_of_coins = False
 
+    astro = await Astrologer.get(astrologer_id)
+    astro_name = astro.display_name if astro else None
+    astro_img = astro.profile_image_url if astro else None
+
     while charged < due:
         minute = charged + 1
-        try:
-            await wallet_service.debit(
+        if price.coins_per_minute > 0:
+            try:
+                await wallet_service.debit(
+                    user_id=user_id,
+                    amount_coins=price.coins_per_minute,
+                    reason=TransactionReason.CONSULTATION,
+                    idempotency_key=f"session:{session_id}:minute:{minute}",
+                    ref=TransactionRef(
+                        session_id=session_id,
+                        astrologer_id=astrologer_id,
+                        astrologer_name=astro_name,
+                        astrologer_image_url=astro_img,
+                        consultation_mode=mode.value,
+                    ),
+                    note=f"{mode.value.capitalize()} consultation with {astro_name or 'Astrologer'} · minute {minute}",
+                )
+            except BadRequestError as exc:
+                # The only expected failure here is an empty wallet. Stop at the
+                # last minute that was actually paid for — never deliver one that
+                # was not.
+                if exc.error_code != "insufficient_balance":
+                    raise
+                out_of_coins = True
+                break
+
+            gross = price.coins_per_minute * price.coin_value_paise
+            commission = round(gross * price.commission_percent / 100)
+            earning = gross - commission
+
+            await EarningEntry(
+                astrologer_id=astrologer_id,
+                astrologer_user_id=astrologer_user_id,
                 user_id=user_id,
-                amount_coins=price.coins_per_minute,
-                reason=TransactionReason.CONSULTATION,
-                idempotency_key=f"session:{session_id}:minute:{minute}",
-                ref=TransactionRef(session_id=session_id),
-                note=f"{mode.value} · minute {minute}",
-            )
-        except BadRequestError as exc:
-            # The only expected failure here is an empty wallet. Stop at the
-            # last minute that was actually paid for — never deliver one that
-            # was not.
-            if exc.error_code != "insufficient_balance":
-                raise
-            out_of_coins = True
-            break
+                mode=mode,
+                session_id=session_id,
+                minute_index=minute,
+                coins_charged=price.coins_per_minute,
+                gross_paise=gross,
+                commission_percent=price.commission_percent,
+                commission_paise=commission,
+                earning_paise=earning,
+            ).insert()
 
-        gross = price.coins_per_minute * price.coin_value_paise
-        commission = round(gross * price.commission_percent / 100)
-        earning = gross - commission
-
-        await EarningEntry(
-            astrologer_id=astrologer_id,
-            astrologer_user_id=astrologer_user_id,
-            user_id=user_id,
-            mode=mode,
-            session_id=session_id,
-            minute_index=minute,
-            coins_charged=price.coins_per_minute,
-            gross_paise=gross,
-            commission_percent=price.commission_percent,
-            commission_paise=commission,
-            earning_paise=earning,
-        ).insert()
+            coins_total += price.coins_per_minute
+            earning_total += earning
 
         charged = minute
-        coins_total += price.coins_per_minute
-        earning_total += earning
 
     wallet = await wallet_service.get_or_create_wallet(user_id)
     minutes_left = affordable_minutes(wallet.balance_coins, price.coins_per_minute)

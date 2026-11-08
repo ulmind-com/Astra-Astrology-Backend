@@ -392,3 +392,59 @@ def test_quality_checks_schema_normalization():
     assert qc.head_pose.yaw == 3.1
 
 
+def test_execute_scan_pipeline_accepted(monkeypatch):
+    """Ensures execute_scan_pipeline runs through Stage E, F, G, TriZone, Mahabhuta without NameError."""
+    from unittest.mock import MagicMock
+    from app.services.face_cv.detector import DetectionResult
+    from app.services.face_cv.quality import QualityAssessment, QualityChecks, HeadPose
+    import app.services.face_cv.pipeline as pipeline_mod
+
+    raw_img = _make_dummy_image(640, 640)
+    dummy_lms_norm = _make_dummy_landmarks(478)
+    dummy_lms_px = [(x * 640, y * 640, z * 640) for x, y, z in dummy_lms_norm]
+
+    # Mock detector
+    mock_detector = MagicMock()
+    mock_detector.detect.return_value = DetectionResult(
+        face_count=1,
+        landmarks_norm=dummy_lms_norm,
+        landmarks_px=dummy_lms_px,
+        transformation_matrix=np.eye(4),
+    )
+    monkeypatch.setattr(pipeline_mod, "get_landmarker", lambda cfg: mock_detector)
+
+    # Mock quality assessment to ACCEPTED
+    mock_qa = QualityAssessment(
+        status=QualityStatus.ACCEPTED,
+        score=0.95,
+        message=None,
+        checks=QualityChecks(
+            sharpness_score=150.0,
+            brightness_mean=128.0,
+            overexposed_ratio=0.01,
+            lighting_symmetry_ratio=1.0,
+            face_coverage_ratio=0.35,
+            head_pose=HeadPose(
+                yaw_deg=1.0,
+                pitch_deg=2.0,
+                roll_deg=0.0,
+                is_frontal=True,
+                rotation_matrix=np.eye(3),
+            ),
+            issues=[],
+            recommendations=[],
+        ),
+    )
+    monkeypatch.setattr(pipeline_mod, "assess_quality", lambda **kwargs: mock_qa)
+
+    result = pipeline_mod.execute_scan_pipeline(raw_img)
+    assert result.status == QualityStatus.ACCEPTED
+    assert result.measurements is not None
+    assert len(result.measurements) > 10
+    assert result.tri_zone_analysis is not None
+    assert "ratio_str" in result.tri_zone_analysis
+    assert result.pancha_mahabhuta is not None
+    assert "dominant_element" in result.pancha_mahabhuta
+
+
+

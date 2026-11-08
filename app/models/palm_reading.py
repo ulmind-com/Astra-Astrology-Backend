@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from typing import Any
 
 import pymongo
 from beanie import PydanticObjectId
@@ -47,6 +48,15 @@ class PalmFeature(str, Enum):
     MOUNTS_3D = "mounts_3d"
     FINGER_FLEXIBILITY_3D = "finger_flexibility_3d"
     PALM_HOLLOW_3D = "palm_hollow_3d"
+    SUN_LINE = "sun_line"
+    MARS_LINE = "mars_line"
+    SACRED_MARKS = "sacred_marks"
+    SKIN_VITALITY = "skin_vitality"
+    DERMATOGLYPHIC_LOOPS = "dermatoglyphic_loops"
+    MARRIAGE_RELATIONSHIPS = "marriage_relationships"
+    TEMPERAMENT_ARCHETYPE = "temperament_archetype"
+    MEDICAL_CONSTITUTION = "medical_constitution"
+    KUNDLI_PALM_SYNC = "kundli_palm_sync"
 
 
 #: Human labels, used in the reading and in the admin list.
@@ -71,6 +81,15 @@ FEATURE_LABELS: dict[str, str] = {
     PalmFeature.MOUNTS_3D: "3D Mount Topography & Planetary Energies",
     PalmFeature.FINGER_FLEXIBILITY_3D: "3D Joint Flexibility & Spontaneity",
     PalmFeature.PALM_HOLLOW_3D: "3D Plain of Mars & Core Fortitude",
+    PalmFeature.SUN_LINE: "Sun Line (Fame, Public Eminence & Surya Radiance)",
+    PalmFeature.MARS_LINE: "Mars Line (Guardian Vitality & Sanjeevani Shield)",
+    PalmFeature.SACRED_MARKS: "Sacred Marks & Auspicious Yogas (Chihnas)",
+    PalmFeature.SKIN_VITALITY: "Ayurvedic Skin Radiance & Prana Flush",
+    PalmFeature.DERMATOGLYPHIC_LOOPS: "Dermatoglyphic Loops (Palmer Energy Flows)",
+    PalmFeature.MARRIAGE_RELATIONSHIPS: "Marriage & Soul Connections (Vivaha Rekha)",
+    PalmFeature.TEMPERAMENT_ARCHETYPE: "Vedic Temperament Archetype (Nature Analysis)",
+    PalmFeature.MEDICAL_CONSTITUTION: "Medical Chirology & Ayurvedic Constitution",
+    PalmFeature.KUNDLI_PALM_SYNC: "Kundli-Palm Planetary Synchronization (Graha-Mount Alignment)",
 }
 
 
@@ -194,7 +213,7 @@ class PalmRule(TimestampedDocument):
         indexes = [
             pymongo.IndexModel(
                 [("feature", pymongo.ASCENDING), ("option", pymongo.ASCENDING)],
-                name="palm_rule_feature_option",
+                name="palm_rule_unique",
                 unique=True,
             ),
             pymongo.IndexModel([("enabled", pymongo.ASCENDING)], name="palm_rule_enabled"),
@@ -235,7 +254,7 @@ class PalmReading(TimestampedDocument):
     user_id: PydanticObjectId
 
     hand: str = Field(default="unknown", max_length=10)  # "Left" | "Right"
-    measurements: dict[str, float] = Field(default_factory=dict)
+    measurements: dict[str, Any] = Field(default_factory=dict)
     hand_type: dict = Field(default_factory=dict)
     creases: dict = Field(default_factory=dict)
     crease_relationships: dict = Field(default_factory=dict)
@@ -247,6 +266,20 @@ class PalmReading(TimestampedDocument):
     palm_cup_depth_mm: float = Field(default=0.0)
     finger_flexibility_3d: dict = Field(default_factory=dict)
     finger_inclinations_3d: dict = Field(default_factory=dict)
+
+    secondary_lines: dict = Field(default_factory=dict)
+    sacred_marks: list[dict] = Field(default_factory=list)
+    timeline: list[dict] = Field(default_factory=list)
+    skin_vitality: dict = Field(default_factory=dict)
+    karmic_summary: dict = Field(default_factory=dict)
+    dermatoglyphic_loops: list[dict] = Field(default_factory=list)
+    marriage_patterns: list[dict] = Field(default_factory=list)
+    temperament_archetype: dict = Field(default_factory=dict)
+    medical_constitution: dict = Field(default_factory=dict)
+    kundli_palm_sync: dict = Field(default_factory=dict)
+    fingers_thumb_analysis: dict = Field(default_factory=dict)
+    timeline_1year_summary: dict = Field(default_factory=dict)
+    dual_hand_synastry: dict = Field(default_factory=dict)
 
     sections: list[ReadingSection] = Field(default_factory=list)
     skipped: list[SkippedFeature] = Field(default_factory=list)

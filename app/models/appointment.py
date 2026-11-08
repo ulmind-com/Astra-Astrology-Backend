@@ -52,6 +52,13 @@ class AvailabilityWindow(TimestampedDocument):
     starts_at: datetime
     ends_at: datetime
 
+    # VIP / Tatkal Emergency Window & Custom Multipliers
+    is_tatkal: bool = False
+    tatkal_multiplier: float = 1.5
+    tatkal_fixed_paise: int | None = None
+    custom_title: str | None = None
+    is_private: bool = False
+
     class Settings:
         name = "availability_windows"
         indexes = [
@@ -62,6 +69,10 @@ class AvailabilityWindow(TimestampedDocument):
             pymongo.IndexModel(
                 [("astrologer_id", pymongo.ASCENDING), ("day", pymongo.ASCENDING)],
                 name="availability_astrologer_day",
+            ),
+            pymongo.IndexModel(
+                [("astrologer_id", pymongo.ASCENDING), ("is_tatkal", pymongo.ASCENDING)],
+                name="availability_astrologer_tatkal",
             ),
         ]
 
@@ -95,16 +106,116 @@ class Appointment(TimestampedDocument):
     coins_per_rupee: int = Field(default=1, ge=1)
     # What is still owed to the astrologer at the session itself.
     balance_due_paise: int = Field(default=0, ge=0)
+    # Coins held in escrow for the remaining balance until completion
+    held_coins: int = Field(default=0, ge=0)
+    # Status of held balance coins: "none", "held", "released", "captured"
+    held_status: str = Field(default="none")
+
+    # Astrologer's cancellation window for client in minutes (e.g. 30m)
+    cancellation_window_minutes: int = Field(default=30, ge=0)
+    # The exact UTC deadline until which client is allowed to cancel
+    cancel_deadline: datetime | None = None
 
     cancelled_at: datetime | None = None
     cancelled_by: PydanticObjectId | None = None
     cancel_reason: str | None = Field(default=None, max_length=300)
+    completed_at: datetime | None = None
 
     # Set once the astrologer has been reminded, so a reminder is not repeated
     # every time the panel re-reads its schedule.
     reminded_at: datetime | None = None
 
     user_note: str | None = Field(default=None, max_length=1000)
+
+    # Consultation focus area (e.g. marriage, career, wealth, health, dosha, spiritual)
+    consultation_pillar: str | None = Field(default=None, max_length=50)
+    kundli_id: PydanticObjectId | None = None
+    birth_details: dict | None = None
+
+    # Astrologer's sacred prescription & remedial advice (gemstone, mantra, rudraksha, notes)
+    prescription: dict | None = None
+
+    # Vedic Muhurat classification calculated for the slot (amrit, shubh, labh, char, etc.)
+    muhurat_type: str | None = Field(default=None, max_length=50)
+
+    # AI Pre-Flight Astrological Intelligence Dossier (generated 15m prior or on-demand)
+    preflight_dossier: dict | None = None
+
+    # Cosmic Resonance & Synastry Compatibility Score (0-100%)
+    cosmic_synergy_score: int | None = Field(default=None, ge=0, le=100)
+
+    # Post-session Divya Paramarsha PDF Certificate data
+    certificate_data: dict | None = None
+
+    # Cosmic standby waitlist for auto-fill on cancellation
+    standby_queue: list[dict] = Field(default_factory=list)
+
+    # Courtesy Reschedule (Allowed 1 time by astrologer without extra fee)
+    rescheduled_count: int = Field(default=0, ge=0)
+    rescheduled_at: datetime | None = None
+    previous_starts_at: datetime | None = None
+    reschedule_reason: str | None = Field(default=None, max_length=500)
+
+    # Client No-Show Tracking (when client fails to join chamber after 10-15m wait)
+    is_no_show: bool = False
+    no_show_marked_at: datetime | None = None
+    no_show_wait_minutes: int | None = None
+
+    # Dedicated CallSession ID for video chamber
+    call_session_id: PydanticObjectId | None = None
+
+    # Brahma Pause Seeker Auto-Rescue Engine
+    brahma_pause_affected: bool = False
+    brahma_pause_reason: str | None = None
+    brahma_pause_until: datetime | None = None
+    rescue_deadline: datetime | None = None
+
+    # Client Screening & Abuse Shield (Red-Flag & Call Termination)
+    abuse_flagged: bool = False
+    abuse_reason: str | None = None
+    abuse_flagged_at: datetime | None = None
+    abuse_notes: str | None = None
+
+    # Birth Time Rectification (BTR) Authority
+    btr_requested: bool = False
+    btr_request_note: str | None = None
+    btr_requested_at: datetime | None = None
+    btr_fulfilled: bool = False
+    btr_updated_at: datetime | None = None
+
+    # Live In-Chamber Session Extension Authority
+    extension_offered: bool = False
+    extension_offered_minutes: int | None = None
+    extension_cost_coins: int = 0
+    extension_cost_paise: int = 0
+    extension_offered_at: datetime | None = None
+    extension_status: str = "none"  # "none", "pending", "accepted", "declined", "expired"
+    extension_total_extended_minutes: int = 0
+
+    # Complimentary Follow-up / Remedy Clarification Pass
+    follow_up_pass_enabled: bool = False
+    follow_up_window_days: int = 7
+    follow_up_expires_at: datetime | None = None
+    follow_up_max_messages: int = 3
+    follow_up_messages_used: int = 0
+    follow_up_granted_at: datetime | None = None
+    follow_up_notes: str | None = None
+    follow_up_thread: list[dict] = Field(default_factory=list)
+
+    # VIP Tatkal & Private Invite Link Authority
+    is_tatkal: bool = False
+    tatkal_multiplier: float | None = None
+    tatkal_premium_paise: int = 0
+    tatkal_premium_coins: int = 0
+    is_private: bool = False
+    invite_code: str | None = None
+
+    # Private Astrological Dossier / Vault (Confidential Astrologer Notes - Hidden from Seeker)
+    astrologer_private_notes: str | None = None
+    astrologer_private_notes_updated_at: datetime | None = None
+
+    # Two-Way Google Calendar Synced Event ID
+    google_calendar_event_id: str | None = None
 
     class Settings:
         name = "appointments"
@@ -118,6 +229,52 @@ class Appointment(TimestampedDocument):
                 name="appointment_user_recent",
             ),
             pymongo.IndexModel([("status", pymongo.ASCENDING)], name="appointment_status"),
+            pymongo.IndexModel(
+                [("user_id", pymongo.ASCENDING)],
+                unique=True,
+                partialFilterExpression={"status": "booked"},
+                name="unique_active_user_booking",
+            ),
+            pymongo.IndexModel(
+                [("astrologer_id", pymongo.ASCENDING), ("is_tatkal", pymongo.ASCENDING)],
+                name="appointment_astrologer_tatkal",
+            ),
+            pymongo.IndexModel(
+                [("invite_code", pymongo.ASCENDING)],
+                name="appointment_invite_code",
+            ),
+        ]
+
+
+class PrivateInviteLink(TimestampedDocument):
+    """Secure, invite-only private booking link for VIP and discreet clients.
+
+    Allows astrologers to provide customized consultation fees or private slots
+    that do not appear in the public marketplace, with optional passcode protection.
+    """
+
+    astrologer_id: PydanticObjectId
+    invite_code: str  # Unique code e.g. "VIP-XXXXXX"
+    title: str = "VIP Private Consultation"
+    client_name: str | None = None
+    client_email: str | None = None
+    has_passcode: bool = False
+    passcode_hash: str | None = None
+    custom_price_paise: int | None = None  # Custom flat fee override
+    discount_percent: float | None = None  # Optional discount % off standard rate
+    is_tatkal: bool = False
+    max_uses: int = 1
+    uses_count: int = 0
+    expires_at: datetime | None = None
+    is_active: bool = True
+    notes: str | None = None
+
+    class Settings:
+        name = "private_invite_links"
+        indexes = [
+            pymongo.IndexModel([("astrologer_id", pymongo.ASCENDING)]),
+            pymongo.IndexModel([("invite_code", pymongo.ASCENDING)], unique=True),
+            pymongo.IndexModel([("is_active", pymongo.ASCENDING)]),
         ]
 
 

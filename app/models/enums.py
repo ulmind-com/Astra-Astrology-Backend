@@ -69,6 +69,7 @@ class ConsultationMode(StrEnum):
     CHAT = "chat"
     CALL = "call"
     VIDEO = "video"
+    APPOINTMENT = "appointment"
 
 
 class OtpChannel(StrEnum):
@@ -96,6 +97,12 @@ class TransactionReason(StrEnum):
     # The platform's share of a scheduled appointment, taken when it is booked
     # and not returned if it is called off.
     APPOINTMENT_DEPOSIT = "appointment_deposit"
+    # Escrow hold and release for remaining consultation balance
+    APPOINTMENT_HOLD = "appointment_hold"
+    APPOINTMENT_RELEASE = "appointment_release"
+    APPOINTMENT_BALANCE = "appointment_balance"
+    # Coins deducted for using platform astrology / scanning features (Kundli, KP, etc.)
+    FEATURE_USAGE = "feature_usage"
 
 
 class PaymentOrderStatus(StrEnum):
@@ -169,3 +176,62 @@ class ReviewKind(StrEnum):
     CALL = "call"
     VIDEO = "video"
     APPOINTMENT = "appointment"
+
+
+# ---------------------------------------------------------------------------
+# Astra AstroStore / Remedy E-Commerce Enums
+# ---------------------------------------------------------------------------
+
+
+class ProductCategoryType(StrEnum):
+    """Canonical categories for authentic Vedic remedies."""
+
+    RUDRAKSHA = "rudraksha"
+    GEMSTONE = "gemstone"
+    YANTRA = "yantra"
+    GOMTI_CHAKRA = "gomti_chakra"
+    PARAD_ITEM = "parad_item"
+    KAWACH = "kawach"
+    DHOOP_SAMAGRI = "dhoop_samagri"
+    CRYSTAL_BRACELET = "crystal_bracelet"
+    VASTU_FENGSHUI = "vastu_fengshui"
+    MALA_ROSARY = "mala_rosary"
+    OTHER = "other"
+
+
+class ShopOrderStatus(StrEnum):
+    """Lifecycle of a physical e-commerce order."""
+
+    PLACED = "placed"
+    CONFIRMED = "confirmed"
+    SANCTIFYING = "sanctifying"  # Sacred Vedic Pran-Pratishtha / Energization
+    SHIPPED = "shipped"
+    OUT_FOR_DELIVERY = "out_for_delivery"
+    DELIVERED = "delivered"
+    CANCELLED = "cancelled"
+    RETURNED = "returned"
+
+
+class ShopPaymentStatus(StrEnum):
+    """Payment state for INR transactions via Razorpay."""
+
+    PENDING = "pending"
+    PAID = "paid"
+    FAILED = "failed"
+    REFUNDED = "refunded"
+
+
+class AddressType(StrEnum):
+    """Delivery address classification."""
+
+    HOME = "home"
+    OFFICE = "office"
+    OTHER = "other"
+
+
+class CouponDiscountType(StrEnum):
+    """How a discount coupon is calculated."""
+
+    PERCENTAGE = "percentage"
+    FLAT = "flat"
+

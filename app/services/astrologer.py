@@ -6,6 +6,8 @@ neither" rule as registration applies here, with the same rollback.
 """
 
 import secrets
+from datetime import UTC, datetime
+from typing import Any
 
 from loguru import logger
 from pymongo.errors import DuplicateKeyError
@@ -26,9 +28,10 @@ from app.schemas.astrologer import (
     AstrologerUpdate,
     AvailabilityUpdate,
     ResolvedRates,
+    ServiceDurationOut,
 )
 from app.schemas.common import Paginated, build_page
-from app.services import firebase, storage
+from app.services import firebase, realtime, storage
 from app.services.email import send_astrologer_welcome_email
 from app.services.storage import ALLOWED_IMAGE_TYPES
 
@@ -53,6 +56,46 @@ async def _unique_slug(display_name: str) -> str:
     return candidate
 
 
+def _format_service_duration(profile: Astrologer) -> ServiceDurationOut:
+    """Calculates hours and human-readable badges purely from actual real session minutes."""
+    sd = getattr(profile, "service_duration", None)
+    c_min = int(sd.chat_minutes) if sd and sd.chat_minutes else 0
+    cl_min = int(sd.call_minutes) if sd and sd.call_minutes else 0
+    v_min = int(sd.video_minutes) if sd and sd.video_minutes else 0
+
+    tot_min = c_min + cl_min + v_min
+
+    v_hr = round(v_min / 60, 1) if v_min > 0 else 0.0
+    c_hr = round(c_min / 60, 1) if c_min > 0 else 0.0
+    cl_hr = round(cl_min / 60, 1) if cl_min > 0 else 0.0
+    tot_hr = round(tot_min / 60, 1) if tot_min > 0 else 0.0
+
+    def _fmt(mins: int) -> str:
+        if mins <= 0:
+            return "0 mins"
+        if mins < 60:
+            return f"{mins} mins"
+        h = round(mins / 60, 1)
+        if h == int(h):
+            return f"{int(h)} hrs"
+        return f"{h} hrs"
+
+    return ServiceDurationOut(
+        chat_minutes=c_min,
+        call_minutes=cl_min,
+        video_minutes=v_min,
+        total_minutes=tot_min,
+        chat_hours=c_hr,
+        call_hours=cl_hr,
+        video_hours=v_hr,
+        total_hours=tot_hr,
+        formatted_chat=_fmt(c_min),
+        formatted_call=_fmt(cl_min),
+        formatted_video=_fmt(v_min),
+        formatted_total=_fmt(tot_min),
+    )
+
+
 def to_profile(user: User, profile: Astrologer) -> AstrologerProfile:
     return AstrologerProfile(
         id=str(profile.id),
@@ -69,7 +112,7 @@ def to_profile(user: User, profile: Astrologer) -> AstrologerProfile:
         bio=profile.bio,
         profile_image_url=profile.profile_image_url,
         banner_image_url=profile.banner_image_url,
-        gallery=profile.gallery,
+        gallery=profile.gallery or [],
         intro_video_url=profile.intro_video_url,
         skills=profile.skills,
         languages=profile.languages,
@@ -83,6 +126,7 @@ def to_profile(user: User, profile: Astrologer) -> AstrologerProfile:
         availability=profile.availability,
         rating=profile.rating,
         total_consultations=profile.total_consultations,
+        service_duration=_format_service_duration(profile),
         followers_count=profile.followers_count,
         is_listed=profile.is_listed,
         is_featured=profile.is_featured,
@@ -327,7 +371,15 @@ async def update_availability(profile: Astrologer, payload: AvailabilityUpdate) 
         profile.availability.last_online_at = utcnow()
         profile.availability.last_seen_at = utcnow()
 
-    await profile.save()
+    await Astrologer.get_pymongo_collection().update_one(
+        {"_id": profile.id},
+        {
+            "$set": {
+                "availability": profile.availability.model_dump(),
+                "updated_at": utcnow(),
+            }
+        },
+    )
     await realtime.publish_astrologer(profile)
     return profile
 
@@ -338,7 +390,7 @@ async def update_availability(profile: Astrologer, payload: AvailabilityUpdate) 
 MAX_GALLERY_IMAGES = 12
 
 
-async def to_public(profile: Astrologer) -> AstrologerPublic:
+async def to_public(profile: Astrologer, platform: Any = None) -> AstrologerPublic:
     """Fills in the platform defaults, so a card never shows a blank price.
 
     Also reports presence as it is *now*: an astrologer whose panel stopped
@@ -346,6 +398,10 @@ async def to_public(profile: Astrologer) -> AstrologerPublic:
     flag they set, so a closed browser never leaves a ghost on the directory.
     """
     from app.services import billing, presence
+    from app.services import settings as settings_service
+
+    if platform is None:
+        platform = await settings_service.get_settings()
 
     public = AstrologerPublic.model_validate(
         {**profile.model_dump(), "rates": {
@@ -356,16 +412,72 @@ async def to_public(profile: Astrologer) -> AstrologerPublic:
     )
     public.rates = ResolvedRates(
         chat_coins_per_minute=(
-            await billing.price_for(profile, ConsultationMode.CHAT)
+            await billing.price_for(profile, ConsultationMode.CHAT, platform=platform)
         ).coins_per_minute,
         call_coins_per_minute=(
-            await billing.price_for(profile, ConsultationMode.CALL)
+            await billing.price_for(profile, ConsultationMode.CALL, platform=platform)
         ).coins_per_minute,
         video_coins_per_minute=(
-            await billing.price_for(profile, ConsultationMode.VIDEO)
+            await billing.price_for(profile, ConsultationMode.VIDEO, platform=platform)
         ).coins_per_minute,
     )
     public.availability.is_online = presence.is_effectively_online(profile.availability)
+
+    sd = getattr(profile, "service_duration", None)
+    if not sd or (sd.chat_minutes == 0 and sd.call_minutes == 0 and sd.video_minutes == 0):
+        try:
+            from app.models.astrologer import ServiceDuration
+            from app.models.call import CallSession
+            from app.models.chat import ChatSession
+            from app.models.enums import CallStatus, ChatStatus
+
+            chats = await ChatSession.find(
+                ChatSession.astrologer_id == profile.id,
+                ChatSession.status == ChatStatus.ENDED,
+            ).to_list()
+            calls = await CallSession.find(
+                CallSession.astrologer_id == profile.id,
+                CallSession.status == CallStatus.ENDED,
+            ).to_list()
+
+            c_mins = sum(max(1, round(c.duration_seconds / 60)) for c in chats if c.duration_seconds > 0)
+            v_mins = sum(
+                max(1, round(c.duration_seconds / 60))
+                for c in calls
+                if c.mode == ConsultationMode.VIDEO and c.duration_seconds > 0
+            )
+            cl_mins = sum(
+                max(1, round(c.duration_seconds / 60))
+                for c in calls
+                if c.mode != ConsultationMode.VIDEO and c.duration_seconds > 0
+            )
+            if c_mins > 0 or v_mins > 0 or cl_mins > 0:
+                profile.service_duration = ServiceDuration(
+                    chat_minutes=c_mins,
+                    call_minutes=cl_mins,
+                    video_minutes=v_mins,
+                )
+                await profile.save()
+        except Exception:
+            pass
+
+    public.service_duration = _format_service_duration(profile)
+
+    # Auto-heal: If an astrologer has configured an appointment price > 0 and has active open windows,
+    # auto-enable appointments so clients can book them immediately.
+    if profile.appointment.price_paise > 0 and not profile.appointment.enabled:
+        try:
+            from app.models.appointment import AvailabilityWindow
+            has_windows = (
+                await AvailabilityWindow.find(AvailabilityWindow.astrologer_id == profile.id).count()
+            ) > 0
+            if has_windows:
+                profile.appointment.enabled = True
+                await profile.save()
+                public.appointment.enabled = True
+        except Exception:
+            pass
+
     return public
 
 
@@ -446,7 +558,9 @@ async def list_public(
         .limit(limit)
         .to_list()
     )
-    return build_page([await to_public(p) for p in profiles], total, page, limit)
+    return build_page(
+        [await to_public(p, platform=platform) for p in profiles], total, page, limit
+    )
 
 
 async def get_public(identifier: str) -> AstrologerPublic:
@@ -568,9 +682,26 @@ async def remove_banner_image(profile: Astrologer) -> Astrologer:
     return profile
 
 
+async def _upload_gallery_image(file, folder: str, user_id) -> storage.UploadResult:  # noqa: ANN001
+    return await storage.upload_file(
+        file,
+        folder=folder,
+        allowed_types=ALLOWED_IMAGE_TYPES,
+        tags=[f"astrologer:{user_id}", "gallery"],
+        transformation=[
+            {"width": 1600, "height": 1600, "crop": "limit"},
+            {"quality": "auto"},
+        ],
+        image_format="webp",
+    )
+
+
 async def add_gallery_image(user: User, profile: Astrologer, file):  # noqa: ANN001
     from app.core.exceptions import BadRequestError
     from app.models.astrologer import GalleryImage
+
+    if profile.gallery is None:
+        profile.gallery = []
 
     if len(profile.gallery) >= MAX_GALLERY_IMAGES:
         raise BadRequestError(
@@ -579,21 +710,77 @@ async def add_gallery_image(user: User, profile: Astrologer, file):  # noqa: ANN
             error_code="gallery_full",
         )
 
-    result = await _upload_image(file, "astrologers/gallery", user.id)
+    result = await _upload_gallery_image(file, "astrologers/gallery", user.id)
+    raw_item = {"url": result.url, "public_id": result.public_id}
+
+    # Fetch latest profile from DB to prevent race conditions
+    latest = await Astrologer.get_pymongo_collection().find_one(
+        {"$or": [{"_id": profile.id}, {"user_id": profile.user_id}]}
+    )
+    current_gallery = (latest.get("gallery") if latest else None) or []
+    
+    # Filter out any duplicates and append new item
+    new_gallery = [g for g in current_gallery if g.get("public_id") != result.public_id] + [raw_item]
+
+    res = await Astrologer.get_pymongo_collection().update_one(
+        {"$or": [{"_id": profile.id}, {"user_id": profile.user_id}]},
+        {
+            "$set": {
+                "gallery": new_gallery,
+                "updated_at": datetime.now(UTC),
+            }
+        },
+    )
+    logger.info("MongoDB gallery update: matched={}, modified={}", res.matched_count, res.modified_count)
+
     image = GalleryImage(url=result.url, public_id=result.public_id)
-    profile.gallery.append(image)
-    await profile.save()
+    profile.gallery = [GalleryImage(**item) for item in new_gallery]
+
+    try:
+        from app.services import realtime
+        await realtime.publish_astrologer(profile)
+    except Exception as exc:
+        logger.warning("Realtime publish failed (non-fatal): {}", exc)
+
+    logger.info("Astrologer gallery photo added for {} ({} bytes)", user.email, result.bytes)
     return image, profile
 
 
 async def remove_gallery_image(profile: Astrologer, public_id: str) -> Astrologer:
     from app.core.exceptions import NotFoundError
 
+    if profile.gallery is None:
+        profile.gallery = []
+
     image = next((g for g in profile.gallery if g.public_id == public_id), None)
     if image is None:
         raise NotFoundError("That image is not in the gallery.", error_code="image_not_found")
 
-    profile.gallery = [g for g in profile.gallery if g.public_id != public_id]
-    await profile.save()
+    latest = await Astrologer.get_pymongo_collection().find_one(
+        {"$or": [{"_id": profile.id}, {"user_id": profile.user_id}]}
+    )
+    current_gallery = (latest.get("gallery") if latest else None) or []
+    remaining_items = [g for g in current_gallery if g.get("public_id") != public_id]
+
+    res = await Astrologer.get_pymongo_collection().update_one(
+        {"$or": [{"_id": profile.id}, {"user_id": profile.user_id}]},
+        {
+            "$set": {
+                "gallery": remaining_items,
+                "updated_at": datetime.now(UTC),
+            }
+        },
+    )
+    logger.info("MongoDB gallery remove: matched={}, modified={}", res.matched_count, res.modified_count)
+
+    profile.gallery = [GalleryImage(**item) for item in remaining_items]
+
+    try:
+        from app.services import realtime
+        await realtime.publish_astrologer(profile)
+    except Exception as exc:
+        logger.warning("Realtime publish failed (non-fatal): {}", exc)
+
     await storage.delete_file(public_id)
+    logger.info("Astrologer gallery photo removed: {}", public_id)
     return profile

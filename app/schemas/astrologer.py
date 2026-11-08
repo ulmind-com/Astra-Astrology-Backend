@@ -167,6 +167,23 @@ class AstrologerAdminUpdate(AstrologerUpdate):
     status: AccountStatus | None = Field(default=None, description="Applies to the account")
 
 
+class ServiceDurationOut(BaseModel):
+    """Cumulative delivery time per service mode (Astrotalk-style breakdown)."""
+
+    chat_minutes: int = 0
+    call_minutes: int = 0
+    video_minutes: int = 0
+    total_minutes: int = 0
+    chat_hours: float = 0.0
+    call_hours: float = 0.0
+    video_hours: float = 0.0
+    total_hours: float = 0.0
+    formatted_chat: str = "0 mins"
+    formatted_call: str = "0 mins"
+    formatted_video: str = "0 mins"
+    formatted_total: str = "0 mins"
+
+
 # ---------------------------------------------------------------- output
 class AstrologerProfile(BaseModel):
     """The astrologer's own view, and the admin's."""
@@ -205,6 +222,7 @@ class AstrologerProfile(BaseModel):
     availability: Availability
     rating: RatingSummary
     total_consultations: int
+    service_duration: ServiceDurationOut = Field(default_factory=ServiceDurationOut)
     followers_count: int
 
     is_listed: bool
@@ -216,6 +234,10 @@ class AstrologerProfile(BaseModel):
     )
     last_login_at: datetime | None = None
     created_at: datetime
+    brahma_pause_until: datetime | None = None
+    brahma_pause_reason: str | None = None
+    brahma_pause_activated_at: datetime | None = None
+    blacklisted_user_ids: list[str] = Field(default_factory=list)
 
 
 class AstrologerCreated(BaseModel):
@@ -279,8 +301,12 @@ class AstrologerPublic(BaseModel):
     availability: Availability
     rating: RatingSummary
     total_consultations: int
+    service_duration: ServiceDurationOut = Field(default_factory=ServiceDurationOut)
     followers_count: int
     is_featured: bool
+    brahma_pause_until: datetime | None = None
+    brahma_pause_reason: str | None = None
+    brahma_pause_activated_at: datetime | None = None
 
     @field_validator("id", mode="before")
     @classmethod
@@ -302,3 +328,15 @@ class AstrologerFilters(BaseModel):
 class GalleryUploadResult(BaseModel):
     image: GalleryImage
     gallery: list[GalleryImage]
+
+
+class FavoriteToggleResult(BaseModel):
+    is_favorite: bool
+    favorites_count: int
+    message: str
+
+
+class FavoriteStatusResult(BaseModel):
+    is_favorite: bool
+    favorites_count: int
+

@@ -79,15 +79,32 @@ async def beat(profile: Astrologer) -> Astrologer:
     was_online = is_effectively_online(profile.availability)
 
     profile.availability.last_seen_at = now
+    status_changed = False
     if not profile.availability.is_online:
         profile.availability.is_online = True
         profile.availability.last_online_at = now
+        status_changed = True
 
-    await profile.save()
+    # Atomically update ONLY availability fields so other profile fields (like gallery)
+    # are never overwritten by heartbeat background calls
+    await Astrologer.get_pymongo_collection().update_one(
+        {"_id": profile.id},
+        {
+            "$set": {
+                "availability": profile.availability.model_dump(),
+                "updated_at": now,
+            }
+        },
+    )
 
     if not was_online:
         logger.info("Astrologer {} is online.", profile.display_name)
-    await _publish(profile)
+    # Only broadcast to all websockets when online status actually changes.
+    # Routine keep-alive beats just refresh the TTL timestamp; clients compute
+    # availability TTL locally so flooding the socket network with redundant
+    # card broadcasts is eliminated.
+    if not was_online or status_changed:
+        await _publish(profile)
     return profile
 
 
@@ -103,7 +120,16 @@ async def go_offline(profile: Astrologer, *, reason: str = "closed") -> Astrolog
 
     profile.availability.is_online = False
     profile.availability.last_seen_at = None
-    await profile.save()
+
+    await Astrologer.get_pymongo_collection().update_one(
+        {"_id": profile.id},
+        {
+            "$set": {
+                "availability": profile.availability.model_dump(),
+                "updated_at": utcnow(),
+            }
+        },
+    )
 
     logger.info("Astrologer {} is offline ({}).", profile.display_name, reason)
     await _publish(profile)

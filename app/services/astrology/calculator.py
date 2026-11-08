@@ -5,17 +5,25 @@ from app.schemas.astrology import (
     AvakahadaChakra,
     BirthPanchang,
     CalculationMeta,
+    ChandraBalaInfo,
     ClientNakshatraRules,
+    DailyTaraBalaInfo,
+    DashaBalanceAtBirth,
     DisputedValue,
+    GandantaInfo,
     HouseCusp,
     NakshatraCalculateRequest,
     NakshatraCalculateResponse,
+    NakshatraDispositionInfo,
     NakshatraPadaDetail,
     NakshatraTraits,
     PlanetPosition,
+    PushkaraInfo,
     RashiCalculateRequest,
     RashiCalculateResponse,
+    RashiPlanetaryDignity,
     RashiTraits,
+    SadeSatiStatus,
     TarabalaItem,
     TimezoneResolution,
 )
@@ -26,13 +34,21 @@ from app.services.astrology.nakshatra_rules import (
     RASHI_TATVA,
     RASHI_VARNA,
     RASHI_VASHYA,
+    calculate_daily_tara_bala,
+    calculate_dasha_balance,
+    calculate_gandanta,
     calculate_paya,
+    calculate_pushkara,
     calculate_tarabala_table,
+    get_nakshatra_disposition,
 )
 from app.services.astrology.rashi_rules import (
     NAKSHATRAS_DATA,
     RASHIS_DATA,
+    calculate_chandra_bala,
     calculate_kp_sub_lord,
+    calculate_sade_sati,
+    get_rashi_planetary_dignity,
 )
 from app.services.astrology.rashi_translations import get_rashi_translations
 from app.services.astrology.timezone_resolver import resolve as resolve_timezone
@@ -413,6 +429,75 @@ def calculate_rashi(payload: RashiCalculateRequest) -> RashiCalculateResponse:
         + ")"
     )
 
+    # 1. Navamsha (D9) and Vargottama Check
+    # Each Navamsha spans 360 / 108 = 3.3333333333° (3° 20')
+    nav_idx = int(moon_lon / (360.0 / 108.0)) % 12
+    nav_rashi = RASHIS_DATA[nav_idx]
+    is_vargottama = bool(nav_idx == rashi_idx)
+
+    # 2. Complete Classical Avakahada Chakra & Namakshar
+    nak_meta = NAKSHATRAS_MASTER[nak_idx]
+    moon_house_from_lagna = ((rashi_idx - asc_rashi_idx) % 12) + 1
+    paya_dict = calculate_paya(moon_house_from_lagna)
+    p_data = nak_meta["padas"][pada - 1]
+    native_namakshar = p_data.get(f"namakshar_{lang_pref}") or p_data.get("namakshar_en", "")
+
+    avakahada = AvakahadaChakra(
+        gana=nak_meta.get(f"gana_{lang_pref}", nak_meta.get("gana_en", "")),
+        yoni=nak_meta.get(f"yoni_{lang_pref}", nak_meta.get("yoni_en", "")),
+        yoni_animal=nak_meta.get(f"yoni_{lang_pref}", nak_meta.get("yoni_en", "")),
+        nadi=nak_meta.get(f"nadi_{lang_pref}", nak_meta.get("nadi_en", "")),
+        varna=RASHI_VARNA[rashi_idx].get(lang_pref, RASHI_VARNA[rashi_idx]["en"]),
+        vashya=RASHI_VASHYA[rashi_idx].get(lang_pref, RASHI_VASHYA[rashi_idx]["en"]),
+        tatva=RASHI_TATVA[rashi_idx].get(lang_pref, RASHI_TATVA[rashi_idx]["en"]),
+        paya=paya_dict.get(lang_pref, paya_dict["en"]),
+    )
+
+    # 3. Planetary Dignity Matrix (Exalted, Debilitated, Friends, Enemies)
+    dignity_data = get_rashi_planetary_dignity(rashi_idx, lang_pref)
+    planetary_dignity = RashiPlanetaryDignity(**dignity_data)
+
+    # 4. Chandra Lagna Kundli Planets (Relative to Moon Sign as House 1)
+    chandra_lagna_planets: list[PlanetPosition] = []
+    for p in planets_list:
+        c_house = ((p.sign_index - rashi_idx) % 12) + 1
+        chandra_lagna_planets.append(
+            PlanetPosition(
+                name=p.name,
+                symbol=p.symbol,
+                sign=p.sign,
+                sign_index=p.sign_index,
+                degree_in_sign=p.degree_in_sign,
+                degree_formatted=p.degree_formatted,
+                nakshatra=p.nakshatra,
+                pada=p.pada,
+                house=c_house,
+                is_retrograde=p.is_retrograde,
+            )
+        )
+
+    # 5. Real-Time Transit: Chandra Bala & Saturn Sade Sati / Dhaiya
+    now_utc = datetime.now(UTC)
+    swe.set_sid_mode(sidm_constant)
+    now_jd = swe.julday(
+        now_utc.year,
+        now_utc.month,
+        now_utc.day,
+        now_utc.hour + now_utc.minute / 60.0 + now_utc.second / 3600.0,
+    )
+
+    curr_moon_res, _ = swe.calc_ut(now_jd, swe.MOON, calc_flags)
+    curr_moon_lon = curr_moon_res[0] % 360.0
+    curr_moon_sign_idx = int(curr_moon_lon / 30.0) % 12
+    chandra_bala_data = calculate_chandra_bala(rashi_idx, curr_moon_sign_idx, lang_pref)
+    chandra_bala = ChandraBalaInfo(**chandra_bala_data)
+
+    curr_saturn_res, _ = swe.calc_ut(now_jd, swe.SATURN, calc_flags)
+    curr_saturn_lon = curr_saturn_res[0] % 360.0
+    curr_saturn_sign_idx = int(curr_saturn_lon / 30.0) % 12
+    sade_sati_data = calculate_sade_sati(rashi_idx, curr_saturn_sign_idx, lang_pref)
+    sade_sati = SadeSatiStatus(**sade_sati_data)
+
     return RashiCalculateResponse(
         name=payload.name.strip() or "Seeker",
         gender=payload.gender.capitalize(),
@@ -451,6 +536,17 @@ def calculate_rashi(payload: RashiCalculateRequest) -> RashiCalculateResponse:
         client_rules=client_rules.get_sign_profile(rashi_idx, lang_pref),
         ascendant_client_rules=client_rules.get_sign_profile(asc_rashi_idx, lang_pref),
         kp_reference=client_rules.get_kp_reference(lang_pref),
+        avakahada_chakra=avakahada,
+        namakshar=native_namakshar,
+        navamsha_rashi_index=nav_idx,
+        navamsha_rashi_name_en=nav_rashi["name_en"],
+        navamsha_rashi_name_bn=nav_rashi["name_bn"],
+        navamsha_rashi_name_hi=nav_rashi["name_hi"],
+        is_vargottama=is_vargottama,
+        planetary_dignity=planetary_dignity,
+        chandra_lagna_planets=chandra_lagna_planets,
+        chandra_bala=chandra_bala,
+        sade_sati_status=sade_sati,
         timezone_resolution=tz_info,
         house_cusps=house_cusps,
         calculation=CalculationMeta(
@@ -695,6 +791,28 @@ def calculate_nakshatra(payload: NakshatraCalculateRequest) -> NakshatraCalculat
         + ")"
     )
 
+    # 9. Classical Advancements: Gandanta, Pushkara, Dasha Balance, Live Daily Tara Bala, Disposition
+    gandanta_data = calculate_gandanta(moon_lon, nak_idx, pada)
+    gandanta_obj = GandantaInfo(**gandanta_data)
+
+    navamsha_sign = nak_meta["padas"][pada - 1]["navamsha"]
+    pushkara_data = calculate_pushkara(rashi_idx, moon_lon % 30.0, navamsha_sign, pada)
+    pushkara_obj = PushkaraInfo(**pushkara_data)
+
+    dasha_bal_data = calculate_dasha_balance(star_lord, offset_in_nak)
+    dasha_bal_obj = DashaBalanceAtBirth(**dasha_bal_data)
+
+    now_dt = datetime.now(UTC)
+    jd_now = swe.julday(
+        now_dt.year, now_dt.month, now_dt.day,
+        now_dt.hour + now_dt.minute / 60.0 + now_dt.second / 3600.0,
+    )
+    daily_tb_data = calculate_daily_tara_bala(swe, jd_now, nak_idx)
+    daily_tb_obj = DailyTaraBalaInfo(**daily_tb_data)
+
+    disp_data = get_nakshatra_disposition(nak_idx)
+    disp_obj = NakshatraDispositionInfo(**disp_data)
+
     return NakshatraCalculateResponse(
         name=payload.name.strip() or "Seeker",
         gender=payload.gender.capitalize(),
@@ -739,6 +857,11 @@ def calculate_nakshatra(payload: NakshatraCalculateRequest) -> NakshatraCalculat
         paya=paya,
         client_rules=ClientNakshatraRules(**technique_result),
         rashi_client_rules=client_rules.get_sign_profile(rashi_idx, lang_pref),
+        gandanta=gandanta_obj,
+        pushkara=pushkara_obj,
+        dasha_balance=dasha_bal_obj,
+        daily_tara_bala=daily_tb_obj,
+        disposition=disp_obj,
         timezone_resolution=tz_info,
         planets=chart_planets,
         ascendant_longitude=round(asc_lon, 4),

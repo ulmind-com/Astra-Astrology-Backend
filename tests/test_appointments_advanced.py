@@ -1,0 +1,869 @@
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from httpx import AsyncClient
+
+from app.models.appointment import Appointment, AppointmentStatus, AvailabilityWindow
+from app.models.astrologer import Astrologer
+from app.models.enums import Skill, TransactionReason
+from app.models.user import User
+from app.services import wallet as wallet_service
+from app.services.appointments import (
+    calculate_slot_muhurat,
+    book,
+    cancel,
+    update_prescription,
+    day_view,
+)
+
+
+def test_vedic_choghadiya_and_muhurat_calculation():
+    """Verify Choghadiya, Hora, Rahu Kaal, Yamaghanta, Gulika & Abhijit Muhurat calculation."""
+    from app.services.appointments import get_daily_panchang_shield
+
+    # Test Abhijit Muhurat time (12:00 PM IST = 06:30 AM UTC)
+    t_abhijit = datetime(2026, 11, 4, 6, 30, tzinfo=UTC)
+    res_abhijit = calculate_slot_muhurat(t_abhijit)
+    assert res_abhijit["is_abhijit"] is True
+    assert res_abhijit["quality"] == "super_auspicious"
+    assert "অভিজিৎ" in res_abhijit["badge_bn"]
+    assert res_abhijit["tag_color"] == "gold"
+
+    # Test Sunday Rahu Kaal (17:00 IST = 11:30 UTC on 2026-11-08)
+    # Sunday Rahu Kaal is 16:30 - 18:00 IST
+    t_rahu = datetime(2026, 11, 8, 11, 30, tzinfo=UTC)
+    res_rahu = calculate_slot_muhurat(t_rahu)
+    assert res_rahu["is_rahu_kaal"] is True
+    assert res_rahu["quality"] == "inauspicious"
+    assert res_rahu["tag_color"] == "red"
+    assert "রাহুকাল" in res_rahu["short_tag_bn"]
+
+    # Test Sunday Yamaghanta Kaal (12:30 IST = 07:00 UTC on 2026-11-08)
+    # Sunday Yamaghanta is 12:00 - 13:30 IST
+    t_yama = datetime(2026, 11, 8, 7, 0, tzinfo=UTC)
+    res_yama = calculate_slot_muhurat(t_yama)
+    assert res_yama["is_yamaghanta"] is True
+    assert res_yama["tag_color"] in ("gold", "amber")  # may overlap abhijit (11:45-12:35)
+
+    # Test Sunday Gulika Kaal (15:30 IST = 10:00 UTC on 2026-11-08)
+    # Sunday Gulika is 15:00 - 16:30 IST
+    t_gulika = datetime(2026, 11, 8, 10, 0, tzinfo=UTC)
+    res_gulika = calculate_slot_muhurat(t_gulika)
+    assert res_gulika["is_gulika"] is True
+    assert res_gulika["tag_color"] == "amber"
+
+    # Test Daily Panchang Shield summary
+    shield = get_daily_panchang_shield(datetime(2026, 11, 8).date())
+    assert shield["rahu_kaal"]["formatted_ist"] == "4:30 PM – 6:00 PM"
+    assert shield["yamaghanta_kaal"]["formatted_ist"] == "12:00 PM – 1:30 PM"
+    assert shield["gulika_kaal"]["formatted_ist"] == "3:00 PM – 4:30 PM"
+    assert len(shield["hourly_muhurat"]) == 24
+
+
+@pytest.mark.asyncio
+async def test_ai_preflight_cosmic_dossier_synthesis():
+    """Verify AI Pre-Flight Cosmic Dossier generation with Lagna, Moon sign, Nakshatra, Dasha and afflicted planets."""
+    from unittest.mock import AsyncMock, patch
+    from beanie import PydanticObjectId
+    from app.services.cosmic_intelligence import generate_preflight_dossier
+
+    user_id = PydanticObjectId()
+    appt = Appointment.model_construct(
+        id=PydanticObjectId(),
+        astrologer_id=PydanticObjectId(),
+        astrologer_user_id=PydanticObjectId(),
+        user_id=user_id,
+        starts_at=datetime(2026, 11, 10, 10, 0, tzinfo=UTC),
+        ends_at=datetime(2026, 11, 10, 10, 30, tzinfo=UTC),
+        minutes=30,
+        consultation_pillar="career_wealth",
+        birth_details={
+            "dob": "1992-11-12",
+            "tob": "19:45",
+            "pob": "Kolkata, West Bengal, India",
+            "lat": 22.5726,
+            "lon": 88.3639,
+            "timezone": 5.5,
+        },
+    )
+
+    with patch("app.models.user.User.get", new_callable=AsyncMock) as mock_user_get, \
+         patch("app.models.appointment.Appointment.save", new_callable=AsyncMock) as mock_save:
+        mock_user = AsyncMock()
+        mock_user.full_name = "Aniket Sen"
+        mock_user.email = "aniket@example.com"
+        mock_user_get.return_value = mock_user
+
+        dossier = await generate_preflight_dossier(appt)
+
+        assert dossier["client_name"] == "Aniket Sen"
+        assert dossier["is_birth_details_available"] is True
+        assert dossier["chart_mode"] == "natal_kundli"
+
+        # Check Core Identity (Lagna, Moon, Nakshatra)
+        core = dossier["core_identity"]
+        assert "lagna" in core
+        assert "chandra_rashi" in core
+        assert "nakshatra" in core
+        assert core["lagna_bn"] != ""
+
+        # Check Current Vimshottari Dasha
+        dasha = dossier["current_vimshottari_dasha"]
+        assert "mahadasha_lord" in dasha
+        assert "antardasha_lord" in dasha
+        assert "verdict_bn" in dasha
+
+        # Check Afflicted Planets
+        assert isinstance(dossier["afflicted_planets"], list)
+
+        # Check Pillar House Analysis
+        pha = dossier["pillar_house_analysis"]
+        assert pha["pillar_key"] == "career_wealth"
+        assert 10 in pha["relevant_houses"]
+        assert len(pha["houses_details"]) == 4
+
+        # Check Executive Cosmic Diagnosis
+        diag = dossier["executive_cosmic_diagnosis"]
+        assert "core_distress_bn" in diag
+        assert "opening_ice_breaker_bn" in diag
+        assert len(diag["one_glance_cheat_sheet"]) >= 3
+        assert "gemstone" in diag["remedial_blueprint"]
+
+
+@pytest.mark.asyncio
+async def test_two_way_google_calendar_sync_and_collision_guard():
+    """Verify two-way Google Calendar OAuth, token exchange, busy interval caching and slot collision blocking."""
+    from unittest.mock import AsyncMock, patch
+    from beanie import PydanticObjectId
+    from app.services import google_calendar as gcal_service
+    from app.models.astrologer import GoogleCalendarSync
+
+    astro_id = PydanticObjectId()
+    astro = Astrologer.model_construct(
+        id=astro_id,
+        user_id=PydanticObjectId(),
+        display_name="Acharya Sharma",
+        slug="acharya-sharma",
+        appointment=None,
+        google_calendar=GoogleCalendarSync(connected=False),
+    )
+
+    # 1. Test get_auth_url
+    auth_data = gcal_service.get_auth_url(astro_id)
+    assert "auth_url" in auth_data
+    assert "configured" in auth_data
+
+    # 2. Test exchange_code_for_tokens (in simulation/mock mode)
+    with patch("app.models.astrologer.Astrologer.save", new_callable=AsyncMock) as mock_save, \
+         patch("app.models.astrologer.Astrologer.get", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = astro
+        res = await gcal_service.exchange_code_for_tokens(astro, f"mock_google_code_{astro_id}")
+        assert res["connected"] is True
+        assert astro.google_calendar.connected is True
+        assert "acharya-sharma@gmail.com" in astro.google_calendar.email
+
+    # 3. Test day_view blocks colliding Google Calendar busy slots
+    tomorrow = datetime.now(UTC).date() + timedelta(days=1)
+    day_start = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 0, 0, tzinfo=UTC)
+    day_end = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 23, 59, tzinfo=UTC)
+
+    # Inject busy interval (10:00 AM - 11:30 AM UTC)
+    busy_start = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 10, 0, tzinfo=UTC)
+    busy_end = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 11, 30, tzinfo=UTC)
+    astro.google_calendar.busy_intervals = [{
+        "starts_at": busy_start.isoformat(),
+        "ends_at": busy_end.isoformat(),
+        "title": "Dr. Appointment / Family Commitment",
+        "source": "google_calendar",
+        "is_external": True,
+    }]
+
+    with patch("app.services.appointments._windows_for", new_callable=AsyncMock) as mock_windows, \
+         patch("app.services.appointments.booked_between", new_callable=AsyncMock) as mock_taken:
+        mock_windows.return_value = []
+        mock_taken.return_value = []
+
+        view = await day_view(astrologer=astro, day_start=day_start, day_end=day_end)
+        assert len(view["booked"]) >= 1
+        google_booked = [b for b in view["booked"] if b.get("source") == "google_calendar"]
+        assert len(google_booked) == 1
+        assert google_booked[0]["title"] == "Dr. Appointment / Family Commitment"
+        assert view["google_sync"]["connected"] is True
+
+
+@pytest.mark.asyncio
+async def test_appointment_booking_with_pillar_and_prescription(client: AsyncClient):
+    """Verify appointment creation with consultation pillar, Muhurat, and prescription workflow."""
+    # Create test user
+    client_user = await User(
+        email="test_client@astra.com",
+        first_name="Ananya",
+        last_name="Roy",
+        phone="+919876543210",
+    ).insert()
+
+    # Credit coins to user wallet
+    await wallet_service.credit(
+        user_id=client_user.id,
+        amount_coins=5000,
+        reason=TransactionReason.RECHARGE,
+        idempotency_key="seed:client:5000",
+    )
+
+    # Create astrologer user & profile
+    astro_user = await User(
+        email="test_astro@astra.com",
+        first_name="Ramesh",
+        last_name="Shastri",
+        phone="+919876543211",
+        role="astrologer",
+    ).insert()
+
+    astrologer = await Astrologer(
+        user_id=astro_user.id,
+        slug="pt-ramesh-shastri",
+        display_name="Pt. Ramesh Shastri",
+        experience_years=15,
+        skills=[Skill.VEDIC_ASTROLOGY, Skill.CAREER_BUSINESS],
+        languages=["Bengali", "Hindi", "English"],
+        is_listed=True,
+    ).insert()
+
+    # Configure appointment card
+    astrologer.appointment.enabled = True
+    astrologer.appointment.price_paise = 500_00  # ₹500
+    astrologer.appointment.block_minutes = 30
+    await astrologer.save()
+
+    # Open a future window (Tomorrow 10:00 AM - 02:00 PM UTC)
+    tomorrow = (datetime.now(UTC) + timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
+    window_end = tomorrow + timedelta(hours=4)
+    window = await AvailabilityWindow(
+        astrologer_id=astrologer.id,
+        day=tomorrow.date(),
+        starts_at=tomorrow,
+        ends_at=window_end,
+    ).insert()
+
+    # Test day_view
+    view = await day_view(astrologer=astrologer, day_start=tomorrow, day_end=window_end)
+    assert len(view["windows"]) >= 1
+    assert "muhurat_ratings" in view
+    assert len(view["muhurat_ratings"]) > 0
+
+    # Book 30-min slot with pillar and birth details
+    booking = await book(
+        user=client_user,
+        astrologer=astrologer,
+        starts_at=tomorrow,
+        minutes=30,
+        note="Looking for guidance on career switch.",
+        consultation_pillar="career_business",
+        birth_details={"dob": "1995-05-12", "tob": "14:30", "pob": "Kolkata"},
+    )
+
+    assert booking.status == AppointmentStatus.BOOKED
+    assert booking.consultation_pillar == "career_business"
+    assert booking.muhurat_type is not None
+    assert booking.birth_details["pob"] == "Kolkata"
+
+    # Astrologer writes sacred prescription
+    prescription_data = {
+        "gemstone": "Yellow Sapphire (Pukhraj) 5.25 Ratti on Index Finger",
+        "rudraksha": "5 Mukhi Nepal Rudraksha",
+        "mantra": "Om Brim Brihaspataye Namah",
+        "mantra_count": 108,
+        "daan_remedy": "Donate yellow grams and bananas on Thursdays",
+        "astrologer_notes": "Favorable Jupiter dasha begins next month; focus on higher leadership.",
+    }
+
+    updated_booking = await update_prescription(
+        appointment=booking,
+        astrologer_user_id=astro_user.id,
+        prescription_data=prescription_data,
+    )
+
+    assert updated_booking.prescription is not None
+    assert updated_booking.prescription["gemstone"].startswith("Yellow Sapphire")
+    assert updated_booking.prescription["mantra_count"] == 108
+
+    # Non-consulting user cannot update prescription
+    with pytest.raises(Exception):
+        await update_prescription(
+            appointment=booking,
+            astrologer_user_id=client_user.id,
+            prescription_data=prescription_data,
+        )
+
+    # Guard check: Premature completion of future booking MUST be blocked!
+    from app.services.appointments import complete
+    from app.core.exceptions import BadRequestError
+
+    with pytest.raises(BadRequestError) as exc_info:
+        await complete(appointment=booking, by=astro_user)
+    assert exc_info.value.error_code == "premature_completion"
+    assert "Cannot complete a session before it starts" in str(exc_info.value.message)
+
+    # Cancel appointment
+    cancelled = await cancel(appointment=booking, by=client_user, reason="Need to reschedule")
+    assert cancelled.status == AppointmentStatus.CANCELLED
+    assert cancelled.cancel_reason == "Need to reschedule"
+
+
+@pytest.mark.asyncio
+async def test_private_astrological_vault_notes(client: AsyncClient):
+    """Verify astrologer private vault notes are confidential and hidden from seeker."""
+    from app.api.v1.appointments import _out
+    from app.services.appointments import update_private_notes
+
+    astro_user = await User(
+        email="pandit.vault@divinlink.com",
+        first_name="Pandit",
+        phone="+919988776655",
+        role="astrologer",
+    ).insert()
+
+    astro_profile = await Astrologer(
+        user_id=astro_user.id,
+        display_name="Acharya Vault",
+        slug="acharya-vault",
+        is_verified=True,
+        is_listed=True,
+    ).insert()
+
+    client_user = await User(
+        email="seeker.vault@divinlink.com",
+        first_name="Seeker",
+        phone="+919988776654",
+        role="user",
+    ).insert()
+
+    starts_at = datetime.now(UTC) + timedelta(days=1)
+    ends_at = starts_at + timedelta(minutes=30)
+    booking = await Appointment(
+        user_id=client_user.id,
+        astrologer_id=astro_profile.id,
+        astrologer_user_id=astro_user.id,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        minutes=30,
+        price_paise=50000,
+        deposit_paise=10000,
+        deposit_coins=10,
+        balance_due_paise=40000,
+        status=AppointmentStatus.BOOKED,
+    ).insert()
+
+    # Astrologer writes confidential private notes
+    secret_note = "গোপন নোট: ক্লায়েন্টের মানসিক অস্থিরতা তীব্র, রাহু-চন্দ্রের গোচর প্রতিকূল।"
+    updated = await update_private_notes(
+        appointment=booking,
+        astrologer_user_id=astro_user.id,
+        notes=secret_note,
+    )
+    assert updated.astrologer_private_notes == secret_note
+    assert updated.astrologer_private_notes_updated_at is not None
+
+    # Seeker serialization MUST mask private notes to None
+    seeker_view = await _out(updated, client_user)
+    assert seeker_view.astrologer_private_notes is None
+    assert seeker_view.astrologer_private_notes_updated_at is None
+
+    # Astrologer serialization MUST show the confidential private notes
+    astro_view = await _out(updated, astro_user)
+    assert astro_view.astrologer_private_notes == secret_note
+    assert astro_view.astrologer_private_notes_updated_at is not None
+
+    # Unauthorized user (seeker) cannot update private notes
+    with pytest.raises(Exception):
+        await update_private_notes(
+            appointment=booking,
+            astrologer_user_id=client_user.id,
+            notes="Hacked note",
+        )
+
+
+@pytest.mark.asyncio
+async def test_contiguous_availability_windows_boundary_collision(client: AsyncClient):
+    """Verify that adjacent/contiguous slots (e.g. 5-6 PM and 6-7 PM) do NOT trigger false overlap errors."""
+    from beanie.operators import GT, LT, And
+    from app.core.exceptions import BadRequestError
+    from app.services.appointments import open_quick_tatkal_window
+
+    astro_user = await User(
+        email="contiguous_astro@astra.com",
+        first_name="Contiguous",
+        last_name="Pandit",
+    ).insert()
+
+    astro = await Astrologer(
+        user_id=astro_user.id,
+        display_name="Acharya Contiguous",
+        skills=[Skill.VEDIC_ASTROLOGY],
+        languages=["Bengali", "English"],
+    ).insert()
+
+    base_time = (datetime.now(UTC) + timedelta(days=2)).replace(minute=0, second=0, microsecond=0)
+    w1_start = base_time.replace(hour=17)
+    w1_end = base_time.replace(hour=18)
+
+    # Window 1: 17:00 - 18:00
+    w1 = await AvailabilityWindow(
+        astrologer_id=astro.id,
+        day=w1_start.date(),
+        starts_at=w1_start,
+        ends_at=w1_end,
+    ).insert()
+
+    # Contiguous Window 2: 18:00 - 19:00 (Boundary touches w1_end, MUST NOT clash!)
+    w2_start = base_time.replace(hour=18)
+    w2_end = base_time.replace(hour=19)
+
+    clash_contiguous = await AvailabilityWindow.find_one(
+        And(
+            AvailabilityWindow.astrologer_id == astro.id,
+            LT(AvailabilityWindow.starts_at, w2_end),
+            GT(AvailabilityWindow.ends_at, w2_start),
+        )
+    )
+    assert clash_contiguous is None, "Contiguous adjacent slot (18:00-19:00) falsely clashed with (17:00-18:00)!"
+
+    w2 = await AvailabilityWindow(
+        astrologer_id=astro.id,
+        day=w2_start.date(),
+        starts_at=w2_start,
+        ends_at=w2_end,
+    ).insert()
+
+    # Truly Overlapping Window 3: 17:30 - 18:30 (Overlaps both w1 and w2, MUST clash!)
+    w3_start = base_time.replace(hour=17, minute=30)
+    w3_end = base_time.replace(hour=18, minute=30)
+
+    clash_overlapping = await AvailabilityWindow.find_one(
+        And(
+            AvailabilityWindow.astrologer_id == astro.id,
+            LT(AvailabilityWindow.starts_at, w3_end),
+            GT(AvailabilityWindow.ends_at, w3_start),
+        )
+    )
+    assert clash_overlapping is not None, "Overlapping slot (17:30-18:30) failed to detect clash!"
+
+    # Contiguous VIP Tatkal slot: 19:00 - 19:30 (Right after w2_end, MUST succeed without clash)
+    w_tatkal = await open_quick_tatkal_window(
+        astrologer=astro,
+        starts_at=base_time.replace(hour=19),
+        minutes=30,
+        multiplier=2.0,
+    )
+    assert w_tatkal is not None
+    assert w_tatkal.starts_at == base_time.replace(hour=19)
+    assert w_tatkal.ends_at == base_time.replace(hour=19, minute=30)
+
+    # Overlapping VIP Tatkal slot: 18:45 - 19:15 (Overlaps w2 and tatkal, MUST raise BadRequestError)
+    with pytest.raises(BadRequestError):
+        await open_quick_tatkal_window(
+            astrologer=astro,
+            starts_at=base_time.replace(hour=18, minute=45),
+            minutes=30,
+        )
+
+
+@pytest.mark.asyncio
+async def test_availability_window_timezone_date_truncation_fix(client: AsyncClient):
+    """Verify that slots scheduled past midnight in IST (e.g. 01:00 AM IST) do not get truncated to the previous day in UTC."""
+    from zoneinfo import ZoneInfo
+    from app.services.appointments import open_quick_tatkal_window
+
+    astro_user = await User(
+        email="tz_astro@astra.com",
+        first_name="Timezone",
+        last_name="Pandit",
+    ).insert()
+
+    astro = await Astrologer(
+        user_id=astro_user.id,
+        display_name="Acharya Timezone",
+        skills=[Skill.VEDIC_ASTROLOGY],
+        languages=["Bengali", "English"],
+    ).insert()
+
+    IST = ZoneInfo("Asia/Kolkata")
+    # Astrologer in Kolkata wants to open a window on 2026-11-15 at 01:00 AM IST to 02:00 AM IST
+    # In UTC, 01:00 AM IST on 2026-11-15 is 19:30 UTC on 2026-11-14!
+    ist_start = datetime(2026, 11, 15, 1, 0, tzinfo=IST)
+    utc_start = ist_start.astimezone(UTC)
+
+    assert utc_start.date() == datetime(2026, 11, 14).date(), "Sanity check: in UTC date is 14th"
+    assert ist_start.date() == datetime(2026, 11, 15).date(), "Sanity check: in IST date is 15th"
+
+    # Quick tatkal window
+    w_tatkal = await open_quick_tatkal_window(
+        astrologer=astro,
+        starts_at=utc_start,
+        minutes=30,
+        timezone_name="Asia/Kolkata",
+    )
+    # The stored day MUST be 2026-11-15 (IST date), NOT 2026-11-14 (UTC truncated date)!
+    assert w_tatkal.day == datetime(2026, 11, 15).date(), f"Expected 2026-11-15 but got {w_tatkal.day}"
+
+
+@pytest.mark.asyncio
+async def test_meditation_buffer_window_boundary_spill_guard(client: AsyncClient):
+    """Verify that an appointment's meditation buffer cannot spill outside the astrologer's availability window."""
+    from app.core.exceptions import BadRequestError
+    from app.services import appointments as appt_service
+    from app.models.astrologer import AppointmentCard
+
+    # 1. Setup user & astrologer with 15-minute meditation buffer
+    astro_user = await User(
+        email="buffer_astro@astra.com",
+        first_name="Buffer",
+        last_name="Pandit",
+    ).insert()
+
+    astro = await Astrologer(
+        user_id=astro_user.id,
+        display_name="Acharya Buffer",
+        skills=[Skill.VEDIC_ASTROLOGY],
+        languages=["English"],
+        appointment=AppointmentCard(
+            enabled=True,
+            price_paise=10000,
+            block_minutes=30,
+            buffer_minutes=15,
+        ),
+    ).insert()
+
+    client_user = await User(
+        email="buffer_client@astra.com",
+        first_name="Client",
+        last_name="One",
+    ).insert()
+
+    # Credit client wallet
+    await wallet_service.credit(
+        user_id=client_user.id,
+        amount_coins=10000,
+        reason=TransactionReason.RECHARGE,
+        idempotency_key="seed:buffer_client:10000",
+    )
+
+    # 2. Astrologer opens window: 17:00 - 18:00 (5:00 PM - 6:00 PM)
+    base_time = (datetime.now(UTC) + timedelta(days=2)).replace(minute=0, second=0, microsecond=0)
+    w_start = base_time.replace(hour=17)
+    w_end = base_time.replace(hour=18)
+
+    await AvailabilityWindow(
+        astrologer_id=astro.id,
+        day=w_start.date(),
+        starts_at=w_start,
+        ends_at=w_end,
+    ).insert()
+
+    # 3. Test day_view exposes buffer_minutes == 15
+    d_view = await appt_service.day_view(
+        astrologer=astro,
+        day_start=base_time.replace(hour=0),
+        day_end=base_time.replace(hour=23, minute=59),
+    )
+    assert d_view["buffer_minutes"] == 15
+
+    # 4. Attempt Booking at 17:30 for 30 minutes:
+    # Consultation ends at 18:00, but meditation buffer extends to 18:15 (spills past 18:00 window).
+    # MUST be rejected with error_code="outside_availability"!
+    slot_spilling = base_time.replace(hour=17, minute=30)
+    with pytest.raises(BadRequestError) as exc_info:
+        await appt_service._book_locked(
+            user=client_user,
+            astrologer=astro,
+            starts_at=slot_spilling,
+            minutes=30,
+        )
+    assert exc_info.value.error_code == "outside_availability"
+    assert "meditation buffer" in exc_info.value.message
+
+    # 5. Attempt Booking at 17:00 for 30 minutes:
+    # Consultation ends at 17:30, meditation buffer ends at 17:45 (well within 18:00 window).
+    # MUST succeed!
+    slot_fitting = base_time.replace(hour=17, minute=0)
+    appt = await appt_service._book_locked(
+        user=client_user,
+        astrologer=astro,
+        starts_at=slot_fitting,
+        minutes=30,
+    )
+    assert appt is not None
+    assert appt.starts_at == slot_fitting
+    assert appt.ends_at == slot_fitting + timedelta(minutes=30)
+
+
+def test_divya_paramarsha_certificate_and_qr_verification_generation():
+    """Verify Royal Vedic Divya Paramarsha Certificate data and HTML generation."""
+    from unittest.mock import MagicMock
+    from app.services.cosmic_intelligence import (
+        generate_divya_paramarsha_certificate_data,
+        generate_certificate_html,
+    )
+
+    appointment = MagicMock()
+    appointment.id = "672bb192a0e28f323c10b192"
+    appointment.minutes = 45
+    appointment.consultation_pillar = "career_wealth"
+    appointment.prescription = {
+        "gemstone": "Natural Emerald (Panna) 4.5 Carats in Gold on Little Finger",
+        "rudraksha": "4 Mukhi Consecrated Mercury Rudraksha",
+        "mantra": "ॐ ब्रां ब्रीं ब्रौं सः बुधाय नमः",
+        "mantra_count": 108,
+        "daan_remedy": "Donate green moong dal and feed green grass to cows on Wednesday morning",
+        "sankalpa": "May my communication and intellect remain aligned with cosmic truth and clarity",
+        "astrologer_notes": "Chant Budha Beej mantra during sunrise for 21 days with copper water",
+    }
+
+    astrologer = MagicMock()
+    astrologer.display_name = "Acharya Ramanathan"
+    astrologer.avatar_url = "https://astra.com/avatar.jpg"
+
+    client = MagicMock()
+    client.full_name = "Arjun Sen"
+    client.first_name = "Arjun"
+    client.email = "arjun@example.com"
+
+    # 1. Generate certificate data
+    cert = generate_divya_paramarsha_certificate_data(appointment, astrologer, client)
+
+    assert cert["certificate_id"].startswith("ASTRA-DIVYA-")
+    assert cert["client"]["name"] == "Arjun Sen"
+    assert cert["astrologer"]["name"] == "Acharya Ramanathan"
+    assert "Career Wealth" in cert["consultation_pillar"]
+    assert cert["sacred_prescription"]["consecrated_gemstone"] == appointment.prescription["gemstone"]
+    assert cert["sacred_prescription"]["sacred_rudraksha"] == appointment.prescription["rudraksha"]
+    assert cert["sacred_prescription"]["sankalpa"] == appointment.prescription["sankalpa"]
+    assert cert["digital_seal"]["status"] == "Authentic & Consecrated"
+    assert "qr_code_url" in cert
+    assert "verify/prescription" in cert["verification_url"]
+    assert len(cert["vedic_shlokas"]) >= 2
+    assert "गायत्री" in cert["vedic_shlokas"][0]["sanskrit"] or "भूर्भुवः" in cert["vedic_shlokas"][0]["sanskrit"]
+
+    # 2. Render HTML certificate
+    html = generate_certificate_html(cert)
+    assert "Divya Paramarsha Certificate" in html
+    assert "Arjun Sen" in html
+    assert "Acharya Ramanathan" in html
+    assert "Emerald" in html
+    assert "Budhay" in html or "बुधाय" in html
+    assert "Print & Save PDF" in html
+    assert "ASTRA SEAL" in html
+    assert "qr-img" in html
+
+
+@pytest.mark.asyncio
+async def test_karmic_consultation_vault_repeat_timeline():
+    """Verify Karmic Consultation History Vault generates timeline, sequence, and repeat rapport ice-breaker."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from app.services.cosmic_intelligence import build_karmic_consultation_vault
+
+    curr_appointment = MagicMock()
+    curr_appointment.id = "app_current_003"
+    curr_appointment.user_id = "user_client_101"
+    curr_appointment.astrologer_id = "astro_prof_202"
+    curr_appointment.astrologer_user_id = "astro_user_202"
+    curr_appointment.starts_at = datetime(2026, 4, 1, 10, 0, tzinfo=UTC)
+
+    # Past session 1: Jan 15, 2026 (Career, Emerald prescribed)
+    past_1 = MagicMock()
+    past_1.id = "app_past_001"
+    past_1.starts_at = datetime(2026, 1, 15, 12, 0, tzinfo=UTC)
+    past_1.status = "completed"
+    past_1.minutes = 45
+    past_1.consultation_pillar = "career_wealth"
+    past_1.note = "কর্মক্ষেত্রে পদোন্নতি ও আর্থিক বাধা সংক্রান্ত পরামর্শ"
+    past_1.prescription = {
+        "gemstone": "পান্না (Emerald)",
+        "mantra": "ॐ ब्रां ब्रीं ब्रौं सः बुधाय नमः",
+        "astrologer_notes": "সকালে বুধের বীজমন্ত্র জপ ও পান্না রত্ন ধারণের নির্দেশ",
+    }
+    past_1.certificate_data = {"certificate_id": "ASTRA-DIVYA-001"}
+    past_1.follow_up_notes = "ক্লায়েন্ট জানিয়েছে পদোন্নতি হয়েছে ও নতুন দায়িত্ব পেয়েছে।"
+    past_1.follow_up_thread = [{"sender": "client", "text": "ক্লায়েন্ট জানিয়েছে পদোন্নতি হয়েছে।"}]
+
+    # Past session 2: March 10, 2026 (Follow-up)
+    past_2 = MagicMock()
+    past_2.id = "app_past_002"
+    past_2.starts_at = datetime(2026, 3, 10, 11, 0, tzinfo=UTC)
+    past_2.status = "completed"
+    past_2.minutes = 30
+    past_2.consultation_pillar = "career_wealth"
+    past_2.note = "ফলো-আপ ও পরবর্তী পদোন্নতি প্রস্তুতি"
+    past_2.prescription = {
+        "gemstone": "পান্না (Emerald)",
+        "rudraksha": "৪ মুখী রুদ্রাক্ষ",
+        "astrologer_notes": "পূর্বের পান্না যথারীতি ধারণ অব্যাহত রাখার পরামর্শ",
+    }
+    past_2.certificate_data = None
+    past_2.follow_up_notes = None
+    past_2.follow_up_thread = []
+
+    # Mock DB queries
+    with patch("app.models.astrologer.Astrologer.get", new_callable=AsyncMock) as mock_astro_get, \
+         patch("app.models.appointment.Appointment.find") as mock_app_find, \
+         patch("app.models.review.Review.find_one", new_callable=AsyncMock) as mock_rev_find:
+
+        mock_astro = MagicMock()
+        mock_astro.id = "astro_prof_202"
+        mock_astro.user_id = "astro_user_202"
+        mock_astro_get.return_value = mock_astro
+
+        # Return the 2 past appointments
+        mock_query = MagicMock()
+        mock_query.sort.return_value.to_list = AsyncMock(return_value=[past_2, past_1])
+        mock_app_find.return_value = mock_query
+
+        # Return a review for session 1
+        mock_review = MagicMock()
+        mock_review.stars = 5
+        mock_review.text = "পান্না ধারণের পর সত্যি পদোন্নতি হয়েছে! ধন্যবাদ আচার্যজী।"
+        mock_rev_find.return_value = mock_review
+
+        vault = await build_karmic_consultation_vault(curr_appointment)
+
+        # 1. Sequence & Repeat Status
+        assert vault["is_repeat_client"] is True
+        assert vault["total_sessions_with_this_astrologer"] == 3
+        assert vault["session_sequence_number"] == 3
+        assert "৩য় আগমন" in vault["relationship_badge_bn"]
+        assert vault["relationship_tier"] == "loyal"
+
+        # 2. Timeline items
+        assert len(vault["timeline"]) == 2
+        timeline_0 = vault["timeline"][0]
+        assert timeline_0["appointment_id"] == "app_past_002"
+        assert "মার্চ" in timeline_0["date_bn"]
+
+        timeline_1 = vault["timeline"][1]
+        assert timeline_1["appointment_id"] == "app_past_001"
+        assert "১৫ জানুয়ারি ২০২৬" in timeline_1["date_bn"]
+        assert timeline_1["prescribed_remedies"]["gemstone"] == "পান্না (Emerald)"
+        assert "পান্না" in timeline_1["karmic_summary_bn"]
+
+        # 3. Repeat rapport ice-breaker
+        assert vault["repeat_rapport_ice_breaker_bn"] is not None
+        assert "নমস্কার" in vault["repeat_rapport_ice_breaker_bn"]
+        assert "পান্না" in vault["repeat_rapport_ice_breaker_bn"]
+
+
+@pytest.mark.asyncio
+async def test_auspicious_transit_surge_detection_and_activation():
+    """Verify Auspicious Transit Surge detection (Amavasya, Purnima) and 1-click activation/deactivation."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from datetime import date
+    from app.services.appointments import (
+        get_auspicious_transit_for_date,
+        activate_auspicious_transit_surge,
+        deactivate_auspicious_transit_surge,
+    )
+
+    # 1. Detection of Amavasya
+    amavasya_date = date(2026, 11, 8)
+    amavasya_transit = get_auspicious_transit_for_date(amavasya_date)
+    assert amavasya_transit["is_auspicious_transit_day"] is True
+    assert amavasya_transit["event_key"] == "amavasya"
+    assert "অমাবস্যা" in amavasya_transit["event_name_bn"]
+    assert amavasya_transit["recommended_multiplier"] == 2.0
+    assert amavasya_transit["demand_factor"] == "10x"
+
+    # 2. Detection of Purnima
+    purnima_date = date(2026, 11, 24)
+    purnima_transit = get_auspicious_transit_for_date(purnima_date)
+    assert purnima_transit["is_auspicious_transit_day"] is True
+    assert purnima_transit["event_key"] == "purnima"
+    assert "পূর্ণিমা" in purnima_transit["event_name_bn"]
+    assert purnima_transit["recommended_multiplier"] == 1.5
+
+    # 3. 1-Click Surge Activation on Existing Window
+    mock_astrologer = MagicMock()
+    mock_astrologer.id = "astro_123"
+    mock_astrologer.appointment = MagicMock()
+    mock_astrologer.appointment.tatkal_enabled = False
+    mock_astrologer.appointment.tatkal_default_multiplier = 1.0
+    mock_astrologer.save = AsyncMock()
+
+    mock_window = MagicMock()
+    mock_window.id = "win_123"
+    mock_window.day = amavasya_date
+    mock_window.is_tatkal = False
+    mock_window.tatkal_multiplier = 1.0
+    mock_window.save = AsyncMock()
+
+    with patch("app.models.appointment.AvailabilityWindow.find") as mock_find:
+        mock_find.return_value.to_list = AsyncMock(return_value=[mock_window])
+
+        res = await activate_auspicious_transit_surge(
+            astrologer=mock_astrologer,
+            target_date=amavasya_date,
+            multiplier=2.0,
+        )
+
+        assert res["success"] is True
+        assert res["multiplier"] == 2.0
+        assert res["windows_affected_count"] == 1
+        assert mock_window.is_tatkal is True
+        assert mock_window.tatkal_multiplier == 2.0
+        assert "অমাবস্যা" in mock_window.custom_title
+        assert mock_astrologer.appointment.tatkal_enabled is True
+        assert mock_astrologer.appointment.tatkal_default_multiplier == 2.0
+
+        # 4. 1-Click Surge Deactivation
+        deact = await deactivate_auspicious_transit_surge(
+            astrologer=mock_astrologer,
+            target_date=amavasya_date,
+        )
+        assert deact["success"] is True
+        assert deact["windows_affected_count"] == 1
+        assert mock_window.is_tatkal is False
+        assert mock_window.tatkal_multiplier == 1.0
+
+
+@pytest.mark.asyncio
+async def test_appointment_earning_recording_and_payout_balance():
+    from app.models.appointment import Appointment
+    from app.models.earning import EarningEntry
+    from app.models.enums import ConsultationMode
+    from app.services.appointments import record_appointment_earning
+    from beanie import PydanticObjectId
+
+    mock_appt = MagicMock(spec=Appointment)
+    mock_appt.id = PydanticObjectId()
+    mock_appt.astrologer_id = PydanticObjectId()
+    mock_appt.astrologer_user_id = PydanticObjectId()
+    mock_appt.user_id = PydanticObjectId()
+    mock_appt.price_paise = 200000  # ₹2,000
+    mock_appt.commission_percent = 20.0  # 20%
+    mock_appt.minutes = 45
+    mock_appt.deposit_coins = 500
+    mock_appt.held_coins = 1500
+    mock_appt.completed_at = datetime(2026, 11, 7, 12, 0, tzinfo=UTC)
+
+    with patch("app.models.earning.EarningEntry") as mock_entry_cls:
+        mock_entry_cls.find_one = AsyncMock(return_value=None)
+        mock_instance = MagicMock()
+        mock_instance.insert = AsyncMock()
+        mock_entry_cls.return_value = mock_instance
+
+        await record_appointment_earning(mock_appt)
+
+        assert mock_entry_cls.called
+        kwargs = mock_entry_cls.call_args[1]
+        assert kwargs["gross_paise"] == 200000
+        assert kwargs["commission_paise"] == 40000  # 20% of 200,000
+        assert kwargs["earning_paise"] == 160000   # 80% of 200,000
+        assert kwargs["mode"] == ConsultationMode.APPOINTMENT
+        assert mock_instance.insert.called
+
+
+
+
+
+
+
+

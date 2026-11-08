@@ -4,25 +4,40 @@ from fastapi import APIRouter
 
 from app.api.v1 import (
     admin_astrologers,
+    admin_course,
     admin_settings,
+    admin_shop,
     admin_wallets,
+    ai_astrologer,
     appointments,
     astrologers,
     astrology,
     auth,
     calls,
     chats,
+    cms,
+    course,
     earnings,
     face_reading,
-    palm_reading,
     health,
+    milan,
+    numerology,
+    palm_reading,
+    passkeys,
     reviews,
+    shop,
+    support,
+    tarot,
     users,
+    vastu,
     wallet,
+    whiteboard,
     ws,
 )
 
 api_router = APIRouter()
+
+api_router.include_router(ai_astrologer.router)
 
 api_router.include_router(ws.router)
 api_router.include_router(health.router)
@@ -38,6 +53,12 @@ api_router.include_router(admin_settings.router)
 api_router.include_router(calls.router)
 api_router.include_router(calls.maintenance_router)
 api_router.include_router(calls.webhook_router)
+# The guest routes go first: their literal paths would otherwise be captured
+# by /milan/{room_id}/... and a guest's check-in would be asked for a bearer
+# token they do not have.
+api_router.include_router(milan.guest_router)
+api_router.include_router(milan.router)
+api_router.include_router(milan.maintenance_router)
 api_router.include_router(chats.router)
 api_router.include_router(chats.maintenance_router)
 api_router.include_router(astrologers.maintenance_router)
@@ -49,3 +70,15 @@ api_router.include_router(reviews.admin_router)
 api_router.include_router(earnings.router)
 api_router.include_router(earnings.admin_router)
 api_router.include_router(wallet.webhook_router)
+api_router.include_router(numerology.router)
+api_router.include_router(vastu.router)
+api_router.include_router(cms.router)
+api_router.include_router(passkeys.router)
+api_router.include_router(tarot.router)
+api_router.include_router(support.router)
+api_router.include_router(support.admin_router)
+api_router.include_router(whiteboard.router)
+api_router.include_router(admin_shop.router)
+api_router.include_router(shop.router)
+api_router.include_router(admin_course.router)
+api_router.include_router(course.router)

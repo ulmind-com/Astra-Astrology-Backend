@@ -15,6 +15,7 @@ from app.models.enums import UserRole
 from app.models.user import User
 from app.schemas.call import (
     ExtendRequest,
+    ExtensionOfferInfo,
     SessionBilling,
     CallCredentials,
     CallOut,
@@ -25,8 +26,10 @@ from app.schemas.call import (
     SweepResult,
 )
 from app.schemas.common import ApiResponse, Paginated, build_page
+from app.schemas.copilot import CoPilotBirthDetailsInput, CoPilotSummary
 from app.services import billing
 from app.services import call as call_service
+from app.services import copilot as copilot_service
 from app.services import settings as settings_service
 from app.services import wallet as wallet_service
 from app.services import zego
@@ -53,14 +56,21 @@ async def _billing_of(session: CallSession) -> SessionBilling:
     affordable = billing.affordable_minutes(wallet.balance_coins, session.coins_per_minute)
 
     # Minutes already paid for that have not been used yet.
-    remaining = max(0, session.requested_minutes - session.minutes_charged)
+    if getattr(session, "appointment_id", None) and session.started_at:
+        elapsed = billing.minutes_elapsed(session.started_at)
+        remaining = max(0, session.requested_minutes - elapsed)
+        minutes_charged = min(elapsed, session.requested_minutes)
+    else:
+        remaining = max(0, session.requested_minutes - session.minutes_charged)
+        minutes_charged = session.minutes_charged
+
     settings_doc = await settings_service.get_settings()
     room = max(0, settings_doc.max_session_minutes - session.requested_minutes)
 
     return SessionBilling(
         coins_per_minute=session.coins_per_minute,
         requested_minutes=session.requested_minutes,
-        minutes_charged=session.minutes_charged,
+        minutes_charged=minutes_charged,
         coins_charged=session.coins_charged,
         minutes_remaining=remaining,
         balance_coins=wallet.balance_coins,
@@ -71,6 +81,20 @@ async def _billing_of(session: CallSession) -> SessionBilling:
 
 
 async def to_call(session: CallSession, viewer: User | None = None) -> CallOut:
+    extension_offer = None
+    if getattr(session, "appointment_id", None):
+        from app.models.appointment import Appointment
+        apt = await Appointment.get(session.appointment_id)
+        if apt and (getattr(apt, "extension_offered", False) or apt.extension_status in ("pending", "accepted", "declined")):
+            extension_offer = ExtensionOfferInfo(
+                offered=bool(apt.extension_offered),
+                status=apt.extension_status,
+                extra_minutes=apt.extension_offered_minutes,
+                cost_coins=apt.extension_cost_coins,
+                cost_paise=apt.extension_cost_paise,
+                offered_at=apt.extension_offered_at,
+            )
+
     return CallOut(
         id=str(session.id),
         room_id=session.room_id,
@@ -85,8 +109,10 @@ async def to_call(session: CallSession, viewer: User | None = None) -> CallOut:
         duration_seconds=session.duration_seconds,
         ended_by=session.ended_by,
         end_reason=session.end_reason,
+        appointment_id=str(session.appointment_id) if getattr(session, "appointment_id", None) else None,
         created_at=session.created_at,
         billing=await _billing_of(session),
+        extension_offer=extension_offer,
     )
 
 
@@ -240,6 +266,45 @@ async def extend_call(
 async def heartbeat(session_id: PydanticObjectId, user: CurrentUser) -> ApiResponse[CallOut]:
     session = await call_service.heartbeat(session_id=session_id, user=user)
     return ApiResponse(message="Noted.", data=await to_call(session, user))
+
+
+@router.get(
+    "/{session_id}/copilot",
+    response_model=ApiResponse[CoPilotSummary],
+    summary="The live Co-Pilot summary for this call's client",
+)
+async def copilot(
+    session_id: PydanticObjectId,
+    user: CurrentUser,
+    language: Annotated[
+        str | None,
+        Query(description="en, bn or hi. Defaults to the astrologer's own language."),
+    ] = None,
+) -> ApiResponse[CoPilotSummary]:
+    summary = await copilot_service.summary_for_call(
+        session_id=session_id, viewer=user, language=language
+    )
+    return ApiResponse(message="Co-Pilot ready.", data=summary)
+
+
+@router.post(
+    "/{session_id}/copilot/birth-details",
+    response_model=ApiResponse[CoPilotSummary],
+    summary="Update client birth details directly from the live chamber",
+)
+async def update_copilot_birth_details(
+    session_id: PydanticObjectId,
+    payload: CoPilotBirthDetailsInput,
+    user: CurrentUser,
+    language: Annotated[
+        str | None,
+        Query(description="en, bn or hi. Defaults to the astrologer's own language."),
+    ] = None,
+) -> ApiResponse[CoPilotSummary]:
+    summary = await copilot_service.update_client_birth_details(
+        session_id=session_id, viewer=user, payload=payload, language=language
+    )
+    return ApiResponse(message="Birth details updated and chart calculated.", data=summary)
 
 
 # ------------------------------------------------------- maintenance + hooks

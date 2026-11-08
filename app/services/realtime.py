@@ -104,7 +104,7 @@ def is_enabled() -> bool:
 
 
 # ------------------------------------------------------------- astrologers
-async def astrologer_payload(profile: Any) -> dict[str, Any]:
+async def astrologer_payload(profile: Any, platform: Any = None) -> dict[str, Any]:
     """Exactly the fields a directory card and a profile header draw.
 
     Prices are resolved here — an astrologer with no rate of their own carries
@@ -113,6 +113,10 @@ async def astrologer_payload(profile: Any) -> dict[str, Any]:
     """
     from app.models.enums import ConsultationMode
     from app.services import billing, presence
+    from app.services import settings as settings_service
+
+    if platform is None:
+        platform = await settings_service.get_settings()
 
     availability = profile.availability
     rates = {}
@@ -122,7 +126,7 @@ async def astrologer_payload(profile: Any) -> dict[str, Any]:
         (ConsultationMode.VIDEO, "video"),
     ):
         rates[f"{key}_coins_per_minute"] = (
-            await billing.price_for(profile, mode)
+            await billing.price_for(profile, mode, platform=platform)
         ).coins_per_minute
 
     last_seen = availability.last_seen_at
@@ -162,6 +166,117 @@ async def publish_astrologer(profile: Any) -> None:
 
 
 # ------------------------------------------------------------------ settings
+def build_feature_pricing_payload(platform: Any) -> dict[str, dict[str, Any]]:
+    """Builds a JSON-safe dictionary of all 9 astrology & scanning features."""
+    return {
+        "daily_horoscope": {
+            "feature_id": "daily_horoscope",
+            "name": "Daily Horoscope",
+            "coins": getattr(platform, "daily_horoscope_coins", 0),
+            "is_free": getattr(platform, "daily_horoscope_coins", 0) == 0,
+            "enabled": getattr(platform, "daily_horoscope_enabled", True),
+            "description": "Daily Transit, Panchang & Planetary Analysis",
+        },
+        "annual_horoscope": {
+            "feature_id": "annual_horoscope",
+            "name": "1-Year Annual Horoscope & Lal Kitab Report",
+            "coins": getattr(platform, "annual_horoscope_coins", 50),
+            "is_free": getattr(platform, "annual_horoscope_coins", 50) == 0,
+            "enabled": getattr(platform, "annual_horoscope_enabled", True),
+            "description": "1-Year Varshphal forecast & authentic Lal Kitab remedies report",
+        },
+        "kundli": {
+            "feature_id": "kundli",
+            "name": "Kundli Generator",
+            "coins": getattr(platform, "kundli_coins", 20),
+            "is_free": getattr(platform, "kundli_coins", 20) == 0,
+            "enabled": getattr(platform, "kundli_enabled", True),
+            "description": "Complete Kundli, D1/D9 Charts, Planetary Table & 3x3 Dasha",
+        },
+        "kundli_matching": {
+            "feature_id": "kundli_matching",
+            "name": "Kundli Matching",
+            "coins": getattr(platform, "kundli_matching_coins", 20),
+            "is_free": getattr(platform, "kundli_matching_coins", 20) == 0,
+            "enabled": getattr(platform, "kundli_matching_enabled", True),
+            "description": "36 Gunas Ashtakoot Milan & Dosha Check",
+        },
+        "kp_calculator": {
+            "feature_id": "kp_calculator",
+            "name": "KP Astrology",
+            "coins": getattr(platform, "kp_calculator_coins", 20),
+            "is_free": getattr(platform, "kp_calculator_coins", 20) == 0,
+            "enabled": getattr(platform, "kp_calculator_enabled", True),
+            "description": "Placidus Cusps, Ruling Planets & Sub-Lords",
+        },
+        "dasha_calculator": {
+            "feature_id": "dasha_calculator",
+            "name": "Dasha Calculator",
+            "coins": getattr(platform, "dasha_calculator_coins", 15),
+            "is_free": getattr(platform, "dasha_calculator_coins", 15) == 0,
+            "enabled": getattr(platform, "dasha_calculator_enabled", True),
+            "description": "Complete Vimshottari Mahadasha/Antardasha Tree",
+        },
+        "rashi_calculator": {
+            "feature_id": "rashi_calculator",
+            "name": "Rashi Calculator",
+            "coins": getattr(platform, "rashi_calculator_coins", 10),
+            "is_free": getattr(platform, "rashi_calculator_coins", 10) == 0,
+            "enabled": getattr(platform, "rashi_calculator_enabled", True),
+            "description": "Moon Sign, Traits, Remedies & Avakahada",
+        },
+        "nakshatra_calculator": {
+            "feature_id": "nakshatra_calculator",
+            "name": "Nakshatra Calculator",
+            "coins": getattr(platform, "nakshatra_calculator_coins", 10),
+            "is_free": getattr(platform, "nakshatra_calculator_coins", 10) == 0,
+            "enabled": getattr(platform, "nakshatra_calculator_enabled", True),
+            "description": "Janma Nakshatra, Pada, Tarabala & Sacred Mantras",
+        },
+        "palm_reading": {
+            "feature_id": "palm_reading",
+            "name": "Palm Reading",
+            "coins": getattr(platform, "palm_reading_coins", 25),
+            "is_free": getattr(platform, "palm_reading_coins", 25) == 0,
+            "enabled": getattr(platform, "palm_reading_enabled", True),
+            "description": "AI Computer Vision Palmistry & Crease Analysis",
+        },
+        "face_reading": {
+            "feature_id": "face_reading",
+            "name": "Face Reading",
+            "coins": getattr(platform, "face_reading_coins", 25),
+            "is_free": getattr(platform, "face_reading_coins", 25) == 0,
+            "enabled": getattr(platform, "face_reading_enabled", True),
+            "description": "Facial Morphology & Vedic Samudrika Shastra",
+        },
+        "numerology": {
+            "feature_id": "numerology",
+            "name": "Numerology",
+            "coins": getattr(platform, "numerology_coins", 20),
+            "is_free": getattr(platform, "numerology_coins", 20) == 0,
+            "enabled": getattr(platform, "numerology_enabled", True),
+            "description": "Vedic & Chaldean Numerology, Lo Shu Grid, Dasha & Mobile Audit",
+        },
+        "vastu": {
+            "feature_id": "vastu",
+            "name": "Vastu Shastra",
+            "coins": getattr(platform, "vastu_coins", 25),
+            "is_free": getattr(platform, "vastu_coins", 25) == 0,
+            "enabled": getattr(platform, "vastu_enabled", True),
+            "description": "16-Zone & 32-Pada Vastu Compass, Ayadi Shadvarga & Remedies",
+        },
+    }
+
+
+async def publish_feature_pricing(platform: Any) -> None:
+    """Tells all connected clients (web & admin) that feature prices or toggles changed."""
+    try:
+        payload = build_feature_pricing_payload(platform)
+        _broadcast({"type": "feature_pricing", "data": payload})
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not broadcast live feature pricing: {}", exc)
+
+
 async def publish_settings(platform: Any) -> None:
     """The numbers every price on the site is derived from."""
     _broadcast(
@@ -181,6 +296,7 @@ async def publish_settings(platform: Any) -> None:
             },
         }
     )
+    await publish_feature_pricing(platform)
 
 
 async def publish_all_astrologers() -> int:
@@ -190,11 +306,17 @@ async def publish_all_astrologers() -> int:
     everyone who has no rate of their own.
     """
     from app.models.astrologer import Astrologer
+    from app.services import settings as settings_service
 
+    platform = await settings_service.get_settings()
     sent = 0
     for profile in await Astrologer.find_all().to_list():
-        await publish_astrologer(profile)
-        sent += 1
+        try:
+            payload = await astrologer_payload(profile, platform=platform)
+            _broadcast({"type": "astrologer", "data": payload})
+            sent += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not build the live payload for {}: {}", profile.id, exc)
     return sent
 
 
@@ -216,3 +338,40 @@ async def publish_chat(user_id: Any, message: dict[str, Any]) -> None:
     does not have to be open for the message to arrive.
     """
     _broadcast(message, to_user=str(user_id))
+
+
+# ------------------------------------------------------------ appointments
+async def publish_appointment_event(
+    user_id: Any,
+    astrologer_user_id: Any,
+    event_type: str,
+    appointment_data: dict[str, Any],
+) -> None:
+    """Live synchronization for scheduled consultations.
+
+    Broadcasts immediately to both the client and the astrologer so calendars,
+    notifications, and audio cues trigger without polling.
+    """
+    msg = {
+        "type": "appointment_event",
+        "data": {
+            "event": event_type,
+            "appointment": appointment_data,
+        },
+    }
+    _broadcast(msg, to_user=str(user_id))
+    if str(astrologer_user_id) != str(user_id):
+        _broadcast(msg, to_user=str(astrologer_user_id))
+
+
+async def publish_availability_event(astrologer_id: Any, day: str) -> None:
+    """Tells all active booking visitors that an astrologer's open slots changed."""
+    _broadcast(
+        {
+            "type": "availability_event",
+            "data": {
+                "astrologer_id": str(astrologer_id),
+                "day": str(day),
+            },
+        }
+    )

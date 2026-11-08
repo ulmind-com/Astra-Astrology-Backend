@@ -16,6 +16,7 @@ the device and sends perhaps twenty ratios; a face never reaches this server.
 """
 
 from datetime import datetime
+from typing import Any
 
 import pymongo
 from beanie import PydanticObjectId
@@ -36,8 +37,9 @@ class FaceFeature:
     LIPS = "lips"
     CHIN = "chin"
     CHEEKS = "cheeks"
+    EARS = "ears"
 
-    ALL = [FACE_SHAPE, FOREHEAD, FOREHEAD_LINES, EYEBROWS, EYES, NOSE, LIPS, CHIN, CHEEKS]
+    ALL = [FACE_SHAPE, FOREHEAD, FOREHEAD_LINES, EYEBROWS, EYES, NOSE, LIPS, CHIN, CHEEKS, EARS]
 
     LABELS = {
         FACE_SHAPE: "Face shape",
@@ -49,6 +51,7 @@ class FaceFeature:
         LIPS: "Lips & smile",
         CHIN: "Chin & jaw",
         CHEEKS: "Cheeks",
+        EARS: "Ears (কর্ণ লক্ষণ)",
     }
 
 
@@ -142,6 +145,10 @@ class FaceReading(TimestampedDocument):
 
     # How confident the capture was — see services.face_reading.
     quality: float = Field(default=1.0, ge=0, le=1)
+
+    tri_zone_analysis: dict[str, Any] | None = None
+    pancha_mahabhuta: dict[str, Any] | None = None
+    kundli_sync: dict[str, Any] | None = None
 
     expires_at: datetime | None = None
 

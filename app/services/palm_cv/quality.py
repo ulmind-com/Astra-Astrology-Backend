@@ -59,14 +59,19 @@ class QualityReport:
         }
 
 
-def decode_image(raw: bytes, config: PalmScanConfig = DEFAULT_CONFIG) -> np.ndarray:
+def decode_image(raw: bytes | np.ndarray, config: PalmScanConfig = DEFAULT_CONFIG) -> np.ndarray:
     """Decode to RGB with EXIF rotation applied.
 
     Phone cameras store the sensor image unrotated and record the orientation in
     EXIF. Ignoring it is how a portrait photo arrives sideways, which turns the
     palm's long axis into its short one and quietly ruins every proportion.
     """
-    if not raw:
+    if isinstance(raw, np.ndarray):
+        if raw.ndim != 3 or raw.shape[2] != 3:
+            raise ValueError("Expected an RGB image array with 3 channels.")
+        return raw
+
+    if raw is None or len(raw) == 0:
         raise ValueError("No image data was received.")
 
     try:

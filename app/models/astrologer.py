@@ -6,6 +6,7 @@ linked by `user_id`.
 """
 
 from datetime import datetime
+from typing import Any
 
 import pymongo
 from beanie import PydanticObjectId
@@ -78,6 +79,17 @@ class AppointmentCard(BaseModel):
     enabled: bool = False
     price_paise: int = Field(default=0, ge=0, le=100_000_00)
     block_minutes: int = Field(default=30, ge=5, le=600)
+    # How many minutes after booking the client can cancel (e.g. 30 mins)
+    cancellation_window_minutes: int = Field(default=30, ge=0, le=1440)
+    # Energy cleansing and meditation buffer between sessions (e.g. 5, 10, 15 mins)
+    buffer_minutes: int = Field(default=10, ge=0, le=60)
+    # Complimentary Follow-up / Remedy Clarification Pass settings
+    follow_up_enabled: bool = True
+    follow_up_window_days: int = Field(default=7, ge=1, le=30)
+    follow_up_max_messages: int = Field(default=3, ge=1, le=20)
+    # VIP / Tatkal Emergency Consultation Settings
+    tatkal_enabled: bool = True
+    tatkal_default_multiplier: float = Field(default=1.5, ge=1.0, le=5.0)
 
 
 class RatingSummary(BaseModel):
@@ -85,12 +97,36 @@ class RatingSummary(BaseModel):
     count: int = Field(default=0, ge=0)
 
 
+class ServiceDuration(BaseModel):
+    """Cumulative minutes spent delivering consultations by mode (Astrotalk-style tracking)."""
+
+    chat_minutes: int = Field(default=0, ge=0)
+    call_minutes: int = Field(default=0, ge=0)
+    video_minutes: int = Field(default=0, ge=0)
+
+
 class BankDetails(BaseModel):
     account_holder_name: str | None = None
+    account_number: str | None = None
     account_number_last4: str | None = Field(default=None, max_length=4)
     ifsc: str | None = Field(default=None, max_length=20)
     bank_name: str | None = Field(default=None, max_length=120)
     upi_id: str | None = Field(default=None, max_length=120)
+    pan_card: str | None = Field(default=None, max_length=20)
+
+
+class GoogleCalendarSync(BaseModel):
+    """Two-way Google Calendar OAuth sync settings, tokens & external busy blocks."""
+
+    connected: bool = False
+    email: str | None = None
+    access_token: str | None = None
+    refresh_token: str | None = None
+    token_expiry: datetime | None = None
+    sync_enabled: bool = True
+    last_synced_at: datetime | None = None
+    # External busy intervals that block Astra appointment slots
+    busy_intervals: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class Astrologer(TimestampedDocument):
@@ -133,7 +169,19 @@ class Astrologer(TimestampedDocument):
     availability: Availability = Field(default_factory=Availability)
     rating: RatingSummary = Field(default_factory=RatingSummary)
     total_consultations: int = Field(default=0, ge=0)
+    service_duration: ServiceDuration = Field(default_factory=ServiceDuration)
     followers_count: int = Field(default=0, ge=0)
+
+    # Brahma Pause (Emergency Break & Seeker Auto-Rescue Engine)
+    brahma_pause_until: datetime | None = None
+    brahma_pause_reason: str | None = None
+    brahma_pause_activated_at: datetime | None = None
+
+    # Client Screening & Abuse Shield (Blacklisted users blocked from booking)
+    blacklisted_user_ids: list[PydanticObjectId] = Field(default_factory=list)
+
+    # Two-Way Bidirectional Google Calendar Sync
+    google_calendar: GoogleCalendarSync = Field(default_factory=GoogleCalendarSync)
 
     # ------------------------------------------------------------ curation
     is_listed: bool = Field(default=True, description="Shown in the public directory")

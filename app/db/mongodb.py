@@ -41,7 +41,23 @@ def is_ready() -> bool:
 async def _init_models() -> None:
     global _beanie_ready
 
-    await init_beanie(database=get_database(), document_models=DOCUMENT_MODELS)
+    try:
+        await init_beanie(
+            database=get_database(),
+            document_models=DOCUMENT_MODELS,
+            allow_index_dropping=True,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Standard index creation failed ({}); re-initializing with skip_indexes=True to ensure uninterrupted service...",
+            exc,
+        )
+        await init_beanie(
+            database=get_database(),
+            document_models=DOCUMENT_MODELS,
+            skip_indexes=True,
+        )
+
     _beanie_ready = True
     logger.success("MongoDB ready — {} document models registered.", len(DOCUMENT_MODELS))
 

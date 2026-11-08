@@ -1,5 +1,7 @@
 """Reading and changing the platform settings."""
 
+from typing import Any
+
 from beanie import PydanticObjectId
 from loguru import logger
 from pymongo.errors import DuplicateKeyError
@@ -7,23 +9,71 @@ from pymongo.errors import DuplicateKeyError
 from app.core.exceptions import BadRequestError
 from app.models.settings import SETTINGS_KEY, CoinRateChange, PlatformSettings
 
+_in_memory_settings: PlatformSettings | None = None
 
-async def get_settings() -> PlatformSettings:
-    """Returns the singleton, creating it with defaults the first time."""
-    existing = await PlatformSettings.find_one(PlatformSettings.key == SETTINGS_KEY)
-    if existing is not None:
-        return existing
 
-    created = PlatformSettings()
+def _default_platform_settings() -> PlatformSettings:
+    defaults = {
+        k: v.get_default(call_default_factory=True)
+        for k, v in PlatformSettings.model_fields.items()
+    }
+    return PlatformSettings.model_construct(**defaults)
+
+
+def invalidate_settings_cache() -> None:
+    """Clears the in-memory settings cache so the next access fetches fresh from DB."""
+    global _in_memory_settings
+    _in_memory_settings = None
+
+
+def set_cached_settings(doc: PlatformSettings) -> None:
+    """Updates the in-memory settings cache directly."""
+    global _in_memory_settings
+    _in_memory_settings = doc
+
+
+async def get_settings(*, force_refresh: bool = False) -> PlatformSettings:
+    """Returns the singleton platform settings.
+
+    Uses an in-memory cache to guarantee 0ms latency and eliminate repeated
+    MongoDB queries during routine requests and heartbeats.
+    """
+    global _in_memory_settings
+
+    if not force_refresh and _in_memory_settings is not None:
+        return _in_memory_settings
+
+    from app.db.mongodb import is_ready
+
+    if not is_ready():
+        if _in_memory_settings is None:
+            _in_memory_settings = _default_platform_settings()
+        return _in_memory_settings
+
     try:
-        await created.insert()
-    except DuplicateKeyError:
-        # Two requests raced; the unique index settled it.
         existing = await PlatformSettings.find_one(PlatformSettings.key == SETTINGS_KEY)
-        if existing is None:  # pragma: no cover - the index guarantees one
-            raise
-        return existing
-    return created
+        if existing is not None:
+            _in_memory_settings = existing
+            return existing
+
+        created = PlatformSettings()
+        try:
+            await created.insert()
+        except DuplicateKeyError:
+            # Two requests raced; the unique index settled it.
+            existing = await PlatformSettings.find_one(PlatformSettings.key == SETTINGS_KEY)
+            _in_memory_settings = existing or created
+            return _in_memory_settings
+        _in_memory_settings = created
+        return created
+    except Exception as exc:
+        logger.warning(
+            "Could not read platform settings from MongoDB ({}); using in-memory defaults.",
+            exc,
+        )
+        if _in_memory_settings is None:
+            _in_memory_settings = _default_platform_settings()
+        return _in_memory_settings
 
 
 async def _publish(doc: PlatformSettings, *, reprice: bool) -> None:
@@ -35,6 +85,9 @@ async def _publish(doc: PlatformSettings, *, reprice: bool) -> None:
     and those cards have to be rewritten or they would keep showing the old
     number until something else touched them.
     """
+    global _in_memory_settings
+    _in_memory_settings = doc
+
     from app.services import realtime
 
     await realtime.publish_settings(doc)
@@ -156,6 +209,30 @@ async def set_consultation_defaults(
     logger.info("Consultation defaults updated by {}: {}", admin_id, changes)
     # These are the numbers every unpriced astrologer charges.
     await _publish(doc, reprice=True)
+    return doc
+
+
+async def set_feature_pricing(
+    *, changes: dict[str, Any], admin_id: PydanticObjectId | None
+) -> PlatformSettings:
+    """Sets coin cost and availability for astrology and scanning features."""
+    from app.db.mongodb import is_ready
+
+    doc = await get_settings()
+
+    for field, value in changes.items():
+        if value is not None:
+            setattr(doc, field, value)
+
+    doc.updated_by = admin_id
+    if is_ready():
+        await doc.save()
+
+    from app.services import realtime
+    await realtime.publish_feature_pricing(doc)
+    await _publish(doc, reprice=False)
+
+    logger.info("Feature pricing updated by {}: {}", admin_id, changes)
     return doc
 
 

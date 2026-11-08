@@ -9,17 +9,20 @@ easiest way to lose a user's trust, and the hardest to argue with.
 from __future__ import annotations
 
 import base64
+from typing import Any
 
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Request
 from loguru import logger
 
-from app.api.dependencies import CurrentUser
+from app.api.dependencies import CurrentUser, OptionalUser
 from app.core.exceptions import BadRequestError, NotFoundError, ServiceUnavailableError
 from app.models.palm_reading import PalmReading, PalmRule
 from app.schemas.common import ApiResponse
 from app.schemas.palm_reading import (
     CreaseOut,
+    DualHandMatchRequest,
+    DualHandMatchResponse,
     PalmReadingAvailability,
     PalmReadingOut,
     PalmRuleOut,
@@ -30,6 +33,8 @@ from app.schemas.palm_reading import (
     SkippedFeatureOut,
 )
 from app.services import palm_reading as palm_service
+from app.services.palm_cv.dual_hand import calculate_dual_hand_synastry
+from app.services.palm_cv.timeline_1year import get_palm_timeline_for_age
 
 router = APIRouter(prefix="/palm-reading", tags=["palm-reading"])
 
@@ -57,6 +62,19 @@ def _reading_out(reading: PalmReading) -> PalmReadingOut:
         palm_cup_depth_mm=reading.palm_cup_depth_mm,
         finger_flexibility_3d=reading.finger_flexibility_3d,
         finger_inclinations_3d=reading.finger_inclinations_3d,
+        secondary_lines=getattr(reading, "secondary_lines", {}),
+        sacred_marks=getattr(reading, "sacred_marks", []),
+        timeline=getattr(reading, "timeline", []),
+        skin_vitality=getattr(reading, "skin_vitality", {}),
+        karmic_summary=getattr(reading, "karmic_summary", {}),
+        dermatoglyphic_loops=getattr(reading, "dermatoglyphic_loops", []),
+        marriage_patterns=getattr(reading, "marriage_patterns", []),
+        temperament_archetype=getattr(reading, "temperament_archetype", {}),
+        medical_constitution=getattr(reading, "medical_constitution", {}),
+        kundli_palm_sync=getattr(reading, "kundli_palm_sync", {}),
+        fingers_thumb_analysis=getattr(reading, "fingers_thumb_analysis", {}),
+        timeline_1year_summary=getattr(reading, "timeline_1year_summary", {}),
+        dual_hand_synastry=getattr(reading, "dual_hand_synastry", {}),
         overlay_image=reading.overlay_image,
         coins_charged=reading.coins_charged,
         quality_score=reading.quality_score,
@@ -65,19 +83,29 @@ def _reading_out(reading: PalmReading) -> PalmReadingOut:
     )
 
 
-async def _read_image_bytes(request: Request) -> bytes:
-    """Accept the image as multipart, JSON base64, or a raw body."""
+async def _read_image_payload(request: Request) -> tuple[bytes, dict | None]:
+    """Accept the image and optional birth details as multipart, JSON base64, or raw body."""
     content_type = request.headers.get("content-type", "")
+    birth_details: dict | None = None
 
     if "multipart/form-data" in content_type:
         form = await request.form()
         field = form.get("file") or form.get("image")
+        if form.get("birth_date"):
+            birth_details = {
+                "birth_date": str(form.get("birth_date")),
+                "birth_time": str(form.get("birth_time") or "12:00"),
+                "latitude": float(form.get("latitude") or 22.5726),
+                "longitude": float(form.get("longitude") or 88.3639),
+                "timezone_offset": float(form.get("timezone_offset") or 5.5),
+            }
         if field is not None and hasattr(field, "read"):
-            return await field.read()  # type: ignore[union-attr]
+            data = await field.read()  # type: ignore[union-attr]
+            return data, birth_details
         if isinstance(field, str):
             value = field.split(",", 1)[1] if "," in field else field
             try:
-                return base64.b64decode(value)
+                return base64.b64decode(value), birth_details
             except Exception:
                 raise BadRequestError("That image could not be decoded.", error_code="invalid_base64")
         raise BadRequestError("No image was included.", error_code="missing_image")
@@ -88,6 +116,16 @@ async def _read_image_bytes(request: Request) -> bytes:
         except Exception:
             raise BadRequestError("The request body was not valid JSON.", error_code="invalid_json")
         value = body.get("image") or body.get("image_base64")
+        if body.get("birth_details") and isinstance(body.get("birth_details"), dict):
+            birth_details = body.get("birth_details")
+        elif body.get("birth_date"):
+            birth_details = {
+                "birth_date": str(body.get("birth_date")),
+                "birth_time": str(body.get("birth_time", "12:00")),
+                "latitude": float(body.get("latitude", 22.5726)),
+                "longitude": float(body.get("longitude", 88.3639)),
+                "timezone_offset": float(body.get("timezone_offset", 5.5)),
+            }
         if not isinstance(value, str) or not value:
             raise BadRequestError(
                 "Send the photo as 'image' in the JSON body.", error_code="missing_image"
@@ -95,11 +133,12 @@ async def _read_image_bytes(request: Request) -> bytes:
         if "," in value:
             value = value.split(",", 1)[1]
         try:
-            return base64.b64decode(value)
+            return base64.b64decode(value), birth_details
         except Exception:
             raise BadRequestError("That image could not be decoded.", error_code="invalid_base64")
 
-    return await request.body()
+    raw = await request.body()
+    return raw, None
 
 
 @router.get(
@@ -141,7 +180,7 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[PalmScanRespo
     from app.services import settings as settings_service
     from app.services import wallet as wallet_service
 
-    raw = await _read_image_bytes(request)
+    raw, birth_details = await _read_image_payload(request)
     if not raw:
         raise BadRequestError("No photo was received.", error_code="empty_image")
 
@@ -168,7 +207,7 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[PalmScanRespo
             error_code="cv_dependencies_missing",
         ) from exc
 
-    result = execute_scan(raw)
+    result = execute_scan(raw, birth_details=birth_details)
 
     # A rejected photo is a normal outcome, not an error, and it is free.
     if result.status != "ok":
@@ -244,6 +283,19 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[PalmScanRespo
         palm_cup_depth_mm=result.palm_cup_depth_mm,
         finger_flexibility_3d=result.finger_flexibility_3d,
         finger_inclinations_3d=result.finger_inclinations_3d,
+        secondary_lines=result.secondary_lines,
+        sacred_marks=result.sacred_marks,
+        timeline=result.timeline,
+        skin_vitality=result.skin_vitality,
+        karmic_summary=result.karmic_summary,
+        dermatoglyphic_loops=result.dermatoglyphic_loops,
+        marriage_patterns=result.marriage_patterns,
+        temperament_archetype=result.temperament_archetype,
+        medical_constitution=result.medical_constitution,
+        kundli_palm_sync=result.kundli_palm_sync,
+        fingers_thumb_analysis=result.fingers_thumb_analysis,
+        timeline_1year_summary=result.timeline_1year_summary,
+        dual_hand_synastry=result.dual_hand_synastry,
         sections=sections,
         skipped=skipped,
         overlay_image=result.overlay_image,
@@ -276,6 +328,19 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[PalmScanRespo
             palm_cup_depth_mm=result.palm_cup_depth_mm,
             finger_flexibility_3d=result.finger_flexibility_3d,
             finger_inclinations_3d=result.finger_inclinations_3d,
+            secondary_lines=result.secondary_lines,
+            sacred_marks=result.sacred_marks,
+            timeline=result.timeline,
+            skin_vitality=result.skin_vitality,
+            karmic_summary=result.karmic_summary,
+            dermatoglyphic_loops=result.dermatoglyphic_loops,
+            marriage_patterns=result.marriage_patterns,
+            temperament_archetype=result.temperament_archetype,
+            medical_constitution=result.medical_constitution,
+            kundli_palm_sync=result.kundli_palm_sync,
+            fingers_thumb_analysis=result.fingers_thumb_analysis,
+            timeline_1year_summary=result.timeline_1year_summary,
+            dual_hand_synastry=result.dual_hand_synastry,
             overlay_image=result.overlay_image,
             response_image=result.response_image,
             coins_charged=charged,
@@ -315,3 +380,43 @@ async def one(reading_id: PydanticObjectId, user: CurrentUser) -> ApiResponse[Pa
     if reading is None or reading.user_id != user.id:
         raise NotFoundError("That reading could not be found.", error_code="reading_not_found")
     return ApiResponse(message="Palm reading", data=_reading_out(reading))
+
+
+@router.get(
+    "/timeline-age",
+    response_model=ApiResponse[dict[str, Any]],
+    summary="High-precision 1-year resolution age timeline forecast",
+)
+async def timeline_age(
+    age: int = 28,
+    gender: str = "male",
+) -> ApiResponse[dict[str, Any]]:
+    forecast = get_palm_timeline_for_age(age=age, gender=gender)
+    return ApiResponse(
+        message=f"Ayur Nirnay 1-Year Timeline forecast for age {age}",
+        data=forecast,
+    )
+
+
+@router.post(
+    "/dual-match",
+    response_model=ApiResponse[DualHandMatchResponse],
+    summary="Bilateral dual-hand synastry (Prarabdha vs Purushartha Karma Evolution)",
+)
+async def dual_match(
+    payload: DualHandMatchRequest,
+    user: OptionalUser = None,
+) -> ApiResponse[DualHandMatchResponse]:
+    left_dict = {"measurements": payload.left_hand_measurements or {}}
+    right_dict = {"measurements": payload.right_hand_measurements or {}}
+
+    res = calculate_dual_hand_synastry(
+        left_hand_data=left_dict,
+        right_hand_data=right_dict,
+        primary_handedness=payload.primary_handedness,
+    )
+    return ApiResponse(
+        message="Bilateral dual-hand synastry completed successfully",
+        data=DualHandMatchResponse(**res),
+    )
+

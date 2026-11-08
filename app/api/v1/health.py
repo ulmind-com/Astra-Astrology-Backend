@@ -45,7 +45,7 @@ async def health(response: Response) -> ApiResponse[HealthStatus]:
             status="ok" if db_ok else "degraded",
             app=settings.APP_NAME,
             environment=settings.APP_ENV,
-            version="0.1.0",
+            version="0.1.3-gallery-atomic",
             database="connected" if db_ok else "disconnected",
             services={
                 "mongodb": db_ok,

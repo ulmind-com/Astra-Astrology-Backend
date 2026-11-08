@@ -44,6 +44,15 @@ class SessionBilling(BaseModel):
     max_extend_minutes: int
 
 
+class ExtensionOfferInfo(BaseModel):
+    offered: bool = False
+    status: str = "none"  # "none", "pending", "accepted", "declined", "expired"
+    extra_minutes: int | None = None
+    cost_coins: int = 0
+    cost_paise: int = 0
+    offered_at: datetime | None = None
+
+
 class CallOut(BaseModel):
     id: str
     room_id: str
@@ -60,8 +69,10 @@ class CallOut(BaseModel):
     duration_seconds: int = 0
     ended_by: CallParty | None = None
     end_reason: str | None = None
+    appointment_id: str | None = None
     created_at: datetime
     billing: SessionBilling | None = None
+    extension_offer: ExtensionOfferInfo | None = None
 
 
 class CallCredentials(BaseModel):

@@ -2,15 +2,21 @@
 
 from typing import Annotated, Any
 
+from beanie import PydanticObjectId
 from fastapi import APIRouter, Header, Query, Request, status
 from loguru import logger
 
 from app.api.dependencies import CurrentUser
 from app.core.config import settings
+from app.models.appointment import Appointment
+from app.models.astrologer import Astrologer
+from app.models.call import CallSession
+from app.models.chat import ChatSession
 from app.models.enums import PaymentOrderStatus, TransactionReason
 from app.models.wallet import WalletTransaction
 from app.schemas.common import ApiResponse, Paginated, build_page
 from app.schemas.wallet import (
+    ConsultationMetadataOut,
     CreateOrderRequest,
     CreateOrderResponse,
     RechargeOptions,
@@ -29,32 +35,186 @@ from app.services import wallet as wallet_service
 router = APIRouter(prefix="/wallet", tags=["wallet"])
 
 
-def to_transaction(txn: WalletTransaction) -> TransactionOut:
+async def enrich_consultations(
+    transactions: list[WalletTransaction],
+) -> dict[str, ConsultationMetadataOut]:
+    session_ids: list[PydanticObjectId] = []
+    for t in transactions:
+        if t.ref and t.ref.session_id and isinstance(t.ref.session_id, PydanticObjectId):
+            session_ids.append(t.ref.session_id)
+
+    if not session_ids:
+        return {}
+
+    unique_session_ids = list(set(session_ids))
+    chats = await ChatSession.find({"_id": {"$in": unique_session_ids}}).to_list()
+    calls = await CallSession.find({"_id": {"$in": unique_session_ids}}).to_list()
+    appts = await Appointment.find({"_id": {"$in": unique_session_ids}}).to_list()
+
+    astro_ids: set[PydanticObjectId] = set()
+    for c in chats:
+        astro_ids.add(c.astrologer_id)
+    for c in calls:
+        astro_ids.add(c.astrologer_id)
+    for a in appts:
+        astro_ids.add(a.astrologer_id)
+
+    astro_map: dict[str, Astrologer] = {}
+    if astro_ids:
+        astros = await Astrologer.find({"_id": {"$in": list(astro_ids)}}).to_list()
+        astro_map = {str(a.id): a for a in astros}
+
+    out: dict[str, ConsultationMetadataOut] = {}
+    for c in chats:
+        astro = astro_map.get(str(c.astrologer_id))
+        out[str(c.id)] = ConsultationMetadataOut(
+            session_id=str(c.id),
+            astrologer_id=str(c.astrologer_id),
+            astrologer_name=astro.display_name if astro else None,
+            astrologer_avatar=astro.profile_image_url if astro else None,
+            mode="chat",
+            duration_seconds=c.duration_seconds,
+        )
+
+    for c in calls:
+        astro = astro_map.get(str(c.astrologer_id))
+        mode_val = c.mode.value if hasattr(c.mode, "value") else str(c.mode)
+        out[str(c.id)] = ConsultationMetadataOut(
+            session_id=str(c.id),
+            astrologer_id=str(c.astrologer_id),
+            astrologer_name=astro.display_name if astro else None,
+            astrologer_avatar=astro.profile_image_url if astro else None,
+            mode=mode_val,
+            duration_seconds=c.duration_seconds,
+        )
+
+    for a in appts:
+        astro = astro_map.get(str(a.astrologer_id))
+        out[str(a.id)] = ConsultationMetadataOut(
+            session_id=str(a.id),
+            astrologer_id=str(a.astrologer_id),
+            astrologer_name=astro.display_name if astro else None,
+            astrologer_avatar=astro.profile_image_url if astro else None,
+            mode="appointment",
+            duration_seconds=a.minutes * 60,
+        )
+
+    return out
+
+
+def to_transaction(
+    txn: WalletTransaction,
+    consultations: dict[str, ConsultationMetadataOut] | None = None,
+) -> TransactionOut:
+    session_id_str = str(txn.ref.session_id) if txn.ref and txn.ref.session_id else None
+    consultation = (
+        consultations.get(session_id_str) if (consultations and session_id_str) else None
+    )
+
+    astro_id = (
+        str(txn.ref.astrologer_id)
+        if (txn.ref and txn.ref.astrologer_id)
+        else (consultation.astrologer_id if consultation else None)
+    )
+    astro_name = (
+        txn.ref.astrologer_name
+        if (txn.ref and txn.ref.astrologer_name)
+        else (consultation.astrologer_name if consultation else None)
+    )
+    astro_img = (
+        txn.ref.astrologer_image_url
+        if (txn.ref and txn.ref.astrologer_image_url)
+        else (consultation.astrologer_avatar if consultation else None)
+    )
+    mode = (
+        txn.ref.consultation_mode
+        if (txn.ref and txn.ref.consultation_mode)
+        else (consultation.mode if consultation else None)
+    )
+
+    note = txn.note
+    if consultation and consultation.astrologer_name and note:
+        lower_note = note.lower()
+        if (
+            lower_note.startswith("chat")
+            or lower_note.startswith("call")
+            or lower_note.startswith("video")
+        ):
+            mode_display = (consultation.mode or "Consultation").capitalize()
+            if " · " in note:
+                rest = note.split(" · ", 1)[1]
+                note = f"{mode_display} with {consultation.astrologer_name} · {rest}"
+            else:
+                note = f"{mode_display} with {consultation.astrologer_name}"
+
     return TransactionOut(
         id=str(txn.id),
         direction=txn.direction,
         reason=txn.reason,
         amount_coins=txn.amount_coins,
         balance_after_coins=txn.balance_after_coins,
-        note=txn.note,
+        note=note,
         amount_paise=txn.amount_paise,
         coins_per_rupee=txn.coins_per_rupee,
         ref=TransactionRefOut(
-            razorpay_order_id=txn.ref.razorpay_order_id,
-            razorpay_payment_id=txn.ref.razorpay_payment_id,
-            razorpay_refund_id=txn.ref.razorpay_refund_id,
-            session_id=str(txn.ref.session_id) if txn.ref.session_id else None,
+            razorpay_order_id=txn.ref.razorpay_order_id if txn.ref else None,
+            razorpay_payment_id=txn.ref.razorpay_payment_id if txn.ref else None,
+            razorpay_refund_id=txn.ref.razorpay_refund_id if txn.ref else None,
+            session_id=session_id_str,
+            astrologer_id=astro_id,
+            astrologer_name=astro_name,
+            astrologer_image_url=astro_img,
+            consultation_mode=mode,
         ),
+        consultation=consultation,
         created_at=txn.created_at,
+        astrologer_id=astro_id,
+        astrologer_name=astro_name,
+        astrologer_image_url=astro_img,
+        consultation_mode=mode,
     )
 
 
-def to_balance(wallet: Any) -> WalletBalance:
+async def to_balance(wallet: Any) -> WalletBalance:
+    blocked = getattr(wallet, "blocked_coins", 0)
+    avail = max(0, wallet.balance_coins - blocked)
+
+    # Fetch active holds for scheduled appointments
+    from app.models.appointment import Appointment
+    from app.models.astrologer import Astrologer
+    from app.models.enums import AppointmentStatus
+    from beanie.operators import And, In
+
+    active_appts = await Appointment.find(
+        And(
+            Appointment.user_id == wallet.user_id,
+            In(Appointment.status, [AppointmentStatus.BOOKED]),
+            Appointment.held_coins > 0,
+            Appointment.held_status == "held",
+        )
+    ).to_list()
+
+    holds = []
+    for a in active_appts:
+        astro = await Astrologer.get(a.astrologer_id)
+        holds.append({
+            "appointment_id": str(a.id),
+            "astrologer_name": astro.display_name if astro else "Astrologer",
+            "starts_at": a.starts_at.isoformat(),
+            "ends_at": a.ends_at.isoformat(),
+            "minutes": a.minutes,
+            "held_coins": a.held_coins,
+            "deposit_coins": a.deposit_coins,
+        })
+
     return WalletBalance(
         balance_coins=wallet.balance_coins,
+        blocked_coins=blocked,
+        available_coins=avail,
         is_frozen=wallet.is_frozen,
         frozen_reason=wallet.frozen_reason,
         last_transaction_at=wallet.last_transaction_at,
+        active_holds=holds,
     )
 
 
@@ -63,10 +223,13 @@ def to_balance(wallet: Any) -> WalletBalance:
 async def my_wallet(user: CurrentUser) -> ApiResponse[WalletSummary]:
     wallet = await wallet_service.get_or_create_wallet(user.id)
     recent, _ = await wallet_service.list_transactions(user.id, page=1, limit=5)
+    consultations = await enrich_consultations(recent)
+    wallet_balance = await to_balance(wallet)
     return ApiResponse(
         message="Wallet fetched.",
         data=WalletSummary(
-            wallet=to_balance(wallet), recent=[to_transaction(t) for t in recent]
+            wallet=wallet_balance,
+            recent=[to_transaction(t, consultations) for t in recent],
         ),
     )
 
@@ -85,9 +248,12 @@ async def my_transactions(
     items, total = await wallet_service.list_transactions(
         user.id, page=page, limit=limit, reason=reason
     )
+    consultations = await enrich_consultations(items)
     return ApiResponse(
         message=f"{total} transaction(s).",
-        data=build_page([to_transaction(t) for t in items], total, page, limit),
+        data=build_page(
+            [to_transaction(t, consultations) for t in items], total, page, limit
+        ),
     )
 
 
