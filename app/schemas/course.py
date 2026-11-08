@@ -271,3 +271,104 @@ class BunnyCreateVideoResponse(BaseModel):
     title: str
     upload_url: str | None = None
     access_key: str | None = None
+
+
+# -----------------------------------------------------------------------------
+# GURUKUL JIGYASA (TIMESTAMPED Q&A FORUM) SCHEMAS
+# -----------------------------------------------------------------------------
+class CourseQuestionAnswerOut(BaseModel):
+    id: str
+    user_id: str
+    user_name: str
+    user_role: str
+    user_avatar: str | None = None
+    is_official: bool = False
+    content: str
+    created_at: datetime
+
+
+class CourseQuestionOut(BaseModel):
+    id: str
+    course_id: str
+    section_id: str
+    lesson_id: str
+    user_id: str
+    user_name: str
+    user_avatar: str | None = None
+    timestamp_seconds: int
+    timestamp_formatted: str
+    title: str
+    content: str
+    upvote_count: int
+    is_upvoted_by_me: bool = False
+    answer_count: int
+    is_resolved: bool = False
+    has_official_answer: bool = False
+    is_pinned: bool = False
+    answers: list[CourseQuestionAnswerOut] = Field(default_factory=list)
+    created_at: datetime
+
+
+class CourseQuestionCreateRequest(BaseModel):
+    title: str = Field(..., min_length=2, max_length=300)
+    content: str = Field(..., min_length=2, max_length=5000)
+    timestamp_seconds: int = Field(default=0, ge=0)
+
+
+class CourseQuestionAnswerRequest(BaseModel):
+    content: str = Field(..., min_length=1, max_length=5000)
+
+
+class AdminCourseQuestionAnswerRequest(BaseModel):
+    content: str = Field(..., min_length=1, max_length=5000)
+    mark_resolved: bool = True
+
+
+class AdminCourseQuestionUpdateRequest(BaseModel):
+    is_resolved: bool | None = None
+    is_pinned: bool | None = None
+    is_hidden: bool | None = None
+
+
+class AdminCourseQuestionDetailOut(BaseModel):
+    id: str
+    course_id: str
+    course_title: str
+    course_slug: str
+    section_id: str
+    section_title: str
+    lesson_id: str
+    lesson_title: str
+    video_id: str | None = None
+    video_provider: str = "bunny_stream"
+
+    # Student metadata
+    user_id: str
+    user_name: str
+    user_email: str | None = None
+    user_phone: str | None = None
+    user_avatar: str | None = None
+    student_enrolled_at: datetime | None = None
+    student_progress_percent: float = 0.0
+
+    timestamp_seconds: int
+    timestamp_formatted: str
+    title: str
+    content: str
+    upvote_count: int
+    answer_count: int
+    is_resolved: bool
+    has_official_answer: bool
+    is_pinned: bool
+    is_hidden: bool
+    answers: list[CourseQuestionAnswerOut] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class AdminCourseQuestionListResponse(BaseModel):
+    questions: list[AdminCourseQuestionDetailOut] = Field(default_factory=list)
+    total: int = 0
+    unanswered_count: int = 0
+    resolved_count: int = 0
+

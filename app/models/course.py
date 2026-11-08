@@ -1,10 +1,11 @@
 """Course, Lesson, Enrollment, and Certification Document Models for Astra Gurukul LMS."""
 
+import secrets
 from datetime import datetime, timezone
 from typing import Any
 
 from beanie import Document, Indexed, PydanticObjectId
-from pydantic import Field
+from pydantic import BaseModel, Field
 import pymongo
 
 
@@ -182,3 +183,65 @@ class CourseLessonProgress(Document):
             [("user_id", pymongo.ASCENDING), ("lesson_id", pymongo.ASCENDING)],
             [("user_id", pymongo.ASCENDING), ("course_id", pymongo.ASCENDING)],
         ]
+
+
+class CourseQuestionAnswer(BaseModel):
+    """An individual reply or official instructor explanation inside a Q&A thread."""
+
+    id: str = Field(default_factory=lambda: secrets.token_hex(8))
+    user_id: PydanticObjectId
+    user_name: str = "Astra Student"
+    user_role: str = "student"  # "student", "admin", "astrologer"
+    user_avatar: str | None = None
+    is_official: bool = False  # True when answered by Gurukul Acharya / Admin
+    content: str = Field(..., min_length=1, max_length=5000)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class CourseQuestion(Document):
+    """Timestamped discussion or question posted on a specific video lecture in Gurukul LMS."""
+
+    course_id: Indexed(PydanticObjectId)
+    section_id: Indexed(PydanticObjectId)
+    lesson_id: Indexed(PydanticObjectId)
+    user_id: Indexed(PydanticObjectId)
+
+    # Student metadata at time of posting (denormalized for fast list rendering)
+    user_name: str = "Astra Student"
+    user_email: str | None = None
+    user_phone: str | None = None
+    user_avatar: str | None = None
+
+    # Video timestamp in seconds (e.g. 185 = 03:05 in video)
+    timestamp_seconds: int = Field(default=0, ge=0)
+    timestamp_formatted: str = Field(default="00:00")  # "03:05" or "General"
+
+    title: str = Field(..., min_length=2, max_length=300)
+    content: str = Field(..., min_length=2, max_length=5000)
+
+    # Community and Moderation
+    upvote_user_ids: list[str] = Field(default_factory=list)
+    upvote_count: int = Field(default=0)
+    answers: list[CourseQuestionAnswer] = Field(default_factory=list)
+    answer_count: int = Field(default=0)
+
+    # Status & Flags
+    is_resolved: bool = Field(default=False)
+    has_official_answer: bool = Field(default=False)
+    is_pinned: bool = Field(default=False)
+    is_hidden: bool = Field(default=False)
+
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    class Settings:
+        name = "course_questions"
+        indexes = [
+            [("lesson_id", pymongo.ASCENDING), ("timestamp_seconds", pymongo.ASCENDING)],
+            [("course_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+            [("user_id", pymongo.ASCENDING)],
+            [("has_official_answer", pymongo.ASCENDING)],
+            [("is_resolved", pymongo.ASCENDING)],
+        ]
+

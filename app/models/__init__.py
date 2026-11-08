@@ -48,6 +48,7 @@ from app.models.course import (
     CourseEnrollment,
     CourseLesson,
     CourseLessonProgress,
+    CourseQuestion,
     CourseSection,
 )
 
@@ -103,6 +104,7 @@ DOCUMENT_MODELS: list[type[Document]] = [
     CourseLesson,
     CourseEnrollment,
     CourseLessonProgress,
+    CourseQuestion,
 ]
 
 __all__ = [
@@ -157,4 +159,5 @@ __all__ = [
     "CourseLesson",
     "CourseEnrollment",
     "CourseLessonProgress",
+    "CourseQuestion",
 ]

@@ -9,6 +9,8 @@ from app.models.course import (
     CourseEnrollment,
     CourseLesson,
     CourseLessonProgress,
+    CourseQuestion,
+    CourseQuestionAnswer,
     CourseSection,
 )
 from app.services.course_service import CourseService
@@ -36,6 +38,7 @@ async def init_mock_beanie():
             CourseLesson,
             CourseEnrollment,
             CourseLessonProgress,
+            CourseQuestion,
         ],
         skip_indexes=True,
     )
@@ -137,6 +140,50 @@ async def test_create_course_order_user_attribute_resilience():
                 assert res["order_id"] == "order_test_123"
                 assert res["amount_paise"] == 14900
                 assert res["course_slug"] == "demo-course-1"
+
+
+def test_course_jigyasa_timestamp_formatting():
+    from app.services.course_service import CourseService
+
+    assert CourseService.format_timestamp(0) == "00:00"
+    assert CourseService.format_timestamp(45) == "00:45"
+    assert CourseService.format_timestamp(185) == "03:05"
+    assert CourseService.format_timestamp(3672) == "01:01:12"
+
+
+def test_course_question_model_structure():
+    from beanie import PydanticObjectId
+    from app.models.course import CourseQuestion, CourseQuestionAnswer
+
+    q = CourseQuestion(
+        course_id=PydanticObjectId(),
+        section_id=PydanticObjectId(),
+        lesson_id=PydanticObjectId(),
+        user_id=PydanticObjectId(),
+        user_name="Rahul Student",
+        timestamp_seconds=125,
+        timestamp_formatted="02:05",
+        title="Doubt regarding Jupiter in 7th House",
+        content="Is Jupiter considered benefic if conjunct Rahu in Navamsha chart?",
+    )
+    assert q.title == "Doubt regarding Jupiter in 7th House"
+    assert q.timestamp_formatted == "02:05"
+    assert q.upvote_count == 0
+    assert q.is_resolved is False
+
+    ans = CourseQuestionAnswer(
+        user_id=PydanticObjectId(),
+        user_name="Pt. Rahul Sharma (Acharya)",
+        user_role="admin",
+        is_official=True,
+        content="Jupiter conjunct Rahu forms Guru Chandal Yoga. Look at the Nakshatra lord for relief.",
+    )
+    q.answers.append(ans)
+    q.answer_count = len(q.answers)
+    q.has_official_answer = True
+    assert q.answer_count == 1
+    assert q.has_official_answer is True
+
 
 
 

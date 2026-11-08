@@ -18,6 +18,8 @@ from app.models.course import (
     CourseEnrollment,
     CourseLesson,
     CourseLessonProgress,
+    CourseQuestion,
+    CourseQuestionAnswer,
     CourseSection,
 )
 from app.models.user import User
@@ -529,3 +531,394 @@ class CourseService:
                 "upload_url": f"https://video.bunnycdn.com/library/{settings.BUNNY_STREAM_LIBRARY_ID}/videos/{video_id}",
                 "access_key": settings.BUNNY_STREAM_API_KEY,
             }
+
+    # -------------------------------------------------------------------------
+    # GURUKUL JIGYASA (TIMESTAMPED Q&A FORUM)
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def format_timestamp(seconds: int) -> str:
+        """Formats integer seconds to MM:SS or HH:MM:SS string."""
+        if seconds <= 0:
+            return "00:00"
+        hours = seconds // 3600
+        mins = (seconds % 3600) // 60
+        secs = seconds % 60
+        if hours > 0:
+            return f"{hours:02d}:{mins:02d}:{secs:02d}"
+        return f"{mins:02d}:{secs:02d}"
+
+    @staticmethod
+    async def list_lesson_questions(
+        course_id: PydanticObjectId,
+        lesson_id: PydanticObjectId,
+        current_user: User | None = None,
+        sort: str = "newest",  # "newest", "timestamp", "upvotes"
+        limit: int = 50,
+        skip: int = 0,
+    ) -> list[dict[str, Any]]:
+        """Returns questions for a specific lesson, optionally checking upvote by current_user."""
+        query: dict[str, Any] = {
+            "course_id": course_id,
+            "lesson_id": lesson_id,
+            "is_hidden": False,
+        }
+
+        # Sorting logic
+        if sort == "timestamp":
+            sort_field = [("timestamp_seconds", 1), ("created_at", -1)]
+        elif sort == "upvotes":
+            sort_field = [("upvote_count", -1), ("created_at", -1)]
+        else:
+            sort_field = [("is_pinned", -1), ("created_at", -1)]
+
+        cursor = (
+            CourseQuestion.find(query)
+            .sort(sort_field)
+            .skip(skip)
+            .limit(limit)
+        )
+        questions = await cursor.to_list()
+
+        user_id_str = str(current_user.id) if current_user else None
+
+        result = []
+        for q in questions:
+            result.append({
+                "id": str(q.id),
+                "course_id": str(q.course_id),
+                "section_id": str(q.section_id),
+                "lesson_id": str(q.lesson_id),
+                "user_id": str(q.user_id),
+                "user_name": q.user_name,
+                "user_avatar": q.user_avatar,
+                "timestamp_seconds": q.timestamp_seconds,
+                "timestamp_formatted": q.timestamp_formatted,
+                "title": q.title,
+                "content": q.content,
+                "upvote_count": q.upvote_count,
+                "is_upvoted_by_me": bool(user_id_str and user_id_str in q.upvote_user_ids),
+                "answer_count": len(q.answers),
+                "is_resolved": q.is_resolved,
+                "has_official_answer": q.has_official_answer,
+                "is_pinned": q.is_pinned,
+                "answers": [
+                    {
+                        "id": a.id,
+                        "user_id": str(a.user_id),
+                        "user_name": a.user_name,
+                        "user_role": a.user_role,
+                        "user_avatar": a.user_avatar,
+                        "is_official": a.is_official,
+                        "content": a.content,
+                        "created_at": a.created_at,
+                    }
+                    for a in q.answers
+                ],
+                "created_at": q.created_at,
+            })
+        return result
+
+    @staticmethod
+    async def create_lesson_question(
+        user: User,
+        course_id: PydanticObjectId,
+        lesson_id: PydanticObjectId,
+        title: str,
+        content: str,
+        timestamp_seconds: int = 0,
+    ) -> CourseQuestion:
+        """Allows an enrolled student (or admin) to ask a timestamped question on a video lesson."""
+        course = await Course.find_one(Course.id == course_id, Course.is_deleted == False)
+        if not course:
+            raise NotFoundError("Course not found")
+
+        lesson = await CourseLesson.find_one(CourseLesson.id == lesson_id, CourseLesson.course_id == course_id)
+        if not lesson:
+            raise NotFoundError("Lesson not found")
+
+        # Check enrollment or preview or staff
+        enrollment = await CourseEnrollment.find_one(
+            CourseEnrollment.user_id == user.id,
+            CourseEnrollment.course_id == course_id,
+        )
+        user_role_str = str(getattr(user, "role", "user")).lower()
+        is_admin_or_astrologer = "admin" in user_role_str or "astrologer" in user_role_str
+
+        if not enrollment and not lesson.is_free_preview and not is_admin_or_astrologer:
+            raise ForbiddenError("Please enroll in this course to participate in Gurukul Jigyasa Q&A.")
+
+        user_name = getattr(user, "full_name", None) or "Astra Student"
+        user_phone = getattr(user, "phone", None) or getattr(user, "mobile_number", None) or ""
+        user_email = getattr(user, "email", None) or ""
+        user_avatar = getattr(user, "avatar_url", None)
+
+        safe_seconds = max(0, int(timestamp_seconds or 0))
+        time_str = CourseService.format_timestamp(safe_seconds)
+
+        question = CourseQuestion(
+            course_id=course_id,
+            section_id=lesson.section_id,
+            lesson_id=lesson_id,
+            user_id=user.id,
+            user_name=user_name,
+            user_email=user_email,
+            user_phone=user_phone,
+            user_avatar=user_avatar,
+            timestamp_seconds=safe_seconds,
+            timestamp_formatted=time_str,
+            title=title.strip(),
+            content=content.strip(),
+        )
+        await question.insert()
+        return question
+
+    @staticmethod
+    async def toggle_question_upvote(user: User, question_id: PydanticObjectId) -> dict[str, Any]:
+        """Toggles an upvote on a student question."""
+        question = await CourseQuestion.find_one(CourseQuestion.id == question_id)
+        if not question:
+            raise NotFoundError("Question not found")
+
+        user_id_str = str(user.id)
+        if user_id_str in question.upvote_user_ids:
+            question.upvote_user_ids.remove(user_id_str)
+            is_upvoted = False
+        else:
+            question.upvote_user_ids.append(user_id_str)
+            is_upvoted = True
+
+        question.upvote_count = len(question.upvote_user_ids)
+        await question.save()
+        return {
+            "question_id": str(question.id),
+            "upvote_count": question.upvote_count,
+            "is_upvoted_by_me": is_upvoted,
+        }
+
+    @staticmethod
+    async def answer_question(
+        user: User,
+        question_id: PydanticObjectId,
+        content: str,
+        is_official: bool = False,
+        mark_resolved: bool = False,
+    ) -> CourseQuestionAnswer:
+        """Posts an answer or Acharya explanation to a student question thread."""
+        question = await CourseQuestion.find_one(CourseQuestion.id == question_id)
+        if not question:
+            raise NotFoundError("Question not found")
+
+        role = getattr(user, "role", "student")
+        role_str = str(role.value) if hasattr(role, "value") else str(role).lower()
+        is_admin_or_acharya = "admin" in role_str or "astrologer" in role_str
+
+        final_is_official = is_official or is_admin_or_acharya
+        user_name = getattr(user, "full_name", None) or ("Acharya Guru" if final_is_official else "Astra Student")
+
+        answer = CourseQuestionAnswer(
+            user_id=user.id,
+            user_name=user_name,
+            user_role="admin" if is_admin_or_acharya else "student",
+            user_avatar=getattr(user, "avatar_url", None),
+            is_official=final_is_official,
+            content=content.strip(),
+        )
+
+        question.answers.append(answer)
+        question.answer_count = len(question.answers)
+        if final_is_official:
+            question.has_official_answer = True
+        if mark_resolved:
+            question.is_resolved = True
+        question.updated_at = datetime.now(timezone.utc)
+
+        await question.save()
+        return answer
+
+    @staticmethod
+    async def admin_list_questions(
+        course_id: PydanticObjectId | None = None,
+        lesson_id: PydanticObjectId | None = None,
+        status: str = "all",  # "all", "unanswered", "answered", "resolved"
+        search: str | None = None,
+        limit: int = 50,
+        skip: int = 0,
+    ) -> dict[str, Any]:
+        """Provides full Q&A inquiry management with course, lesson & student details."""
+        query: dict[str, Any] = {"is_hidden": False}
+        if course_id:
+            query["course_id"] = course_id
+        if lesson_id:
+            query["lesson_id"] = lesson_id
+
+        if status == "unanswered":
+            query["has_official_answer"] = False
+            query["is_resolved"] = False
+        elif status == "answered":
+            query["has_official_answer"] = True
+        elif status == "resolved":
+            query["is_resolved"] = True
+
+        if search:
+            query["$or"] = [
+                {"title": {"$regex": search, "$options": "i"}},
+                {"content": {"$regex": search, "$options": "i"}},
+                {"user_name": {"$regex": search, "$options": "i"}},
+                {"user_email": {"$regex": search, "$options": "i"}},
+                {"user_phone": {"$regex": search, "$options": "i"}},
+            ]
+
+        total = await CourseQuestion.find(query).count()
+        unanswered_count = await CourseQuestion.find({"has_official_answer": False, "is_resolved": False, "is_hidden": False}).count()
+        resolved_count = await CourseQuestion.find({"is_resolved": True, "is_hidden": False}).count()
+
+        questions = (
+            await CourseQuestion.find(query)
+            .sort([("created_at", -1)])
+            .skip(skip)
+            .limit(limit)
+            .to_list()
+        )
+
+        # Cache course, section, lesson lookups to minimize DB queries
+        course_cache: dict[str, Course] = {}
+        section_cache: dict[str, CourseSection] = {}
+        lesson_cache: dict[str, CourseLesson] = {}
+        enrollment_cache: dict[str, CourseEnrollment] = {}
+
+        detailed_items = []
+        for q in questions:
+            # Course info
+            cid_str = str(q.course_id)
+            if cid_str not in course_cache:
+                c_doc = await Course.find_one(Course.id == q.course_id)
+                if c_doc:
+                    course_cache[cid_str] = c_doc
+            course_item = course_cache.get(cid_str)
+
+            # Lesson info
+            lid_str = str(q.lesson_id)
+            if lid_str not in lesson_cache:
+                l_doc = await CourseLesson.find_one(CourseLesson.id == q.lesson_id)
+                if l_doc:
+                    lesson_cache[lid_str] = l_doc
+            lesson_item = lesson_cache.get(lid_str)
+
+            # Section info
+            sid_str = str(q.section_id)
+            if sid_str not in section_cache:
+                s_doc = await CourseSection.find_one(CourseSection.id == q.section_id)
+                if s_doc:
+                    section_cache[sid_str] = s_doc
+            section_item = section_cache.get(sid_str)
+
+            # Student enrollment info
+            enr_key = f"{q.user_id}_{q.course_id}"
+            if enr_key not in enrollment_cache:
+                enr = await CourseEnrollment.find_one(
+                    CourseEnrollment.user_id == q.user_id,
+                    CourseEnrollment.course_id == q.course_id,
+                )
+                if enr:
+                    enrollment_cache[enr_key] = enr
+            enr_item = enrollment_cache.get(enr_key)
+
+            detailed_items.append({
+                "id": str(q.id),
+                "course_id": str(q.course_id),
+                "course_title": course_item.title if course_item else "Gurukul Masterclass",
+                "course_slug": course_item.slug if course_item else "",
+                "section_id": str(q.section_id),
+                "section_title": section_item.title if section_item else "Curriculum Module",
+                "lesson_id": str(q.lesson_id),
+                "lesson_title": lesson_item.title if lesson_item else "Video Lecture",
+                "video_id": lesson_item.video_id if lesson_item else None,
+                "video_provider": lesson_item.video_provider if lesson_item else "bunny_stream",
+                "user_id": str(q.user_id),
+                "user_name": q.user_name,
+                "user_email": q.user_email,
+                "user_phone": q.user_phone,
+                "user_avatar": q.user_avatar,
+                "student_enrolled_at": enr_item.enrolled_at if enr_item else None,
+                "student_progress_percent": enr_item.progress_percent if enr_item else 0.0,
+                "timestamp_seconds": q.timestamp_seconds,
+                "timestamp_formatted": q.timestamp_formatted,
+                "title": q.title,
+                "content": q.content,
+                "upvote_count": q.upvote_count,
+                "answer_count": len(q.answers),
+                "is_resolved": q.is_resolved,
+                "has_official_answer": q.has_official_answer,
+                "is_pinned": q.is_pinned,
+                "is_hidden": q.is_hidden,
+                "answers": [
+                    {
+                        "id": a.id,
+                        "user_id": str(a.user_id),
+                        "user_name": a.user_name,
+                        "user_role": a.user_role,
+                        "user_avatar": a.user_avatar,
+                        "is_official": a.is_official,
+                        "content": a.content,
+                        "created_at": a.created_at,
+                    }
+                    for a in q.answers
+                ],
+                "created_at": q.created_at,
+                "updated_at": q.updated_at,
+            })
+
+        return {
+            "questions": detailed_items,
+            "total": total,
+            "unanswered_count": unanswered_count,
+            "resolved_count": resolved_count,
+        }
+
+    @staticmethod
+    async def admin_update_question(
+        question_id: PydanticObjectId,
+        is_resolved: bool | None = None,
+        is_pinned: bool | None = None,
+        is_hidden: bool | None = None,
+    ) -> CourseQuestion:
+        """Toggles resolved, pinned, or hidden moderation status."""
+        question = await CourseQuestion.find_one(CourseQuestion.id == question_id)
+        if not question:
+            raise NotFoundError("Question not found")
+
+        if is_resolved is not None:
+            question.is_resolved = is_resolved
+        if is_pinned is not None:
+            question.is_pinned = is_pinned
+        if is_hidden is not None:
+            question.is_hidden = is_hidden
+
+        question.updated_at = datetime.now(timezone.utc)
+        await question.save()
+        return question
+
+    @staticmethod
+    async def admin_delete_question(question_id: PydanticObjectId) -> bool:
+        """Deletes a question thread."""
+        question = await CourseQuestion.find_one(CourseQuestion.id == question_id)
+        if not question:
+            raise NotFoundError("Question not found")
+        await question.delete()
+        return True
+
+    @staticmethod
+    async def admin_delete_answer(question_id: PydanticObjectId, answer_id: str) -> bool:
+        """Deletes an answer inside a question thread."""
+        question = await CourseQuestion.find_one(CourseQuestion.id == question_id)
+        if not question:
+            raise NotFoundError("Question not found")
+        orig_count = len(question.answers)
+        question.answers = [a for a in question.answers if a.id != answer_id]
+        if len(question.answers) == orig_count:
+            raise NotFoundError("Answer not found")
+        question.answer_count = len(question.answers)
+        question.has_official_answer = any(a.is_official for a in question.answers)
+        question.updated_at = datetime.now(timezone.utc)
+        await question.save()
+        return True

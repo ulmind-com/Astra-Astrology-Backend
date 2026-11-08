@@ -16,6 +16,10 @@ from app.schemas.course import (
     CourseListItemOut,
     CourseOrderCreateResponse,
     CoursePaymentVerifyRequest,
+    CourseQuestionAnswerRequest,
+    CourseQuestionAnswerOut,
+    CourseQuestionCreateRequest,
+    CourseQuestionOut,
     LessonProgressUpdateRequest,
     LessonStreamResponse,
 )
@@ -155,3 +159,119 @@ async def update_lesson_progress(
         mark_completed=payload.mark_completed,
     )
     return ApiResponse(data=result)
+
+
+# -----------------------------------------------------------------------------
+# GURUKUL JIGYASA (TIMESTAMPED Q&A FORUM) ENDPOINTS
+# -----------------------------------------------------------------------------
+@router.get(
+    "/{course_id}/lessons/{lesson_id}/questions",
+    response_model=ApiResponse[list[CourseQuestionOut]],
+)
+async def list_lesson_questions(
+    course_id: PydanticObjectId,
+    lesson_id: PydanticObjectId,
+    sort: Annotated[str, Query(description="Sort order: newest, timestamp, upvotes")] = "newest",
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    skip: Annotated[int, Query(ge=0)] = 0,
+    user: Annotated[User | None, Depends(get_optional_user)] = None,
+) -> ApiResponse[list[CourseQuestionOut]]:
+    """Returns timestamped discussion questions for a video lesson."""
+    questions = await CourseService.list_lesson_questions(
+        course_id=course_id,
+        lesson_id=lesson_id,
+        current_user=user,
+        sort=sort,
+        limit=limit,
+        skip=skip,
+    )
+    items = [CourseQuestionOut(**q) for q in questions]
+    return ApiResponse(data=items)
+
+
+@router.post(
+    "/{course_id}/lessons/{lesson_id}/questions",
+    response_model=ApiResponse[CourseQuestionOut],
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_lesson_question(
+    course_id: PydanticObjectId,
+    lesson_id: PydanticObjectId,
+    payload: CourseQuestionCreateRequest,
+    user: Annotated[User, Depends(get_current_user)],
+) -> ApiResponse[CourseQuestionOut]:
+    """Posts a new timestamped question on a video lesson."""
+    q = await CourseService.create_lesson_question(
+        user=user,
+        course_id=course_id,
+        lesson_id=lesson_id,
+        title=payload.title,
+        content=payload.content,
+        timestamp_seconds=payload.timestamp_seconds,
+    )
+    # Return formatted out schema
+    out = CourseQuestionOut(
+        id=str(q.id),
+        course_id=str(q.course_id),
+        section_id=str(q.section_id),
+        lesson_id=str(q.lesson_id),
+        user_id=str(q.user_id),
+        user_name=q.user_name,
+        user_avatar=q.user_avatar,
+        timestamp_seconds=q.timestamp_seconds,
+        timestamp_formatted=q.timestamp_formatted,
+        title=q.title,
+        content=q.content,
+        upvote_count=0,
+        is_upvoted_by_me=False,
+        answer_count=0,
+        is_resolved=False,
+        has_official_answer=False,
+        is_pinned=False,
+        answers=[],
+        created_at=q.created_at,
+    )
+    return ApiResponse(data=out, message="Question posted to Gurukul Jigyasa!")
+
+
+@router.post(
+    "/questions/{question_id}/upvote",
+    response_model=ApiResponse[dict],
+)
+async def toggle_question_upvote(
+    question_id: PydanticObjectId,
+    user: Annotated[User, Depends(get_current_user)],
+) -> ApiResponse[dict]:
+    """Toggles student upvote on a Gurukul Jigyasa question."""
+    res = await CourseService.toggle_question_upvote(user=user, question_id=question_id)
+    return ApiResponse(data=res)
+
+
+@router.post(
+    "/questions/{question_id}/answers",
+    response_model=ApiResponse[CourseQuestionAnswerOut],
+    status_code=status.HTTP_201_CREATED,
+)
+async def answer_question(
+    question_id: PydanticObjectId,
+    payload: CourseQuestionAnswerRequest,
+    user: Annotated[User, Depends(get_current_user)],
+) -> ApiResponse[CourseQuestionAnswerOut]:
+    """Replies to a student question thread."""
+    ans = await CourseService.answer_question(
+        user=user,
+        question_id=question_id,
+        content=payload.content,
+    )
+    out = CourseQuestionAnswerOut(
+        id=ans.id,
+        user_id=str(ans.user_id),
+        user_name=ans.user_name,
+        user_role=ans.user_role,
+        user_avatar=ans.user_avatar,
+        is_official=ans.is_official,
+        content=ans.content,
+        created_at=ans.created_at,
+    )
+    return ApiResponse(data=out, message="Answer posted successfully!")
+
