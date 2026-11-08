@@ -312,7 +312,7 @@ def generate_annual_lal_kitab_report(
             else "Astra Consecrated Lal Kitab Varshphal Certificate"
         ),
         "seal_motto": "धर्मो रक्षति रक्षितः • ग्रहाधीनं जगत्सर्वम्",
-        "chief_astrologer": "Pt. Acharya Radhakant Sharma (Vedic Jyotishacharya)",
+        "chief_astrologer": "Pt. Acharya Rahul Sharma (Vedic Jyotishacharya)",
         "authenticity_hash": f"SHA256-{seal_digest}",
         "verification_url": f"https://astra-astrology-web.vercel.app/verify/annual-report/{report_id}",
     }
