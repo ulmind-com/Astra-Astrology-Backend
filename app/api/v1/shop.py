@@ -15,8 +15,9 @@ from app.schemas.shop import (
     ProductListResponse,
     ProductOut,
     ShopBannerSettingsOut,
+    ShopProductRecommendationOut,
 )
-from app.services import shop_admin
+from app.services import shop_admin, shop_remedy_recommender
 
 router = APIRouter(prefix="/shop", tags=["shop"])
 
@@ -87,3 +88,29 @@ async def get_public_banners() -> ApiResponse[ShopBannerSettingsOut]:
             hero_banners=active_banners,
         )
     )
+
+
+@router.get(
+    "/recommendations",
+    response_model=ApiResponse[list[ShopProductRecommendationOut]],
+    summary="Get dynamic remedy product recommendations based on astrological transit, dosha, or rashi",
+)
+async def get_astrological_remedy_recommendations(
+    planet: str | None = Query(default=None, description="e.g. Saturn, Mars, Sun, Jupiter"),
+    dosha: str | None = Query(default=None, description="e.g. sade_sati, manglik, kaal_sarp, pitra_dosha, blocked_money"),
+    rashi: str | None = Query(default=None, description="e.g. Aries, Leo, Capricorn"),
+    life_pillar: str | None = Query(default=None, description="e.g. Career, Wealth, Health, Marriage"),
+    lang: str = Query(default="bn", description="'bn', 'hi', or 'en'"),
+    limit: int = Query(default=4, ge=1, le=12),
+) -> ApiResponse[list[ShopProductRecommendationOut]]:
+    recs = await shop_remedy_recommender.get_shop_recommendations_for_astrology(
+        planet=planet,
+        dosha=dosha,
+        rashi=rashi,
+        life_pillar=life_pillar,
+        lang=lang,
+        limit=limit,
+    )
+    return ApiResponse.ok(data=recs)
+
+

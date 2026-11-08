@@ -43,6 +43,8 @@ class ProductCategory(TimestampedDocument):
     parent_id: PydanticObjectId | None = None  # None indicates top-level category
     display_order: int = Field(default=0, ge=0)
     is_active: bool = True
+    is_deleted: bool = Field(default=False, description="Soft-delete flag preserving referential history")
+    deleted_at: datetime | None = None
     seo_title: str | None = None
     seo_description: str | None = None
 
@@ -53,6 +55,7 @@ class ProductCategory(TimestampedDocument):
             pymongo.IndexModel([("category_type", pymongo.ASCENDING)], name="category_type_idx"),
             pymongo.IndexModel([("parent_id", pymongo.ASCENDING)], name="category_parent_idx"),
             pymongo.IndexModel([("is_active", pymongo.ASCENDING), ("display_order", pymongo.ASCENDING)], name="category_active_order"),
+            pymongo.IndexModel([("is_deleted", pymongo.ASCENDING)], name="category_deleted_idx"),
         ]
 
 
@@ -103,6 +106,8 @@ class Product(TimestampedDocument):
     is_active: bool = Field(default=True, description="Whether visible in public user store")
     is_featured: bool = Field(default=False, description="Whether highlighted on AstroStore front carousel")
     is_energized: bool = Field(default=True, description="Whether product comes consecrated with Vedic rituals")
+    is_deleted: bool = Field(default=False, description="Soft-delete flag preserving referential order history")
+    deleted_at: datetime | None = None
     average_rating: float = Field(default=5.0, ge=1.0, le=5.0)
     review_count: int = Field(default=0, ge=0)
 
@@ -129,6 +134,7 @@ class Product(TimestampedDocument):
             pymongo.IndexModel([("category_slug", pymongo.ASCENDING)], name="product_category_slug_idx"),
             pymongo.IndexModel([("category_type", pymongo.ASCENDING)], name="product_category_type_idx"),
             pymongo.IndexModel([("is_active", pymongo.ASCENDING), ("is_featured", pymongo.ASCENDING)], name="product_active_featured"),
+            pymongo.IndexModel([("is_deleted", pymongo.ASCENDING)], name="product_deleted_idx"),
             pymongo.IndexModel([("sale_price", pymongo.ASCENDING)], name="product_price_idx"),
             pymongo.IndexModel([("ruling_planet", pymongo.ASCENDING)], name="product_planet_idx"),
             pymongo.IndexModel([("benefits", pymongo.ASCENDING)], name="product_benefits_idx"),

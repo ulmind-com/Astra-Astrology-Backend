@@ -92,22 +92,93 @@ async def test_update_stock_calculations():
     )
     prod.id = PydanticObjectId()
 
+    mock_collection = MagicMock()
+    mock_collection.update_one = AsyncMock(return_value=MagicMock(modified_count=1))
+
     with patch.object(Product, "get", AsyncMock(return_value=prod)), \
-         patch.object(Product, "save", AsyncMock(return_value=prod)):
+         patch.object(Product, "get_pymongo_collection", return_value=mock_collection):
+
         # Test 'add'
+        prod.stock_quantity = 15
         res1 = await shop_admin.update_stock(str(prod.id), StockUpdatePayload(quantity=5, mode="add"))
         assert res1.stock_quantity == 15
         assert res1.in_stock is True
 
         # Test 'subtract'
+        prod.stock_quantity = 3
         res2 = await shop_admin.update_stock(str(prod.id), StockUpdatePayload(quantity=12, mode="subtract"))
         assert res2.stock_quantity == 3
         assert res2.is_low_stock is True
 
         # Test 'set'
+        prod.stock_quantity = 0
         res3 = await shop_admin.update_stock(str(prod.id), StockUpdatePayload(quantity=0, mode="set"))
         assert res3.stock_quantity == 0
         assert res3.in_stock is False
+
+
+@pytest.mark.asyncio
+async def test_atomic_stock_reserve_and_release():
+    prod_id = PydanticObjectId()
+    mock_collection = MagicMock()
+    # 1. Successful reservation
+    mock_collection.update_one = AsyncMock(return_value=MagicMock(modified_count=1))
+    with patch.object(Product, "get_pymongo_collection", return_value=mock_collection):
+        res = await shop_admin.atomic_reserve_stock(prod_id, 2)
+        assert res is True
+
+    # 2. Insufficient stock (modified_count == 0)
+    mock_collection.update_one = AsyncMock(return_value=MagicMock(modified_count=0))
+    with patch.object(Product, "get_pymongo_collection", return_value=mock_collection):
+        res = await shop_admin.atomic_reserve_stock(prod_id, 999)
+        assert res is False
+
+
+@pytest.mark.asyncio
+async def test_soft_delete_preserves_order_integrity():
+    prod = Product(
+        title="14 Mukhi Rare Nepal Rudraksha",
+        slug="14-mukhi-nepal",
+        sku="ASTRA-RUD-14M",
+        short_description="Deva Mani Rudraksha",
+        detailed_description="Lord Shiva & Hanuman Blessed",
+        category_id=PydanticObjectId(),
+        category_slug="rudraksha",
+        mrp=45000.0,
+        sale_price=38000.0,
+        stock_quantity=1,
+        featured_image="https://res.cloudinary.com/astra/image/upload/v1/rud14.webp",
+    )
+    prod.id = PydanticObjectId()
+
+    # Case A: Product has orders -> must SOFT DELETE
+    mock_order_query = MagicMock()
+    mock_order_query.count = AsyncMock(return_value=1)
+
+    with patch.object(Product, "get", AsyncMock(return_value=prod)), \
+         patch.object(Product, "save", AsyncMock(return_value=prod)), \
+         patch("app.models.shop.ShopOrder.find", return_value=mock_order_query):
+
+        res = await shop_admin.delete_product(str(prod.id), hard_delete=False)
+        assert res["deleted"] is True
+        assert res["mode"] == "soft_delete"
+        assert prod.is_deleted is True
+        assert prod.is_active is False
+
+
+def test_astrological_remedy_recommender_enrichment():
+    from app.services.shop_remedy_recommender import enrich_curated_remedies_with_store_links
+
+    raw_remedies = [
+        {"planet_name": "Saturn", "house": 8, "upay_list": ["Do not consume alcohol."]},
+        {"planet_name": "Jupiter", "house": 9, "upay_list": ["Wear yellow cloth."]},
+    ]
+    enriched = enrich_curated_remedies_with_store_links(raw_remedies, lang="bn")
+    assert len(enriched) == 2
+    assert "store_remedy_query" in enriched[0]
+    assert enriched[0]["store_remedy_query"]["planet"] == "Saturn"
+    assert "/shop?planet=Saturn" in enriched[0]["store_remedy_query"]["explore_url"]
+
 
 
 @pytest.mark.asyncio

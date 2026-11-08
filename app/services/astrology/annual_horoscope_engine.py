@@ -36,6 +36,7 @@ from app.services.astrology.lal_kitab_data import (
     get_gomti_chakra_remedies,
     get_special_remedy,
 )
+from app.services.shop_remedy_recommender import enrich_curated_remedies_with_store_links
 
 # 12 Signs Master Metadata
 SIGNS_MASTER = [
@@ -283,6 +284,7 @@ def generate_annual_lal_kitab_report(
 
     # 9. Curate High-Potency Lal Kitab Remedies
     curated_remedies = _curate_lal_kitab_remedies(varsh_planets, lang)
+    curated_remedies = enrich_curated_remedies_with_store_links(curated_remedies, lang)
 
     # 10. Curate Special Problem Mahaupay & Gomti Chakra
     special_remedy = _select_special_mahaupay(primary_focus, lang)

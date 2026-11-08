@@ -8,12 +8,13 @@ Covers:
 - Store Hero Carousel & Announcement Bar CMS customization.
 """
 
-from typing import Annotated
+from typing import Annotated, Any
 from fastapi import APIRouter, File, Query, UploadFile
 
 from app.api.dependencies import AdminUser
 from app.schemas.common import ApiResponse
 from app.schemas.shop import (
+    CloudinaryOrphanCleanupReport,
     InventorySummaryResponse,
     ProductCategoryCreate,
     ProductCategoryOut,
@@ -217,15 +218,42 @@ async def update_shop_product(
 
 @router.delete(
     "/products/{product_id}",
-    response_model=ApiResponse[dict[str, bool]],
-    summary="Delete product and purge all associated images from Cloudinary",
+    response_model=ApiResponse[dict[str, Any]],
+    summary="Delete product (safely soft-deletes if order history exists)",
 )
 async def delete_shop_product(
     product_id: str,
+    hard_delete: bool = Query(default=False),
     admin: AdminUser = None,
-) -> ApiResponse[dict[str, bool]]:
-    await shop_admin.delete_product(product_id)
-    return ApiResponse.ok(data={"deleted": True}, message="Product deleted successfully.")
+) -> ApiResponse[dict[str, Any]]:
+    result = await shop_admin.delete_product(product_id, hard_delete=hard_delete)
+    return ApiResponse.ok(data=result, message=result.get("message", "Product deleted."))
+
+
+@router.post(
+    "/products/{product_id}/restore",
+    response_model=ApiResponse[ProductOut],
+    summary="Restore a soft-deleted product back to active catalog",
+)
+async def restore_shop_product(
+    product_id: str,
+    admin: AdminUser = None,
+) -> ApiResponse[ProductOut]:
+    product = await shop_admin.restore_product(product_id)
+    return ApiResponse.ok(data=product, message="Product restored successfully.")
+
+
+@router.post(
+    "/cleanup-orphaned-images",
+    response_model=ApiResponse[CloudinaryOrphanCleanupReport],
+    summary="Purge orphaned Cloudinary images in products/ folder",
+)
+async def cleanup_orphaned_shop_images(
+    dry_run: bool = Query(default=False, description="Simulate without actually deleting"),
+    admin: AdminUser = None,
+) -> ApiResponse[CloudinaryOrphanCleanupReport]:
+    report = await shop_admin.purge_unreferenced_cloudinary_shop_images(dry_run=dry_run)
+    return ApiResponse.ok(data=report, message="Cloudinary image garbage collection completed.")
 
 
 # ===========================================================================
@@ -287,3 +315,4 @@ async def update_store_banner_settings(
 ) -> ApiResponse[ShopBannerSettingsOut]:
     settings = await shop_admin.update_shop_banner_settings(payload)
     return ApiResponse.ok(data=settings, message="Store banners updated successfully.")
+

@@ -7,6 +7,8 @@ Handles:
 - Store hero banner & announcement CMS customization.
 """
 
+import asyncio
+from datetime import UTC, datetime, timedelta
 import re
 from typing import Any
 from beanie import PydanticObjectId
@@ -15,8 +17,9 @@ from loguru import logger
 
 from app.core.exceptions import BadRequestError, NotFoundError
 from app.models.cms import CMS_KEY_SHOP, ShopCMS
-from app.models.shop import Product, ProductCategory
+from app.models.shop import Product, ProductCategory, ShopOrder
 from app.schemas.shop import (
+    CloudinaryOrphanCleanupReport,
     InventorySummaryResponse,
     ProductCategoryCreate,
     ProductCategoryOut,
@@ -29,7 +32,7 @@ from app.schemas.shop import (
     ShopBannerSettingsUpdate,
     StockUpdatePayload,
 )
-from app.services.storage import safe_delete_cloudinary_image
+from app.services.storage import extract_public_id_from_url, safe_delete_cloudinary_image
 
 
 def slugify(text: str) -> str:
@@ -74,6 +77,7 @@ def _product_out(p: Product) -> ProductOut:
         is_active=p.is_active,
         is_featured=p.is_featured,
         is_energized=p.is_energized,
+        is_deleted=getattr(p, "is_deleted", False),
         average_rating=p.average_rating,
         review_count=p.review_count,
         created_at=p.created_at,
@@ -87,12 +91,15 @@ def _product_out(p: Product) -> ProductOut:
 
 
 async def list_categories(include_inactive: bool = True) -> list[ProductCategoryOut]:
-    """Returns all categories with accurate product counts."""
-    query = {} if include_inactive else {"is_active": True}
+    """Returns all categories with accurate product counts, excluding soft-deleted ones."""
+    query: dict[str, Any] = {"is_deleted": False}
+    if not include_inactive:
+        query["is_active"] = True
     cats = await ProductCategory.find(query).sort("+display_order", "+name").to_list()
 
-    # Aggregate product counts per category in one query
+    # Aggregate product counts per category in one query (excluding soft-deleted products)
     counts_cursor = Product.aggregate([
+        {"$match": {"is_deleted": False}},
         {"$group": {"_id": "$category_id", "count": {"$sum": 1}}}
     ])
     counts_map: dict[str, int] = {}
@@ -214,7 +221,7 @@ async def update_category(cat_id: str, payload: ProductCategoryUpdate) -> Produc
 
 
 async def delete_category(cat_id: str) -> bool:
-    """Deletes category if no products are assigned to it."""
+    """Soft-deletes category if no active products are assigned to it."""
     try:
         oid = PydanticObjectId(cat_id)
     except Exception:
@@ -224,10 +231,10 @@ async def delete_category(cat_id: str) -> bool:
     if not cat:
         raise NotFoundError("Category not found.")
 
-    assigned_count = await Product.find(Product.category_id == oid).count()
+    assigned_count = await Product.find(Product.category_id == oid, Product.is_deleted == False).count()
     if assigned_count > 0:
         raise BadRequestError(
-            f"Cannot delete category with {assigned_count} products. Reassign or delete products first."
+            f"Cannot delete category with {assigned_count} active products. Reassign or delete products first."
         )
 
     # Clean up associated assets from Cloudinary
@@ -236,7 +243,11 @@ async def delete_category(cat_id: str) -> bool:
     if cat.icon_url:
         await safe_delete_cloudinary_image(cat.icon_url)
 
-    await cat.delete()
+    cat.is_deleted = True
+    cat.is_active = False
+    cat.deleted_at = datetime.now(UTC)
+    await cat.save()
+    logger.info("Soft-deleted category '{}' (id={})", cat.name, cat.id)
     return True
 
 
@@ -252,6 +263,7 @@ async def list_products(
     stock_status: str | None = None,  # 'in_stock', 'low_stock', 'out_of_stock'
     is_active: bool | None = None,
     is_featured: bool | None = None,
+    include_deleted: bool = False,
     page: int = 1,
     limit: int = 20,
     sort_by: str = "-created_at",
@@ -260,6 +272,8 @@ async def list_products(
     skip = (page - 1) * limit
     filters: list[Any] = []
 
+    if not include_deleted:
+        filters.append(Product.is_deleted == False)
     if is_active is not None:
         filters.append(Product.is_active == is_active)
     if is_featured is not None:
@@ -477,8 +491,11 @@ async def update_product(prod_id: str, payload: ProductUpdate) -> ProductOut:
     return _product_out(product)
 
 
-async def delete_product(prod_id: str) -> bool:
-    """Deletes product and purges all media assets from Cloudinary storage."""
+async def delete_product(prod_id: str, hard_delete: bool = False) -> dict[str, Any]:
+    """Deletes or soft-deletes product.
+    If the product has ever been ordered, soft-deletes it to preserve customer order
+    history and invoice audits while hiding it from the public store.
+    """
     try:
         oid = PydanticObjectId(prod_id)
     except Exception:
@@ -488,7 +505,28 @@ async def delete_product(prod_id: str) -> bool:
     if not product:
         raise NotFoundError("Product not found.")
 
-    # Purge all media
+    # Check if this product was ever part of any order
+    order_count = await ShopOrder.find({"items.product_id": oid}).count()
+
+    if order_count > 0 or not hard_delete:
+        # SOFT DELETE: preserves tax invoices, historical orders, and avoids data corruption
+        product.is_deleted = True
+        product.is_active = False
+        product.deleted_at = datetime.now(UTC)
+        await product.save()
+        logger.info(
+            "Soft-deleted product '{}' (id={}, had {} orders). Preserving Cloudinary images for order history.",
+            product.title,
+            product.id,
+            order_count,
+        )
+        return {
+            "deleted": True,
+            "mode": "soft_delete",
+            "message": "Product soft-deleted and archived to preserve order history.",
+        }
+
+    # If NEVER ordered and hard_delete explicitly requested:
     all_images = set(product.images or [])
     if product.featured_image:
         all_images.add(product.featured_image)
@@ -499,12 +537,74 @@ async def delete_product(prod_id: str) -> bool:
         await safe_delete_cloudinary_image(img_url)
 
     await product.delete()
-    logger.info("Deleted product '{}' and purged {} Cloudinary images", product.title, len(all_images))
-    return True
+    logger.info("Hard-deleted product '{}' and purged {} Cloudinary images", product.title, len(all_images))
+    return {
+        "deleted": True,
+        "mode": "hard_delete",
+        "message": f"Product permanently deleted and {len(all_images)} Cloudinary images purged.",
+    }
+
+
+async def restore_product(prod_id: str) -> ProductOut:
+    """Restores a soft-deleted product back to the active catalog."""
+    try:
+        oid = PydanticObjectId(prod_id)
+    except Exception:
+        raise BadRequestError("Invalid product ID format.")
+
+    product = await Product.get(oid)
+    if not product:
+        raise NotFoundError("Product not found.")
+
+    product.is_deleted = False
+    product.deleted_at = None
+    product.is_active = True
+    await product.save()
+    logger.info("Restored product '{}' (id={})", product.title, product.id)
+    return _product_out(product)
+
+
+# ===========================================================================
+# Concurrency & Atomic Stock Reservation Helpers
+# ===========================================================================
+
+
+async def atomic_reserve_stock(prod_id: str | PydanticObjectId, quantity: int) -> bool:
+    """Atomically decrements stock if sufficient quantity exists using MongoDB's $inc.
+    Prevents race conditions where two simultaneous checkouts exceed available stock.
+    Returns True if successfully reserved, False if out-of-stock or concurrent conflict.
+    """
+    if quantity <= 0:
+        return False
+    oid = PydanticObjectId(prod_id) if isinstance(prod_id, str) else prod_id
+    collection = Product.get_pymongo_collection()
+    res = await collection.update_one(
+        {
+            "_id": oid,
+            "stock_quantity": {"$gte": quantity},
+            "is_deleted": False,
+            "is_active": True,
+        },
+        {"$inc": {"stock_quantity": -quantity}},
+    )
+    return res.modified_count > 0
+
+
+async def atomic_release_stock(prod_id: str | PydanticObjectId, quantity: int) -> bool:
+    """Atomically releases reserved stock back to warehouse (e.g. upon payment failure or order cancellation)."""
+    if quantity <= 0:
+        return False
+    oid = PydanticObjectId(prod_id) if isinstance(prod_id, str) else prod_id
+    collection = Product.get_pymongo_collection()
+    res = await collection.update_one(
+        {"_id": oid},
+        {"$inc": {"stock_quantity": quantity}},
+    )
+    return res.modified_count > 0
 
 
 async def update_stock(prod_id: str, payload: StockUpdatePayload) -> ProductOut:
-    """Modifies inventory count inline (mode='set', 'add', 'subtract')."""
+    """Modifies inventory count inline (mode='set', 'add', 'subtract') atomically."""
     try:
         oid = PydanticObjectId(prod_id)
     except Exception:
@@ -515,28 +615,34 @@ async def update_stock(prod_id: str, payload: StockUpdatePayload) -> ProductOut:
         raise NotFoundError("Product not found.")
 
     old_stock = product.stock_quantity
-    if payload.mode == "add":
-        product.stock_quantity += payload.quantity
-    elif payload.mode == "subtract":
-        product.stock_quantity = max(0, product.stock_quantity - payload.quantity)
-    else:  # set
-        product.stock_quantity = max(0, payload.quantity)
+    collection = Product.get_pymongo_collection()
 
-    await product.save()
+    if payload.mode == "add":
+        await collection.update_one({"_id": oid}, {"$inc": {"stock_quantity": payload.quantity}})
+    elif payload.mode == "subtract":
+        new_val = max(0, product.stock_quantity - payload.quantity)
+        await collection.update_one({"_id": oid}, {"$set": {"stock_quantity": new_val}})
+    else:  # set
+        await collection.update_one({"_id": oid}, {"$set": {"stock_quantity": max(0, payload.quantity)}})
+
+    updated_product = await Product.get(oid)
+    if not updated_product:
+        raise NotFoundError("Product not found.")
+
     logger.info(
         "Stock updated for '{}' (SKU={}): {} -> {} (reason: {})",
-        product.title,
-        product.sku,
+        updated_product.title,
+        updated_product.sku,
         old_stock,
-        product.stock_quantity,
+        updated_product.stock_quantity,
         payload.reason or "Admin manual update",
     )
-    return _product_out(product)
+    return _product_out(updated_product)
 
 
 async def get_inventory_summary() -> InventorySummaryResponse:
-    """Computes real-time warehouse metrics, stock-out counts, and valuations."""
-    all_prods = await Product.find_all().to_list()
+    """Computes real-time warehouse metrics, stock-out counts, and valuations for active inventory."""
+    all_prods = await Product.find({"is_deleted": False}).to_list()
     total_products = len(all_prods)
     out_of_stock = sum(1 for p in all_prods if p.stock_quantity == 0)
     low_stock = sum(1 for p in all_prods if 0 < p.stock_quantity <= p.low_stock_threshold)
@@ -595,3 +701,123 @@ async def update_shop_banner_settings(payload: ShopBannerSettingsUpdate) -> Shop
         announcement_bar_active=cms.announcement_bar_active,
         hero_banners=cms.hero_banners,
     )
+
+
+# ===========================================================================
+# Cloudinary Orphan Asset Garbage Collection
+# ===========================================================================
+
+
+async def purge_unreferenced_cloudinary_shop_images(dry_run: bool = False) -> CloudinaryOrphanCleanupReport:
+    """Discovers and purges orphaned Cloudinary image assets created in 'products/' folder
+    that are not referenced by any Product, Category, or Store CMS banner.
+    Protects storage quota from abandoned uploads and cancelled form edits.
+    """
+    import cloudinary.api
+
+    # 1. Gather all referenced Cloudinary public IDs across database
+    referenced_ids: set[str] = set()
+
+    # Active and archived products (we do NOT purge images of soft-deleted products since past orders need them)
+    prods = await Product.find_all().to_list()
+    for p in prods:
+        all_imgs = list(p.images or [])
+        if p.featured_image:
+            all_imgs.append(p.featured_image)
+        if p.certificate_image_url:
+            all_imgs.append(p.certificate_image_url)
+        for u in all_imgs:
+            pid = extract_public_id_from_url(u)
+            if pid:
+                referenced_ids.add(pid)
+
+    # Categories
+    cats = await ProductCategory.find_all().to_list()
+    for c in cats:
+        for u in [c.icon_url, c.banner_url]:
+            pid = extract_public_id_from_url(u)
+            if pid:
+                referenced_ids.add(pid)
+
+    # Store CMS Banners
+    cms = await ShopCMS.find_one(ShopCMS.key == CMS_KEY_SHOP)
+    if cms and cms.hero_banners:
+        for b in cms.hero_banners:
+            u = b.get("image_url") if isinstance(b, dict) else getattr(b, "image_url", None)
+            pid = extract_public_id_from_url(u)
+            if pid:
+                referenced_ids.add(pid)
+
+    # 2. Query Cloudinary assets in 'products/' folder
+    scanned_count = 0
+    orphaned_ids: list[str] = []
+    cutoff_time = datetime.now(UTC) - timedelta(hours=2)  # safety buffer for in-flight uploads
+
+    try:
+        response = await asyncio.to_thread(
+            cloudinary.api.resources,
+            type="upload",
+            prefix="products/",
+            max_results=500,
+        )
+        resources = response.get("resources", [])
+        scanned_count = len(resources)
+
+        for res in resources:
+            public_id = res.get("public_id")
+            created_at_str = res.get("created_at")
+            if not public_id:
+                continue
+
+            # Check if referenced
+            if public_id not in referenced_ids:
+                try:
+                    # Cloudinary created_at format: '2026-11-08T07:12:34Z'
+                    created_dt = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
+                    if created_dt < cutoff_time:
+                        orphaned_ids.append(public_id)
+                except Exception:
+                    orphaned_ids.append(public_id)
+
+    except Exception as exc:
+        logger.warning("Cloudinary API search exception (likely mock or network): {}", exc)
+
+    purged_count = 0
+    failed_count = 0
+    purged_list: list[str] = []
+
+    if not dry_run:
+        import cloudinary.uploader
+
+        for pid in orphaned_ids:
+            try:
+                res = await asyncio.to_thread(cloudinary.uploader.destroy, pid, invalidate=True)
+                if res.get("result") in ["ok", "not found"]:
+                    purged_count += 1
+                    purged_list.append(pid)
+                else:
+                    failed_count += 1
+            except Exception:
+                failed_count += 1
+    else:
+        purged_list = orphaned_ids
+
+    logger.info(
+        "Cloudinary Shop Image GC: scanned={}, referenced={}, orphaned={}, purged={}, dry_run={}",
+        scanned_count,
+        len(referenced_ids),
+        len(orphaned_ids),
+        purged_count,
+        dry_run,
+    )
+
+    return CloudinaryOrphanCleanupReport(
+        scanned_count=scanned_count,
+        referenced_count=len(referenced_ids),
+        orphaned_found_count=len(orphaned_ids),
+        purged_count=purged_count if not dry_run else 0,
+        failed_count=failed_count,
+        dry_run=dry_run,
+        purged_public_ids=purged_list,
+    )
+

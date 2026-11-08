@@ -51,6 +51,7 @@ class ProductCategoryOut(BaseModel):
     parent_id: str | None = None
     display_order: int
     is_active: bool
+    is_deleted: bool = False
     seo_title: str | None = None
     seo_description: str | None = None
     product_count: int = 0
@@ -174,6 +175,7 @@ class ProductOut(BaseModel):
     is_active: bool
     is_featured: bool
     is_energized: bool
+    is_deleted: bool = False
     average_rating: float
     review_count: int
 
@@ -239,3 +241,39 @@ class ShopBannerSettingsOut(BaseModel):
     announcement_bar_link: str | None = None
     announcement_bar_active: bool = True
     hero_banners: list[ShopHeroBannerItem] = Field(default_factory=list)
+
+
+# ===========================================================================
+# Astrological Dynamic Upsell & Cloudinary Cleanup Schemas
+# ===========================================================================
+
+
+class ShopProductRecommendationOut(BaseModel):
+    id: str
+    title: str
+    slug: str
+    sku: str
+    short_description: str
+    sale_price: float
+    mrp: float
+    discount_percent: int
+    featured_image: str
+    category_slug: str
+    category_type: ProductCategoryType
+    ruling_planet: str | None = None
+    deity: str | None = None
+    in_stock: bool = True
+    sacred_reason: str | None = None  # e.g. "Prescribed for Shani Sade Sati pacification"
+    store_url: str
+
+
+class CloudinaryOrphanCleanupReport(BaseModel):
+    scanned_count: int
+    referenced_count: int
+    orphaned_found_count: int
+    purged_count: int
+    failed_count: int
+    dry_run: bool
+    purged_public_ids: list[str] = Field(default_factory=list)
+
+
