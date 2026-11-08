@@ -21,3 +21,4 @@ LAL_KITAB_TRANSLATIONS: dict[str, dict[str, list[str]]] = {
     **RAHU_TRANSLATIONS,
     **KETU_TRANSLATIONS,
 }
+

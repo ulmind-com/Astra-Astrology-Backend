@@ -386,3 +386,4 @@ RAHU_TRANSLATIONS: dict[str, dict[str, list[str]]] = {
         ]
     }
 }
+
