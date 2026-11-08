@@ -35,6 +35,14 @@ from app.models.wallet import (
 )
 from app.models.milan import MilanRoom
 from app.models.whiteboard import CallWhiteboard
+from app.models.shop import (
+    Cart,
+    Product,
+    ProductCategory,
+    ShopCoupon,
+    ShopOrder,
+    UserAddress,
+)
 
 DOCUMENT_MODELS: list[type[Document]] = [
     User,
@@ -76,6 +84,12 @@ DOCUMENT_MODELS: list[type[Document]] = [
     SupportTicket,
     CallWhiteboard,
     MilanRoom,
+    ProductCategory,
+    Product,
+    UserAddress,
+    Cart,
+    ShopOrder,
+    ShopCoupon,
 ]
 
 __all__ = [
@@ -118,4 +132,10 @@ __all__ = [
     "WalletTransaction",
     "WebhookEvent",
     "ZegoCallbackEvent",
+    "ProductCategory",
+    "Product",
+    "UserAddress",
+    "Cart",
+    "ShopOrder",
+    "ShopCoupon",
 ]
