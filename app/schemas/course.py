@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from typing import Any
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class LessonResourceOut(BaseModel):
@@ -194,16 +194,36 @@ class CourseSectionUpdateRequest(BaseModel):
 
 class CourseLessonCreateRequest(BaseModel):
     section_id: str
-    title: str = Field(..., min_length=2, max_length=250)
-    order: int = Field(default=1, ge=1)
-    duration_minutes: int = Field(default=0, ge=0)
+    title: str = Field(..., min_length=1, max_length=250)
+    order: int = Field(default=1)
+    duration_minutes: int = Field(default=0)
     video_provider: str = Field(default="bunny_stream")  # bunny_stream, youtube_unlisted
-    video_id: str = Field(..., min_length=1)  # Bunny video GUID or YouTube ID
+    video_id: str = Field(default="", max_length=250)  # Bunny video GUID or YouTube ID
     library_id: str | None = None
     is_free_preview: bool = False
     summary: str | None = None
     notes_markdown: str | None = None
     resources: list[LessonResourceOut] = Field(default_factory=list)
+
+    @field_validator("duration_minutes", mode="before")
+    @classmethod
+    def parse_duration(cls, v: Any) -> int:
+        if v is None:
+            return 0
+        try:
+            return max(0, int(round(float(v))))
+        except (ValueError, TypeError):
+            return 0
+
+    @field_validator("order", mode="before")
+    @classmethod
+    def parse_order(cls, v: Any) -> int:
+        if v is None:
+            return 1
+        try:
+            return max(1, int(v))
+        except (ValueError, TypeError):
+            return 1
 
 
 class CourseLessonUpdateRequest(BaseModel):
@@ -219,6 +239,26 @@ class CourseLessonUpdateRequest(BaseModel):
     notes_markdown: str | None = None
     resources: list[LessonResourceOut] | None = None
     is_published: bool | None = None
+
+    @field_validator("duration_minutes", mode="before")
+    @classmethod
+    def parse_duration(cls, v: Any) -> int | None:
+        if v is None:
+            return None
+        try:
+            return max(0, int(round(float(v))))
+        except (ValueError, TypeError):
+            return 0
+
+    @field_validator("order", mode="before")
+    @classmethod
+    def parse_order(cls, v: Any) -> int | None:
+        if v is None:
+            return None
+        try:
+            return max(1, int(v))
+        except (ValueError, TypeError):
+            return 1
 
 
 class BunnyCreateVideoRequest(BaseModel):

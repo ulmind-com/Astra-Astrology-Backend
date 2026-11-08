@@ -106,7 +106,7 @@ class CourseLesson(Document):
         default="bunny_stream",
         description="bunny_stream, youtube_unlisted, or direct_hls",
     )
-    video_id: str = Field(..., description="Bunny Video GUID or YouTube video ID")
+    video_id: str = Field(default="", description="Bunny Video GUID or YouTube video ID")
     library_id: str | None = Field(default=None, description="Bunny Stream Library ID if applicable")
 
     # Accessibility & Content

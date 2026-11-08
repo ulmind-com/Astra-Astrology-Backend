@@ -290,15 +290,21 @@ async def admin_create_lesson(
     payload: CourseLessonCreateRequest,
     _: AdminUser,
 ) -> ApiResponse[dict]:
+    clean_sec = payload.section_id.strip()
+    try:
+        sec_oid = PydanticObjectId(clean_sec)
+    except Exception:
+        raise NotFoundError("Invalid Section ID format")
+
     lesson = await CourseService.admin_create_lesson(
         course_id=course_id,
-        section_id=PydanticObjectId(payload.section_id),
-        title=payload.title,
-        order=payload.order,
-        duration_minutes=payload.duration_minutes,
+        section_id=sec_oid,
+        title=payload.title.strip() or "Untitled Lesson",
+        order=int(payload.order),
+        duration_minutes=int(payload.duration_minutes),
         video_provider=payload.video_provider,
-        video_id=payload.video_id,
-        library_id=payload.library_id,
+        video_id=payload.video_id.strip(),
+        library_id=payload.library_id or settings.BUNNY_STREAM_LIBRARY_ID,
         is_free_preview=payload.is_free_preview,
         summary=payload.summary,
         notes_markdown=payload.notes_markdown,

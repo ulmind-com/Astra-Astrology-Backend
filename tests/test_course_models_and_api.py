@@ -65,3 +65,35 @@ async def test_course_model_defaults():
 async def test_course_service_list_courses():
     courses = await CourseService.list_courses(category="vedic_astrology")
     assert isinstance(courses, list)
+
+
+def test_course_lesson_create_schema_resilience():
+    from app.schemas.course import CourseLessonCreateRequest, CourseLessonUpdateRequest, BunnyCreateVideoRequest
+
+    # Test float duration from video duration metadata calculation (e.g. 30 sec = 0.5005 mins)
+    req1 = CourseLessonCreateRequest(
+        section_id="672e42845c2f004a441e8c91",
+        title="Intro to Rashi Lords",
+        order=0,
+        duration_minutes=0.5005,
+        video_id="",
+    )
+    assert req1.duration_minutes >= 0
+    assert req1.order == 1
+    assert req1.video_id == ""
+
+    # Test string duration and negative values
+    req2 = CourseLessonCreateRequest(
+        section_id="672e42845c2f004a441e8c91",
+        title="Navamsha Secrets",
+        order="3",
+        duration_minutes="45.6",
+        video_id="bunny-guid-123",
+    )
+    assert req2.duration_minutes == 46
+    assert req2.order == 3
+
+    # Test Bunny create placeholder default title
+    bunny_req = BunnyCreateVideoRequest()
+    assert bunny_req.title == "New Video Lesson"
+
