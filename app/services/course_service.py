@@ -80,10 +80,32 @@ class CourseService:
                 CourseEnrollment.user_id == user.id,
                 CourseEnrollment.course_id == course.id,
             )
+            if not enrollment:
+                role_str = str(getattr(user, "role", "user")).lower()
+                if "admin" in role_str or "astrologer" in role_str:
+                    enrollment = CourseEnrollment(
+                        user_id=user.id,
+                        course_id=course.id,
+                        payment_id="admin_access",
+                        order_id="admin_access",
+                        amount_paid=0.0,
+                        currency="INR",
+                    )
+                    await enrollment.insert()
+
             if enrollment:
                 is_enrolled = True
-                user_progress_percent = enrollment.progress_percent
                 completed_lesson_ids = set(enrollment.completed_lesson_ids)
+                total_published = await CourseLesson.find(
+                    CourseLesson.course_id == course.id,
+                    {"is_published": {"$ne": False}},
+                ).count()
+                if total_published > 0:
+                    calculated_prog = min(100.0, round((len(completed_lesson_ids) / total_published) * 100.0, 1))
+                    if calculated_prog != enrollment.progress_percent:
+                        enrollment.progress_percent = calculated_prog
+                        await enrollment.save()
+                user_progress_percent = enrollment.progress_percent
 
         # Build full hierarchy
         sections_out = []
@@ -91,7 +113,7 @@ class CourseService:
             lessons = (
                 await CourseLesson.find(
                     CourseLesson.section_id == sec.id,
-                    CourseLesson.is_published == True,
+                    {"is_published": {"$ne": False}},
                 )
                 .sort(+CourseLesson.order)
                 .to_list()
@@ -221,7 +243,19 @@ class CourseService:
             CourseEnrollment.course_id == course_id,
         )
         if not enrollment:
-            raise ForbiddenError("Not enrolled in this course")
+            role_str = str(getattr(user, "role", "user")).lower()
+            if "admin" in role_str or "astrologer" in role_str:
+                enrollment = CourseEnrollment(
+                    user_id=user.id,
+                    course_id=course_id,
+                    payment_id="admin_access",
+                    order_id="admin_access",
+                    amount_paid=0.0,
+                    currency="INR",
+                )
+                await enrollment.insert()
+            else:
+                raise ForbiddenError("Not enrolled in this course")
 
         # Upsert Lesson Progress
         prog = await CourseLessonProgress.find_one(
@@ -254,12 +288,13 @@ class CourseService:
         # Count total lessons in course
         total_lessons = await CourseLesson.find(
             CourseLesson.course_id == course_id,
-            CourseLesson.is_published == True,
+            {"is_published": {"$ne": False}},
         ).count()
 
         if total_lessons > 0:
-            enrollment.progress_percent = round(
-                (len(enrollment.completed_lesson_ids) / total_lessons) * 100.0, 1
+            enrollment.progress_percent = min(
+                100.0,
+                round((len(enrollment.completed_lesson_ids) / total_lessons) * 100.0, 1),
             )
             if enrollment.progress_percent >= 100.0:
                 enrollment.certificate_issued = True
