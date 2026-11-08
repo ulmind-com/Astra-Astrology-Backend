@@ -13,6 +13,7 @@ from app.models.course import (
     CourseQuestionAnswer,
     CourseSection,
 )
+from app.models.user import User
 from app.services.course_service import CourseService
 
 
@@ -39,6 +40,7 @@ async def init_mock_beanie():
             CourseEnrollment,
             CourseLessonProgress,
             CourseQuestion,
+            User,
         ],
         skip_indexes=True,
     )
@@ -204,6 +206,77 @@ def test_admin_course_route_order():
         f"Route shadowing bug! /admin/courses/questions (idx {questions_index}) "
         f"must be registered before /admin/courses/{{course_id}} (idx {course_id_index})"
     )
+
+
+def test_course_certificate_generation_and_html():
+    from datetime import datetime, timezone
+    from beanie import PydanticObjectId
+    from app.models.user import User
+    from app.schemas.course import CourseCertificateOut
+
+    user_id = PydanticObjectId()
+    course_id = PydanticObjectId()
+
+    user = User(
+        id=user_id,
+        email="samiran@example.com",
+        first_name="Samiran",
+        last_name="Samanta",
+    )
+    course = Course(
+        id=course_id,
+        title="Vedic Astrology Foundation Masterclass",
+        slug="vedic-astrology-foundation",
+        instructor_name="Acharya Rahul Sharma",
+        instructor_title="Vedic Jyotishacharya",
+    )
+    enrollment = CourseEnrollment(
+        user_id=user_id,
+        course_id=course_id,
+        progress_percent=100.0,
+        certificate_issued=True,
+        certificate_id="ASTRA-CERT-SAMIRAN-TEST",
+        certificate_issued_at=datetime.now(timezone.utc),
+        certificate_url="https://astra-astrology-web.vercel.app/verify/certificate/ASTRA-CERT-SAMIRAN-TEST",
+    )
+
+    cert_data = CourseService.generate_course_certificate_data(enrollment, course, user)
+    # Validate against Pydantic schema
+    cert_out = CourseCertificateOut(**cert_data)
+    assert cert_out.certificate_id == "ASTRA-CERT-SAMIRAN-TEST"
+    assert cert_out.student_name == "Samiran Samanta"
+    assert cert_out.course_title == "Vedic Astrology Foundation Masterclass"
+    assert cert_out.digital_seal["status"] == "VERIFIED_AUTHENTIC"
+    assert cert_out.instructor_name == "Acharya Rahul Sharma"
+
+    # Validate HTML renderer
+    html = CourseService.generate_course_certificate_html(cert_data)
+    assert "Samiran Samanta" in html
+    assert "Vedic Astrology Foundation Masterclass" in html
+    assert "ASTRA-CERT-SAMIRAN-TEST" in html
+    assert "Astra Gurukul" in html
+
+
+def test_public_certificate_route_order():
+    """Ensures static /courses/certificate/verify route precedes parameterized /{course_id}."""
+    from app.api.v1.course import router
+
+    verify_idx = None
+    course_id_order_idx = None
+
+    for idx, r in enumerate(router.routes):
+        path = getattr(r, "path", None)
+        if path == "/courses/certificate/verify/{certificate_id}":
+            verify_idx = idx
+        elif path == "/courses/{course_id}/order":
+            course_id_order_idx = idx
+
+    assert verify_idx is not None, "GET /courses/certificate/verify/{certificate_id} route must exist"
+    assert course_id_order_idx is not None, "POST /courses/{course_id}/order route must exist"
+    assert verify_idx < course_id_order_idx, (
+        f"Route order error: verify route ({verify_idx}) must come before course_id route ({course_id_order_idx})"
+    )
+
 
 
 

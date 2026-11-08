@@ -1164,4 +1164,92 @@ def appointment_btr_updated_astrologer_email_html(
     )
 
 
+def course_certificate_email_html(
+    user_name: str,
+    course_title: str,
+    certificate_id: str,
+    issued_date: str,
+    verify_url: str,
+    instructor_name: str = "Pt. Acharya Rahul Sharma",
+) -> str:
+    """Ultra-premium congratulatory email template for Gurukul masterclass graduation."""
+    app_name = settings.APP_NAME or "Astra Cosmic Gurukul"
+    headline = "🎓 অভিনন্দন • Gurukul Consecration Certificate"
+    lead_text = (
+        f"Dear <strong>{user_name}</strong>, with great pride and cosmic honor, the Acharyas and faculty "
+        f"of Astra Gurukul solemnly confer upon you this <strong>Official Certificate of Scholarly Excellence</strong>."
+    )
+
+    content = f"""
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 28px;background:linear-gradient(135deg,#FFFDF7 0%,#FDF6E2 100%);border:2px solid #C89B3C;border-radius:18px;overflow:hidden;box-shadow:0 6px 20px rgba(200,155,60,0.15);">
+        <tr>
+          <td style="padding:28px 24px;text-align:center;">
+            <div style="font-size:32px;line-height:1;margin-bottom:8px;color:#8B6508;">ॐ</div>
+            <div style="font-size:11px;font-weight:800;letter-spacing:2px;color:#8B6508;text-transform:uppercase;margin-bottom:6px;">
+              Astra Cosmic Gurukul • বিশ্ব জ্যোতিষ বিদ্যাপীঠ
+            </div>
+            <div style="font-size:18px;font-family:Georgia,serif;font-weight:700;color:#1F2937;margin-bottom:14px;">
+              Certificate of Scholarly Excellence & Mastery
+            </div>
+
+            <div style="margin:16px auto;padding:12px;background:#FAF5E4;border:1px dashed #C89B3C;border-radius:12px;max-width:440px;">
+              <div style="font-size:12px;color:#6B7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px;">Conferred for Masterclass</div>
+              <div style="font-size:16px;font-family:Georgia,serif;font-weight:700;color:#92400E;line-height:1.4;">
+                {course_title}
+              </div>
+            </div>
+
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:18px 0;font-size:13px;text-align:left;">
+              <tr>
+                <td style="padding:6px 12px;color:#6B7280;font-weight:600;width:40%;">Certificate ID:</td>
+                <td style="padding:6px 12px;color:#1F2937;font-family:monospace;font-weight:700;">{certificate_id}</td>
+              </tr>
+              <tr>
+                <td style="padding:6px 12px;color:#6B7280;font-weight:600;">Honor Distinction:</td>
+                <td style="padding:6px 12px;color:#16A34A;font-weight:700;">Vidya Parangata (100% Mastery)</td>
+              </tr>
+              <tr>
+                <td style="padding:6px 12px;color:#6B7280;font-weight:600;">Conferred By:</td>
+                <td style="padding:6px 12px;color:#1F2937;font-weight:600;">{instructor_name}</td>
+              </tr>
+              <tr>
+                <td style="padding:6px 12px;color:#6B7280;font-weight:600;">Date of Consecration:</td>
+                <td style="padding:6px 12px;color:#1F2937;">{issued_date}</td>
+              </tr>
+            </table>
+
+            <div style="padding:14px;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:12px;margin-top:16px;font-size:12px;color:#4B5563;font-style:italic;">
+              "विद्या ददाति विनयं विनयाद्याति पात्रताम् । पात्रत्वाद्धनमाप्नोति धनाद्धर्मं ततः सुखम् ॥"<br>
+              <span style="font-size:11px;color:#9CA3AF;font-style:normal;">(Knowledge bestows humility, humility brings worthiness, and worthiness yields eternal peace).</span>
+            </div>
+          </td>
+        </tr>
+      </table>
+
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 16px;">
+        <tr>
+          <td align="center">
+            <a href="{verify_url}" target="_blank" class="cta-button" style="display:inline-block;background:linear-gradient(135deg,#D97706 0%,#B45309 100%);color:#ffffff;font-size:15px;font-weight:700;padding:15px 38px;border-radius:9999px;text-decoration:none;text-align:center;box-shadow:0 6px 18px rgba(217,119,6,0.35);">
+              📜 View & Print Official Certificate
+            </a>
+          </td>
+        </tr>
+      </table>
+
+      <div style="text-align:center;font-size:12px;color:#9CA3AF;margin-bottom:8px;">
+        You can also verify and present this credential anytime via your public verification link:<br>
+        <a href="{verify_url}" target="_blank" style="color:#B45309;font-weight:600;word-break:break-all;">{verify_url}</a>
+      </div>
+    """
+
+    return render_email(
+        title=f"Course Graduation Certificate — {course_title}",
+        content_html=content,
+        preheader=f"Congratulations {user_name}! Your Official Certificate for {course_title} is ready.",
+        headline=headline,
+        lead_text=lead_text,
+    )
+
+
+
 

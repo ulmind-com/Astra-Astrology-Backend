@@ -75,6 +75,9 @@ class CourseDetailOut(CourseListItemOut):
     sections: list[CourseSectionOut] = Field(default_factory=list)
     is_enrolled: bool = False
     user_progress_percent: float = 0.0
+    certificate_issued: bool = False
+    certificate_id: str | None = None
+    certificate_url: str | None = None
 
 
 class CourseEnrollmentOut(BaseModel):
@@ -89,6 +92,7 @@ class CourseEnrollmentOut(BaseModel):
     progress_percent: float
     completed_lesson_ids: list[str]
     certificate_issued: bool
+    certificate_id: str | None = None
     certificate_url: str | None = None
 
 
@@ -371,4 +375,25 @@ class AdminCourseQuestionListResponse(BaseModel):
     total: int = 0
     unanswered_count: int = 0
     resolved_count: int = 0
+
+
+class CourseCertificateOut(BaseModel):
+    certificate_id: str
+    is_valid: bool = True
+    student_name: str
+    student_email: str | None = None
+    course_id: str
+    course_title: str
+    course_slug: str
+    instructor_name: str
+    instructor_title: str
+    instructor_avatar: str | None = None
+    issued_at: datetime
+    issued_at_formatted: str
+    total_lessons_completed: int
+    distinction: str = "Vidya Parangata (Summa Cum Laude • পরম বিদ্বান)"
+    verification_url: str
+    certificate_html_url: str
+    digital_seal: dict[str, Any] = Field(default_factory=dict)
+
 

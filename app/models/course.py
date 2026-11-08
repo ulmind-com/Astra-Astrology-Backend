@@ -155,12 +155,14 @@ class CourseEnrollment(Document):
     certificate_id: str | None = None
     certificate_url: str | None = None
     certificate_issued_at: datetime | None = None
+    certificate_email_sent: bool = Field(default=False)
 
     class Settings:
         name = "course_enrollments"
         indexes = [
             [("user_id", pymongo.ASCENDING), ("course_id", pymongo.ASCENDING)],
             [("course_id", pymongo.ASCENDING)],
+            [("certificate_id", pymongo.ASCENDING)],
             [("enrolled_at", pymongo.DESCENDING)],
         ]
 

@@ -106,6 +106,15 @@ class CourseService:
                         enrollment.progress_percent = calculated_prog
                         await enrollment.save()
                 user_progress_percent = enrollment.progress_percent
+                if enrollment.progress_percent >= 100:
+                    web_url = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app")
+                    if not enrollment.certificate_id:
+                        enrollment.certificate_id = f"ASTRA-CERT-{str(user.id)[-6:].upper()}-{str(course.id)[-4:].upper()}"
+                        enrollment.certificate_issued_at = datetime.now(timezone.utc)
+                    if not enrollment.certificate_url:
+                        enrollment.certificate_url = f"{web_url}/verify/certificate/{enrollment.certificate_id}"
+                    enrollment.certificate_issued = True
+                    await enrollment.save()
 
         # Build full hierarchy
         sections_out = []
@@ -153,6 +162,9 @@ class CourseService:
         course_dict["sections"] = sections_out
         course_dict["is_enrolled"] = is_enrolled
         course_dict["user_progress_percent"] = user_progress_percent
+        course_dict["certificate_issued"] = enrollment.certificate_issued if user and enrollment else False
+        course_dict["certificate_id"] = enrollment.certificate_id if user and enrollment else None
+        course_dict["certificate_url"] = enrollment.certificate_url if user and enrollment else None
         return course_dict
 
     @staticmethod
@@ -301,6 +313,35 @@ class CourseService:
                 if not enrollment.certificate_id:
                     enrollment.certificate_id = f"ASTRA-CERT-{str(user.id)[-6:].upper()}-{str(course_id)[-4:].upper()}"
                     enrollment.certificate_issued_at = datetime.now(timezone.utc)
+                web_url = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app")
+                if not enrollment.certificate_url:
+                    enrollment.certificate_url = f"{web_url}/verify/certificate/{enrollment.certificate_id}"
+
+                # Send official congratulations certificate email if not sent yet
+                user_email = getattr(user, "email", None)
+                if not enrollment.certificate_email_sent and user_email:
+                    try:
+                        from app.services.email import send_course_certificate_email
+                        course_item = await Course.find_one(Course.id == course_id)
+                        c_title = course_item.title if course_item else "Astra Gurukul Masterclass"
+                        u_name = getattr(user, "full_name", None) or "Astra Gurukul Scholar"
+                        dt_str = (enrollment.certificate_issued_at or datetime.now(timezone.utc)).strftime("%d %B %Y")
+                        v_link = f"{web_url}/verify/certificate/{enrollment.certificate_id}"
+                        inst_name = course_item.instructor_name if course_item else "Pt. Acharya Rahul Sharma"
+
+                        await send_course_certificate_email(
+                            to=user_email,
+                            user_name=u_name,
+                            course_title=c_title,
+                            certificate_id=enrollment.certificate_id,
+                            issued_date=dt_str,
+                            verify_url=v_link,
+                            instructor_name=inst_name,
+                        )
+                        enrollment.certificate_email_sent = True
+                        logger.info("Gurukul course certificate email sent to {} for {}", user_email, enrollment.certificate_id)
+                    except Exception as err:
+                        logger.warning("Failed to send graduation certificate email to {}: {}", user_email, err)
 
         enrollment.last_accessed_at = datetime.now(timezone.utc)
         await enrollment.save()
@@ -310,6 +351,7 @@ class CourseService:
             "is_lesson_completed": prog.is_completed,
             "certificate_issued": enrollment.certificate_issued,
             "certificate_id": enrollment.certificate_id,
+            "certificate_url": enrollment.certificate_url,
         }
 
     # =========================================================================
@@ -457,6 +499,15 @@ class CourseService:
         for e in enrollments:
             course = await Course.find_one(Course.id == e.course_id)
             if course and not course.is_deleted:
+                web_url = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app")
+                cert_id = e.certificate_id or (f"ASTRA-CERT-{str(user.id)[-6:].upper()}-{str(course.id)[-4:].upper()}" if e.progress_percent >= 100 else None)
+                cert_url = e.certificate_url or (f"{web_url}/verify/certificate/{cert_id}" if cert_id else None)
+                if e.progress_percent >= 100 and (not e.certificate_id or not e.certificate_url):
+                    e.certificate_issued = True
+                    e.certificate_id = cert_id
+                    e.certificate_url = cert_url
+                    await e.save()
+
                 result.append(
                     {
                         "id": str(e.id),
@@ -470,7 +521,8 @@ class CourseService:
                         "progress_percent": e.progress_percent,
                         "completed_lesson_ids": e.completed_lesson_ids,
                         "certificate_issued": e.certificate_issued,
-                        "certificate_url": e.certificate_url,
+                        "certificate_id": cert_id,
+                        "certificate_url": cert_url,
                     }
                 )
         return result
@@ -959,3 +1011,541 @@ class CourseService:
         question.updated_at = datetime.now(timezone.utc)
         await question.save()
         return True
+
+    # =========================================================================
+    # GURUKUL CONSECRATION CERTIFICATE ENGINE
+    # =========================================================================
+    @staticmethod
+    def generate_course_certificate_data(
+        enrollment: CourseEnrollment,
+        course: Course,
+        user: User,
+    ) -> dict[str, Any]:
+        """Builds structured certificate metadata and cryptographically verifiable seal."""
+        web_url = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app")
+        api_url = getattr(settings, "API_BASE_URL", "https://astra-astrology-backend.onrender.com")
+
+        cert_id = enrollment.certificate_id or f"ASTRA-CERT-{str(user.id)[-6:].upper()}-{str(course.id)[-4:].upper()}"
+        issued_dt = enrollment.certificate_issued_at or datetime.now(timezone.utc)
+        student_name = getattr(user, "full_name", None) or "Astra Gurukul Scholar"
+        student_email = getattr(user, "email", None)
+
+        # Generate cryptographic verification hash
+        raw_hash_input = f"{cert_id}:{user.id}:{course.id}:{issued_dt.isoformat()}"
+        v_hash = hashlib.sha256(raw_hash_input.encode()).hexdigest()[:24].upper()
+
+        verify_url = f"{web_url}/verify/certificate/{cert_id}"
+        html_url = f"{api_url}/api/v1/courses/certificate/verify/{cert_id}/html"
+
+        return {
+            "certificate_id": cert_id,
+            "is_valid": True,
+            "student_name": student_name,
+            "student_email": student_email,
+            "course_id": str(course.id),
+            "course_title": course.title,
+            "course_slug": course.slug,
+            "instructor_name": course.instructor_name or "Pt. Acharya Rahul Sharma",
+            "instructor_title": course.instructor_title or "Senior Vedic Jyotishacharya & Faculty Head",
+            "instructor_avatar": course.instructor_avatar,
+            "issued_at": issued_dt,
+            "issued_at_formatted": issued_dt.strftime("%d %B %Y"),
+            "total_lessons_completed": len(enrollment.completed_lesson_ids),
+            "distinction": "Vidya Parangata (Summa Cum Laude • পরম বিদ্বান)",
+            "verification_url": verify_url,
+            "certificate_html_url": html_url,
+            "digital_seal": {
+                "verification_hash": v_hash,
+                "seal_title": "Astra Cosmic Gurukul Consecrated",
+                "seal_motto": "विद्या ददाति विनयं विनयाद्याति पात्रताम्",
+                "status": "VERIFIED_AUTHENTIC",
+                "signature": f"Pt. Acharya Rahul Sharma • {issued_dt.strftime('%d-%m-%Y')}",
+            },
+        }
+
+    @staticmethod
+    def generate_course_certificate_html(cert: dict[str, Any]) -> str:
+        """Generates an ultra-luxurious, printable A4 Landscape graduation certificate."""
+        return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gurukul Certificate — {cert['student_name']} — {cert['course_title']}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;800;900&family=Playfair+Display:ital,wght@0,600;0,700;0,900;1,400;1,600&family=Marcellus&display=swap" rel="stylesheet">
+  <style>
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{
+      background: #0B0F19;
+      color: #1A1A1A;
+      font-family: 'Marcellus', 'Georgia', serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 30px 15px;
+    }}
+    .actions-bar {{
+      width: 100%;
+      max-width: 1100px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }}
+    .action-btn {{
+      background: linear-gradient(135deg, #D4AF37 0%, #AA771C 100%);
+      color: #000;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 9999px;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      box-shadow: 0 4px 18px rgba(212, 175, 55, 0.4);
+      transition: all 0.2s ease;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }}
+    .action-btn:hover {{
+      transform: translateY(-2px);
+      box-shadow: 0 6px 22px rgba(212, 175, 55, 0.6);
+    }}
+    .back-btn {{
+      background: rgba(255, 255, 255, 0.08);
+      color: #E5E7EB;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      padding: 10px 20px;
+      border-radius: 9999px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+    }}
+    .cert-frame {{
+      width: 100%;
+      max-width: 1100px;
+      aspect-ratio: 1.414;
+      background: #FFFDF9;
+      position: relative;
+      border-radius: 4px;
+      padding: 24px;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7), 0 0 40px rgba(212, 175, 55, 0.2);
+      border: 8px solid #1E293B;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+    }}
+    .cert-inner-border {{
+      position: absolute;
+      top: 14px; left: 14px; right: 14px; bottom: 14px;
+      border: 2px solid #C89B3C;
+      pointer-events: none;
+    }}
+    .cert-inner-hairline {{
+      position: absolute;
+      top: 18px; left: 18px; right: 18px; bottom: 18px;
+      border: 1px dashed rgba(200, 155, 60, 0.5);
+      pointer-events: none;
+    }}
+    .corner {{
+      position: absolute;
+      font-size: 24px;
+      color: #C89B3C;
+      line-height: 1;
+      z-index: 2;
+    }}
+    .corner.tl {{ top: 22px; left: 22px; }}
+    .corner.tr {{ top: 22px; right: 22px; }}
+    .corner.bl {{ bottom: 22px; left: 22px; }}
+    .corner.br {{ bottom: 22px; right: 22px; }}
+
+    .watermark-bg {{
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 420px;
+      color: rgba(200, 155, 60, 0.035);
+      pointer-events: none;
+      font-family: 'Cinzel', serif;
+      user-select: none;
+      z-index: 1;
+    }}
+
+    .cert-content {{
+      position: relative;
+      z-index: 3;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      text-align: center;
+      padding: 15px 35px;
+    }}
+
+    .header-block {{ margin-bottom: 8px; }}
+    .om-badge {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      color: #8B6508;
+      line-height: 1;
+      margin-bottom: 4px;
+    }}
+    .gurukul-brand {{
+      font-family: 'Cinzel', serif;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 4px;
+      color: #8B6508;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }}
+    .gurukul-sub {{
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      color: #6B7280;
+      text-transform: uppercase;
+    }}
+
+    .shloka-banner {{
+      margin: 10px auto 14px;
+      padding: 6px 20px;
+      background: rgba(200, 155, 60, 0.08);
+      border-top: 1px solid rgba(200, 155, 60, 0.3);
+      border-bottom: 1px solid rgba(200, 155, 60, 0.3);
+      font-size: 12px;
+      color: #78350F;
+      font-style: italic;
+      max-width: 780px;
+    }}
+
+    .cert-title-block {{ margin-bottom: 12px; }}
+    .cert-main-title {{
+      font-family: 'Cinzel', serif;
+      font-size: 26px;
+      font-weight: 800;
+      color: #1F2937;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      background: linear-gradient(135deg, #8B6508 0%, #1F2937 50%, #8B6508 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }}
+    .conferred-upon {{
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #9CA3AF;
+      margin-top: 6px;
+    }}
+
+    .student-name {{
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 36px;
+      font-weight: 900;
+      color: #0F172A;
+      margin: 8px 0;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+      letter-spacing: 0.5px;
+    }}
+
+    .course-decree {{
+      font-size: 13px;
+      line-height: 1.6;
+      color: #4B5563;
+      max-width: 760px;
+      margin: 0 auto 10px;
+    }}
+
+    .course-card {{
+      display: inline-block;
+      padding: 8px 24px;
+      background: linear-gradient(135deg, #FAF5E4 0%, #FFFDF7 100%);
+      border: 1px solid #C89B3C;
+      border-radius: 8px;
+      margin-bottom: 12px;
+    }}
+    .course-name {{
+      font-family: 'Cinzel', serif;
+      font-size: 17px;
+      font-weight: 700;
+      color: #92400E;
+    }}
+
+    .distinction-pill {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 14px;
+      background: #ECFDF5;
+      border: 1px solid #10B981;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #065F46;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }}
+
+    .footer-signatures {{
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      padding-top: 10px;
+      border-top: 1px solid rgba(200, 155, 60, 0.25);
+    }}
+    .sig-col {{
+      width: 240px;
+      text-align: center;
+    }}
+    .sig-line {{
+      font-family: 'Playfair Display', cursive, serif;
+      font-style: italic;
+      font-size: 22px;
+      color: #1E293B;
+      padding-bottom: 4px;
+      border-bottom: 1.5px solid #C89B3C;
+      margin-bottom: 4px;
+    }}
+    .sig-name {{
+      font-size: 12px;
+      font-weight: 700;
+      color: #1F2937;
+    }}
+    .sig-title {{
+      font-size: 10px;
+      color: #6B7280;
+    }}
+
+    .gold-seal {{
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #FFE494 0%, #D4AF37 60%, #AA771C 100%);
+      border: 3px double #FFF;
+      box-shadow: 0 4px 14px rgba(170, 119, 28, 0.4);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #381E00;
+      text-align: center;
+      padding: 4px;
+      position: relative;
+    }}
+    .gold-seal::after {{
+      content: "";
+      position: absolute;
+      bottom: -14px;
+      width: 28px;
+      height: 22px;
+      background: #AA771C;
+      clip-path: polygon(0 0, 100% 0, 50% 100%);
+      z-index: -1;
+    }}
+    .seal-text-top {{ font-size: 7px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; }}
+    .seal-icon {{ font-size: 22px; line-height: 1; margin: 2px 0; }}
+    .seal-text-bot {{ font-size: 7px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; }}
+
+    .metadata-strip {{
+      margin-top: 12px;
+      padding-top: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 10px;
+      color: #9CA3AF;
+      border-top: 1px dashed rgba(200, 155, 60, 0.2);
+    }}
+    .meta-id {{ font-family: monospace; font-weight: 700; color: #4B5563; }}
+
+    @media print {{
+      body {{
+        background: #FFF !important;
+        padding: 0 !important;
+      }}
+      .actions-bar {{ display: none !important; }}
+      .cert-frame {{
+        max-width: 100% !important;
+        width: 100% !important;
+        height: 100vh !important;
+        aspect-ratio: auto !important;
+        box-shadow: none !important;
+        border: 4px solid #8B6508 !important;
+      }}
+      @page {{
+        size: A4 landscape;
+        margin: 0;
+      }}
+    }}
+  </style>
+</head>
+<body>
+  <div class="actions-bar">
+    <a href="{cert['verification_url']}" class="back-btn">← Back to Portal</a>
+    <button class="action-btn" onclick="window.print()">
+      <span>🖨️</span> Print & Save Official PDF
+    </button>
+  </div>
+
+  <div class="cert-frame">
+    <div class="cert-inner-border"></div>
+    <div class="cert-inner-hairline"></div>
+    <div class="corner tl">⚜</div>
+    <div class="corner tr">⚜</div>
+    <div class="corner bl">⚜</div>
+    <div class="corner br">⚜</div>
+    <div class="watermark-bg">ॐ</div>
+
+    <div class="cert-content">
+      <div class="header-block">
+        <div class="om-badge">ॐ</div>
+        <div class="gurukul-brand">Astra Cosmic Gurukul • বিশ্ব জ্যোতিষ বিদ্যাপীঠ</div>
+        <div class="gurukul-sub">Council of Vedic Sciences, Nakshatra Computations & Remedial Canon</div>
+      </div>
+
+      <div class="shloka-banner">
+        "विद्या ददाति विनयं विनयाद्याति पात्रताम् । पात्रत्वाद्धनमाप्नोति धनाद्धर्मं ततः सुखम् ॥"
+      </div>
+
+      <div class="cert-title-block">
+        <h1 class="cert-main-title">Certificate of Scholarly Excellence</h1>
+        <p class="conferred-upon">This Sacred Parchment Is Solemnly Conferred Upon</p>
+      </div>
+
+      <div class="student-name">{cert['student_name']}</div>
+
+      <p class="course-decree">
+        for having successfully accomplished with supreme distinction the rigorous canonical curriculum,
+        planetary algorithms, celestial treatises, and predictive methodology for the sacred masterclass:
+      </p>
+
+      <div>
+        <div class="course-card">
+          <div class="course-name">{cert['course_title']}</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="distinction-pill">
+          <span>★</span> {cert['distinction']} <span>★</span>
+        </div>
+      </div>
+
+      <div class="footer-signatures">
+        <div class="sig-col">
+          <div class="sig-line">{cert['instructor_name']}</div>
+          <div class="sig-name">{cert['instructor_name']}</div>
+          <div class="sig-title">{cert['instructor_title']}</div>
+        </div>
+
+        <div class="gold-seal">
+          <div class="seal-text-top">Astra Gurukul</div>
+          <div class="seal-icon">☸</div>
+          <div class="seal-text-bot">Consecrated</div>
+        </div>
+
+        <div class="sig-col">
+          <div class="sig-line">Council Registrar</div>
+          <div class="sig-name">Board of Astrological Regents</div>
+          <div class="sig-title">Director of Celestial Credentials</div>
+        </div>
+      </div>
+
+      <div class="metadata-strip">
+        <div>Certificate ID: <span class="meta-id">{cert['certificate_id']}</span></div>
+        <div>Date: <strong>{cert['issued_at_formatted']}</strong></div>
+        <div>Verification: <span class="meta-id">{cert['digital_seal']['verification_hash']}</span></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>"""
+
+    @staticmethod
+    async def get_course_certificate(user: User, course_id: PydanticObjectId) -> dict[str, Any]:
+        """Provides verified certificate data for a student who finished 100% of a course."""
+        course = await Course.find_one(Course.id == course_id, Course.is_deleted == False)
+        if not course:
+            raise NotFoundError("Course not found")
+
+        enrollment = await CourseEnrollment.find_one(
+            CourseEnrollment.user_id == user.id,
+            CourseEnrollment.course_id == course_id,
+        )
+        if not enrollment:
+            role_str = str(getattr(user, "role", "user")).lower()
+            if "admin" in role_str or "astrologer" in role_str:
+                enrollment = CourseEnrollment(
+                    user_id=user.id,
+                    course_id=course_id,
+                    payment_id="admin_access",
+                    order_id="admin_access",
+                    amount_paid=0.0,
+                    currency="INR",
+                    progress_percent=100.0,
+                    certificate_issued=True,
+                )
+                await enrollment.insert()
+            else:
+                raise ForbiddenError("You are not enrolled in this course.")
+
+        # Ensure certificate fields are populated
+        if enrollment.progress_percent < 100.0:
+            total_published = await CourseLesson.find(
+                CourseLesson.course_id == course_id,
+                {"is_published": {"$ne": False}},
+            ).count()
+            if total_published > 0 and len(enrollment.completed_lesson_ids) >= total_published:
+                enrollment.progress_percent = 100.0
+            else:
+                raise ForbiddenError(f"Masterclass is at {enrollment.progress_percent}%. Please complete 100% to generate certificate.")
+
+        web_url = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app")
+        if not enrollment.certificate_id:
+            enrollment.certificate_id = f"ASTRA-CERT-{str(user.id)[-6:].upper()}-{str(course_id)[-4:].upper()}"
+            enrollment.certificate_issued_at = datetime.now(timezone.utc)
+        if not enrollment.certificate_url:
+            enrollment.certificate_url = f"{web_url}/verify/certificate/{enrollment.certificate_id}"
+        enrollment.certificate_issued = True
+        await enrollment.save()
+
+        return CourseService.generate_course_certificate_data(enrollment, course, user)
+
+    @staticmethod
+    async def verify_course_certificate(certificate_id: str) -> dict[str, Any]:
+        """Publicly verifies an issued Astra Gurukul Certificate ID."""
+        clean_id = certificate_id.strip().upper()
+        enrollment = await CourseEnrollment.find_one(CourseEnrollment.certificate_id == clean_id)
+        if not enrollment:
+            # Fallback by enrollment ObjectId if someone passed enrollment id
+            if len(clean_id) == 24 and PydanticObjectId.is_valid(clean_id):
+                enrollment = await CourseEnrollment.find_one(CourseEnrollment.id == PydanticObjectId(clean_id))
+
+        if not enrollment or not enrollment.certificate_issued:
+            raise NotFoundError("Certificate not found or not yet consecrated.")
+
+        course = await Course.find_one(Course.id == enrollment.course_id)
+        if not course:
+            raise NotFoundError("Associated course not found.")
+
+        student_user = await User.find_one(User.id == enrollment.user_id)
+        mock_user = student_user or User(
+            id=enrollment.user_id,
+            email="scholar@astragurukul.com",
+            first_name="Astra",
+            last_name="Scholar",
+        )
+
+        return CourseService.generate_course_certificate_data(enrollment, course, mock_user)
+

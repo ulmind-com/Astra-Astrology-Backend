@@ -4,6 +4,7 @@ from typing import Annotated
 
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, Query, status
+from fastapi.responses import HTMLResponse
 
 from app.api.dependencies import get_current_user, get_optional_user
 from app.core.exceptions import NotFoundError
@@ -11,6 +12,7 @@ from app.models.course import Course, CourseEnrollment
 from app.models.user import User
 from app.schemas.common import ApiResponse
 from app.schemas.course import (
+    CourseCertificateOut,
     CourseDetailOut,
     CourseEnrollmentOut,
     CourseListItemOut,
@@ -82,6 +84,49 @@ async def get_course_detail(
     """Retrieves full course curriculum, modules, lessons, and enrollment state."""
     course_data = await CourseService.get_course_by_slug(slug=slug, user=user)
     return ApiResponse(data=CourseDetailOut(**course_data))
+
+
+# -----------------------------------------------------------------------------
+# CERTIFICATE VERIFICATION & DOWNLOAD ENDPOINTS
+# -----------------------------------------------------------------------------
+@router.get("/certificate/verify/{certificate_id}", response_model=ApiResponse[CourseCertificateOut])
+async def verify_course_certificate_endpoint(
+    certificate_id: str,
+) -> ApiResponse[CourseCertificateOut]:
+    """Public verification endpoint to validate any Astra Gurukul credential."""
+    cert = await CourseService.verify_course_certificate(certificate_id=certificate_id)
+    return ApiResponse(data=CourseCertificateOut(**cert))
+
+
+@router.get("/certificate/verify/{certificate_id}/html", response_class=HTMLResponse)
+async def verify_course_certificate_html_endpoint(
+    certificate_id: str,
+) -> HTMLResponse:
+    """Renders printable, high-res HTML certificate for public verification."""
+    cert = await CourseService.verify_course_certificate(certificate_id=certificate_id)
+    html_content = CourseService.generate_course_certificate_html(cert)
+    return HTMLResponse(content=html_content, status_code=status.HTTP_200_OK)
+
+
+@router.get("/{course_id}/certificate", response_model=ApiResponse[CourseCertificateOut])
+async def get_course_certificate_endpoint(
+    course_id: PydanticObjectId,
+    user: Annotated[User, Depends(get_current_user)],
+) -> ApiResponse[CourseCertificateOut]:
+    """Retrieves verified certificate data for a completed course."""
+    cert = await CourseService.get_course_certificate(user=user, course_id=course_id)
+    return ApiResponse(data=CourseCertificateOut(**cert))
+
+
+@router.get("/{course_id}/certificate/html", response_class=HTMLResponse)
+async def get_course_certificate_html_endpoint(
+    course_id: PydanticObjectId,
+    user: Annotated[User, Depends(get_current_user)],
+) -> HTMLResponse:
+    """Returns standalone printable HTML certificate for a completed course."""
+    cert = await CourseService.get_course_certificate(user=user, course_id=course_id)
+    html_content = CourseService.generate_course_certificate_html(cert)
+    return HTMLResponse(content=html_content, status_code=status.HTTP_200_OK)
 
 
 @router.post("/{course_id}/order", response_model=ApiResponse[CourseOrderCreateResponse])
