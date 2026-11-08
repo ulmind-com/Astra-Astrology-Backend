@@ -297,22 +297,18 @@ async def sync_whiteboard(
 
     # Determine peer user id for realtime WebSocket push
     peer_id = str(session.user_id if user.id == session.astrologer_user_id else session.astrologer_user_id)
-    realtime._broadcast(
-        {
-            "type": "whiteboard_sync",
-            "data": {
-                "call_id": str(session.id),
-                "is_open": whiteboard.is_open,
-                "chart_style": whiteboard.chart_style,
-                "active_tab": whiteboard.active_tab,
-                "drishti": whiteboard.drishti,
-                "highlighted_houses": whiteboard.highlighted_houses,
-                "strokes": whiteboard.strokes,
-                "version": whiteboard.version,
-            },
-        },
-        to_user=peer_id,
-    )
+    sync_data = {
+        "call_id": str(session.id),
+        "is_open": whiteboard.is_open,
+        "chart_style": whiteboard.chart_style,
+        "active_tab": whiteboard.active_tab,
+        "drishti": whiteboard.drishti,
+        "highlighted_houses": whiteboard.highlighted_houses,
+        "strokes": whiteboard.strokes,
+        "version": whiteboard.version,
+    }
+    realtime._broadcast({"type": "whiteboard_event", "data": sync_data}, to_user=peer_id)
+    realtime._broadcast({"type": "whiteboard_sync", "data": sync_data}, to_user=peer_id)
 
     return whiteboard
 
@@ -370,19 +366,15 @@ async def load_custom_chart(
     await whiteboard.save()
 
     peer_id = str(session.user_id if user.id == session.astrologer_user_id else session.astrologer_user_id)
-    realtime._broadcast(
-        {
-            "type": "whiteboard_chart_reloaded",
-            "data": {
-                "call_id": str(session.id),
-                "client_name": whiteboard.client_name,
-                "asc_sign_num": whiteboard.asc_sign_num,
-                "planets": whiteboard.planets,
-                "transit_planets": whiteboard.transit_planets,
-                "version": whiteboard.version,
-            },
-        },
-        to_user=peer_id,
-    )
+    chart_data = {
+        "call_id": str(session.id),
+        "client_name": whiteboard.client_name,
+        "asc_sign_num": whiteboard.asc_sign_num,
+        "planets": whiteboard.planets,
+        "transit_planets": whiteboard.transit_planets,
+        "version": whiteboard.version,
+    }
+    realtime._broadcast({"type": "whiteboard_event", "data": chart_data}, to_user=peer_id)
+    realtime._broadcast({"type": "whiteboard_chart_reloaded", "data": chart_data}, to_user=peer_id)
 
     return whiteboard
