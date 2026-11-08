@@ -229,3 +229,38 @@ async def test_update_product_purges_orphaned_cloudinary_images():
         assert "https://res.cloudinary.com/astra/image/upload/v1/old_cert.webp" in deleted_urls
         assert "https://res.cloudinary.com/astra/image/upload/v1/old_featured.webp" in deleted_urls
         assert "https://res.cloudinary.com/astra/image/upload/v1/new_featured.webp" not in deleted_urls
+
+
+def test_varshphal_store_recommendations_generation():
+    from app.services.shop_remedy_recommender import build_varshphal_store_recommendations
+
+    varsh_planets = [
+        {"planet_id": "saturn", "nature": "ashubh", "house": 8},
+        {"planet_id": "rahu", "nature": "ashubh", "house": 12},
+        {"planet_id": "mars", "nature": "mixed", "house": 7},
+        {"planet_id": "jupiter", "nature": "shubh", "house": 9},
+    ]
+
+    recs_bn = build_varshphal_store_recommendations(varsh_planets, primary_focus="finance", lang="bn")
+    assert len(recs_bn) >= 2
+    # First item should target most afflicted (saturn or rahu)
+    planets_present = [r["ruling_planet"] for r in recs_bn]
+    assert "Saturn" in planets_present or "Rahu" in planets_present
+    assert any("gomti" in r["id"].lower() or "gomti" in r["title"].lower() for r in recs_bn)
+
+
+@pytest.mark.asyncio
+async def test_stock_reservation_and_release_flow():
+    prod_id = PydanticObjectId()
+    mock_collection = MagicMock()
+    mock_collection.update_one = AsyncMock(return_value=MagicMock(modified_count=1))
+
+    with patch.object(Product, "get_pymongo_collection", return_value=mock_collection):
+        # 1. Reserve stock
+        reserved = await shop_admin.atomic_reserve_stock(prod_id, 1)
+        assert reserved is True
+
+        # 2. Release stock back upon abort
+        released = await shop_admin.atomic_release_stock(prod_id, 1)
+        assert released is True
+

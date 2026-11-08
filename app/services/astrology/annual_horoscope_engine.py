@@ -36,7 +36,10 @@ from app.services.astrology.lal_kitab_data import (
     get_gomti_chakra_remedies,
     get_special_remedy,
 )
-from app.services.shop_remedy_recommender import enrich_curated_remedies_with_store_links
+from app.services.shop_remedy_recommender import (
+    build_varshphal_store_recommendations,
+    enrich_curated_remedies_with_store_links,
+)
 
 # 12 Signs Master Metadata
 SIGNS_MASTER = [
@@ -358,6 +361,9 @@ def generate_annual_lal_kitab_report(
         "gomti_chakra_remedies": gomti_remedies,
         "general_precautions": general_precautions,
         "digital_seal": digital_seal,
+        "store_recommendations": build_varshphal_store_recommendations(
+            varsh_planets, primary_focus, lang
+        ),
     }
 
 

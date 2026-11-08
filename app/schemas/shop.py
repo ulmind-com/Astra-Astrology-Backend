@@ -277,3 +277,22 @@ class CloudinaryOrphanCleanupReport(BaseModel):
     purged_public_ids: list[str] = Field(default_factory=list)
 
 
+# ===========================================================================
+# Concurrency Stock Reservation Schemas (Phase 4 & 5 Protection)
+# ===========================================================================
+
+
+class StockReservationRequest(BaseModel):
+    product_id: str
+    quantity: int = Field(default=1, ge=1, le=50)
+
+
+class StockReservationResponse(BaseModel):
+    success: bool
+    reserved: bool
+    product_id: str
+    quantity: int
+    message: str
+
+
+

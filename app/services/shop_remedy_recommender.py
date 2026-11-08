@@ -304,3 +304,205 @@ def enrich_curated_remedies_with_store_links(
         }
 
     return remedies
+
+
+def build_varshphal_store_recommendations(
+    varsh_planets: list[dict[str, Any]],
+    primary_focus: str = "general",
+    lang: str = "bn",
+    max_items: int = 4,
+) -> list[dict[str, Any]]:
+    """Generates canonical, high-converting AstroStore remedy product recommendations
+    specifically targeted to the seeker's afflicted planets and primary life focus.
+    """
+    CANONICAL_STORE_REMEDIES: dict[str, dict[str, Any]] = {
+        "saturn": {
+            "title_bn": "নেপালি ৭-মুখী রুদ্রাক্ষ (প্রাণ-প্রতিষ্ঠিত)",
+            "title_hi": "नेपाली 7-मुखी रुद्राक्ष (प्राण-प्रतिष्ठित)",
+            "title_en": "Nepali 7-Mukhi Rudraksha (Consecrated)",
+            "category": "rudraksha",
+            "ruling_planet": "Saturn",
+            "planet_symbol": "♄",
+            "reason_bn": "শনির সাড়ে সাতি, ধাইয়া ও কণ্টক শনির অশুভ প্রভাব প্রশমন এবং কর্মক্ষেত্রে আকস্মিক বাধা দূরীকরণে পরম ফলদায়ী।",
+            "reason_hi": "शनि साढ़े साती, ढैय्या एवं करियर में आ रही अप्रत्याशित बाधाओं के निवारण हेतु सिद्ध उपाय।",
+            "reason_en": "Essential consecrated remedy for Saturn Sade Sati, Kantaka Shani, and career stability.",
+            "mrp": 3999,
+            "sale_price": 1899,
+            "discount_percent": 52,
+            "badge_bn": "১০০% ল্যাব সার্টিফাইড ও মন্ত্রপূত প্রাণ-প্রতিষ্ঠিত",
+            "badge_hi": "100% लैब प्रमाणित एवं प्राण-प्रतिष्ठित",
+            "badge_en": "100% Lab Certified & Prana-Pratishtha Consecrated",
+            "image": "https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=600&auto=format&fit=crop&q=80",
+            "store_url": "/shop?planet=saturn",
+        },
+        "rahu": {
+            "title_bn": "৪ গ্রাম নিরেট চৌকো রুপোর পাত ও ৮-মুখী রুদ্রাক্ষ কম্বো",
+            "title_hi": "4 ग्राम ठोस चौकोर चांदी का टुकड़ा व 8-मुखी रुद्राक्ष",
+            "title_en": "Solid Square Silver Piece & 8-Mukhi Rudraksha Combo",
+            "category": "rudraksha",
+            "ruling_planet": "Rahu",
+            "planet_symbol": "☊",
+            "reason_bn": "৮ম ও ১২শ ভাবে রাহুর কুপ্রভাব, মানসিক বিভ্রান্তি, আইনি জটিলতা ও আকস্মিক অর্থক্ষতি রোধে বিশুদ্ধ লাল কিতাব ক্যানন।",
+            "reason_hi": "राहु दोष, मानसिक संशय, अनिद्रा एवं अचानक नुकसान से सुरक्षा हेतु शास्त्रीय लाल किताब उपाय।",
+            "reason_en": "Authentic Lal Kitab remedy against Rahu transits, anxiety, and unforeseen crises.",
+            "mrp": 2999,
+            "sale_price": 1499,
+            "discount_percent": 50,
+            "badge_bn": "১০০% খাঁটি রুপো ও শাস্ত্রীয় শক্তিসম্পন্ন",
+            "badge_hi": "100% शुद्ध चांदी एवं सिद्ध सामग्री",
+            "badge_en": "100% Pure Silver & Consecrated",
+            "image": "https://images.unsplash.com/photo-1611591475879-166258f33cf2?w=600&auto=format&fit=crop&q=80",
+            "store_url": "/shop?planet=rahu",
+        },
+        "mars": {
+            "title_bn": "ন্যাচারাল রক্তপ্রবাল (Red Coral) ও ৩-মুখী রুদ্রাক্ষ কবচ",
+            "title_hi": "प्राकृतिक लाल मूंगा व 3-मुखी रुद्राक्ष कवच",
+            "title_en": "Natural Certified Red Coral & 3-Mukhi Rudraksha Kavach",
+            "category": "gemstones",
+            "ruling_planet": "Mars",
+            "planet_symbol": "♂",
+            "reason_bn": "মাঙ্গলিক দোষ প্রশমন, রক্তপীড়া ও ভূমি-সম্পত্তি সংক্রান্ত সংকট নিরসনে দেব সেনাপতি মঙ্গলের বিহিত মহাপ্রতিকার।",
+            "reason_hi": "मांगलिक दोष शांति, रक्त विकार व भूमि विवाद समाधान हेतु भौम महा-उपाय।",
+            "reason_en": "Powerful Mars remedy for Manglik Dosha pacification, vitality, and property success.",
+            "mrp": 4999,
+            "sale_price": 2499,
+            "discount_percent": 50,
+            "badge_bn": "খাঁটি প্রাকৃতিক রক্তপ্রবাল ও গঙ্গাজলে শোধিত",
+            "badge_hi": "प्रामाणिक इटैलियन मूंगा व अभिमंत्रित",
+            "badge_en": "100% Natural Red Coral, Vedic Consecrated",
+            "image": "https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=600&auto=format&fit=crop&q=80",
+            "store_url": "/shop?planet=mars",
+        },
+        "jupiter": {
+            "title_bn": "নেপালি ৫-মুখী রুদ্রাক্ষ ও কাঁচা হলুদের সিদ্ধ মালা",
+            "title_hi": "नेपाली 5-मुखी रुद्राक्ष व हल्दी की सिद्ध माला",
+            "title_en": "Nepali 5-Mukhi Rudraksha & Consecrated Turmeric Mala",
+            "category": "rudraksha",
+            "ruling_planet": "Jupiter",
+            "planet_symbol": "♃",
+            "reason_bn": "বৃহস্পতি গ্রহের শুভত্ব বৃদ্ধি, আধ্যাত্মিক জ্ঞান, উচ্চশিক্ষা, কন্যা সন্তান বা পুত্র সন্তানের কল্যাণ ও অর্থ সমৃদ্ধি।",
+            "reason_hi": "गुरु ग्रह कृपा, संतान सुख, उच्च शिक्षा एवं धन-वैभव संवर्धन हेतु देवगुरु उपाय।",
+            "reason_en": "Divine Jupiter blessing for wisdom, progeny well-being, and financial expansion.",
+            "mrp": 2499,
+            "sale_price": 1199,
+            "discount_percent": 52,
+            "badge_bn": "দেবগুরু বৃহস্পতি মন্ত্রে ১০৮ বার জপকৃত",
+            "badge_hi": "गुरु मंत्र द्वारा 108 बार अभिमंत्रित",
+            "badge_en": "Chanted 108 Times with Guru Beej Mantra",
+            "image": "https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=600&auto=format&fit=crop&q=80",
+            "store_url": "/shop?planet=jupiter",
+        },
+        "sun": {
+            "title_bn": "তাম্র সূর্য যন্ত্র ও ১২-মুখী সূর্য রুদ্রাক্ষ",
+            "title_hi": "ताम्र सूर्य यंत्र व 12-मुखी सूर्य रुद्राक्ष",
+            "title_en": "Pure Copper Surya Yantra & 12-Mukhi Sun Rudraksha",
+            "category": "yantra",
+            "ruling_planet": "Sun",
+            "planet_symbol": "☉",
+            "reason_bn": "সরকারি চাকরি, পদোন্নতি, পিতৃসুখ, আত্মবিশ্বাস ও সমাজে উচ্চ সম্মান বৃদ্ধির জন্য রবি গ্রহের অব্যর্থ প্রতিকার।",
+            "reason_hi": "सरकारी पद, मान-प्रतिष्ठा, पितृ दोष शांति एवं आत्मबल वृद्धि हेतु सूर्य उपाय।",
+            "reason_en": "Vedic Sun empowerment for leadership, prestige, executive power, and vitality.",
+            "mrp": 3299,
+            "sale_price": 1599,
+            "discount_percent": 51,
+            "badge_bn": "১০০% বিশুদ্ধ তামা ও গায়ত্রী মন্ত্রে সিদ্ধ",
+            "badge_hi": "शुद्ध तांबा व गायत्री मंत्र सिद्ध",
+            "badge_en": "Pure Copper Consecrated with Gayatri Mantra",
+            "image": "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=600&auto=format&fit=crop&q=80",
+            "store_url": "/shop?planet=sun",
+        },
+        "moon": {
+            "title_bn": "২-মুখী রুদ্রাক্ষ ও প্রাকৃতিক স্ফটিক মালা",
+            "title_hi": "2-मुखी रुद्राक्ष व प्राकृतिक स्फटिक माला",
+            "title_en": "2-Mukhi Rudraksha & Pure Sphatik Mala",
+            "category": "rudraksha",
+            "ruling_planet": "Moon",
+            "planet_symbol": "☽",
+            "reason_bn": "অতিরিক্ত মানসিক উদ্বেগ, হতাশা, নিদ্রাহীনতা ও চন্দ্র দোষ প্রশমনে মনঃশান্তি প্রদানকারী মহাপ্রতিকার।",
+            "reason_hi": "मानसिक अशांति, अवसाद एवं चंद्र दोष शांति हेतु शीतलता प्रदायक उपाय।",
+            "reason_en": "Deep emotional tranquility and mother's blessings for fragile Moon transits.",
+            "mrp": 2799,
+            "sale_price": 1299,
+            "discount_percent": 53,
+            "badge_bn": "হিমালয়ান স্ফটিক ও হর-পার্বতী শক্তিসম্পন্ন",
+            "badge_hi": "प्राकृतिक स्फटिक व शिव-शक्ति सिद्ध",
+            "badge_en": "Natural Himalayan Sphatik & Shiva-Parvati Energized",
+            "image": "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=600&auto=format&fit=crop&q=80",
+            "store_url": "/shop?planet=moon",
+        },
+        "gomti_chakra": {
+            "title_bn": "৮টি অলৌকিক সিদ্ধ গোমতী চক্র ও কনসেক্রেটেড শ্রীকুবের কয়েন",
+            "title_hi": "8 सिद्ध गोमती चक्र एवं अभिमंत्रित श्रीकुबेर सिक्का",
+            "title_en": "8 Sacred Consecrated Gomti Chakra & Kuber Coin Set",
+            "category": "gomti_chakra",
+            "ruling_planet": "Jupiter & Lakshmi",
+            "planet_symbol": "卐",
+            "reason_bn": "আটকে থাকা টাকা আদায়, গৃহের বাস্তুদোষ নিবারণ ও ধনলক্ষ্মীর চিরস্থায়ী কৃপাপ্রাপ্তির জন্য অলৌকিক তন্ত্রোক্ত টোটকা।",
+            "reason_hi": "अटका धन वापसी, वास्तु दोष निवारण एवं स्थायी लक्ष्मी कृपा हेतु चमत्कारी उपाय।",
+            "reason_en": "Sacred miracle set for blocked money recovery, debt relief, and permanent wealth harmony.",
+            "mrp": 2199,
+            "sale_price": 999,
+            "discount_percent": 55,
+            "badge_bn": "নদীগর্ভের প্রাকৃতিক গোমতী চক্র • প্রাণ-প্রতিষ্ঠিত",
+            "badge_hi": "प्राकृतिक गोमती चक्र • पूर्णतः अभिमंत्रित",
+            "badge_en": "Natural River Bed Gomti Chakra • Consecrated",
+            "image": "https://images.unsplash.com/photo-1611591475879-166258f33cf2?w=600&auto=format&fit=crop&q=80",
+            "store_url": "/shop?category=gomti_chakra",
+        },
+    }
+
+    # Sort afflicted planets (ashubh first, then mixed)
+    afflicted_planets = [
+        p["planet_id"].lower()
+        for p in sorted(
+            varsh_planets,
+            key=lambda x: 0 if x.get("nature") == "ashubh" else 1 if x.get("nature") == "mixed" else 2,
+        )
+    ]
+
+    selected: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
+
+    # 1. Add afflicted planets
+    for p_id in afflicted_planets:
+        if p_id in CANONICAL_STORE_REMEDIES and p_id not in seen_keys:
+            r = CANONICAL_STORE_REMEDIES[p_id]
+            selected.append({
+                "id": f"rem-{p_id}",
+                "title": r.get(f"title_{lang}") or r["title_en"],
+                "category": r["category"],
+                "ruling_planet": r["ruling_planet"],
+                "planet_symbol": r["planet_symbol"],
+                "sacred_reason": r.get(f"reason_{lang}") or r["reason_en"],
+                "mrp": r["mrp"],
+                "sale_price": r["sale_price"],
+                "discount_percent": r["discount_percent"],
+                "badge": r.get(f"badge_{lang}") or r["badge_en"],
+                "image": r["image"],
+                "store_url": r["store_url"],
+            })
+            seen_keys.add(p_id)
+            if len(selected) >= max_items - 1:
+                break
+
+    # 2. Always include Gomti Chakra miracle set for wealth/problem resolution
+    if "gomti_chakra" not in seen_keys and len(selected) < max_items:
+        g = CANONICAL_STORE_REMEDIES["gomti_chakra"]
+        selected.append({
+            "id": "rem-gomti-chakra",
+            "title": g.get(f"title_{lang}") or g["title_en"],
+            "category": g["category"],
+            "ruling_planet": g["ruling_planet"],
+            "planet_symbol": g["planet_symbol"],
+            "sacred_reason": g.get(f"reason_{lang}") or g["reason_en"],
+            "mrp": g["mrp"],
+            "sale_price": g["sale_price"],
+            "discount_percent": g["discount_percent"],
+            "badge": g.get(f"badge_{lang}") or g["badge_en"],
+            "image": g["image"],
+            "store_url": g["store_url"],
+        })
+
+    return selected[:max_items]
+
+

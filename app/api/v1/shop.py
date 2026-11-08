@@ -16,6 +16,8 @@ from app.schemas.shop import (
     ProductOut,
     ShopBannerSettingsOut,
     ShopProductRecommendationOut,
+    StockReservationRequest,
+    StockReservationResponse,
 )
 from app.services import shop_admin, shop_remedy_recommender
 
@@ -112,5 +114,51 @@ async def get_astrological_remedy_recommendations(
         limit=limit,
     )
     return ApiResponse.ok(data=recs)
+
+
+@router.post(
+    "/reserve-stock",
+    response_model=ApiResponse[StockReservationResponse],
+    summary="Atomically reserve inventory quantity to prevent concurrent over-ordering race conditions",
+)
+async def reserve_stock(
+    payload: StockReservationRequest,
+) -> ApiResponse[StockReservationResponse]:
+    success = await shop_admin.atomic_reserve_stock(payload.product_id, payload.quantity)
+    message = (
+        "Stock reserved successfully for checkout."
+        if success
+        else "Insufficient stock or item is currently being purchased by another seeker."
+    )
+    return ApiResponse.ok(
+        data=StockReservationResponse(
+            success=success,
+            reserved=success,
+            product_id=payload.product_id,
+            quantity=payload.quantity,
+            message=message,
+        )
+    )
+
+
+@router.post(
+    "/release-stock",
+    response_model=ApiResponse[StockReservationResponse],
+    summary="Atomically release reserved inventory quantity upon checkout abort or payment failure",
+)
+async def release_stock(
+    payload: StockReservationRequest,
+) -> ApiResponse[StockReservationResponse]:
+    success = await shop_admin.atomic_release_stock(payload.product_id, payload.quantity)
+    return ApiResponse.ok(
+        data=StockReservationResponse(
+            success=success,
+            reserved=False,
+            product_id=payload.product_id,
+            quantity=payload.quantity,
+            message="Stock released back to inventory successfully.",
+        )
+    )
+
 
 

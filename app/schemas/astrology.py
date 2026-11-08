@@ -1963,6 +1963,8 @@ class AnnualHoroscopeResponse(BaseModel):
     digital_seal: dict[str, Any]
     coins_spent: int = 0
     wallet_balance: int | None = None
+    store_recommendations: list[dict[str, Any]] = Field(default_factory=list)
+
 
 
 

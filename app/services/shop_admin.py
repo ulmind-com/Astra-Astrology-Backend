@@ -264,6 +264,7 @@ async def list_products(
     is_active: bool | None = None,
     is_featured: bool | None = None,
     include_deleted: bool = False,
+    archived_only: bool = False,
     page: int = 1,
     limit: int = 20,
     sort_by: str = "-created_at",
@@ -272,7 +273,9 @@ async def list_products(
     skip = (page - 1) * limit
     filters: list[Any] = []
 
-    if not include_deleted:
+    if archived_only:
+        filters.append(Product.is_deleted == True)
+    elif not include_deleted:
         filters.append(Product.is_deleted == False)
     if is_active is not None:
         filters.append(Product.is_active == is_active)

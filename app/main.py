@@ -145,16 +145,25 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     except Exception as e:
         logger.warning("Could not start appointment reminder worker: {}", e)
 
+    # Start 24-hour automated Cloudinary orphan image garbage collection worker
+    cloudinary_cleaner_task: asyncio.Task | None = None
+    try:
+        from app.services.shop_cloudinary_cleaner import periodic_cloudinary_orphan_cleaner_loop
+        cloudinary_cleaner_task = asyncio.create_task(periodic_cloudinary_orphan_cleaner_loop())
+    except Exception as e:
+        logger.warning("Could not start Cloudinary orphan cleaner worker: {}", e)
+
     logger.success("{} is ready on port {}.", settings.APP_NAME, settings.PORT)
     yield
 
     logger.info("Shutting down...")
-    if reminder_task and not reminder_task.done():
-        reminder_task.cancel()
-        try:
-            await reminder_task
-        except (asyncio.CancelledError, Exception):
-            pass
+    for bg_task in (reminder_task, cloudinary_cleaner_task):
+        if bg_task and not bg_task.done():
+            bg_task.cancel()
+            try:
+                await bg_task
+            except (asyncio.CancelledError, Exception):
+                pass
 
     flush_telemetry()
     await close_mongo_connection()
