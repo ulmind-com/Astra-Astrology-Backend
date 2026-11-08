@@ -362,5 +362,8 @@ async def admin_create_bunny_video_placeholder(
     _: AdminUser,
 ) -> ApiResponse[BunnyCreateVideoResponse]:
     """Calls Bunny Stream API to create a video placeholder in library 803267."""
-    result = await CourseService.create_bunny_video_placeholder(title=payload.title)
+    clean_title = (payload.title or "").strip()
+    if len(clean_title) < 2:
+        clean_title = f"Lecture Video {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}"
+    result = await CourseService.create_bunny_video_placeholder(title=clean_title)
     return ApiResponse(data=BunnyCreateVideoResponse(**result))

@@ -44,29 +44,29 @@ class CourseListItemOut(BaseModel):
     id: str
     title: str
     slug: str
-    subtitle: str
-    category: str
-    level: str
-    language: str
-    instructor_name: str
-    instructor_title: str
+    subtitle: str = ""
+    category: str = "vedic_astrology"
+    level: str = "all_levels"
+    language: str = "bn"
+    instructor_name: str = "Senior Astrologer"
+    instructor_title: str = "Vedic Jyotishacharya"
     instructor_avatar: str | None = None
-    thumbnail_url: str
-    price: float
-    mrp: float
-    discount_percent: int
-    currency: str
-    duration_hours: float
-    total_lessons: int
-    total_students: int
-    average_rating: float
-    rating_count: int
-    is_featured: bool
-    certificate_enabled: bool
+    thumbnail_url: str = ""
+    price: float = 0.0
+    mrp: float = 0.0
+    discount_percent: int = 0
+    currency: str = "INR"
+    duration_hours: float = 0.0
+    total_lessons: int = 0
+    total_students: int = 0
+    average_rating: float = 5.0
+    rating_count: int = 0
+    is_featured: bool = False
+    certificate_enabled: bool = True
 
 
 class CourseDetailOut(CourseListItemOut):
-    description: str
+    description: str = ""
     promo_video_url: str | None = None
     promo_video_provider: str = "youtube"
     what_you_will_learn: list[str] = Field(default_factory=list)
@@ -222,7 +222,7 @@ class CourseLessonUpdateRequest(BaseModel):
 
 
 class BunnyCreateVideoRequest(BaseModel):
-    title: str = Field(..., min_length=2, max_length=250)
+    title: str = Field(default="New Video Lesson", max_length=250)
 
 
 class BunnyCreateVideoResponse(BaseModel):
