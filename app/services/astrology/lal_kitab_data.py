@@ -10,6 +10,8 @@ Covers:
 
 from typing import Any, Literal
 
+from app.services.astrology.lal_kitab_translator import translate_remedy
+
 LAL_KITAB_PLANETS = {'sun': {'en': 'Sun', 'bn': 'সূর্য', 'hi': 'सूर्य', 'symbol': '☉'}, 'moon': {'en': 'Moon', 'bn': 'চন্দ্র', 'hi': 'चन्द्र', 'symbol': '☽'}, 'mars': {'en': 'Mars', 'bn': 'মঙ্গল', 'hi': 'मंगल', 'symbol': '♂'}, 'mercury': {'en': 'Mercury', 'bn': 'বুধ', 'hi': 'बुध', 'symbol': '☿'}, 'jupiter': {'en': 'Jupiter', 'bn': 'বৃহস্পতি', 'hi': 'बृहस्पति', 'symbol': '♃'}, 'venus': {'en': 'Venus', 'bn': 'শুক্র', 'hi': 'शुक्र', 'symbol': '♀'}, 'saturn': {'en': 'Saturn', 'bn': 'শনি', 'hi': 'शनि', 'symbol': '♄'}, 'rahu': {'en': 'Rahu', 'bn': 'রাহু', 'hi': 'राहु', 'symbol': '☊'}, 'ketu': {'en': 'Ketu', 'bn': 'কেতু', 'hi': 'केतु', 'symbol': '☋'}}
 
 LAL_KITAB_COMBINATIONS: dict[str, dict[str, Any]] = {
@@ -3187,6 +3189,15 @@ def get_combination(planet: str, house: int, language: str = "en") -> dict[str, 
         }
     
     lang = language if language in ("bn", "hi", "en") else "en"
+    raw_prec = entry.get("precautions", [])
+    raw_rem = entry.get("remedies", [])
+
+    if lang == "hi":
+        precautions = raw_prec
+        remedies = raw_rem
+    else:
+        precautions = [translate_remedy(p, lang) for p in raw_prec]
+        remedies = [translate_remedy(r, lang) for r in raw_rem]
     
     return {
         "planet": entry["planet"],
@@ -3194,8 +3205,8 @@ def get_combination(planet: str, house: int, language: str = "en") -> dict[str, 
         "symbol": entry.get("symbol", "★"),
         "nature": entry.get("nature", "mixed"),
         "title": entry["title"].get(lang, entry["title"]["en"]),
-        "precautions": entry.get("precautions", []),
-        "remedies": entry.get("remedies", []),
+        "precautions": precautions,
+        "remedies": remedies,
     }
 
 
