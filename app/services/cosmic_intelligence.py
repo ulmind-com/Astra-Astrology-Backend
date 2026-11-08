@@ -854,9 +854,9 @@ def generate_divya_paramarsha_certificate_data(
         "certificate_id": cert_id,
         "issued_at": now.isoformat(),
         "astrologer": {
-            "name": astrologer.display_name,
+            "name": getattr(astrologer, "display_name", "Vedic Astrologer"),
             "title": "Certified Vedic Astrologer & Sacred Counselor",
-            "avatar_url": astrologer.avatar_url,
+            "avatar_url": getattr(astrologer, "avatar_url", None),
         },
         "client": {
             "name": client.full_name or client.first_name or "Seeker",

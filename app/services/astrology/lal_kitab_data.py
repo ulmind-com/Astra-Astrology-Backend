@@ -11,6 +11,7 @@ Covers:
 from typing import Any, Literal
 
 from app.services.astrology.lal_kitab_translator import translate_remedy
+from app.services.astrology.lal_kitab_multilingual_db import LAL_KITAB_TRANSLATIONS
 
 LAL_KITAB_PLANETS = {'sun': {'en': 'Sun', 'bn': 'সূর্য', 'hi': 'सूर्य', 'symbol': '☉'}, 'moon': {'en': 'Moon', 'bn': 'চন্দ্র', 'hi': 'चन्द्र', 'symbol': '☽'}, 'mars': {'en': 'Mars', 'bn': 'মঙ্গল', 'hi': 'मंगल', 'symbol': '♂'}, 'mercury': {'en': 'Mercury', 'bn': 'বুধ', 'hi': 'बुध', 'symbol': '☿'}, 'jupiter': {'en': 'Jupiter', 'bn': 'বৃহস্পতি', 'hi': 'बृहस्पति', 'symbol': '♃'}, 'venus': {'en': 'Venus', 'bn': 'শুক্র', 'hi': 'शुक्र', 'symbol': '♀'}, 'saturn': {'en': 'Saturn', 'bn': 'শনি', 'hi': 'शनि', 'symbol': '♄'}, 'rahu': {'en': 'Rahu', 'bn': 'রাহু', 'hi': 'राहु', 'symbol': '☊'}, 'ketu': {'en': 'Ketu', 'bn': 'কেতু', 'hi': 'केतु', 'symbol': '☋'}}
 
@@ -3192,12 +3193,24 @@ def get_combination(planet: str, house: int, language: str = "en") -> dict[str, 
     raw_prec = entry.get("precautions", [])
     raw_rem = entry.get("remedies", [])
 
-    if lang == "hi":
-        precautions = raw_prec
-        remedies = raw_rem
+    trans = LAL_KITAB_TRANSLATIONS.get(key)
+    if trans:
+        if lang == "bn":
+            precautions = trans.get("bn_precautions") or [translate_remedy(p, "bn") for p in raw_prec]
+            remedies = trans.get("bn_remedies") or [translate_remedy(r, "bn") for r in raw_rem]
+        elif lang == "en":
+            precautions = trans.get("en_precautions") or [translate_remedy(p, "en") for p in raw_prec]
+            remedies = trans.get("en_remedies") or [translate_remedy(r, "en") for r in raw_rem]
+        else:
+            precautions = raw_prec
+            remedies = raw_rem
     else:
-        precautions = [translate_remedy(p, lang) for p in raw_prec]
-        remedies = [translate_remedy(r, lang) for r in raw_rem]
+        if lang == "hi":
+            precautions = raw_prec
+            remedies = raw_rem
+        else:
+            precautions = [translate_remedy(p, lang) for p in raw_prec]
+            remedies = [translate_remedy(r, lang) for r in raw_rem]
     
     return {
         "planet": entry["planet"],
