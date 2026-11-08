@@ -215,6 +215,9 @@ class PlatformSettingsOut(BaseModel):
     daily_horoscope_coins: int = 0
     daily_horoscope_enabled: bool = True
 
+    annual_horoscope_coins: int = 50
+    annual_horoscope_enabled: bool = True
+
     kundli_coins: int = 20
     kundli_enabled: bool = True
 
@@ -260,6 +263,9 @@ class FeaturePricingUpdate(BaseModel):
 
     daily_horoscope_coins: int | None = Field(default=None, ge=0, le=1_000_000)
     daily_horoscope_enabled: bool | None = None
+
+    annual_horoscope_coins: int | None = Field(default=None, ge=0, le=1_000_000)
+    annual_horoscope_enabled: bool | None = None
 
     kundli_coins: int | None = Field(default=None, ge=0, le=1_000_000)
     kundli_enabled: bool | None = None

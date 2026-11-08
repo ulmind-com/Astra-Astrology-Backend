@@ -6,6 +6,8 @@ from loguru import logger
 from app.api.dependencies import OptionalUser
 from app.models.user import User
 from app.schemas.astrology import (
+    AnnualHoroscopeRequest,
+    AnnualHoroscopeResponse,
     DailyHoroscopeRequest,
     DailyHoroscopeResponse,
     KPCalculateRequest,
@@ -33,6 +35,7 @@ from app.services.astrology.timezone_resolver import (
     zone_for_coordinates,
 )
 from app.services.astrology.daily_horoscope import calculate_daily_horoscope
+from app.services.astrology.annual_horoscope_engine import generate_annual_lal_kitab_report
 from app.services.astrology.kp_calculator import calculate_kp
 from app.services.astrology.dasha_calculator import calculate_advanced_dasha
 from app.services.astrology.kundli_service import calculate_kundli
@@ -151,6 +154,14 @@ async def get_features_pricing() -> ApiResponse[dict[str, FeaturePricingItem]]:
             is_free=getattr(platform, "daily_horoscope_coins", 0) == 0,
             enabled=getattr(platform, "daily_horoscope_enabled", True),
             description="Vedic Moon Transit (Gochar) & Daily Panchang",
+        ),
+        "annual_horoscope": FeaturePricingItem(
+            feature_id="annual_horoscope",
+            name="1-Year Annual Horoscope & Lal Kitab Report",
+            coins=getattr(platform, "annual_horoscope_coins", 50),
+            is_free=getattr(platform, "annual_horoscope_coins", 50) == 0,
+            enabled=getattr(platform, "annual_horoscope_enabled", True),
+            description="1-Year Varshphal & Authentic Lal Kitab Remedies Dossier",
         ),
         "kundli": FeaturePricingItem(
             feature_id="kundli",
@@ -720,4 +731,49 @@ async def get_daily_horoscope_get(
     if charged > 0:
         msg += f" · {charged} coins deducted (Balance: {balance})"
     return ApiResponse(message=msg, data=result)
+
+
+@router.post(
+    "/horoscope/annual-lal-kitab",
+    response_model=ApiResponse[AnnualHoroscopeResponse],
+    summary="Generate 1-Year Annual Horoscope & Lal Kitab Varshphal Prediction Report",
+)
+async def get_annual_horoscope_report_post(
+    payload: AnnualHoroscopeRequest,
+    user: OptionalUser = None,
+) -> ApiResponse[AnnualHoroscopeResponse]:
+    """Calculates 100% in-house 1-Year Annual Horoscope & Lal Kitab Varshphal Report based on:
+    1. Swiss Ephemeris sidereal coordinates & precise Solar Return (Varshpravesh) moment
+    2. Varshphal Lagna & 9 Grahas house placements
+    3. 6 Life Pillars Forecast & 4 Quarters Roadmap
+    4. Authentic Lal Kitab Remedies & Precautions strictly from client canon
+    5. Special Mahaupay & 8 Gomti Chakra Remedies
+    6. Consecrated Royal Vedic Digital Seal & Verification Proof
+    """
+    charged, balance = await _charge_feature("annual_horoscope", "1-Year Annual Horoscope & Lal Kitab Report", user)
+    
+    c_name = payload.client_name
+    if not c_name and user:
+        c_name = getattr(user, "full_name", None) or getattr(user, "name", None)
+
+    result_dict = generate_annual_lal_kitab_report(
+        date_of_birth=payload.date_of_birth,
+        time_of_birth=payload.time_of_birth,
+        latitude=payload.latitude,
+        longitude=payload.longitude,
+        timezone_offset=payload.timezone,
+        city_name=payload.city_name,
+        client_name=c_name,
+        target_year=payload.target_year,
+        language=payload.language,
+        primary_focus=payload.primary_focus,
+    )
+    result_dict["coins_spent"] = charged
+    result_dict["wallet_balance"] = balance
+
+    msg = f"Generated 1-Year Annual Horoscope Report for {result_dict['target_year']}"
+    if charged > 0:
+        msg += f" · {charged} coins deducted (Balance: {balance})"
+    return ApiResponse(message=msg, data=AnnualHoroscopeResponse(**result_dict))
+
 

@@ -1929,6 +1929,43 @@ class DailyHoroscopeResponse(BaseModel):
     calculation_meta: dict[str, Any] = Field(default_factory=dict)
 
 
+class AnnualHoroscopeRequest(BaseModel):
+    date_of_birth: str = Field(..., description="Date of birth in YYYY-MM-DD format")
+    time_of_birth: str = Field(..., description="Time of birth in HH:MM format")
+    latitude: float = Field(default=22.5726, ge=-90.0, le=90.0)
+    longitude: float = Field(default=88.3639, ge=-180.0, le=180.0)
+    timezone: float = Field(default=5.5, ge=-12.0, le=14.0)
+    city_name: str | None = None
+    client_name: str | None = None
+    target_year: int | None = Field(default=None, ge=1900, le=2100)
+    language: Literal["en", "bn", "hi"] = "en"
+    primary_focus: Literal["general", "career", "finance", "health", "love", "family", "debt"] = "general"
+
+
+class AnnualHoroscopeResponse(BaseModel):
+    report_id: str
+    consecration_date: str
+    target_year: int
+    language: str
+    personal_details: dict[str, Any]
+    overall_score: int
+    annual_summary: str
+    pillars: list[dict[str, Any]]
+    quarters: list[dict[str, Any]]
+    shubh_phal: list[str]
+    ashubh_phal: list[str]
+    varshphal_planets: list[dict[str, Any]]
+    lal_kitab_remedies: list[dict[str, Any]]
+    primary_mahaupay: dict[str, Any]
+    all_special_mahaupay: list[dict[str, Any]]
+    gomti_chakra_remedies: list[dict[str, str]]
+    general_precautions: list[str]
+    digital_seal: dict[str, Any]
+    coins_spent: int = 0
+    wallet_balance: int | None = None
+
+
+
 
 
 

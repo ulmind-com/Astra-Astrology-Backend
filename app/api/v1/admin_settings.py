@@ -46,6 +46,8 @@ def _out(doc) -> PlatformSettingsOut:
         palm_reading_enabled=getattr(doc, "palm_reading_enabled", True),
         daily_horoscope_coins=getattr(doc, "daily_horoscope_coins", 0),
         daily_horoscope_enabled=getattr(doc, "daily_horoscope_enabled", True),
+        annual_horoscope_coins=getattr(doc, "annual_horoscope_coins", 50),
+        annual_horoscope_enabled=getattr(doc, "annual_horoscope_enabled", True),
         kundli_coins=getattr(doc, "kundli_coins", 20),
         kundli_enabled=getattr(doc, "kundli_enabled", True),
         kundli_matching_coins=getattr(doc, "kundli_matching_coins", 20),

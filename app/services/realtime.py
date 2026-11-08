@@ -177,6 +177,14 @@ def build_feature_pricing_payload(platform: Any) -> dict[str, dict[str, Any]]:
             "enabled": getattr(platform, "daily_horoscope_enabled", True),
             "description": "Daily Transit, Panchang & Planetary Analysis",
         },
+        "annual_horoscope": {
+            "feature_id": "annual_horoscope",
+            "name": "1-Year Annual Horoscope & Lal Kitab Report",
+            "coins": getattr(platform, "annual_horoscope_coins", 50),
+            "is_free": getattr(platform, "annual_horoscope_coins", 50) == 0,
+            "enabled": getattr(platform, "annual_horoscope_enabled", True),
+            "description": "1-Year Varshphal forecast & authentic Lal Kitab remedies report",
+        },
         "kundli": {
             "feature_id": "kundli",
             "name": "Kundli Generator",

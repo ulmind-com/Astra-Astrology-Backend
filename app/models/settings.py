@@ -78,6 +78,9 @@ class PlatformSettings(TimestampedDocument):
     daily_horoscope_coins: int = Field(default=0, ge=0, le=1_000_000)
     daily_horoscope_enabled: bool = True
 
+    annual_horoscope_coins: int = Field(default=50, ge=0, le=1_000_000)
+    annual_horoscope_enabled: bool = True
+
     kundli_coins: int = Field(default=20, ge=0, le=1_000_000)
     kundli_enabled: bool = True
 
