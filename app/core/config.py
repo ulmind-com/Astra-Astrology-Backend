@@ -155,6 +155,18 @@ class Settings(BaseSettings):
     def groq_configured(self) -> bool:
         return bool(self.GROQ_API_KEY)
 
+    # ------------------------------------------------------------- bunny stream (lms)
+    BUNNY_STREAM_LIBRARY_ID: str = "803267"
+    BUNNY_STREAM_API_KEY: str = ""
+    BUNNY_STREAM_READONLY_API_KEY: str = ""
+    BUNNY_STREAM_TOKEN_KEY: str = ""
+    BUNNY_STREAM_CDN_HOSTNAME: str = "vz-70a46f7e-43a.b-cdn.net"
+    BUNNY_ACCOUNT_API_KEY: str = ""
+
+    @property
+    def bunny_stream_configured(self) -> bool:
+        return bool(self.BUNNY_STREAM_LIBRARY_ID and self.BUNNY_STREAM_TOKEN_KEY)
+
     # ---------------------------------------------------------- monitoring
     # Sentry error tracking & APM performance
     SENTRY_DSN: str = ""

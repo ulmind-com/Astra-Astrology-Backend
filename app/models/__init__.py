@@ -43,6 +43,13 @@ from app.models.shop import (
     ShopOrder,
     UserAddress,
 )
+from app.models.course import (
+    Course,
+    CourseEnrollment,
+    CourseLesson,
+    CourseLessonProgress,
+    CourseSection,
+)
 
 DOCUMENT_MODELS: list[type[Document]] = [
     User,
@@ -91,6 +98,11 @@ DOCUMENT_MODELS: list[type[Document]] = [
     Cart,
     ShopOrder,
     ShopCoupon,
+    Course,
+    CourseSection,
+    CourseLesson,
+    CourseEnrollment,
+    CourseLessonProgress,
 ]
 
 __all__ = [
@@ -140,4 +152,9 @@ __all__ = [
     "Cart",
     "ShopOrder",
     "ShopCoupon",
+    "Course",
+    "CourseSection",
+    "CourseLesson",
+    "CourseEnrollment",
+    "CourseLessonProgress",
 ]
