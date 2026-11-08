@@ -185,5 +185,27 @@ def test_course_question_model_structure():
     assert q.has_official_answer is True
 
 
+def test_admin_course_route_order():
+    """Ensures static routes like /questions precede /{course_id} to prevent path parameter shadowing."""
+    from app.api.v1.admin_course import router
+
+    questions_index = None
+    course_id_index = None
+
+    for idx, r in enumerate(router.routes):
+        if getattr(r, "path", None) == "/admin/courses/questions" and "GET" in getattr(r, "methods", set()):
+            questions_index = idx
+        elif getattr(r, "path", None) == "/admin/courses/{course_id}" and "GET" in getattr(r, "methods", set()):
+            course_id_index = idx
+
+    assert questions_index is not None, "GET /admin/courses/questions route must exist"
+    assert course_id_index is not None, "GET /admin/courses/{course_id} route must exist"
+    assert questions_index < course_id_index, (
+        f"Route shadowing bug! /admin/courses/questions (idx {questions_index}) "
+        f"must be registered before /admin/courses/{{course_id}} (idx {course_id_index})"
+    )
+
+
+
 
 

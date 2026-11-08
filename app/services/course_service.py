@@ -745,15 +745,15 @@ class CourseService:
         skip: int = 0,
     ) -> dict[str, Any]:
         """Provides full Q&A inquiry management with course, lesson & student details."""
-        query: dict[str, Any] = {"is_hidden": False}
+        query: dict[str, Any] = {"is_hidden": {"$ne": True}}
         if course_id:
             query["course_id"] = course_id
         if lesson_id:
             query["lesson_id"] = lesson_id
 
         if status == "unanswered":
-            query["has_official_answer"] = False
-            query["is_resolved"] = False
+            query["has_official_answer"] = {"$ne": True}
+            query["is_resolved"] = {"$ne": True}
         elif status == "answered":
             query["has_official_answer"] = True
         elif status == "resolved":
@@ -769,8 +769,10 @@ class CourseService:
             ]
 
         total = await CourseQuestion.find(query).count()
-        unanswered_count = await CourseQuestion.find({"has_official_answer": False, "is_resolved": False, "is_hidden": False}).count()
-        resolved_count = await CourseQuestion.find({"is_resolved": True, "is_hidden": False}).count()
+        unanswered_count = await CourseQuestion.find(
+            {"has_official_answer": {"$ne": True}, "is_resolved": {"$ne": True}, "is_hidden": {"$ne": True}}
+        ).count()
+        resolved_count = await CourseQuestion.find({"is_resolved": True, "is_hidden": {"$ne": True}}).count()
 
         questions = (
             await CourseQuestion.find(query)

@@ -116,6 +116,123 @@ async def admin_create_course(
     return ApiResponse(data={"id": str(course.id), "slug": course.slug, "message": "Course created successfully"})
 
 
+# -----------------------------------------------------------------------------
+# BUNNY STREAM INTEGRATION
+# -----------------------------------------------------------------------------
+@router.post("/create-bunny-video", response_model=ApiResponse[BunnyCreateVideoResponse])
+async def admin_create_bunny_video_placeholder(
+    payload: BunnyCreateVideoRequest,
+    _: AdminUser,
+) -> ApiResponse[BunnyCreateVideoResponse]:
+    """Calls Bunny Stream API to create a video placeholder in library 803267."""
+    clean_title = (payload.title or "").strip()
+    if len(clean_title) < 2:
+        clean_title = f"Lecture Video {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}"
+    result = await CourseService.create_bunny_video_placeholder(title=clean_title)
+    return ApiResponse(data=BunnyCreateVideoResponse(**result))
+
+
+# -----------------------------------------------------------------------------
+# GURUKUL JIGYASA (ADMIN Q&A INQUIRY MANAGEMENT)
+# (Registered before /{course_id} to prevent path parameter shadowing)
+# -----------------------------------------------------------------------------
+@router.get("/questions", response_model=ApiResponse[AdminCourseQuestionListResponse])
+async def admin_list_course_questions(
+    _: AdminUser,
+    course_id: Annotated[str | None, Query(description="Filter by Course ID")] = None,
+    lesson_id: Annotated[str | None, Query(description="Filter by Lesson ID")] = None,
+    status: Annotated[str, Query(description="all, unanswered, answered, resolved")] = "all",
+    search: Annotated[str | None, Query(description="Search in student name/email/question text")] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    skip: Annotated[int, Query(ge=0)] = 0,
+) -> ApiResponse[AdminCourseQuestionListResponse]:
+    """Lists all Gurukul Jigyasa student inquiries with video, course & student metadata."""
+    cid_oid = PydanticObjectId(course_id) if course_id and PydanticObjectId.is_valid(course_id) else None
+    lid_oid = PydanticObjectId(lesson_id) if lesson_id and PydanticObjectId.is_valid(lesson_id) else None
+
+    data = await CourseService.admin_list_questions(
+        course_id=cid_oid,
+        lesson_id=lid_oid,
+        status=status,
+        search=search,
+        limit=limit,
+        skip=skip,
+    )
+    return ApiResponse(data=AdminCourseQuestionListResponse(**data))
+
+
+@router.post("/questions/{question_id}/answers", response_model=ApiResponse[CourseQuestionAnswerOut])
+async def admin_answer_question(
+    question_id: PydanticObjectId,
+    payload: AdminCourseQuestionAnswerRequest,
+    admin: AdminUser,
+) -> ApiResponse[CourseQuestionAnswerOut]:
+    """Posts an official Acharya answer to a student question thread."""
+    ans = await CourseService.answer_question(
+        user=admin,
+        question_id=question_id,
+        content=payload.content,
+        is_official=True,
+        mark_resolved=payload.mark_resolved,
+    )
+    out = CourseQuestionAnswerOut(
+        id=ans.id,
+        user_id=str(ans.user_id),
+        user_name=ans.user_name,
+        user_role=ans.user_role,
+        user_avatar=ans.user_avatar,
+        is_official=ans.is_official,
+        content=ans.content,
+        created_at=ans.created_at,
+    )
+    return ApiResponse(data=out, message="Official Gurukul answer posted successfully!")
+
+
+@router.patch("/questions/{question_id}", response_model=ApiResponse[dict])
+async def admin_update_question_status(
+    question_id: PydanticObjectId,
+    payload: AdminCourseQuestionUpdateRequest,
+    _: AdminUser,
+) -> ApiResponse[dict]:
+    """Updates question resolution status, pin status, or moderation visibility."""
+    q = await CourseService.admin_update_question(
+        question_id=question_id,
+        is_resolved=payload.is_resolved,
+        is_pinned=payload.is_pinned,
+        is_hidden=payload.is_hidden,
+    )
+    return ApiResponse(
+        data={
+            "id": str(q.id),
+            "is_resolved": q.is_resolved,
+            "is_pinned": q.is_pinned,
+            "is_hidden": q.is_hidden,
+        },
+        message="Question status updated",
+    )
+
+
+@router.delete("/questions/{question_id}", response_model=ApiResponse[dict])
+async def admin_delete_question(
+    question_id: PydanticObjectId,
+    _: AdminUser,
+) -> ApiResponse[dict]:
+    """Deletes a question thread."""
+    await CourseService.admin_delete_question(question_id)
+    return ApiResponse(data={"message": "Question deleted successfully"})
+
+
+@router.delete("/questions/{question_id}/answers/{answer_id}", response_model=ApiResponse[dict])
+async def admin_delete_answer(
+    question_id: PydanticObjectId,
+    answer_id: str,
+    _: AdminUser,
+) -> ApiResponse[dict]:
+    """Deletes an answer inside a question thread."""
+    await CourseService.admin_delete_answer(question_id, answer_id)
+    return ApiResponse(data={"message": "Answer deleted successfully"})
+
+
 @router.get("/{course_id}", response_model=ApiResponse[CourseDetailOut])
 async def admin_get_course_detail(
     course_id: PydanticObjectId,
@@ -364,119 +481,4 @@ async def admin_delete_lesson(
 
     return ApiResponse(data={"message": "Lesson deleted successfully"})
 
-
-# -----------------------------------------------------------------------------
-# BUNNY STREAM API INTEGRATION HELPER
-# -----------------------------------------------------------------------------
-@router.post("/create-bunny-video", response_model=ApiResponse[BunnyCreateVideoResponse])
-async def admin_create_bunny_video_placeholder(
-    payload: BunnyCreateVideoRequest,
-    _: AdminUser,
-) -> ApiResponse[BunnyCreateVideoResponse]:
-    """Calls Bunny Stream API to create a video placeholder in library 803267."""
-    clean_title = (payload.title or "").strip()
-    if len(clean_title) < 2:
-        clean_title = f"Lecture Video {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}"
-    result = await CourseService.create_bunny_video_placeholder(title=clean_title)
-    return ApiResponse(data=BunnyCreateVideoResponse(**result))
-
-
-# -----------------------------------------------------------------------------
-# GURUKUL JIGYASA (ADMIN Q&A INQUIRY MANAGEMENT)
-# -----------------------------------------------------------------------------
-@router.get("/questions", response_model=ApiResponse[AdminCourseQuestionListResponse])
-async def admin_list_course_questions(
-    _: AdminUser,
-    course_id: Annotated[str | None, Query(description="Filter by Course ID")] = None,
-    lesson_id: Annotated[str | None, Query(description="Filter by Lesson ID")] = None,
-    status: Annotated[str, Query(description="all, unanswered, answered, resolved")] = "all",
-    search: Annotated[str | None, Query(description="Search in student name/email/question text")] = None,
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
-    skip: Annotated[int, Query(ge=0)] = 0,
-) -> ApiResponse[AdminCourseQuestionListResponse]:
-    """Lists all Gurukul Jigyasa student inquiries with video, course & student metadata."""
-    cid_oid = PydanticObjectId(course_id) if course_id and len(course_id) == 24 else None
-    lid_oid = PydanticObjectId(lesson_id) if lesson_id and len(lesson_id) == 24 else None
-
-    data = await CourseService.admin_list_questions(
-        course_id=cid_oid,
-        lesson_id=lid_oid,
-        status=status,
-        search=search,
-        limit=limit,
-        skip=skip,
-    )
-    return ApiResponse(data=AdminCourseQuestionListResponse(**data))
-
-
-@router.post("/questions/{question_id}/answers", response_model=ApiResponse[CourseQuestionAnswerOut])
-async def admin_answer_question(
-    question_id: PydanticObjectId,
-    payload: AdminCourseQuestionAnswerRequest,
-    admin: AdminUser,
-) -> ApiResponse[CourseQuestionAnswerOut]:
-    """Posts an official Acharya answer to a student question thread."""
-    ans = await CourseService.answer_question(
-        user=admin,
-        question_id=question_id,
-        content=payload.content,
-        is_official=True,
-        mark_resolved=payload.mark_resolved,
-    )
-    out = CourseQuestionAnswerOut(
-        id=ans.id,
-        user_id=str(ans.user_id),
-        user_name=ans.user_name,
-        user_role=ans.user_role,
-        user_avatar=ans.user_avatar,
-        is_official=ans.is_official,
-        content=ans.content,
-        created_at=ans.created_at,
-    )
-    return ApiResponse(data=out, message="Official Gurukul answer posted successfully!")
-
-
-@router.patch("/questions/{question_id}", response_model=ApiResponse[dict])
-async def admin_update_question_status(
-    question_id: PydanticObjectId,
-    payload: AdminCourseQuestionUpdateRequest,
-    _: AdminUser,
-) -> ApiResponse[dict]:
-    """Updates question resolution status, pin status, or moderation visibility."""
-    q = await CourseService.admin_update_question(
-        question_id=question_id,
-        is_resolved=payload.is_resolved,
-        is_pinned=payload.is_pinned,
-        is_hidden=payload.is_hidden,
-    )
-    return ApiResponse(
-        data={
-            "id": str(q.id),
-            "is_resolved": q.is_resolved,
-            "is_pinned": q.is_pinned,
-            "is_hidden": q.is_hidden,
-        },
-        message="Question status updated",
-    )
-
-
-@router.delete("/questions/{question_id}", response_model=ApiResponse[dict])
-async def admin_delete_question(
-    question_id: PydanticObjectId,
-    _: AdminUser,
-) -> ApiResponse[dict]:
-    """Deletes a question thread."""
-    await CourseService.admin_delete_question(question_id)
-    return ApiResponse(data={"message": "Question deleted successfully"})
-
-
-@router.delete("/questions/{question_id}/answers/{answer_id}", response_model=ApiResponse[dict])
-async def admin_delete_answer(
-    question_id: PydanticObjectId,
-    answer_id: str,
-    _: AdminUser,
-) -> ApiResponse[dict]:
-    """Deletes an answer inside a question thread."""
-    await CourseService.admin_delete_answer(question_id, answer_id)
-    return ApiResponse(data={"message": "Answer deleted successfully"})
 
