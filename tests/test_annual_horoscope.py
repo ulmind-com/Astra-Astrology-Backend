@@ -142,3 +142,4 @@ async def test_annual_horoscope_api_endpoint():
         assert data["language"] == "hi"
         assert len(data["pillars"]) == 6
         assert len(data["gomti_chakra_remedies"]) == 8
+

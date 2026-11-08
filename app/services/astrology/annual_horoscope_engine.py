@@ -702,3 +702,4 @@ def _generate_annual_summary(lang: str, year: int, varsh_lagna: str, moon_rashi:
             f"hasty speculation is advised. Adherence to the authentic Lal Kitab remedies and Gomti Chakra protocols "
             f"consecrated in this report will dissolve planetary afflictions and anchor year-long tranquility."
         )
+
