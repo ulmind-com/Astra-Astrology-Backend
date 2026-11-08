@@ -521,4 +521,5 @@ class CourseService:
                 "library_id": settings.BUNNY_STREAM_LIBRARY_ID,
                 "title": title,
                 "upload_url": f"https://video.bunnycdn.com/library/{settings.BUNNY_STREAM_LIBRARY_ID}/videos/{video_id}",
+                "access_key": settings.BUNNY_STREAM_API_KEY,
             }

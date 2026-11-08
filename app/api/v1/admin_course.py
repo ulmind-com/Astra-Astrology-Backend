@@ -16,9 +16,11 @@ from app.schemas.course import (
     CourseCreateRequest,
     CourseDetailOut,
     CourseLessonCreateRequest,
+    CourseLessonOut,
     CourseLessonUpdateRequest,
     CourseListItemOut,
     CourseSectionCreateRequest,
+    CourseSectionOut,
     CourseSectionUpdateRequest,
     CourseUpdateRequest,
 )
@@ -106,6 +108,81 @@ async def admin_create_course(
     )
     await course.insert()
     return ApiResponse(data={"id": str(course.id), "slug": course.slug, "message": "Course created successfully"})
+
+
+@router.get("/{course_id}", response_model=ApiResponse[CourseDetailOut])
+async def admin_get_course_detail(
+    course_id: PydanticObjectId,
+    _: AdminUser,
+) -> ApiResponse[CourseDetailOut]:
+    """Retrieves full course details with all sections and lessons for admin curriculum editing."""
+    course = await Course.find_one(Course.id == course_id, Course.is_deleted == False)
+    if not course:
+        raise NotFoundError("Course not found")
+
+    sections = await CourseSection.find(CourseSection.course_id == course.id).sort([("order", 1)]).to_list()
+    sections_out = []
+    for s in sections:
+        lessons = await CourseLesson.find(CourseLesson.section_id == s.id).sort([("order", 1)]).to_list()
+        sections_out.append(
+            CourseSectionOut(
+                id=str(s.id),
+                title=s.title,
+                order=s.order,
+                description=s.description,
+                lessons=[
+                    CourseLessonOut(
+                        id=str(l.id),
+                        section_id=str(l.section_id),
+                        title=l.title,
+                        order=l.order,
+                        duration_minutes=l.duration_minutes,
+                        is_free_preview=l.is_free_preview,
+                        summary=l.summary,
+                        resources_count=len(l.resources or []),
+                        video_provider=l.video_provider,
+                        video_id=l.video_id,
+                        is_completed=False,
+                    )
+                    for l in lessons
+                ],
+            )
+        )
+
+    data = CourseDetailOut(
+        id=str(course.id),
+        title=course.title,
+        slug=course.slug,
+        subtitle=course.subtitle,
+        category=course.category,
+        level=course.level,
+        language=course.language,
+        instructor_name=course.instructor_name,
+        instructor_title=course.instructor_title,
+        instructor_avatar=course.instructor_avatar,
+        thumbnail_url=course.thumbnail_url,
+        price=course.price,
+        mrp=course.mrp,
+        discount_percent=course.discount_percent,
+        currency=course.currency,
+        duration_hours=course.duration_hours,
+        total_lessons=course.total_lessons,
+        total_students=course.total_students,
+        average_rating=course.average_rating,
+        rating_count=course.rating_count,
+        is_featured=course.is_featured,
+        certificate_enabled=course.certificate_enabled,
+        description=course.description,
+        promo_video_url=course.promo_video_url,
+        promo_video_provider=course.promo_video_provider,
+        what_you_will_learn=course.what_you_will_learn,
+        prerequisites=course.prerequisites,
+        tags=course.tags,
+        sections=sections_out,
+        is_enrolled=True,
+        user_progress_percent=0.0,
+    )
+    return ApiResponse(data=data)
 
 
 @router.put("/{course_id}", response_model=ApiResponse[dict])

@@ -230,3 +230,4 @@ class BunnyCreateVideoResponse(BaseModel):
     library_id: str
     title: str
     upload_url: str | None = None
+    access_key: str | None = None
