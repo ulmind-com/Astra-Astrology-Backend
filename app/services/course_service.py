@@ -161,7 +161,10 @@ class CourseService:
         # Anti-piracy watermark text (student mobile / email)
         watermark_text = None
         if user:
-            identifier = user.mobile_number or user.email or user.full_name or "Astra Student"
+            user_phone = getattr(user, "phone", None) or getattr(user, "mobile_number", None) or ""
+            user_email = getattr(user, "email", None) or ""
+            user_name = getattr(user, "full_name", None) or ""
+            identifier = user_phone or user_email or user_name or "Astra Student"
             watermark_text = f"Astra Gurukul • {identifier}"
 
         # Generate secure embed / stream parameters
@@ -320,6 +323,8 @@ class CourseService:
         amount_paise = int(round(course.price * 100))
         receipt_id = f"crs_{str(course.id)[-6:]}_{int(time.time())}"
 
+        user_phone = getattr(user, "phone", None) or getattr(user, "mobile_number", None) or ""
+        user_email = getattr(user, "email", "") or ""
         try:
             rzp_order = await asyncio.to_thread(
                 _razorpay().order.create,
@@ -331,7 +336,8 @@ class CourseService:
                         "type": "course_enrollment",
                         "course_id": str(course.id),
                         "user_id": str(user.id),
-                        "user_phone": user.mobile_number or "",
+                        "user_phone": user_phone,
+                        "user_email": user_email,
                     },
                 },
             )

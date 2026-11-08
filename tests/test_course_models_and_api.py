@@ -104,3 +104,39 @@ def test_admin_course_endpoint_imports_and_settings():
     assert callable(admin_create_lesson)
 
 
+@pytest.mark.asyncio
+async def test_create_course_order_user_attribute_resilience():
+    from unittest.mock import patch
+    from beanie import PydanticObjectId
+    from app.models.user import User
+
+    # Create dummy user with phone instead of mobile_number
+    mock_user = MagicMock(spec=User)
+    mock_user.id = PydanticObjectId()
+    mock_user.phone = "+919876543210"
+    mock_user.email = "student@example.com"
+    mock_user.full_name = "Astra Student"
+    # Ensure mobile_number does NOT exist on User (which caused AttributeError before)
+    del mock_user.mobile_number
+
+    mock_course = MagicMock(spec=Course)
+    mock_course.id = PydanticObjectId()
+    mock_course.price = 149.0
+    mock_course.slug = "demo-course-1"
+    mock_course.title = "Demo Course 1"
+    mock_course.is_deleted = False
+
+    with patch.object(Course, "find_one", AsyncMock(return_value=mock_course)):
+        with patch.object(CourseEnrollment, "find_one", AsyncMock(return_value=None)):
+            with patch("app.services.course_service._razorpay") as mock_rzp:
+                mock_order_client = MagicMock()
+                mock_order_client.order.create.return_value = {"id": "order_test_123"}
+                mock_rzp.return_value = mock_order_client
+
+                res = await CourseService.create_course_order(mock_user, mock_course.id)
+                assert res["order_id"] == "order_test_123"
+                assert res["amount_paise"] == 14900
+                assert res["course_slug"] == "demo-course-1"
+
+
+

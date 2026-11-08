@@ -96,11 +96,11 @@ class Settings(BaseSettings):
 
     # ------------------------------------------------------------ razorpay
     # Money is held in integer paise everywhere; rupees appear only in the UI.
-    RAZORPAY_KEY_ID: str = ""
-    RAZORPAY_KEY_SECRET: str = ""
+    RAZORPAY_KEY_ID: str = "rzp_test_TBRo7AUeaKIhKB"
+    RAZORPAY_KEY_SECRET: str = "9bJqOT5wotpt58O0Mal60miC"
     # Set in the Razorpay dashboard under Settings -> Webhooks. Without it the
     # webhook cannot be trusted, so it is refused rather than processed.
-    RAZORPAY_WEBHOOK_SECRET: str = ""
+    RAZORPAY_WEBHOOK_SECRET: str = "Ulmind2026"
 
     WALLET_CURRENCY: str = "INR"
     WALLET_MIN_RECHARGE_PAISE: int = 1_000  # Rs 10
