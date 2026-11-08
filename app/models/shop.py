@@ -360,3 +360,4 @@ class ShopOrder(TimestampedDocument):
             pymongo.IndexModel([("payment_status", pymongo.ASCENDING)], name="order_payment_status_idx"),
             pymongo.IndexModel([("created_at", pymongo.DESCENDING)], name="order_created_recent"),
         ]
+

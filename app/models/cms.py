@@ -113,3 +113,52 @@ class HomePageCMS(TimestampedDocument):
         indexes = [
             pymongo.IndexModel([("key", pymongo.ASCENDING)], name="cms_homepage_key_unique", unique=True),
         ]
+
+
+CMS_KEY_SHOP = "shop"
+
+
+def default_shop_hero_banners() -> list[dict]:
+    return [
+        {
+            "id": "banner-1",
+            "title": "Sacred Certified Nepali Rudraksha",
+            "subtitle": "Consecrated with Vedic Pran-Pratishtha by Vedic Pandits for spiritual protection & prosperity.",
+            "cta_text": "Explore Rudraksha",
+            "cta_link": "/shop?category=rudraksha",
+            "badge_text": "100% Authentic & Lab Certified",
+            "image_url": "https://images.unsplash.com/photo-1602751584552-8ba73aad10e1?auto=format&fit=crop&w=1200&q=80",
+            "is_active": True,
+        },
+        {
+            "id": "banner-2",
+            "title": "Natural Astrological Gemstones",
+            "subtitle": "Unheated, untreated Vedic gems with government recognized laboratory certification.",
+            "cta_text": "Discover Gemstones",
+            "cta_link": "/shop?category=gemstone",
+            "badge_text": "Govt. Lab Certified",
+            "image_url": "https://images.unsplash.com/photo-1599707367072-cd6ada2bc375?auto=format&fit=crop&w=1200&q=80",
+            "is_active": True,
+        },
+    ]
+
+
+class ShopCMS(TimestampedDocument):
+    """Singleton document storing customizable store hero banners and announcements."""
+
+    key: str = CMS_KEY_SHOP
+
+    announcement_bar_text: str | None = Field(
+        default="✨ Special Navagraha Shanti: Free Vedic Consecration & Energization on all Sacred Remedies!",
+        max_length=300,
+    )
+    announcement_bar_link: str | None = Field(default="/shop", max_length=300)
+    announcement_bar_active: bool = True
+    hero_banners: list[dict] = Field(default_factory=default_shop_hero_banners)
+
+    class Settings:
+        name = "cms_shop"
+        indexes = [
+            pymongo.IndexModel([("key", pymongo.ASCENDING)], name="cms_shop_key_unique", unique=True),
+        ]
+

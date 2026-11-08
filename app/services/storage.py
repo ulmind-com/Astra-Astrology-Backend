@@ -182,3 +182,48 @@ async def delete_file(public_id: str, resource_type: str = "image") -> bool:
     except Exception as exc:  # noqa: BLE001 - deletion failures shouldn't break a request
         logger.opt(exception=exc).warning("Cloudinary delete failed for {}", public_id)
         return False
+
+
+def extract_public_id_from_url(url: str | None) -> str | None:
+    """Extracts Cloudinary public_id from a secure_url for garbage-collection/deletion."""
+    if not url or "cloudinary.com" not in url:
+        return None
+    try:
+        from urllib.parse import urlparse
+        import re
+
+        path = urlparse(url).path
+        match = re.search(r"/upload/(?:v\d+/)?(.*?)(?:\.[a-zA-Z0-9]+)?$", path)
+        if match:
+            return match.group(1)
+    except Exception:
+        return None
+    return None
+
+
+async def safe_delete_cloudinary_image(url: str | None) -> bool:
+    """Attempts to cleanly purge an image asset from Cloudinary when replaced or deleted."""
+    public_id = extract_public_id_from_url(url)
+    if not public_id:
+        return False
+    return await delete_file(public_id, resource_type="image")
+
+
+PRODUCT_IMAGE_TRANSFORMATION = [
+    {"width": 1200, "height": 1200, "crop": "limit"},
+    {"quality": "auto:good"},
+    {"fetch_format": "auto"},
+]
+
+
+async def upload_product_image(file: UploadFile) -> UploadResult:
+    """Uploads a product image with automatic WebP/AVIF compression & bounded dimensions
+    to prevent exhausting Cloudinary quota and conserve client bandwidth.
+    """
+    return await upload_file(
+        file,
+        folder="products",
+        transformation=PRODUCT_IMAGE_TRANSFORMATION,
+        image_format="webp",
+    )
+

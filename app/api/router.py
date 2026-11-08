@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from app.api.v1 import (
     admin_astrologers,
     admin_settings,
+    admin_shop,
     admin_wallets,
     ai_astrologer,
     appointments,
@@ -22,6 +23,7 @@ from app.api.v1 import (
     palm_reading,
     passkeys,
     reviews,
+    shop,
     support,
     tarot,
     users,
@@ -74,3 +76,5 @@ api_router.include_router(tarot.router)
 api_router.include_router(support.router)
 api_router.include_router(support.admin_router)
 api_router.include_router(whiteboard.router)
+api_router.include_router(admin_shop.router)
+api_router.include_router(shop.router)

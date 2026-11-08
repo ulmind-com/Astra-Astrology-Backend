@@ -23,7 +23,7 @@ from app.models.ai_astrologer import (
     AIKnowledgeDoc,
 )
 from app.models.settings import CoinRateChange, PlatformSettings
-from app.models.cms import HomePageCMS
+from app.models.cms import HomePageCMS, ShopCMS
 from app.models.passkey import PasskeyChallenge, PasskeyCredential
 from app.models.support import SupportTicket
 from app.models.user import User
@@ -51,6 +51,7 @@ DOCUMENT_MODELS: list[type[Document]] = [
     PendingRegistration,
     PlatformSettings,
     HomePageCMS,
+    ShopCMS,
     PasskeyCredential,
     PasskeyChallenge,
     CoinRateChange,
@@ -125,6 +126,7 @@ __all__ = [
     "PendingRegistration",
     "PlatformSettings",
     "HomePageCMS",
+    "ShopCMS",
     "PasskeyCredential",
     "PasskeyChallenge",
     "User",
