@@ -97,3 +97,10 @@ def test_course_lesson_create_schema_resilience():
     bunny_req = BunnyCreateVideoRequest()
     assert bunny_req.title == "New Video Lesson"
 
+
+def test_admin_course_endpoint_imports_and_settings():
+    from app.api.v1.admin_course import settings, admin_create_lesson
+    assert settings.BUNNY_STREAM_LIBRARY_ID == "803267"
+    assert callable(admin_create_lesson)
+
+

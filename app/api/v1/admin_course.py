@@ -7,6 +7,7 @@ from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, Query, status
 
 from app.api.dependencies import AdminUser
+from app.core.config import settings
 from app.core.exceptions import NotFoundError
 from app.models.course import Course, CourseLesson, CourseSection
 from app.schemas.common import ApiResponse
