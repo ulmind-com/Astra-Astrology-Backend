@@ -1,7 +1,7 @@
 """Astrology public endpoints: Rashi (Moon Sign) calculator and geocoding helper."""
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, Body, HTTPException, Query, Request, status
 from loguru import logger
 from app.api.dependencies import OptionalUser
 from app.models.user import User
@@ -731,6 +731,52 @@ async def get_daily_horoscope_get(
     result = _guard(calculate_daily_horoscope, req, "daily-horoscope")
     msg = f"Daily Horoscope for {result.date} ({result.day_of_week})"
     return ApiResponse(message=msg, data=result)
+
+
+@router.post(
+    "/horoscope/daily/unlock",
+    response_model=ApiResponse[dict],
+    summary="Unlock a detailed single-sign daily reading for 10 coins",
+)
+async def unlock_daily_sign(
+    sign_index: int = Body(default=0, ge=0, le=11, embed=True),
+    user: OptionalUser = None,
+) -> ApiResponse[dict]:
+    """Charges a flat 10 coins to open a sign's detailed daily horoscope page.
+
+    The grid teaser stays free (see get_daily_horoscope_post). Opening a full
+    sign reading costs coins. The debit is idempotent per user + sign + day, so
+    re-opening the same sign on the same day never double-charges.
+    """
+    import time  # noqa: F401
+    from datetime import date as _date
+    from app.services import wallet as wallet_service
+    from app.models.enums import TransactionReason
+    from app.core.exceptions import BadRequestError, UnauthorizedError
+
+    cost = 10
+    if user is None:
+        raise UnauthorizedError(
+            f"This detailed reading requires {cost} coins. Please sign in to continue.",
+            error_code="authentication_required",
+        )
+
+    wallet = await wallet_service.get_or_create_wallet(user.id)
+    if wallet.balance_coins < cost:
+        raise BadRequestError(
+            f"This detailed reading requires {cost} coins, but your balance is {wallet.balance_coins} coins.",
+            error_code="insufficient_coins",
+        )
+
+    idempotency_key = f"daily_sign:{user.id}:{sign_index}:{_date.today().isoformat()}"
+    txn, _ = await wallet_service.debit(
+        user_id=user.id,
+        amount_coins=cost,
+        reason=TransactionReason.FEATURE_USAGE,
+        idempotency_key=idempotency_key,
+        note="Daily horoscope — detailed sign reading",
+    )
+    return ApiResponse(message="Unlocked", data={"charged": cost, "balance": txn.balance_after_coins})
 
 
 @router.post(
