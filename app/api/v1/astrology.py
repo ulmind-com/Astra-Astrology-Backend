@@ -150,8 +150,10 @@ async def get_features_pricing() -> ApiResponse[dict[str, FeaturePricingItem]]:
         "daily_horoscope": FeaturePricingItem(
             feature_id="daily_horoscope",
             name="Daily Horoscope",
-            coins=getattr(platform, "daily_horoscope_coins", 0),
-            is_free=getattr(platform, "daily_horoscope_coins", 0) == 0,
+            # Free, public homepage teaser — never charged, so always report free
+            # regardless of any stray daily_horoscope_coins value in settings.
+            coins=0,
+            is_free=True,
             enabled=getattr(platform, "daily_horoscope_enabled", True),
             description="Vedic Moon Transit (Gochar) & Daily Panchang",
         ),
@@ -693,11 +695,11 @@ async def get_daily_horoscope_post(
     3. Client's Rashi attributes and beneficial remedies
     4. Exact Daily Panchang (Tithi, Nakshatra, Yoga, Karana, Abhijit Muhurat, Rahu Kaal)
     """
-    charged, balance = await _charge_feature("daily_horoscope", "Daily Horoscope", user)
+    # Daily Horoscope is a free, public feature: it is the homepage teaser, shown
+    # to signed-out visitors, so it must never require sign-in or coins. Paid
+    # features (annual, kundli, …) still go through _charge_feature.
     result = _guard(calculate_daily_horoscope, payload, "daily-horoscope")
     msg = f"Calculated Daily Horoscope for {result.date} ({result.day_of_week})"
-    if charged > 0:
-        msg += f" · {charged} coins deducted (Balance: {balance})"
     return ApiResponse(message=msg, data=result)
 
 
@@ -716,7 +718,7 @@ async def get_daily_horoscope_get(
     user: OptionalUser = None,
 ) -> ApiResponse[DailyHoroscopeResponse]:
     """Query parameter interface for Daily Horoscope (Moon Transit Gochar & Panchang)."""
-    charged, balance = await _charge_feature("daily_horoscope", "Daily Horoscope", user)
+    # Free, public feature — see get_daily_horoscope_post. No auth, no coins.
     lang = language if language in {"en", "bn", "hi"} else "en"
     req = DailyHoroscopeRequest(
         date=date,
@@ -728,8 +730,6 @@ async def get_daily_horoscope_get(
     )
     result = _guard(calculate_daily_horoscope, req, "daily-horoscope")
     msg = f"Daily Horoscope for {result.date} ({result.day_of_week})"
-    if charged > 0:
-        msg += f" · {charged} coins deducted (Balance: {balance})"
     return ApiResponse(message=msg, data=result)
 
 
