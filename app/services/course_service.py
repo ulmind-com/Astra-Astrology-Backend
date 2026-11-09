@@ -1144,21 +1144,26 @@ class CourseService:
 
     @staticmethod
     def generate_course_certificate_html(cert: dict[str, Any]) -> str:
-        """Generates an ultra-luxurious, printable A4 Landscape graduation certificate."""
+        """Generates an ultra-luxurious, production-level printable A4 Landscape graduation certificate."""
+        canonical_hash = cert.get("canonical_hash") or cert.get("digital_seal", {}).get("verification_hash", "")
+        crypto_sig = cert.get("cryptographic_signature", "")
+        instructor = cert.get("instructor_name", "Pt. Acharya Rahul Sharma")
+        issued_date = cert.get("issued_at_formatted", "")
+
         return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Gurukul Certificate — {cert['student_name']} — {cert['course_title']}</title>
+  <title>Astra Gurukul Certificate — {cert['student_name']} — {cert['course_title']}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;800;900&family=Playfair+Display:ital,wght@0,600;0,700;0,900;1,400;1,600&family=Marcellus&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Alex+Brush&family=Cinzel:wght@600;700;800;900&family=Playfair+Display:ital,wght@0,600;0,700;0,900;1,400;1,600&family=Marcellus&family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     * {{ box-sizing: border-box; margin: 0; padding: 0; }}
     body {{
-      background: #0B0F19;
-      color: #1A1A1A;
+      background: #181410;
+      color: #1A1816;
       font-family: 'Marcellus', 'Georgia', serif;
       min-height: 100vh;
       display: flex;
@@ -1169,7 +1174,7 @@ class CourseService:
     }}
     .actions-bar {{
       width: 100%;
-      max-width: 1100px;
+      max-width: 1040px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -1206,271 +1211,240 @@ class CourseService:
       cursor: pointer;
       text-decoration: none;
     }}
-    .cert-frame {{
-      width: 100%;
-      max-width: 1100px;
-      aspect-ratio: 1.414;
-      background: #FFFDF9;
+
+    .cert-container {{
+      width: 1040px;
+      height: 670px;
+      background: #FAF8F2;
       position: relative;
-      border-radius: 4px;
-      padding: 24px;
-      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7), 0 0 40px rgba(212, 175, 55, 0.2);
-      border: 8px solid #1E293B;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
       overflow: hidden;
-    }}
-    .cert-inner-border {{
-      position: absolute;
-      top: 14px; left: 14px; right: 14px; bottom: 14px;
-      border: 2px solid #C89B3C;
-      pointer-events: none;
-    }}
-    .cert-inner-hairline {{
-      position: absolute;
-      top: 18px; left: 18px; right: 18px; bottom: 18px;
-      border: 1px dashed rgba(200, 155, 60, 0.5);
-      pointer-events: none;
-    }}
-    .corner {{
-      position: absolute;
-      font-size: 24px;
-      color: #C89B3C;
-      line-height: 1;
-      z-index: 2;
-    }}
-    .corner.tl {{ top: 22px; left: 22px; }}
-    .corner.tr {{ top: 22px; right: 22px; }}
-    .corner.bl {{ bottom: 22px; left: 22px; }}
-    .corner.br {{ bottom: 22px; right: 22px; }}
-
-    .watermark-bg {{
-      position: absolute;
-      top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-      font-size: 420px;
-      color: rgba(200, 155, 60, 0.035);
-      pointer-events: none;
-      font-family: 'Cinzel', serif;
-      user-select: none;
-      z-index: 1;
+      border-radius: 8px;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7);
+      display: flex;
+      border: 1px solid rgba(209, 178, 111, 0.35);
     }}
 
-    .cert-content {{
-      position: relative;
-      z-index: 3;
+    .microtext-band {{
+      position: absolute;
+      left: 20px;
+      right: 20px;
+      display: flex;
+      justify-content: space-between;
+      font-family: monospace;
+      font-size: 6px;
+      letter-spacing: 1.5px;
+      color: rgba(140, 122, 98, 0.45);
+      text-transform: uppercase;
+      pointer-events: none;
+      z-index: 25;
+    }}
+    .micro-top {{ top: 6px; }}
+    .micro-bot {{ bottom: 6px; }}
+
+    .cert-left {{
+      width: 66%;
       height: 100%;
+      padding: 42px 24px 34px 50px;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      text-align: center;
-      padding: 15px 35px;
+      position: relative;
+      z-index: 10;
     }}
 
-    .header-block {{ margin-bottom: 8px; }}
-    .om-badge {{
-      display: inline-flex;
+    .brand-header {{
+      display: flex;
       align-items: center;
-      justify-content: center;
-      font-size: 32px;
-      color: #8B6508;
-      line-height: 1;
-      margin-bottom: 4px;
+      gap: 12px;
     }}
-    .gurukul-brand {{
+    .brand-logo-icon {{
+      width: 44px;
+      height: 44px;
+    }}
+    .brand-name {{
       font-family: 'Cinzel', serif;
-      font-size: 13px;
+      font-size: 14px;
       font-weight: 800;
-      letter-spacing: 4px;
-      color: #8B6508;
-      text-transform: uppercase;
-      margin-bottom: 4px;
+      letter-spacing: 2.5px;
+      color: #1A1816;
+      line-height: 1.2;
     }}
-    .gurukul-sub {{
-      font-size: 11px;
-      letter-spacing: 1.5px;
-      color: #6B7280;
-      text-transform: uppercase;
-    }}
-
-    .shloka-banner {{
-      margin: 10px auto 14px;
-      padding: 6px 20px;
-      background: rgba(200, 155, 60, 0.08);
-      border-top: 1px solid rgba(200, 155, 60, 0.3);
-      border-bottom: 1px solid rgba(200, 155, 60, 0.3);
-      font-size: 12px;
-      color: #78350F;
-      font-style: italic;
-      max-width: 780px;
-    }}
-
-    .cert-title-block {{ margin-bottom: 12px; }}
-    .cert-main-title {{
-      font-family: 'Cinzel', serif;
-      font-size: 26px;
-      font-weight: 800;
-      color: #1F2937;
+    .brand-sub {{
+      font-family: 'Montserrat', sans-serif;
+      font-size: 8.5px;
+      font-weight: 600;
       letter-spacing: 2px;
+      color: #7A6C58;
       text-transform: uppercase;
-      background: linear-gradient(135deg, #8B6508 0%, #1F2937 50%, #8B6508 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
     }}
-    .conferred-upon {{
-      font-size: 11px;
+
+    .title-block {{
+      margin-top: 14px;
+    }}
+    .cert-main-title {{
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 52px;
+      font-weight: 900;
+      color: #1A1816;
+      line-height: 1;
+      letter-spacing: 0.5px;
+    }}
+    .cert-sub-banner {{
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 6px;
+      max-width: 330px;
+    }}
+    .sub-line {{
+      flex: 1;
+      height: 1px;
+      background: #8C7A62;
+    }}
+    .sub-text {{
+      font-family: 'Montserrat', sans-serif;
+      font-size: 9.5px;
       font-weight: 700;
-      letter-spacing: 3px;
+      letter-spacing: 2.5px;
+      color: #6E604E;
       text-transform: uppercase;
-      color: #9CA3AF;
+      white-space: nowrap;
+    }}
+
+    .consecration-label {{
+      font-family: 'Montserrat', sans-serif;
+      font-size: 9.5px;
+      font-weight: 700;
+      letter-spacing: 2.5px;
+      color: #7A6C58;
+      text-transform: uppercase;
+      margin-top: 18px;
+    }}
+
+    .recipient-name {{
+      font-family: 'Alex Brush', cursive;
+      font-size: 48px;
+      color: #1A1816;
+      line-height: 1.1;
+      padding-left: 4px;
+      margin-top: 4px;
+    }}
+    .recipient-underline {{
+      width: 100%;
+      height: 1px;
+      background: #8C7A62;
+      margin-top: 2px;
+    }}
+
+    .citation-paragraph {{
+      font-family: 'Marcellus', 'Georgia', serif;
+      font-size: 12px;
+      line-height: 1.6;
+      color: #4A4237;
+      margin-top: 12px;
+      max-width: 500px;
+    }}
+    .citation-shloka {{
+      font-family: 'Playfair Display', serif;
+      font-style: italic;
+      font-size: 11px;
+      color: #7A5D28;
       margin-top: 6px;
     }}
 
-    .student-name {{
-      font-family: 'Playfair Display', Georgia, serif;
-      font-size: 36px;
-      font-weight: 900;
-      color: #0F172A;
-      margin: 8px 0;
-      text-shadow: 0 1px 2px rgba(0,0,0,0.1);
-      letter-spacing: 0.5px;
-    }}
-
-    .course-decree {{
-      font-size: 13px;
-      line-height: 1.6;
-      color: #4B5563;
-      max-width: 760px;
-      margin: 0 auto 10px;
-    }}
-
-    .course-card {{
-      display: inline-block;
-      padding: 8px 24px;
-      background: linear-gradient(135deg, #FAF5E4 0%, #FFFDF7 100%);
-      border: 1px solid #C89B3C;
-      border-radius: 8px;
-      margin-bottom: 12px;
-    }}
-    .course-name {{
-      font-family: 'Cinzel', serif;
-      font-size: 17px;
-      font-weight: 700;
-      color: #92400E;
-    }}
-
-    .distinction-pill {{
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 4px 14px;
-      background: #ECFDF5;
-      border: 1px solid #10B981;
-      border-radius: 9999px;
-      font-size: 11px;
-      font-weight: 700;
-      color: #065F46;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      margin-bottom: 14px;
-    }}
-
-    .footer-signatures {{
+    .footer-row {{
       display: flex;
       align-items: flex-end;
       justify-content: space-between;
-      padding-top: 10px;
-      border-top: 1px solid rgba(200, 155, 60, 0.25);
+      margin-top: 18px;
+      padding-right: 18px;
     }}
-    .sig-col {{
-      width: 240px;
+    .date-col, .sig-col {{
+      width: 140px;
       text-align: center;
     }}
-    .sig-line {{
-      font-family: 'Playfair Display', cursive, serif;
-      font-style: italic;
-      font-size: 22px;
-      color: #1E293B;
-      padding-bottom: 4px;
-      border-bottom: 1.5px solid #C89B3C;
-      margin-bottom: 4px;
-    }}
-    .sig-name {{
+    .col-val {{
+      font-family: 'Playfair Display', serif;
       font-size: 12px;
-      font-weight: 700;
-      color: #1F2937;
+      font-weight: 600;
+      color: #1A1816;
+      margin-bottom: 5px;
+      min-height: 24px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
     }}
-    .sig-title {{
-      font-size: 10px;
-      color: #6B7280;
+    .sig-script {{
+      font-family: 'Alex Brush', cursive;
+      font-size: 24px;
+      color: #1A1816;
+    }}
+    .col-line {{
+      width: 100%;
+      height: 1px;
+      background: #8C7A62;
+      margin-bottom: 5px;
+    }}
+    .col-label {{
+      font-family: 'Montserrat', sans-serif;
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      color: #7A6C58;
+      text-transform: uppercase;
     }}
 
-    .gold-seal {{
-      width: 100px;
-      height: 100px;
-      border-radius: 50%;
-      background: radial-gradient(circle, #FFE494 0%, #D4AF37 60%, #AA771C 100%);
-      border: 3px double #FFF;
-      box-shadow: 0 4px 14px rgba(170, 119, 28, 0.4);
+    .qr-col {{
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      color: #381E00;
       text-align: center;
-      padding: 4px;
-      position: relative;
     }}
-    .gold-seal::after {{
-      content: "";
-      position: absolute;
-      bottom: -14px;
-      width: 28px;
-      height: 22px;
-      background: #AA771C;
-      clip-path: polygon(0 0, 100% 0, 50% 100%);
-      z-index: -1;
-    }}
-    .seal-text-top {{ font-size: 7px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; }}
-    .seal-icon {{ font-size: 22px; line-height: 1; margin: 2px 0; }}
-    .seal-text-bot {{ font-size: 7px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; }}
-
-    .metadata-strip {{
-      margin-top: 12px;
-      padding-top: 8px;
+    .qr-frame {{
+      width: 48px;
+      height: 48px;
+      background: #FFF;
+      border: 1px solid #C59B27;
+      border-radius: 4px;
+      padding: 3px;
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      font-size: 9px;
-      color: #9CA3AF;
-      border-top: 1px dashed rgba(200, 155, 60, 0.2);
+      justify-content: center;
     }}
-    .meta-id {{ font-family: monospace; font-weight: 700; color: #4B5563; }}
-
-    .micro-text-band {{
-      font-family: monospace;
-      font-size: 5px;
-      letter-spacing: 2px;
-      color: rgba(184, 134, 11, 0.45);
+    .qr-label {{
+      font-family: 'Montserrat', sans-serif;
+      font-size: 7px;
+      font-weight: 700;
+      color: #7A6C58;
+      letter-spacing: 0.5px;
       text-transform: uppercase;
-      white-space: nowrap;
-      overflow: hidden;
-      user-select: none;
-      position: absolute;
+      margin-top: 3px;
     }}
-    .micro-top {{ top: 12px; left: 24px; right: 24px; text-align: center; }}
-    .micro-bot {{ bottom: 12px; left: 24px; right: 24px; text-align: center; }}
 
-    .guilloche-bg {{
+    /* Right Side Art-Deco Lattice */
+    .cert-right {{
       position: absolute;
-      top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-      width: 440px;
-      height: 440px;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: 34%;
+      overflow: hidden;
       pointer-events: none;
-      opacity: 0.05;
-      z-index: 1;
+    }}
+    .cert-right svg {{
+      width: 100%;
+      height: 100%;
+      display: block;
+    }}
+
+    /* Gold Ribbon Medal Badge */
+    .seal-wrapper {{
+      position: absolute;
+      right: 28%;
+      top: 13%;
+      z-index: 20;
+      pointer-events: none;
+      filter: drop-shadow(0 8px 16px rgba(0,0,0,0.35));
     }}
 
     @media print {{
@@ -1480,6 +1454,8 @@ class CourseService:
       }}
       *, *::before, *::after {{
         box-sizing: border-box !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
       }}
       html, body {{
         width: 297mm !important;
@@ -1489,52 +1465,36 @@ class CourseService:
         padding: 0 !important;
         background: #ffffff !important;
         color: #000000 !important;
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
         overflow: hidden !important;
       }}
       .actions-bar {{ display: none !important; }}
-      .cert-frame {{
+      .cert-container {{
         width: 297mm !important;
         height: 210mm !important;
         max-height: 210mm !important;
-        max-width: 297mm !important;
-        aspect-ratio: auto !important;
+        border: none !important;
+        border-radius: 0 !important;
         box-shadow: none !important;
-        border: 6px solid #8B6508 !important;
-        padding: 12px 18px !important;
         page-break-inside: avoid !important;
         break-inside: avoid !important;
-        overflow: hidden !important;
       }}
-      .cert-content {{
-        padding: 6px 20px !important;
-        height: 100% !important;
+      .cert-left {{
+        width: 66% !important;
+        padding: 16mm 10mm 12mm 18mm !important;
       }}
-      .student-name {{
-        font-size: 28px !important;
-        margin: 4px 0 !important;
+      .cert-right {{
+        width: 34% !important;
       }}
-      .shloka-banner {{
-        margin: 4px auto 6px !important;
-        padding: 4px 14px !important;
+      .seal-wrapper {{
+        right: 27% !important;
+        top: 10% !important;
+        transform: scale(0.9) !important;
       }}
-      .course-card {{
-        padding: 4px 16px !important;
-        margin-bottom: 6px !important;
+      .cert-main-title {{
+        font-size: 38px !important;
       }}
-      .distinction-pill {{
-        margin-bottom: 6px !important;
-      }}
-      .course-decree {{
-        margin-bottom: 6px !important;
-      }}
-      .gold-seal {{
-        width: 80px !important;
-        height: 80px !important;
-      }}
-      .sig-line {{
-        font-size: 18px !important;
+      .recipient-name {{
+        font-size: 36px !important;
       }}
     }}
   </style>
@@ -1547,99 +1507,229 @@ class CourseService:
     </button>
   </div>
 
-  <div class="cert-frame">
-    <div class="micro-text-band micro-top">ASTRA GURUKUL CELESTIAL CREDENTIALS • OFFICIALLY CONSECRATED BY BOARD OF ASTROLOGICAL REGENTS • CANONICAL HASH VERIFIED • ASTRA GURUKUL CELESTIAL CREDENTIALS</div>
-    <div class="micro-text-band micro-bot">HMAC-SHA256 DIGITAL SECURITY SEAL • MATHEMATICALLY TAMPER-PROOF • VERIFIABLE AT ASTRAGURUKUL.COM • HMAC-SHA256 DIGITAL SECURITY SEAL</div>
+  <div class="cert-container">
+    <div class="microtext-band micro-top">
+      <span>ASTRA GURUKUL CELESTIAL CREDENTIALS • OFFICIALLY CONSECRATED • CANONICAL HASH VERIFIED</span>
+      <span>HMAC-SHA256 DIGITAL SECURITY SEAL • MATHEMATICALLY TAMPER-PROOF • VERIFIABLE AT ASTRAGURUKUL.COM</span>
+    </div>
+    <div class="microtext-band micro-bot">
+      <span>ID: {cert['certificate_id']}</span>
+      <span>SIG: {crypto_sig[:24]}... (HMAC-SHA256)</span>
+    </div>
 
-    <div class="cert-inner-border"></div>
-    <div class="cert-inner-hairline"></div>
-    <div class="corner tl">⚜</div>
-    <div class="corner tr">⚜</div>
-    <div class="corner bl">⚜</div>
-    <div class="corner br">⚜</div>
-    <div class="watermark-bg">ॐ</div>
+    <div class="cert-left">
+      <!-- Brand Header -->
+      <div class="brand-header">
+        <svg class="brand-logo-icon" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="5" y="5" width="90" height="90" rx="16" fill="#1A1816"/>
+          <circle cx="50" cy="50" r="38" stroke="#D4AF37" stroke-width="1.5" stroke-dasharray="2,2"/>
+          <circle cx="50" cy="50" r="28" stroke="#D4AF37" stroke-width="1"/>
+          <path d="M 50,22 C 38,22 38,50 50,50 C 62,50 62,22 50,22 Z" fill="#D4AF37" opacity="0.9"/>
+          <path d="M 50,78 C 38,78 38,50 50,50 C 62,50 62,78 50,78 Z" fill="#D4AF37" opacity="0.9"/>
+          <path d="M 22,50 C 22,38 50,38 50,50 C 50,62 22,62 22,50 Z" fill="#D4AF37" opacity="0.9"/>
+          <path d="M 78,50 C 78,38 50,38 50,50 C 50,62 78,62 78,50 Z" fill="#D4AF37" opacity="0.9"/>
+          <circle cx="50" cy="50" r="5" fill="#FFF"/>
+        </svg>
+        <div>
+          <div class="brand-name">ASTRA GURUKUL</div>
+          <div class="brand-sub">COUNCIL OF VEDIC SCIENCES</div>
+        </div>
+      </div>
 
-    <div class="guilloche-bg">
-      <svg viewBox="0 0 400 400" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="200" cy="200" r="180" fill="none" stroke="#C89B3C" stroke-width="1" stroke-dasharray="3,3"/>
-        <circle cx="200" cy="200" r="140" fill="none" stroke="#C89B3C" stroke-width="1"/>
-        <circle cx="200" cy="200" r="100" fill="none" stroke="#C89B3C" stroke-width="1" stroke-dasharray="2,2"/>
-        <g stroke="#C89B3C" stroke-width="0.8">
-          <ellipse cx="200" cy="200" rx="170" ry="35" fill="none" transform="rotate(0 200 200)"/>
-          <ellipse cx="200" cy="200" rx="170" ry="35" fill="none" transform="rotate(30 200 200)"/>
-          <ellipse cx="200" cy="200" rx="170" ry="35" fill="none" transform="rotate(60 200 200)"/>
-          <ellipse cx="200" cy="200" rx="170" ry="35" fill="none" transform="rotate(90 200 200)"/>
-          <ellipse cx="200" cy="200" rx="170" ry="35" fill="none" transform="rotate(120 200 200)"/>
-          <ellipse cx="200" cy="200" rx="170" ry="35" fill="none" transform="rotate(150 200 200)"/>
-        </g>
+      <!-- Title Block -->
+      <div class="title-block">
+        <h1 class="cert-main-title">Certificate</h1>
+        <div class="cert-sub-banner">
+          <div class="sub-line"></div>
+          <span class="sub-text">✦ OF ACHIEVEMENT ✦</span>
+          <div class="sub-line"></div>
+        </div>
+      </div>
+
+      <!-- Consecration Label -->
+      <div class="consecration-label">
+        THIS CERTIFICATE IS PROUDLY PRESENTED TO
+      </div>
+
+      <!-- Recipient Scholar Name -->
+      <div>
+        <div class="recipient-name">{cert['student_name']}</div>
+        <div class="recipient-underline"></div>
+      </div>
+
+      <!-- Citation Body Paragraph -->
+      <div class="citation-paragraph">
+        has successfully completed the sacred curriculum and demonstrated scholarly excellence in <strong>{cert['course_title']}</strong>, mastering classical predictive calculations, nakshatra computations, and remedial planetary sciences.
+        <div class="citation-shloka">
+          « विद्या ददाति विनयं विनयाद्याति पात्रताम् • True knowledge bestows humility, worthiness, and supreme fulfillment »
+        </div>
+      </div>
+
+      <!-- Footer Row: Date, Live QR Code, Signature -->
+      <div class="footer-row">
+        <div class="date-col">
+          <div class="col-val">{issued_date}</div>
+          <div class="col-line"></div>
+          <div class="col-label">Date</div>
+        </div>
+
+        <div class="qr-col">
+          <div class="qr-frame">
+            <svg viewBox="0 0 100 100" width="100%" height="100%">
+              <rect width="100" height="100" fill="#FFF"/>
+              <rect x="10" y="10" width="28" height="28" fill="#1A1816"/>
+              <rect x="15" y="15" width="18" height="18" fill="#FFF"/>
+              <rect x="19" y="19" width="10" height="10" fill="#1A1816"/>
+              <rect x="62" y="10" width="28" height="28" fill="#1A1816"/>
+              <rect x="67" y="15" width="18" height="18" fill="#FFF"/>
+              <rect x="71" y="19" width="10" height="10" fill="#1A1816"/>
+              <rect x="10" y="62" width="28" height="28" fill="#1A1816"/>
+              <rect x="15" y="67" width="18" height="18" fill="#FFF"/>
+              <rect x="19" y="71" width="10" height="10" fill="#1A1816"/>
+              <circle cx="50" cy="50" r="6" fill="#B8860B"/>
+              <rect x="44" y="15" width="10" height="10" fill="#1A1816"/>
+              <rect x="44" y="75" width="10" height="10" fill="#1A1816"/>
+              <rect x="75" y="44" width="10" height="10" fill="#1A1816"/>
+            </svg>
+          </div>
+          <div class="qr-label">Official QR</div>
+        </div>
+
+        <div class="sig-col">
+          <div class="col-val sig-script">{instructor}</div>
+          <div class="col-line"></div>
+          <div class="col-label">Signature</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gold Ribbon Medal Badge -->
+    <div class="seal-wrapper">
+      <svg viewBox="0 0 160 200" width="130" height="162" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="ribbonL" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#D8B467"/>
+            <stop offset="50%" stop-color="#AA8237"/>
+            <stop offset="100%" stop-color="#6C4F18"/>
+          </linearGradient>
+          <linearGradient id="ribbonR" x1="100%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#E8CA83"/>
+            <stop offset="50%" stop-color="#BA9245"/>
+            <stop offset="100%" stop-color="#78581F"/>
+          </linearGradient>
+          <radialGradient id="goldPlate" cx="40%" cy="35%" r="65%">
+            <stop offset="0%" stop-color="#FFF0B8"/>
+            <stop offset="40%" stop-color="#D4AF37"/>
+            <stop offset="80%" stop-color="#9A7424"/>
+            <stop offset="100%" stop-color="#64470C"/>
+          </radialGradient>
+          <radialGradient id="darkDisc" cx="50%" cy="45%" r="50%">
+            <stop offset="0%" stop-color="#2C2114"/>
+            <stop offset="80%" stop-color="#151009"/>
+            <stop offset="100%" stop-color="#0C0905"/>
+          </radialGradient>
+        </defs>
+
+        <path d="M 66,105 L 56,175 L 68,162 L 80,175 L 75,105 Z" fill="url(#ribbonL)"/>
+        <path d="M 66,105 L 68,162 L 56,175 Z" fill="rgba(0,0,0,0.18)"/>
+
+        <path d="M 85,105 L 80,175 L 92,162 L 104,175 L 94,105 Z" fill="url(#ribbonR)"/>
+        <path d="M 94,105 L 92,162 L 104,175 Z" fill="rgba(0,0,0,0.12)"/>
+
+        <polygon
+          points="123.63,80.00 120.35,85.25 120.91,91.43 116.14,95.42 114.99,101.51 109.11,103.54 106.37,109.11 99.85,108.97 95.86,113.74 89.28,111.45 84.49,114.99 78.40,110.51 73.15,112.54 67.97,106.37 63.18,106.77 59.19,99.28 55.44,97.94 53.03,89.51 51.00,86.77 50.44,78.28 50.21,74.29 51.68,66.07 53.24,61.03 56.65,53.63 60.15,49.89 65.40,43.63 70.58,41.22 77.00,36.37 83.00,35.51 90.00,32.26 96.37,33.00 103.23,31.45 109.11,33.54 114.99,35.51 119.85,40.11 123.63,44.75 126.97,51.03 128.91,57.28 130.44,64.29 128.68,71.07 127.24,76.03"
+          fill="url(#goldPlate)"
+          stroke="#8B6508"
+          stroke-width="0.8"
+        />
+
+        <circle cx="80" cy="80" r="38" fill="none" stroke="#FFEBA0" stroke-width="1.2"/>
+        <circle cx="80" cy="80" r="35" fill="none" stroke="#8B6508" stroke-width="0.8"/>
+        <circle cx="80" cy="80" r="32.5" fill="none" stroke="#FFEBA0" stroke-width="0.7" stroke-dasharray="1.5,1.5"/>
+        <circle cx="80" cy="80" r="30" fill="none" stroke="#64470C" stroke-width="1.2"/>
+
+        <circle cx="80" cy="80" r="28.5" fill="url(#darkDisc)"/>
+        <circle cx="80" cy="80" r="27" fill="none" stroke="#D4AF37" stroke-width="0.6"/>
+
+        <text x="80" y="66" fill="#FFE89E" font-family="sans-serif" font-size="5.5" font-weight="bold" text-anchor="middle" letter-spacing="1.5">★ ★ ★</text>
+        <text x="80" y="76" fill="#FFF3CA" font-family="'Cinzel', serif" font-size="9" font-weight="900" text-anchor="middle" letter-spacing="1.2">BEST</text>
+        <path d="M 59,80 L 64,80 M 96,80 L 101,80" stroke="#D4AF37" stroke-width="0.5"/>
+        <text x="80" y="83" fill="#E5C370" font-family="sans-serif" font-size="5" font-weight="800" text-anchor="middle" letter-spacing="1.5">AWARD</text>
+        <text x="80" y="92" fill="#FFF3CA" font-family="'Cinzel', serif" font-size="7.5" font-weight="700" text-anchor="middle" letter-spacing="1">2026</text>
       </svg>
     </div>
 
-    <div class="cert-content">
-      <div class="header-block">
-        <div class="om-badge">ॐ</div>
-        <div class="gurukul-brand">Astra Cosmic Gurukul • বিশ্ব জ্যোতিষ বিদ্যাপীঠ</div>
-        <div class="gurukul-sub">Council of Vedic Sciences, Nakshatra Computations & Remedial Canon</div>
-      </div>
+    <!-- Right Column: Geometric Art-Deco Gold Lattice Pattern -->
+    <div class="cert-right">
+      <svg viewBox="0 0 320 640" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="patGoldMetal" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#D1B26F"/>
+            <stop offset="30%" stop-color="#A68444"/>
+            <stop offset="70%" stop-color="#DDC385"/>
+            <stop offset="100%" stop-color="#8E6C2E"/>
+          </linearGradient>
+          <linearGradient id="patGoldLight" x1="0%" y1="100%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#A68444"/>
+            <stop offset="50%" stop-color="#F0DCA0"/>
+            <stop offset="100%" stop-color="#BD9C59"/>
+          </linearGradient>
 
-      <div class="shloka-banner">
-        "विद्या ददाति विनयं विनयाद्याति पात्रताम् । पात्रत्वाद्धनमाप्नोति धनाद्धर्मं ततः सुखम् ॥"
-      </div>
+          <g id="patDiamondCross">
+            <path d="M-160,-160 L160,160 M160,-160 L-160,160" stroke="url(#patGoldMetal)" stroke-width="16" fill="none"/>
+            
+            <polygon points="0,-110 110,0 0,110 -110,0" fill="none" stroke="url(#patGoldMetal)" stroke-width="14"/>
+            <polygon points="0,-96 96,0 0,96 -96,0" fill="none" stroke="#FAF8F2" stroke-width="4"/>
+            <polygon points="0,-90 90,0 0,90 -90,0" fill="none" stroke="url(#patGoldLight)" stroke-width="3"/>
 
-      <div class="cert-title-block">
-        <h1 class="cert-main-title">Certificate of Scholarly Excellence</h1>
-        <p class="conferred-upon">This Sacred Parchment Is Solemnly Conferred Upon</p>
-      </div>
+            <path d="M-28,-28 L-28,-80 L0,-100 L28,-80 L28,-28 Z" fill="url(#patGoldMetal)"/>
+            <path d="M-20,-28 L-20,-75 L0,-90 L20,-75 L20,-28 Z" fill="#FAF8F2"/>
+            <path d="M-12,-28 L-12,-70 L0,-80 L12,-70 L12,-28 Z" fill="url(#patGoldLight)"/>
 
-      <div class="student-name">{cert['student_name']}</div>
+            <path d="M-28,28 L-28,80 L0,100 L28,80 L28,28 Z" fill="url(#patGoldMetal)"/>
+            <path d="M-20,28 L-20,75 L0,90 L20,75 L20,28 Z" fill="#FAF8F2"/>
+            <path d="M-12,28 L-12,70 L0,80 L12,70 L12,28 Z" fill="url(#patGoldLight)"/>
 
-      <p class="course-decree">
-        for having successfully accomplished with supreme distinction the rigorous canonical curriculum,
-        planetary algorithms, celestial treatises, and predictive methodology for the sacred masterclass:
-      </p>
+            <path d="M-28,-28 L-80,-28 L-100,0 L-80,28 L-28,28 Z" fill="url(#patGoldMetal)"/>
+            <path d="M-28,-20 L-75,-20 L-90,0 L-75,20 L-28,20 Z" fill="#FAF8F2"/>
+            <path d="M-28,-12 L-70,-12 L-80,0 L-70,12 L-28,12 Z" fill="url(#patGoldLight)"/>
 
-      <div>
-        <div class="course-card">
-          <div class="course-name">{cert['course_title']}</div>
-        </div>
-      </div>
+            <path d="M28,-28 L80,-28 L100,0 L80,28 L28,28 Z" fill="url(#patGoldMetal)"/>
+            <path d="M28,-20 L75,-20 L90,0 L75,20 L28,20 Z" fill="#FAF8F2"/>
+            <path d="M28,-12 L70,-12 L80,0 L70,12 L28,12 Z" fill="url(#patGoldLight)"/>
 
-      <div>
-        <div class="distinction-pill">
-          <span>★</span> {cert['distinction']} <span>★</span>
-        </div>
-      </div>
+            <polygon points="0,-28 28,0 0,28 -28,0" fill="url(#patGoldMetal)"/>
+            <polygon points="0,-20 20,0 0,20 -20,0" fill="#FAF8F2"/>
+            <polygon points="0,-12 12,0 0,12 -12,0" fill="url(#patGoldLight)"/>
+            <polygon points="0,-5 5,0 0,5 -5,0" fill="url(#patGoldMetal)"/>
 
-      <div class="footer-signatures">
-        <div class="sig-col">
-          <div class="sig-line">{cert['instructor_name']}</div>
-          <div class="sig-name">{cert['instructor_name']}</div>
-          <div class="sig-title">{cert['instructor_title']}</div>
-        </div>
+            <path d="M38,-38 L55,-55 M46,-38 L63,-55 M54,-38 L71,-55" stroke="url(#patGoldMetal)" stroke-width="3" fill="none"/>
+            <path d="M38,38 L55,55 M46,38 L63,55 M54,38 L71,55" stroke="url(#patGoldMetal)" stroke-width="3" fill="none"/>
+            <path d="M-38,38 L-55,55 M-46,38 L-63,55 M-54,38 L-71,55" stroke="url(#patGoldMetal)" stroke-width="3" fill="none"/>
+            <path d="M-38,-38 L-55,-55 M-46,-38 L-63,-55 M-54,-38 L-71,-55" stroke="url(#patGoldMetal)" stroke-width="3" fill="none"/>
+          </g>
+        </defs>
 
-        <div class="gold-seal">
-          <div class="seal-text-top">Astra Gurukul</div>
-          <div class="seal-icon">☸</div>
-          <div class="seal-text-bot">Consecrated</div>
-        </div>
+        <rect width="320" height="640" fill="#FAF8F2"/>
 
-        <div class="sig-col">
-          <div class="sig-line">Council Registrar</div>
-          <div class="sig-name">Board of Astrological Regents</div>
-          <div class="sig-title">Director of Celestial Credentials</div>
-        </div>
-      </div>
+        <g transform="translate(160, -30)"><use href="#patDiamondCross"/></g>
+        <g transform="translate(160, 210)"><use href="#patDiamondCross"/></g>
+        <g transform="translate(160, 450)"><use href="#patDiamondCross"/></g>
+        <g transform="translate(160, 690)"><use href="#patDiamondCross"/></g>
 
-      <div class="metadata-strip">
-        <div>Certificate ID: <span class="meta-id">{cert['certificate_id']}</span></div>
-        <div>Date: <strong>{cert['issued_at_formatted']}</strong></div>
-        <div>Canonical Hash: <span class="meta-id">{cert.get('canonical_hash', cert['digital_seal']['verification_hash'])[:20]}...</span></div>
-        <div>Signature: <span class="meta-id">{cert.get('cryptographic_signature', '')[:16]}... (HMAC-SHA256)</span></div>
-      </div>
+        <g transform="translate(0, 90)"><use href="#patDiamondCross"/></g>
+        <g transform="translate(0, 330)"><use href="#patDiamondCross"/></g>
+        <g transform="translate(0, 570)"><use href="#patDiamondCross"/></g>
+
+        <g transform="translate(320, 90)"><use href="#patDiamondCross"/></g>
+        <g transform="translate(320, 330)"><use href="#patDiamondCross"/></g>
+        <g transform="translate(320, 570)"><use href="#patDiamondCross"/></g>
+      </svg>
     </div>
   </div>
 </body>
 </html>"""
+
 
     @staticmethod
     async def get_course_certificate(user: User, course_id: PydanticObjectId) -> dict[str, Any]:
