@@ -136,9 +136,9 @@ async def send_course_certificate_email(
     text = (
         f"Congratulations {user_name}!\n\n"
         f"You have successfully mastered 100% of the lessons in {course_title}.\n"
-        f"Your Official Astra Gurukul Certificate ID: {certificate_id}\n\n"
+        f"Your Official DivinLink Gurukul Certificate ID: {certificate_id}\n\n"
         f"View and print your certificate here:\n{verify_url}\n\n"
-        "Astra Cosmic Gurukul"
+        "DivinLink Gurukul"
     )
     try:
         sent = await send_email(to=to, subject=subject, html=html, text=text)

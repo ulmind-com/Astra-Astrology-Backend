@@ -266,7 +266,7 @@ def test_course_certificate_generation_and_html():
     assert "Samiran Samanta" in html
     assert "Vedic Astrology Foundation Masterclass" in html
     assert "ASTRA-CERT-SAMIRAN-TEST" in html
-    assert "Astra Gurukul" in html
+    assert "DivinLink Gurukul" in html
     assert "HMAC-SHA256" in html
 
 

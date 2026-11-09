@@ -1173,11 +1173,11 @@ def course_certificate_email_html(
     instructor_name: str = "Pt. Acharya Rahul Sharma",
 ) -> str:
     """Ultra-premium congratulatory email template for Gurukul masterclass graduation."""
-    app_name = settings.APP_NAME or "Astra Cosmic Gurukul"
-    headline = "🎓 অভিনন্দন • Gurukul Consecration Certificate"
+    app_name = "DivinLink Gurukul"
+    headline = "🎓 অভিনন্দন • DivinLink Gurukul Consecration Certificate"
     lead_text = (
         f"Dear <strong>{user_name}</strong>, with great pride and cosmic honor, the Acharyas and faculty "
-        f"of Astra Gurukul solemnly confer upon you this <strong>Official Certificate of Scholarly Excellence</strong>."
+        f"of DivinLink Gurukul solemnly confer upon you this <strong>Official Certificate of Scholarly Excellence</strong>."
     )
 
     content = f"""
@@ -1186,7 +1186,7 @@ def course_certificate_email_html(
           <td style="padding:28px 24px;text-align:center;">
             <div style="font-size:32px;line-height:1;margin-bottom:8px;color:#8B6508;">ॐ</div>
             <div style="font-size:11px;font-weight:800;letter-spacing:2px;color:#8B6508;text-transform:uppercase;margin-bottom:6px;">
-              Astra Cosmic Gurukul • বিশ্ব জ্যোতিষ বিদ্যাপীঠ
+              DivinLink Gurukul • বিশ্ব জ্যোতিষ বিদ্যাপীঠ
             </div>
             <div style="font-size:18px;font-family:Georgia,serif;font-weight:700;color:#1F2937;margin-bottom:14px;">
               Certificate of Scholarly Excellence & Mastery
