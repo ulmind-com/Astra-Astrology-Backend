@@ -1474,22 +1474,67 @@ class CourseService:
     }}
 
     @media print {{
-      body {{
-        background: #FFF !important;
+      @page {{
+        size: A4 landscape;
+        margin: 0 !important;
+      }}
+      *, *::before, *::after {{
+        box-sizing: border-box !important;
+      }}
+      html, body {{
+        width: 297mm !important;
+        height: 210mm !important;
+        max-height: 210mm !important;
+        margin: 0 !important;
         padding: 0 !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        overflow: hidden !important;
       }}
       .actions-bar {{ display: none !important; }}
       .cert-frame {{
-        max-width: 100% !important;
-        width: 100% !important;
-        height: 100vh !important;
+        width: 297mm !important;
+        height: 210mm !important;
+        max-height: 210mm !important;
+        max-width: 297mm !important;
         aspect-ratio: auto !important;
         box-shadow: none !important;
-        border: 4px solid #8B6508 !important;
+        border: 6px solid #8B6508 !important;
+        padding: 12px 18px !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        overflow: hidden !important;
       }}
-      @page {{
-        size: A4 landscape;
-        margin: 0;
+      .cert-content {{
+        padding: 6px 20px !important;
+        height: 100% !important;
+      }}
+      .student-name {{
+        font-size: 28px !important;
+        margin: 4px 0 !important;
+      }}
+      .shloka-banner {{
+        margin: 4px auto 6px !important;
+        padding: 4px 14px !important;
+      }}
+      .course-card {{
+        padding: 4px 16px !important;
+        margin-bottom: 6px !important;
+      }}
+      .distinction-pill {{
+        margin-bottom: 6px !important;
+      }}
+      .course-decree {{
+        margin-bottom: 6px !important;
+      }}
+      .gold-seal {{
+        width: 80px !important;
+        height: 80px !important;
+      }}
+      .sig-line {{
+        font-size: 18px !important;
       }}
     }}
   </style>

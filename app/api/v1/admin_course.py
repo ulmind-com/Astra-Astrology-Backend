@@ -1,16 +1,19 @@
 """Admin Endpoints for Astra Gurukul Courses, Modules & Video Lessons."""
 
 from typing import Annotated
+import asyncio
 from datetime import datetime, timezone
 
 from beanie import PydanticObjectId
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from loguru import logger
 
 from app.api.dependencies import AdminUser
 from app.core.config import settings
 from app.core.exceptions import NotFoundError
 from app.models.course import Course, CourseLesson, CourseSection
 from app.schemas.common import ApiResponse
+from app.services.storage import safe_delete_cloudinary_image, upload_file
 from app.schemas.course import (
     AdminCourseQuestionAnswerRequest,
     AdminCourseQuestionDetailOut,
@@ -233,6 +236,33 @@ async def admin_delete_answer(
     return ApiResponse(data={"message": "Answer deleted successfully"})
 
 
+@router.post("/upload-thumbnail", response_model=ApiResponse[dict[str, str]])
+async def admin_upload_course_thumbnail(
+    file: UploadFile = File(...),
+    _: AdminUser = None,
+) -> ApiResponse[dict[str, str]]:
+    """Uploads a course thumbnail with 16:9 WebP compression specifically into courses folder."""
+    COURSE_THUMBNAIL_TRANSFORMATION = [
+        {"width": 1280, "height": 720, "crop": "fill", "aspect_ratio": "16:9"},
+        {"quality": "auto:good"},
+        {"fetch_format": "auto"},
+    ]
+    result = await upload_file(
+        file,
+        folder="courses/thumbnails",
+        transformation=COURSE_THUMBNAIL_TRANSFORMATION,
+        image_format="webp",
+    )
+    return ApiResponse.ok(
+        data={
+            "url": result.secure_url,
+            "public_id": result.public_id,
+            "format": result.format or "webp",
+        },
+        message="Course thumbnail uploaded and compressed successfully.",
+    )
+
+
 @router.get("/{course_id}", response_model=ApiResponse[CourseDetailOut])
 async def admin_get_course_detail(
     course_id: PydanticObjectId,
@@ -314,14 +344,22 @@ async def admin_update_course(
     payload: CourseUpdateRequest,
     _: AdminUser,
 ) -> ApiResponse[dict]:
-    """Updates course details, pricing, or publishing status."""
+    """Updates course details, pricing, or publishing status with Cloudinary garbage-collection."""
     course = await Course.find_one(Course.id == course_id, Course.is_deleted == False)
     if not course:
         raise NotFoundError("Course not found")
 
+    old_thumbnail = course.thumbnail_url
+    new_thumbnail = payload.thumbnail_url
+
     data = payload.model_dump(exclude_unset=True)
     for k, v in data.items():
         setattr(course, k, v)
+
+    # Cloudinary Auto-Cleanup: If thumbnail is changed or cleared, purge the old Cloudinary asset
+    if old_thumbnail and (payload.thumbnail_url is not None) and (new_thumbnail != old_thumbnail):
+        logger.info(f"Course {course_id} thumbnail replaced/cleared. Purging old asset: {old_thumbnail}")
+        asyncio.create_task(safe_delete_cloudinary_image(old_thumbnail))
 
     if course.mrp > 0 and course.mrp > course.price:
         course.discount_percent = int(round(((course.mrp - course.price) / course.mrp) * 100))
@@ -336,10 +374,14 @@ async def admin_delete_course(
     course_id: PydanticObjectId,
     _: AdminUser,
 ) -> ApiResponse[dict]:
-    """Soft deletes a course from the catalog."""
+    """Soft deletes a course from the catalog and cleans up Cloudinary media."""
     course = await Course.find_one(Course.id == course_id)
     if not course:
         raise NotFoundError("Course not found")
+
+    if course.thumbnail_url:
+        logger.info(f"Course {course_id} deleted. Purging thumbnail from Cloudinary: {course.thumbnail_url}")
+        asyncio.create_task(safe_delete_cloudinary_image(course.thumbnail_url))
 
     course.is_deleted = True
     course.is_published = False
