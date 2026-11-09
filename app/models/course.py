@@ -156,6 +156,8 @@ class CourseEnrollment(Document):
     certificate_url: str | None = None
     certificate_issued_at: datetime | None = None
     certificate_email_sent: bool = Field(default=False)
+    certificate_signature: str | None = None
+    certificate_canonical_hash: str | None = None
 
     class Settings:
         name = "course_enrollments"

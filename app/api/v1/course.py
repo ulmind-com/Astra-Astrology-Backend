@@ -92,18 +92,20 @@ async def get_course_detail(
 @router.get("/certificate/verify/{certificate_id}", response_model=ApiResponse[CourseCertificateOut])
 async def verify_course_certificate_endpoint(
     certificate_id: str,
+    sig: Annotated[str | None, Query(description="Cryptographic HMAC-SHA256 signature verification token")] = None,
 ) -> ApiResponse[CourseCertificateOut]:
     """Public verification endpoint to validate any Astra Gurukul credential."""
-    cert = await CourseService.verify_course_certificate(certificate_id=certificate_id)
+    cert = await CourseService.verify_course_certificate(certificate_id=certificate_id, signature_token=sig)
     return ApiResponse(data=CourseCertificateOut(**cert))
 
 
 @router.get("/certificate/verify/{certificate_id}/html", response_class=HTMLResponse)
 async def verify_course_certificate_html_endpoint(
     certificate_id: str,
+    sig: Annotated[str | None, Query(description="Cryptographic HMAC-SHA256 signature verification token")] = None,
 ) -> HTMLResponse:
     """Renders printable, high-res HTML certificate for public verification."""
-    cert = await CourseService.verify_course_certificate(certificate_id=certificate_id)
+    cert = await CourseService.verify_course_certificate(certificate_id=certificate_id, signature_token=sig)
     html_content = CourseService.generate_course_certificate_html(cert)
     return HTMLResponse(content=html_content, status_code=status.HTTP_200_OK)
 

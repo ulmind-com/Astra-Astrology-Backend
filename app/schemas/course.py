@@ -395,5 +395,10 @@ class CourseCertificateOut(BaseModel):
     verification_url: str
     certificate_html_url: str
     digital_seal: dict[str, Any] = Field(default_factory=dict)
+    cryptographic_signature: str = ""
+    canonical_hash: str = ""
+    signature_algorithm: str = "HMAC-SHA256 (FIPS 198-1 Standard)"
+    is_signature_valid: bool = True
+    tamper_check: dict[str, Any] = Field(default_factory=dict)
 
 

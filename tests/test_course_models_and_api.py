@@ -248,6 +248,18 @@ def test_course_certificate_generation_and_html():
     assert cert_out.course_title == "Vedic Astrology Foundation Masterclass"
     assert cert_out.digital_seal["status"] == "VERIFIED_AUTHENTIC"
     assert cert_out.instructor_name == "Acharya Rahul Sharma"
+    assert len(cert_out.cryptographic_signature) == 64
+    assert len(cert_out.canonical_hash) == 64
+    assert cert_out.is_signature_valid is True
+    assert cert_out.tamper_check["status"] == "CRYPTOGRAPHICALLY_VERIFIED_AUTHENTIC"
+
+    # Test anti-tampering check with forged signature token
+    tampered_data = CourseService.generate_course_certificate_data(
+        enrollment, course, user, signature_token="fake_malicious_signature_token"
+    )
+    assert tampered_data["is_signature_valid"] is False
+    assert tampered_data["tamper_check"]["status"] == "TAMPERED_OR_INVALID_SIGNATURE"
+    assert tampered_data["digital_seal"]["status"] == "TAMPERED"
 
     # Validate HTML renderer
     html = CourseService.generate_course_certificate_html(cert_data)
@@ -255,6 +267,7 @@ def test_course_certificate_generation_and_html():
     assert "Vedic Astrology Foundation Masterclass" in html
     assert "ASTRA-CERT-SAMIRAN-TEST" in html
     assert "Astra Gurukul" in html
+    assert "HMAC-SHA256" in html
 
 
 def test_public_certificate_route_order():

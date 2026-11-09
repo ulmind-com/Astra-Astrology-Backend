@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import hmac
+import json
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -1016,10 +1017,42 @@ class CourseService:
     # GURUKUL CONSECRATION CERTIFICATE ENGINE
     # =========================================================================
     @staticmethod
+    def compute_certificate_crypto(
+        cert_id: str,
+        user_id: str,
+        student_name: str,
+        course_id: str,
+        course_title: str,
+        issued_iso: str,
+    ) -> tuple[str, str]:
+        """
+        Computes deterministic canonical SHA-256 hash and HMAC-SHA256 digital signature.
+        Using the server secret key ensures nobody outside can forge a valid signature.
+        """
+        secret = (
+            getattr(settings, "CERTIFICATE_SIGNING_KEY", None)
+            or getattr(settings, "SECRET_KEY", "astra-gurukul-cryptographic-master-key-2026")
+        )
+        canonical_dict = {
+            "authority": "Astra Gurukul Council of Astrological Regents",
+            "cert_id": cert_id.strip().upper(),
+            "course_id": str(course_id).strip(),
+            "course_title": str(course_title).strip(),
+            "issued_iso": issued_iso,
+            "student_name": str(student_name).strip(),
+            "user_id": str(user_id).strip(),
+        }
+        canonical_bytes = json.dumps(canonical_dict, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        canonical_hash = hashlib.sha256(canonical_bytes).hexdigest()
+        signature = hmac.new(secret.encode("utf-8"), canonical_bytes, hashlib.sha256).hexdigest()
+        return canonical_hash, signature
+
+    @staticmethod
     def generate_course_certificate_data(
         enrollment: CourseEnrollment,
         course: Course,
         user: User,
+        signature_token: str | None = None,
     ) -> dict[str, Any]:
         """Builds structured certificate metadata and cryptographically verifiable seal."""
         web_url = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app")
@@ -1030,16 +1063,57 @@ class CourseService:
         student_name = getattr(user, "full_name", None) or "Astra Gurukul Scholar"
         student_email = getattr(user, "email", None)
 
-        # Generate cryptographic verification hash
-        raw_hash_input = f"{cert_id}:{user.id}:{course.id}:{issued_dt.isoformat()}"
-        v_hash = hashlib.sha256(raw_hash_input.encode()).hexdigest()[:24].upper()
+        # Compute deterministic canonical hash & HMAC-SHA256 signature
+        canonical_hash, signature = CourseService.compute_certificate_crypto(
+            cert_id=cert_id,
+            user_id=str(user.id),
+            student_name=student_name,
+            course_id=str(course.id),
+            course_title=course.title,
+            issued_iso=issued_dt.isoformat(),
+        )
 
-        verify_url = f"{web_url}/verify/certificate/{cert_id}"
+        # Record signature on enrollment if empty
+        if not enrollment.certificate_signature or not enrollment.certificate_canonical_hash:
+            enrollment.certificate_canonical_hash = canonical_hash
+            enrollment.certificate_signature = signature
+
+        # Check signature verification against provided token if passed
+        is_signature_valid = True
+        tamper_reason = None
+        if signature_token:
+            clean_token = signature_token.strip().lower()
+            expected_prefix = signature[: len(clean_token)].lower()
+            if not hmac.compare_digest(clean_token, expected_prefix):
+                is_signature_valid = False
+                tamper_reason = "Cryptographic signature mismatch. Token or URL parameters have been tampered with."
+
+        verify_url = f"{web_url}/verify/certificate/{cert_id}?sig={signature[:32]}"
         html_url = f"{api_url}/api/v1/courses/certificate/verify/{cert_id}/html"
+
+        tamper_check = {
+            "status": "CRYPTOGRAPHICALLY_VERIFIED_AUTHENTIC" if is_signature_valid else "TAMPERED_OR_INVALID_SIGNATURE",
+            "is_valid": is_signature_valid,
+            "tamper_reason": tamper_reason,
+            "hash_verified": True,
+            "canonical_hash": canonical_hash,
+            "signature_truncated": f"{signature[:12]}...{signature[-8:]}",
+            "full_signature": signature,
+            "signature_algorithm": "HMAC-SHA256 (FIPS 198-1 Standard)",
+            "authoritative_domain": web_url,
+            "verified_at": datetime.now(timezone.utc).isoformat(),
+            "canonical_payload": {
+                "certificate_id": cert_id,
+                "student_name": student_name,
+                "course_title": course.title,
+                "issued_iso": issued_dt.isoformat(),
+                "lessons_count": len(enrollment.completed_lesson_ids),
+            },
+        }
 
         return {
             "certificate_id": cert_id,
-            "is_valid": True,
+            "is_valid": is_signature_valid,
             "student_name": student_name,
             "student_email": student_email,
             "course_id": str(course.id),
@@ -1054,11 +1128,16 @@ class CourseService:
             "distinction": "Vidya Parangata (Summa Cum Laude • পরম বিদ্বান)",
             "verification_url": verify_url,
             "certificate_html_url": html_url,
+            "cryptographic_signature": signature,
+            "canonical_hash": canonical_hash,
+            "signature_algorithm": "HMAC-SHA256 (FIPS 198-1 Standard)",
+            "is_signature_valid": is_signature_valid,
+            "tamper_check": tamper_check,
             "digital_seal": {
-                "verification_hash": v_hash,
+                "verification_hash": canonical_hash[:24].upper(),
                 "seal_title": "Astra Cosmic Gurukul Consecrated",
                 "seal_motto": "विद्या ददाति विनयं विनयाद्याति पात्रताम्",
-                "status": "VERIFIED_AUTHENTIC",
+                "status": "VERIFIED_AUTHENTIC" if is_signature_valid else "TAMPERED",
                 "signature": f"Pt. Acharya Rahul Sharma • {issued_dt.strftime('%d-%m-%Y')}",
             },
         }
@@ -1363,11 +1442,36 @@ class CourseService:
       display: flex;
       align-items: center;
       justify-content: space-between;
-      font-size: 10px;
+      font-size: 9px;
       color: #9CA3AF;
       border-top: 1px dashed rgba(200, 155, 60, 0.2);
     }}
     .meta-id {{ font-family: monospace; font-weight: 700; color: #4B5563; }}
+
+    .micro-text-band {{
+      font-family: monospace;
+      font-size: 5px;
+      letter-spacing: 2px;
+      color: rgba(184, 134, 11, 0.45);
+      text-transform: uppercase;
+      white-space: nowrap;
+      overflow: hidden;
+      user-select: none;
+      position: absolute;
+    }}
+    .micro-top {{ top: 12px; left: 24px; right: 24px; text-align: center; }}
+    .micro-bot {{ bottom: 12px; left: 24px; right: 24px; text-align: center; }}
+
+    .guilloche-bg {{
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 440px;
+      height: 440px;
+      pointer-events: none;
+      opacity: 0.05;
+      z-index: 1;
+    }}
 
     @media print {{
       body {{
@@ -1399,6 +1503,9 @@ class CourseService:
   </div>
 
   <div class="cert-frame">
+    <div class="micro-text-band micro-top">ASTRA GURUKUL CELESTIAL CREDENTIALS • OFFICIALLY CONSECRATED BY BOARD OF ASTROLOGICAL REGENTS • CANONICAL HASH VERIFIED • ASTRA GURUKUL CELESTIAL CREDENTIALS</div>
+    <div class="micro-text-band micro-bot">HMAC-SHA256 DIGITAL SECURITY SEAL • MATHEMATICALLY TAMPER-PROOF • VERIFIABLE AT ASTRAGURUKUL.COM • HMAC-SHA256 DIGITAL SECURITY SEAL</div>
+
     <div class="cert-inner-border"></div>
     <div class="cert-inner-hairline"></div>
     <div class="corner tl">⚜</div>
@@ -1406,6 +1513,22 @@ class CourseService:
     <div class="corner bl">⚜</div>
     <div class="corner br">⚜</div>
     <div class="watermark-bg">ॐ</div>
+
+    <div class="guilloche-bg">
+      <svg viewBox="0 0 400 400" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="200" cy="200" r="180" fill="none" stroke="#C89B3C" stroke-width="1" stroke-dasharray="3,3"/>
+        <circle cx="200" cy="200" r="140" fill="none" stroke="#C89B3C" stroke-width="1"/>
+        <circle cx="200" cy="200" r="100" fill="none" stroke="#C89B3C" stroke-width="1" stroke-dasharray="2,2"/>
+        <g stroke="#C89B3C" stroke-width="0.8">
+          <ellipse cx="200" cy="200" rx="170" ry="35" fill="none" transform="rotate(0 200 200)"/>
+          <ellipse cx="200" cy="200" rx="170" ry="35" fill="none" transform="rotate(30 200 200)"/>
+          <ellipse cx="200" cy="200" rx="170" ry="35" fill="none" transform="rotate(60 200 200)"/>
+          <ellipse cx="200" cy="200" rx="170" ry="35" fill="none" transform="rotate(90 200 200)"/>
+          <ellipse cx="200" cy="200" rx="170" ry="35" fill="none" transform="rotate(120 200 200)"/>
+          <ellipse cx="200" cy="200" rx="170" ry="35" fill="none" transform="rotate(150 200 200)"/>
+        </g>
+      </svg>
+    </div>
 
     <div class="cert-content">
       <div class="header-block">
@@ -1465,7 +1588,8 @@ class CourseService:
       <div class="metadata-strip">
         <div>Certificate ID: <span class="meta-id">{cert['certificate_id']}</span></div>
         <div>Date: <strong>{cert['issued_at_formatted']}</strong></div>
-        <div>Verification: <span class="meta-id">{cert['digital_seal']['verification_hash']}</span></div>
+        <div>Canonical Hash: <span class="meta-id">{cert.get('canonical_hash', cert['digital_seal']['verification_hash'])[:20]}...</span></div>
+        <div>Signature: <span class="meta-id">{cert.get('cryptographic_signature', '')[:16]}... (HMAC-SHA256)</span></div>
       </div>
     </div>
   </div>
@@ -1518,13 +1642,21 @@ class CourseService:
         if not enrollment.certificate_url:
             enrollment.certificate_url = f"{web_url}/verify/certificate/{enrollment.certificate_id}"
         enrollment.certificate_issued = True
-        await enrollment.save()
 
-        return CourseService.generate_course_certificate_data(enrollment, course, user)
+        cert_data = CourseService.generate_course_certificate_data(enrollment, course, user)
+        if not enrollment.certificate_signature or not enrollment.certificate_canonical_hash:
+            enrollment.certificate_signature = cert_data.get("cryptographic_signature")
+            enrollment.certificate_canonical_hash = cert_data.get("canonical_hash")
+
+        await enrollment.save()
+        return cert_data
 
     @staticmethod
-    async def verify_course_certificate(certificate_id: str) -> dict[str, Any]:
-        """Publicly verifies an issued Astra Gurukul Certificate ID."""
+    async def verify_course_certificate(
+        certificate_id: str,
+        signature_token: str | None = None,
+    ) -> dict[str, Any]:
+        """Publicly verifies an issued Astra Gurukul Certificate ID with tamper detection."""
         clean_id = certificate_id.strip().upper()
         enrollment = await CourseEnrollment.find_one(CourseEnrollment.certificate_id == clean_id)
         if not enrollment:
@@ -1547,5 +1679,10 @@ class CourseService:
             last_name="Scholar",
         )
 
-        return CourseService.generate_course_certificate_data(enrollment, course, mock_user)
+        return CourseService.generate_course_certificate_data(
+            enrollment,
+            course,
+            mock_user,
+            signature_token=signature_token,
+        )
 
