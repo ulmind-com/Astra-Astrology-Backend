@@ -517,6 +517,15 @@ async def admin_delete_section(
     # Delete associated lessons
     await CourseLesson.find(CourseLesson.section_id == section_id).delete()
     await section.delete()
+
+    # Recalculate course stats
+    course = await Course.find_one(Course.id == course_id)
+    if course:
+        remaining = await CourseLesson.find(CourseLesson.course_id == course_id, CourseLesson.is_published == True).to_list()
+        course.total_lessons = len(remaining)
+        course.duration_hours = round(sum(l.duration_minutes for l in remaining) / 60.0, 1)
+        await course.save()
+
     return ApiResponse(data={"message": "Section and lessons deleted successfully"})
 
 
@@ -583,6 +592,16 @@ async def admin_update_lesson(
 
     lesson.updated_at = datetime.now(timezone.utc)
     await lesson.save()
+
+    # Recalculate course stats if duration or visibility changed
+    if "duration_minutes" in data or "is_published" in data:
+        course = await Course.find_one(Course.id == course_id)
+        if course:
+            all_l = await CourseLesson.find(CourseLesson.course_id == course_id, CourseLesson.is_published == True).to_list()
+            course.total_lessons = len(all_l)
+            course.duration_hours = round(sum(l.duration_minutes for l in all_l) / 60.0, 1)
+            await course.save()
+
     return ApiResponse(data={"id": str(lesson.id), "title": lesson.title, "order": lesson.order})
 
 
