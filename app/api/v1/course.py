@@ -37,6 +37,7 @@ async def list_courses(
     search: Annotated[str | None, Query(description="Keyword search in title/tags")] = None,
     limit: Annotated[int, Query(ge=1, le=50)] = 20,
     skip: Annotated[int, Query(ge=0)] = 0,
+    user: Annotated[User | None, Depends(get_optional_user)] = None,
 ) -> ApiResponse[list[CourseListItemOut]]:
     """Lists published astrology, tarot, and vastu courses in Astra Gurukul."""
     courses = await CourseService.list_courses(
@@ -46,33 +47,53 @@ async def list_courses(
         limit=limit,
         skip=skip,
     )
-    items = [
-        CourseListItemOut(
-            id=str(c.id),
-            title=c.title,
-            slug=c.slug,
-            subtitle=c.subtitle,
-            category=c.category,
-            level=c.level,
-            language=c.language,
-            instructor_name=c.instructor_name,
-            instructor_title=c.instructor_title,
-            instructor_avatar=c.instructor_avatar,
-            thumbnail_url=c.thumbnail_url,
-            price=c.price,
-            mrp=c.mrp,
-            discount_percent=c.discount_percent,
-            currency=c.currency,
-            duration_hours=c.duration_hours,
-            total_lessons=c.total_lessons,
-            total_students=c.total_students,
-            average_rating=c.average_rating,
-            rating_count=c.rating_count,
-            is_featured=c.is_featured,
-            certificate_enabled=c.certificate_enabled,
+
+    # Fast batch-lookup for enrollment state if user is logged in
+    enrollments_map: dict[str, Any] = {}
+    if user and courses:
+        from app.models.course import CourseEnrollment
+
+        c_ids = [c.id for c in courses]
+        user_enrollments = await CourseEnrollment.find(
+            CourseEnrollment.user_id == user.id,
+            {"course_id": {"$in": c_ids}},
+        ).to_list()
+        enrollments_map = {str(e.course_id): e for e in user_enrollments}
+
+    items = []
+    for c in courses:
+        enr = enrollments_map.get(str(c.id))
+        is_enrolled = enr is not None
+        user_progress_percent = enr.progress_percent if enr else 0.0
+
+        items.append(
+            CourseListItemOut(
+                id=str(c.id),
+                title=c.title,
+                slug=c.slug,
+                subtitle=c.subtitle,
+                category=c.category,
+                level=c.level,
+                language=c.language,
+                instructor_name=c.instructor_name,
+                instructor_title=c.instructor_title,
+                instructor_avatar=c.instructor_avatar,
+                thumbnail_url=c.thumbnail_url,
+                price=c.price,
+                mrp=c.mrp,
+                discount_percent=c.discount_percent,
+                currency=c.currency,
+                duration_hours=c.duration_hours,
+                total_lessons=c.total_lessons,
+                total_students=c.total_students,
+                average_rating=c.average_rating,
+                rating_count=c.rating_count,
+                is_featured=c.is_featured,
+                certificate_enabled=c.certificate_enabled,
+                is_enrolled=is_enrolled,
+                user_progress_percent=user_progress_percent,
+            )
         )
-        for c in courses
-    ]
     return ApiResponse(data=items)
 
 

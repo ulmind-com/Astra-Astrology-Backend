@@ -63,6 +63,8 @@ class CourseListItemOut(BaseModel):
     rating_count: int = 0
     is_featured: bool = False
     certificate_enabled: bool = True
+    is_enrolled: bool = False
+    user_progress_percent: float = 0.0
 
 
 class CourseDetailOut(CourseListItemOut):
