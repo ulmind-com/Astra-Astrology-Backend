@@ -657,6 +657,54 @@ class CourseService:
                 "access_key": settings.BUNNY_STREAM_API_KEY,
             }
 
+    @staticmethod
+    async def safe_delete_bunny_video(video_id: str | None, library_id: str | None = None) -> bool:
+        """Safely purges a video from Bunny Stream API when a course, section, or lesson is deleted,
+        or when a lesson/promo video is removed or replaced.
+        Prevents orphaned video files from consuming storage quota and incurring Bunny.net charges.
+        """
+        if not video_id:
+            return False
+
+        clean_id = str(video_id).strip()
+        # If user passed a full iframe embed or play URL, extract the video GUID
+        # e.g., https://iframe.mediadelivery.net/embed/803267/6af0c892-1430-970e-2598-77ef12345678?token=...
+        if "/" in clean_id:
+            clean_id = clean_id.split("?")[0].rstrip("/").split("/")[-1]
+
+        # Ignore empty or external video sources like YouTube
+        if (
+            not clean_id
+            or "youtube" in clean_id.lower()
+            or "youtu.be" in clean_id.lower()
+            or len(clean_id) == 11  # standard YouTube ID
+            or len(clean_id) < 15  # Bunny GUIDs are UUIDs (32+ chars)
+        ):
+            return False
+
+        target_lib = library_id or settings.BUNNY_STREAM_LIBRARY_ID
+        api_key = settings.BUNNY_STREAM_API_KEY
+        if not api_key or not target_lib:
+            logger.warning("Bunny Stream credentials not configured, skipping video deletion for {}", clean_id)
+            return False
+
+        url = f"https://video.bunnycdn.com/library/{target_lib}/videos/{clean_id}"
+        headers = {
+            "AccessKey": api_key,
+            "Accept": "application/json",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                res = await client.delete(url, headers=headers)
+                if res.status_code in (200, 204, 404):
+                    logger.success(f"Bunny Stream: Successfully purged video {clean_id} from library {target_lib} (HTTP {res.status_code})")
+                    return True
+                logger.warning(f"Bunny Stream: Delete returned HTTP {res.status_code} for video {clean_id}: {res.text}")
+                return False
+        except Exception as exc:
+            logger.opt(exception=exc).error(f"Bunny Stream: Failed to delete video {clean_id} from library {target_lib}")
+            return False
+
     # -------------------------------------------------------------------------
     # GURUKUL JIGYASA (TIMESTAMPED Q&A FORUM)
     # -------------------------------------------------------------------------

@@ -353,6 +353,9 @@ async def admin_update_course(
     new_thumbnail = payload.thumbnail_url
     old_avatar = course.instructor_avatar
     new_avatar = payload.instructor_avatar
+    old_promo = course.promo_video_url
+    old_promo_provider = course.promo_video_provider
+    new_promo = payload.promo_video_url
 
     data = payload.model_dump(exclude_unset=True)
     for k, v in data.items():
@@ -368,6 +371,12 @@ async def admin_update_course(
         logger.info(f"Course {course_id} avatar replaced/cleared. Purging old asset: {old_avatar}")
         asyncio.create_task(safe_delete_cloudinary_image(old_avatar))
 
+    # Bunny Stream Auto-Cleanup: If promo video is changed or cleared, purge the old Bunny asset
+    if old_promo and (payload.promo_video_url is not None) and (new_promo != old_promo):
+        if old_promo_provider == "bunny_stream" or "bunny" in str(old_promo) or (len(str(old_promo)) > 20 and "youtube" not in str(old_promo).lower()):
+            logger.info(f"Course {course_id} promo video changed/cleared. Purging old Bunny asset: {old_promo}")
+            asyncio.create_task(CourseService.safe_delete_bunny_video(old_promo))
+
     if course.mrp > 0 and course.mrp > course.price:
         course.discount_percent = int(round(((course.mrp - course.price) / course.mrp) * 100))
 
@@ -381,7 +390,7 @@ async def admin_delete_course(
     course_id: PydanticObjectId,
     _: AdminUser,
 ) -> ApiResponse[dict]:
-    """Soft deletes a course from the catalog and cleans up Cloudinary media."""
+    """Soft deletes a course from the catalog and cleans up Cloudinary and Bunny media assets."""
     course = await Course.find_one(Course.id == course_id)
     if not course:
         raise NotFoundError("Course not found")
@@ -393,6 +402,18 @@ async def admin_delete_course(
     if course.instructor_avatar:
         logger.info(f"Course {course_id} deleted. Purging instructor avatar from Cloudinary: {course.instructor_avatar}")
         asyncio.create_task(safe_delete_cloudinary_image(course.instructor_avatar))
+
+    # Bunny Stream Auto-Cleanup: Purge promo video
+    if course.promo_video_url and (course.promo_video_provider == "bunny_stream" or "bunny" in str(course.promo_video_url) or len(str(course.promo_video_url)) > 20):
+        logger.info(f"Course {course_id} deleted. Purging promo video from Bunny: {course.promo_video_url}")
+        asyncio.create_task(CourseService.safe_delete_bunny_video(course.promo_video_url))
+
+    # Bunny Stream Auto-Cleanup: Purge all lesson videos belonging to this course
+    course_lessons = await CourseLesson.find(CourseLesson.course_id == course_id).to_list()
+    for l in course_lessons:
+        if l.video_id:
+            logger.info(f"Course {course_id} deleted. Purging Bunny video {l.video_id} for lesson {l.id}")
+            asyncio.create_task(CourseService.safe_delete_bunny_video(l.video_id, l.library_id))
 
     course.is_deleted = True
     course.is_published = False
@@ -451,6 +472,13 @@ async def admin_delete_section(
     if not section:
         raise NotFoundError("Section not found")
 
+    # Bunny Stream Auto-Cleanup: Purge all videos belonging to lessons in this section
+    lessons = await CourseLesson.find(CourseLesson.section_id == section_id).to_list()
+    for l in lessons:
+        if l.video_id:
+            logger.info(f"Section {section_id} deleted. Purging Bunny video {l.video_id} for lesson {l.id}")
+            asyncio.create_task(CourseService.safe_delete_bunny_video(l.video_id, l.library_id))
+
     # Delete associated lessons
     await CourseLesson.find(CourseLesson.section_id == section_id).delete()
     await section.delete()
@@ -500,6 +528,17 @@ async def admin_update_lesson(
     if not lesson:
         raise NotFoundError("Lesson not found")
 
+    old_video_id = lesson.video_id
+    old_library_id = lesson.library_id
+    old_provider = lesson.video_provider
+    new_video_id = payload.video_id
+
+    # Bunny Stream Auto-Cleanup: If old video exists and is replaced or cleared, purge from Bunny
+    if old_video_id and (new_video_id is not None) and (new_video_id.strip() != old_video_id.strip()):
+        if old_provider == "bunny_stream" or len(old_video_id) > 15:
+            logger.info(f"Lesson {lesson_id} video changed from '{old_video_id}' to '{new_video_id}'. Purging old Bunny video.")
+            asyncio.create_task(CourseService.safe_delete_bunny_video(old_video_id, old_library_id))
+
     data = payload.model_dump(exclude_unset=True)
     if "resources" in data and data["resources"] is not None:
         data["resources"] = [r.model_dump() if hasattr(r, "model_dump") else r for r in payload.resources or []]
@@ -521,6 +560,11 @@ async def admin_delete_lesson(
     lesson = await CourseLesson.find_one(CourseLesson.id == lesson_id, CourseLesson.course_id == course_id)
     if not lesson:
         raise NotFoundError("Lesson not found")
+
+    # Bunny Stream Auto-Cleanup: Purge video from Bunny
+    if lesson.video_id and (lesson.video_provider == "bunny_stream" or len(lesson.video_id) > 15):
+        logger.info(f"Lesson {lesson_id} deleted. Purging Bunny video {lesson.video_id}")
+        asyncio.create_task(CourseService.safe_delete_bunny_video(lesson.video_id, lesson.library_id))
 
     await lesson.delete()
 
