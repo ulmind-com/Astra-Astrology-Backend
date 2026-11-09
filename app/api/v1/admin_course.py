@@ -253,9 +253,10 @@ async def admin_upload_course_thumbnail(
         transformation=COURSE_THUMBNAIL_TRANSFORMATION,
         image_format="webp",
     )
-    return ApiResponse.ok(
+    return ApiResponse(
         data={
-            "url": result.secure_url,
+            "url": result.url,
+            "secure_url": result.url,
             "public_id": result.public_id,
             "format": result.format or "webp",
         },

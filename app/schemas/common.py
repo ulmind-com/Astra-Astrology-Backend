@@ -1,5 +1,6 @@
 """Shared response schemas."""
 
+from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -11,6 +12,10 @@ class ApiResponse[T](BaseModel):
     data: T | None = None
 
     model_config = ConfigDict(populate_by_name=True)
+
+    @classmethod
+    def ok(cls, data: Any = None, message: str = "Success") -> "ApiResponse[Any]":
+        return cls(success=True, message=message, data=data)
 
 
 class MessageResponse(BaseModel):

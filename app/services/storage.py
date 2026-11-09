@@ -36,6 +36,10 @@ class UploadResult(BaseModel):
     height: int | None = None
     folder: str
 
+    @property
+    def secure_url(self) -> str:
+        return self.url
+
 
 def configure_cloudinary() -> None:
     if not settings.cloudinary_configured:
