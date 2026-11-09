@@ -110,6 +110,8 @@ class LessonStreamResponse(BaseModel):
     watermark_text: str | None = None
     notes_markdown: str | None = None
     resources: list[LessonResourceOut] = Field(default_factory=list)
+    last_watched_seconds: int = 0
+    is_completed: bool = False
 
 
 class LessonProgressUpdateRequest(BaseModel):

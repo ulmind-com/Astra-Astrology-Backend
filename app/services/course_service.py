@@ -227,6 +227,23 @@ class CourseService:
         else:
             embed_url = lesson.video_id
 
+        # Check last watch progress for auto-resuming playback
+        last_watched_seconds = 0
+        is_completed = False
+        if user:
+            prog = await CourseLessonProgress.find_one(
+                CourseLessonProgress.user_id == user.id,
+                CourseLessonProgress.lesson_id == lesson_id,
+            )
+            if prog:
+                last_watched_seconds = prog.watched_seconds or 0
+                is_completed = prog.is_completed or False
+
+        # If previously watched, append t={seconds} start parameter so video resumes seamlessly
+        if last_watched_seconds > 5 and not is_completed:
+            separator = "&" if "?" in embed_url else "?"
+            embed_url = f"{embed_url}{separator}t={last_watched_seconds}"
+
         return {
             "lesson_id": str(lesson.id),
             "title": lesson.title,
@@ -239,6 +256,8 @@ class CourseService:
             "watermark_text": watermark_text,
             "notes_markdown": lesson.notes_markdown,
             "resources": lesson.resources or [],
+            "last_watched_seconds": last_watched_seconds,
+            "is_completed": is_completed,
         }
 
     @staticmethod
