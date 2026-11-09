@@ -315,6 +315,37 @@ def test_api_response_ok_and_upload_result():
     assert upload.secure_url == upload.url
 
 
+@pytest.mark.asyncio
+async def test_strict_enrollment_gate_no_staff_bypass():
+    """Ensures staff/admin users are NOT automatically enrolled into courses unless explicitly enrolled."""
+    from unittest.mock import patch
+    from beanie import PydanticObjectId
+
+    admin_user = User(
+        first_name="Admin",
+        last_name="Acharya",
+        role="admin",
+        email="admin@gurukul.com",
+    )
+    course = Course(
+        title="Exclusive Paid Masterclass",
+        slug="exclusive-paid-masterclass",
+        price=1999.0,
+    )
+    course.id = PydanticObjectId()
+
+    with patch.object(Course, "find_one", new_callable=AsyncMock, return_value=course), \
+         patch.object(CourseSection, "find", return_value=MagicMock(sort=MagicMock(return_value=MagicMock(to_list=AsyncMock(return_value=[]))))), \
+         patch.object(CourseEnrollment, "find_one", new_callable=AsyncMock, return_value=None), \
+         patch.object(CourseEnrollment, "insert", new_callable=AsyncMock) as mock_insert:
+
+        detail = await CourseService.get_course_by_slug("exclusive-paid-masterclass", user=admin_user)
+        assert detail["is_enrolled"] is False
+        assert detail["user_progress_percent"] == 0.0
+        mock_insert.assert_not_called()
+
+
+
 
 
 

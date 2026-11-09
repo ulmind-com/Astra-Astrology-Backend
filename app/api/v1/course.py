@@ -50,12 +50,6 @@ async def list_courses(
 
     # Fast batch-lookup for enrollment state if user is logged in
     enrollments_map: dict[str, Any] = {}
-    is_staff = False
-    if user:
-        role_str = str(getattr(user, "role", "user")).lower()
-        if "admin" in role_str or "astrologer" in role_str:
-            is_staff = True
-
     if user and courses:
         from app.models.course import CourseEnrollment
 
@@ -69,8 +63,8 @@ async def list_courses(
     items = []
     for c in courses:
         enr = enrollments_map.get(str(c.id))
-        is_enrolled = (enr is not None) or is_staff
-        user_progress_percent = enr.progress_percent if enr else (100.0 if is_staff else 0.0)
+        is_enrolled = enr is not None
+        user_progress_percent = enr.progress_percent if enr else 0.0
 
         items.append(
             CourseListItemOut(
