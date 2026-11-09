@@ -1613,22 +1613,38 @@ class CourseService:
         overflow: hidden !important;
       }}
       .actions-bar {{ display: none !important; }}
+      body * {{
+        visibility: hidden !important;
+      }}
+      .cert-container, .cert-container * {{
+        visibility: visible !important;
+      }}
       .cert-container {{
+        position: fixed !important;
+        left: 0 !important;
+        top: 0 !important;
         width: 297mm !important;
         height: 210mm !important;
         max-height: 210mm !important;
         border: none !important;
         border-radius: 0 !important;
         box-shadow: none !important;
+        overflow: hidden !important;
+        page-break-after: avoid !important;
         page-break-inside: avoid !important;
         break-inside: avoid !important;
+        break-after: avoid !important;
       }}
       .cert-left {{
         width: 66% !important;
-        padding: 14mm 10mm 10mm 16mm !important;
+        height: 210mm !important;
+        max-height: 210mm !important;
+        padding: 10mm 8mm 8mm 14mm !important;
+        box-sizing: border-box !important;
       }}
       .cert-right {{
         width: 34% !important;
+        height: 210mm !important;
       }}
       .seal-wrapper {{
         right: 27% !important;

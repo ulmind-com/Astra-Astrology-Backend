@@ -351,6 +351,8 @@ async def admin_update_course(
 
     old_thumbnail = course.thumbnail_url
     new_thumbnail = payload.thumbnail_url
+    old_avatar = course.instructor_avatar
+    new_avatar = payload.instructor_avatar
 
     data = payload.model_dump(exclude_unset=True)
     for k, v in data.items():
@@ -360,6 +362,11 @@ async def admin_update_course(
     if old_thumbnail and (payload.thumbnail_url is not None) and (new_thumbnail != old_thumbnail):
         logger.info(f"Course {course_id} thumbnail replaced/cleared. Purging old asset: {old_thumbnail}")
         asyncio.create_task(safe_delete_cloudinary_image(old_thumbnail))
+
+    # Cloudinary Auto-Cleanup: If instructor avatar is changed or cleared, purge the old Cloudinary asset
+    if old_avatar and (payload.instructor_avatar is not None) and (new_avatar != old_avatar):
+        logger.info(f"Course {course_id} avatar replaced/cleared. Purging old asset: {old_avatar}")
+        asyncio.create_task(safe_delete_cloudinary_image(old_avatar))
 
     if course.mrp > 0 and course.mrp > course.price:
         course.discount_percent = int(round(((course.mrp - course.price) / course.mrp) * 100))
@@ -382,6 +389,10 @@ async def admin_delete_course(
     if course.thumbnail_url:
         logger.info(f"Course {course_id} deleted. Purging thumbnail from Cloudinary: {course.thumbnail_url}")
         asyncio.create_task(safe_delete_cloudinary_image(course.thumbnail_url))
+
+    if course.instructor_avatar:
+        logger.info(f"Course {course_id} deleted. Purging instructor avatar from Cloudinary: {course.instructor_avatar}")
+        asyncio.create_task(safe_delete_cloudinary_image(course.instructor_avatar))
 
     course.is_deleted = True
     course.is_published = False
