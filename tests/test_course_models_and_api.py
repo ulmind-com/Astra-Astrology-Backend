@@ -291,6 +291,31 @@ def test_public_certificate_route_order():
     )
 
 
+def test_api_response_ok_and_upload_result():
+    """Ensures ApiResponse.ok helper and UploadResult secure_url are always available and do not raise AttributeError."""
+    from app.schemas.common import ApiResponse
+    from app.services.storage import UploadResult
+
+    resp = ApiResponse.ok(data={"url": "https://res.cloudinary.com/test.webp"}, message="Uploaded")
+    assert resp.success is True
+    assert resp.message == "Uploaded"
+    assert resp.data["url"] == "https://res.cloudinary.com/test.webp"
+
+    res = ApiResponse(data={"key": "val"})
+    assert res.success is True
+    assert res.data["key"] == "val"
+
+    upload = UploadResult(
+        url="https://res.cloudinary.com/sample.webp",
+        public_id="courses/thumbnails/sample",
+        resource_type="image",
+        folder="courses/thumbnails",
+    )
+    assert upload.url == "https://res.cloudinary.com/sample.webp"
+    assert upload.secure_url == upload.url
+
+
+
 
 
 
