@@ -88,13 +88,31 @@ async def admin_create_course(
     _: AdminUser,
 ) -> ApiResponse[dict]:
     """Creates a new course entry in the Gurukul catalog."""
+    import re
+    import secrets
+
     discount = 0
     if payload.mrp > 0 and payload.mrp > payload.price:
         discount = int(round(((payload.mrp - payload.price) / payload.mrp) * 100))
 
+    # Clean and validate slug
+    raw_slug = (payload.slug or "").strip().lower()
+    clean_slug = re.sub(r"[^a-z0-9]+", "-", raw_slug).strip("-")
+    if not clean_slug:
+        clean_slug = re.sub(r"[^a-z0-9]+", "-", (payload.title or "course").strip().lower()).strip("-")
+    if not clean_slug:
+        clean_slug = f"course-{secrets.token_hex(4)}"
+
+    # Ensure unique slug across active courses so courses never collide
+    unique_slug = clean_slug
+    counter = 1
+    while await Course.find_one(Course.slug == unique_slug, Course.is_deleted == False):
+        counter += 1
+        unique_slug = f"{clean_slug}-{counter}"
+
     course = Course(
         title=payload.title,
-        slug=payload.slug,
+        slug=unique_slug,
         subtitle=payload.subtitle,
         description=payload.description,
         category=payload.category,
@@ -358,7 +376,19 @@ async def admin_update_course(
     old_promo_provider = course.promo_video_provider
     new_promo = payload.promo_video_url
 
+    # Slug uniqueness check if updated
+    if payload.slug is not None:
+        import re
+        new_slug = re.sub(r"[^a-z0-9]+", "-", payload.slug.strip().lower()).strip("-")
+        if new_slug and new_slug != course.slug:
+            existing = await Course.find_one(Course.slug == new_slug, Course.id != course.id, Course.is_deleted == False)
+            if existing:
+                raise BadRequestError(f"A course with slug '{new_slug}' already exists. Please choose a different slug.")
+            course.slug = new_slug
+
     data = payload.model_dump(exclude_unset=True)
+    # Don't re-assign slug from data since handled above
+    data.pop("slug", None)
     for k, v in data.items():
         setattr(course, k, v)
 
@@ -416,8 +446,12 @@ async def admin_delete_course(
             logger.info(f"Course {course_id} deleted. Purging Bunny video {l.video_id} for lesson {l.id}")
             asyncio.create_task(CourseService.safe_delete_bunny_video(l.video_id, l.library_id))
 
+    import secrets
+
     course.is_deleted = True
     course.is_published = False
+    # Free up slug so a new course can use it without conflicts
+    course.slug = f"{course.slug}-deleted-{secrets.token_hex(4)}"
     course.updated_at = datetime.now(timezone.utc)
     await course.save()
     return ApiResponse(data={"message": "Course deleted successfully"})
