@@ -185,11 +185,25 @@ class CourseService:
         # Enrollment verification unless it is a free preview
         is_enrolled = False
         if user:
+            role_str = str(getattr(user, "role", "user")).lower()
+            is_staff = "admin" in role_str or "astrologer" in role_str
+
             enrollment = await CourseEnrollment.find_one(
                 CourseEnrollment.user_id == user.id,
                 CourseEnrollment.course_id == course_id,
             )
-            if enrollment:
+            if not enrollment and is_staff:
+                enrollment = CourseEnrollment(
+                    user_id=user.id,
+                    course_id=course_id,
+                    payment_id="admin_access",
+                    order_id="admin_access",
+                    amount_paid=0.0,
+                    currency="INR",
+                )
+                await enrollment.insert()
+
+            if enrollment or is_staff:
                 is_enrolled = True
 
         if not is_enrolled and not lesson.is_free_preview:
@@ -287,7 +301,11 @@ class CourseService:
                 )
                 await enrollment.insert()
             else:
-                raise ForbiddenError("Not enrolled in this course")
+                return {
+                    "progress_percent": 0.0,
+                    "completed_lesson_ids": [],
+                    "message": "Progress update skipped: user is not enrolled",
+                }
 
         # Upsert Lesson Progress
         prog = await CourseLessonProgress.find_one(
