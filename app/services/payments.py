@@ -17,6 +17,7 @@ Both call the same credit, and the idempotency key makes the second one a no-op.
 import asyncio
 import hashlib
 import hmac
+import json
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -187,6 +188,32 @@ async def _credit_for_payment(
         logger.info("Payment {} is '{}', not crediting yet.", payment_id, status)
         return False, 0
 
+    # The order and currency must match what was opened if Razorpay included them.
+    payment_order_id = payment.get("order_id")
+    if payment_order_id and payment_order_id != order.razorpay_order_id:
+        logger.error(
+            "Payment {} belongs to order {} not {} — refusing to credit.",
+            payment_id,
+            payment_order_id,
+            order.razorpay_order_id,
+        )
+        raise BadRequestError(
+            "The payment does not match the order.", error_code="order_mismatch"
+        )
+
+    payment_currency = payment.get("currency")
+    if payment_currency and payment_currency != order.currency:
+        logger.error(
+            "Payment {} currency {} does not match order {} currency {} — refusing to credit.",
+            payment_id,
+            payment_currency,
+            order.razorpay_order_id,
+            order.currency,
+        )
+        raise BadRequestError(
+            "The payment currency does not match the order.", error_code="currency_mismatch"
+        )
+
     # The amount is Razorpay's, not the caller's. It must also match what we
     # asked for, or something has been tampered with.
     amount_paise = int(payment["amount"])
@@ -284,8 +311,34 @@ def verify_webhook_signature(raw_body: bytes, signature: str | None) -> None:
 # ones we do nothing with would fill the collection with noise, so unknown
 # events are acknowledged and dropped without a write.
 HANDLED_EVENTS = frozenset(
-    {"payment.captured", "payment.authorized", "payment.failed", "refund.processed"}
+    {
+        "payment.captured",
+        "payment.authorized",
+        "order.paid",
+        "payment.failed",
+        "refund.processed",
+    }
 )
+
+
+def _webhook_dedup_key(event: str, event_id: str | None, body: dict[str, Any]) -> str:
+    """Builds an idempotency key when Razorpay's X-Razorpay-Event-Id header is absent."""
+    if event_id:
+        return event_id
+
+    payload = body.get("payload") or {}
+    entity_id = (
+        payload.get("payment", {}).get("entity", {}).get("id")
+        or payload.get("refund", {}).get("entity", {}).get("id")
+        or payload.get("order", {}).get("entity", {}).get("id")
+    )
+    if entity_id:
+        return f"{event}:{entity_id}"
+
+    digest = hashlib.sha256(
+        json.dumps(body, sort_keys=True, separators=(",", ":"), default=str).encode()
+    ).hexdigest()[:16]
+    return f"{event}:{body.get('created_at')}:{digest}"
 
 
 async def handle_webhook(*, event_id: str | None, body: dict[str, Any]) -> str:
@@ -296,7 +349,7 @@ async def handle_webhook(*, event_id: str | None, body: dict[str, Any]) -> str:
         logger.debug("Ignoring Razorpay event '{}'.", event)
         return "ignored"
 
-    key = event_id or f"{event}:{body.get('created_at')}"
+    key = _webhook_dedup_key(event, event_id, body)
 
     record = WebhookEvent(event_id=key, event=event, payload=body)
     try:
@@ -307,26 +360,70 @@ async def handle_webhook(*, event_id: str | None, body: dict[str, Any]) -> str:
         logger.info("Razorpay webhook {} already handled.", key)
         return "duplicate"
 
-    result = await _dispatch(event, body)
-
-    record.processed_at = datetime.now(UTC)
-    record.result = result
-    await record.save()
-    return result
+    try:
+        result = await _dispatch(event, body)
+        record.processed_at = datetime.now(UTC)
+        record.result = result
+        await record.save()
+        return result
+    except Exception:
+        # Release the idempotency lock so Razorpay's retry can re-process a
+        # transiently failed delivery instead of seeing "duplicate" and losing the payment.
+        try:
+            await record.delete()
+        except Exception as cleanup_exc:  # noqa: BLE001
+            logger.warning("Failed to roll back WebhookEvent {}: {}", key, cleanup_exc)
+        raise
 
 
 async def _dispatch(event: str, body: dict[str, Any]) -> str:
     payload = body.get("payload", {})
 
-    if event in {"payment.captured", "payment.authorized"}:
-        payment = payload.get("payment", {}).get("entity", {})
-        order_id = payment.get("order_id")
+    if event in {"payment.captured", "payment.authorized", "order.paid"}:
+        payment = dict(payload.get("payment", {}).get("entity", {}) or {})
+        order_entity = payload.get("order", {}).get("entity", {}) or {}
+        order_id = payment.get("order_id") or order_entity.get("id")
         if not order_id:
             return "ignored_no_order"
+
+        # Razorpay `order.paid` carries both `order.entity` (status="paid") and
+        # `payment.entity` (status="captured"). Merge order metadata as fallbacks.
+        if event == "order.paid" and order_entity.get("status") == "paid":
+            payment.setdefault("order_id", order_id)
+            payment.setdefault("status", "captured")
+            if "amount" not in payment and (
+                order_entity.get("amount_paid") or order_entity.get("amount")
+            ):
+                payment["amount"] = (
+                    order_entity.get("amount_paid") or order_entity.get("amount")
+                )
+            if "currency" not in payment and order_entity.get("currency"):
+                payment["currency"] = order_entity.get("currency")
+            if not payment.get("id"):
+                payment["id"] = f"order_paid:{order_id}"
+
+        if order_entity.get("notes") or payment.get("notes"):
+            payment["notes"] = {
+                **(order_entity.get("notes") or {}),
+                **(payment.get("notes") or {}),
+            }
+
         order = await PaymentOrder.find_one(PaymentOrder.razorpay_order_id == order_id)
         if order is None:
-            logger.warning("Webhook for unknown order {}", order_id)
-            return "unknown_order"
+            # Not a wallet recharge. It may be a course purchase, which has
+            # its own orders — and which the webhook is the only reliable way
+            # to settle, since the browser may never come back from checkout.
+            from app.services.course_service import CourseService
+
+            if payment.get("status") != "captured":
+                return "awaiting_capture"
+            result = await CourseService.enroll_from_webhook(
+                razorpay_order_id=order_id, payment=payment
+            )
+            if result == "not_a_course_order":
+                logger.warning("Webhook for unknown order {}", order_id)
+                return "unknown_order"
+            return result
         if payment.get("status") != "captured":
             # Authorised only: the money is held, not taken. `payment.captured`
             # follows, and that is what credits.
@@ -342,6 +439,14 @@ async def _dispatch(event: str, body: dict[str, Any]) -> str:
             if order_id
             else None
         )
+        if order is None and order_id:
+            # A course purchase that failed. Recording it is what lets support
+            # answer "I tried to pay and nothing happened".
+            from app.services.course_service import CourseService
+
+            return await CourseService.fail_course_order(
+                razorpay_order_id=order_id, payment=payment
+            )
         if order is not None and order.status is PaymentOrderStatus.CREATED:
             order.status = PaymentOrderStatus.FAILED
             order.razorpay_payment_id = payment.get("id")
@@ -360,6 +465,16 @@ async def _dispatch(event: str, body: dict[str, Any]) -> str:
             if payment_id
             else None
         )
+        if order is None and payment_id and amount_paise > 0:
+            from app.services.course_service import CourseService
+
+            course_result = await CourseService.refund_course_order(
+                razorpay_payment_id=payment_id,
+                amount_paise=amount_paise,
+                refund=refund,
+            )
+            if course_result != "not_a_course_order":
+                return course_result
         if order is None or amount_paise <= 0:
             return "unknown_refund"
 

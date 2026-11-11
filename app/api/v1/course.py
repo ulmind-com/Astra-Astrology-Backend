@@ -6,7 +6,7 @@ from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import HTMLResponse
 
-from app.api.dependencies import get_current_user, get_optional_user
+from app.api.dependencies import SignedInOrAnonymous, get_current_user
 from app.core.exceptions import NotFoundError
 from app.models.course import Course, CourseEnrollment
 from app.models.user import User
@@ -37,7 +37,7 @@ async def list_courses(
     search: Annotated[str | None, Query(description="Keyword search in title/tags")] = None,
     limit: Annotated[int, Query(ge=1, le=50)] = 20,
     skip: Annotated[int, Query(ge=0)] = 0,
-    user: Annotated[User | None, Depends(get_optional_user)] = None,
+    user: SignedInOrAnonymous = None,
 ) -> ApiResponse[list[CourseListItemOut]]:
     """Lists published astrology, tarot, and vastu courses in Astra Gurukul."""
     courses = await CourseService.list_courses(
@@ -100,7 +100,7 @@ async def list_courses(
 @router.get("/detail/{slug}", response_model=ApiResponse[CourseDetailOut])
 async def get_course_detail(
     slug: str,
-    user: Annotated[User | None, Depends(get_optional_user)] = None,
+    user: SignedInOrAnonymous = None,
 ) -> ApiResponse[CourseDetailOut]:
     """Retrieves full course curriculum, modules, lessons, and enrollment state."""
     course_data = await CourseService.get_course_by_slug(slug=slug, user=user)
@@ -196,7 +196,7 @@ async def get_my_enrolled_courses(
 async def get_lesson_stream(
     course_id: PydanticObjectId,
     lesson_id: PydanticObjectId,
-    user: Annotated[User | None, Depends(get_optional_user)] = None,
+    user: SignedInOrAnonymous = None,
 ) -> ApiResponse[LessonStreamResponse]:
     """Generates secure, token-authenticated stream details with dynamic anti-piracy watermarking."""
     stream_data = await CourseService.get_lesson_stream(
@@ -242,7 +242,7 @@ async def list_lesson_questions(
     sort: Annotated[str, Query(description="Sort order: newest, timestamp, upvotes")] = "newest",
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     skip: Annotated[int, Query(ge=0)] = 0,
-    user: Annotated[User | None, Depends(get_optional_user)] = None,
+    user: SignedInOrAnonymous = None,
 ) -> ApiResponse[list[CourseQuestionOut]]:
     """Returns timestamped discussion questions for a video lesson."""
     questions = await CourseService.list_lesson_questions(

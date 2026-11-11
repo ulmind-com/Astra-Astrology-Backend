@@ -274,11 +274,22 @@ class BunnyCreateVideoRequest(BaseModel):
 
 
 class BunnyCreateVideoResponse(BaseModel):
+    """A video slot, and permission to upload into it — but not the key.
+
+    The browser used to be handed `BUNNY_STREAM_API_KEY`, which can create,
+    overwrite and delete every video in the library. It now gets a signature
+    that is good for one video and expires, which is what Bunny's presigned
+    TUS flow is for.
+    """
+
     video_id: str
     library_id: str
     title: str
-    upload_url: str | None = None
-    access_key: str | None = None
+    # Bunny's resumable endpoint; the same for every upload.
+    tus_endpoint: str = "https://video.bunnycdn.com/tusupload"
+    # Sent as the `AuthorizationSignature` and `AuthorizationExpire` headers.
+    authorization_signature: str = ""
+    authorization_expire: int = 0
 
 
 # -----------------------------------------------------------------------------

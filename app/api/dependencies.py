@@ -73,7 +73,45 @@ async def get_optional_user(
         return None
 
 
+async def get_user_if_signed_in(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+) -> User | None:
+    """The signed-in user, or None only when no token was sent at all.
+
+    The difference from `get_optional_user` is the whole point: that one
+    swallows an expired or malformed token and answers as if the caller were
+    a stranger. On a page that gates content, "your session ended" then
+    reaches the user as "you are not enrolled" — which is exactly what
+    students on paid courses were seeing the day after they signed in.
+
+    Here a token that is present but no longer usable is an error with its
+    own status, so the client can refresh it instead of guessing.
+    """
+    if credentials is None or not credentials.credentials:
+        return None
+
+    # Raises 401 with `token_expired`, `invalid_token` or `invalid_token_type`.
+    payload = decode_token(credentials.credentials, expected_type="access")
+
+    subject = payload.get("sub")
+    if not subject or not PydanticObjectId.is_valid(subject):
+        raise UnauthorizedError("Malformed token subject.", error_code="invalid_token")
+
+    user = await User.get(PydanticObjectId(subject))
+    if user is None:
+        raise UnauthorizedError(
+            "This account no longer exists.", error_code="user_not_found"
+        )
+    if not user.is_active:
+        raise ForbiddenError(
+            f"This account is {user.status.value}.", error_code="account_not_active"
+        )
+    return user
+
+
 OptionalUser = Annotated[User | None, Depends(get_optional_user)]
+# For anything that gates content: anonymous is allowed, a broken session is not.
+SignedInOrAnonymous = Annotated[User | None, Depends(get_user_if_signed_in)]
 AdminUser = Annotated[User, Depends(require_roles(UserRole.ADMIN, UserRole.SUPER_ADMIN))]
 SuperAdminUser = Annotated[User, Depends(require_roles(UserRole.SUPER_ADMIN))]
 AstrologerUser = Annotated[User, Depends(require_roles(UserRole.ASTROLOGER))]

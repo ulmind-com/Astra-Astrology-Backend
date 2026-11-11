@@ -97,10 +97,10 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------ razorpay
     # Money is held in integer paise everywhere; rupees appear only in the UI.
     RAZORPAY_KEY_ID: str = "rzp_test_TBRo7AUeaKIhKB"
-    RAZORPAY_KEY_SECRET: str = "9bJqOT5wotpt58O0Mal60miC"
+    RAZORPAY_KEY_SECRET: str = ""
     # Set in the Razorpay dashboard under Settings -> Webhooks. Without it the
     # webhook cannot be trusted, so it is refused rather than processed.
-    RAZORPAY_WEBHOOK_SECRET: str = "Ulmind2026"
+    RAZORPAY_WEBHOOK_SECRET: str = ""
 
     WALLET_CURRENCY: str = "INR"
     WALLET_MIN_RECHARGE_PAISE: int = 1_000  # Rs 10
@@ -156,12 +156,21 @@ class Settings(BaseSettings):
         return bool(self.GROQ_API_KEY)
 
     # ------------------------------------------------------------- bunny stream (lms)
+    # The keys below are blank on purpose: they came out of this file,
+    # which is committed, and a secret with a default is a secret nobody
+    # notices is missing. They now have to come from the environment.
     BUNNY_STREAM_LIBRARY_ID: str = "803267"
-    BUNNY_STREAM_API_KEY: str = "1c3cab37-2ae3-4527-8592090e78bb-f243-4cf9"
-    BUNNY_STREAM_READONLY_API_KEY: str = "3f9b4689-ebab-4661-a622b0001495-91aa-4868"
-    BUNNY_STREAM_TOKEN_KEY: str = "1892c150-2ee8-4e64-8839-87dc10cf8a34"
+    BUNNY_STREAM_API_KEY: str = ""
+    BUNNY_STREAM_READONLY_API_KEY: str = ""
+    BUNNY_STREAM_TOKEN_KEY: str = ""
     BUNNY_STREAM_CDN_HOSTNAME: str = "vz-70a46f7e-43a.b-cdn.net"
-    BUNNY_ACCOUNT_API_KEY: str = "37448981-ab27-429a-8e73-b2af29444f8efdfd2b3c-179a-4fcf-ac5c-42ed51dad72a"
+    # How long a signed embed URL stays usable. Bunny serves its own 403
+    # page the moment this passes, inside the player, so it has to outlast
+    # any realistic sitting — a long lesson, a pause, lunch. Two hours did
+    # not, and that is what students were seeing as "403" on a course they
+    # had paid for.
+    BUNNY_EMBED_TOKEN_TTL_SECONDS: int = 12 * 60 * 60
+    BUNNY_ACCOUNT_API_KEY: str = ""
 
     @property
     def bunny_stream_configured(self) -> bool:

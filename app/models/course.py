@@ -8,6 +8,8 @@ from beanie import Document, Indexed, PydanticObjectId
 from pydantic import BaseModel, Field
 import pymongo
 
+from app.models.enums import PaymentOrderStatus
+
 
 class Course(Document):
     """Represents a masterclass or course in Astra Astrology Gurukul."""
@@ -162,10 +164,65 @@ class CourseEnrollment(Document):
     class Settings:
         name = "course_enrollments"
         indexes = [
-            [("user_id", pymongo.ASCENDING), ("course_id", pymongo.ASCENDING)],
+            # Unique, because two paths now race to create it: the browser
+            # coming back from checkout and Razorpay's webhook. Whichever
+            # arrives second must collide rather than enroll the student
+            # twice and count them twice in `total_students`.
+            pymongo.IndexModel(
+                [("user_id", pymongo.ASCENDING), ("course_id", pymongo.ASCENDING)],
+                name="enrollment_user_course_unique",
+                unique=True,
+            ),
             [("course_id", pymongo.ASCENDING)],
             [("certificate_id", pymongo.ASCENDING)],
             [("enrolled_at", pymongo.DESCENDING)],
+        ]
+
+
+class CourseOrder(Document):
+    """One attempt to buy a course.
+
+    This did not exist, and that is where the money went. A Razorpay order was
+    opened and nothing was written down, so the only thing that could ever
+    turn a payment into an enrollment was the browser coming back to say so.
+    A closed tab, a dropped connection, an app sent to the background during
+    UPI — the money left the bank and no record tied it to anything.
+
+    Kept even when it fails or is abandoned: when a student says they paid and
+    got nothing, this is the only place that shows the attempt happened.
+    """
+
+    user_id: Indexed(PydanticObjectId)
+    course_id: Indexed(PydanticObjectId)
+
+    razorpay_order_id: Indexed(str, unique=True)
+    receipt: str = ""
+
+    # Frozen when the order is opened. The student was shown this price before
+    # they paid, so this is what the payment is checked against even if an
+    # admin re-prices the course while the checkout window is still open.
+    amount_paise: int = Field(gt=0)
+    currency: str = "INR"
+
+    status: PaymentOrderStatus = PaymentOrderStatus.CREATED
+
+    razorpay_payment_id: str | None = None
+    method: str | None = None  # upi / card / netbanking …
+    failure_reason: str | None = None
+    # Which path confirmed it: the browser callback, or the webhook.
+    verified_via: str | None = None
+    paid_at: datetime | None = None
+
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    class Settings:
+        name = "course_orders"
+        indexes = [
+            [("razorpay_order_id", pymongo.ASCENDING)],
+            [("user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+            [("course_id", pymongo.ASCENDING)],
+            [("status", pymongo.ASCENDING)],
         ]
 
 

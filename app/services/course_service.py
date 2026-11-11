@@ -13,16 +13,26 @@ import httpx
 from loguru import logger
 
 from app.core.config import settings
-from app.core.exceptions import BadRequestError, ForbiddenError, NotFoundError, ServiceUnavailableError
+from app.core.exceptions import (
+    BadRequestError,
+    ForbiddenError,
+    NotFoundError,
+    ServiceUnavailableError,
+    UnauthorizedError,
+)
+from pymongo.errors import DuplicateKeyError
+
 from app.models.course import (
     Course,
     CourseEnrollment,
     CourseLesson,
     CourseLessonProgress,
+    CourseOrder,
     CourseQuestion,
     CourseQuestionAnswer,
     CourseSection,
 )
+from app.models.enums import PaymentOrderStatus
 from app.models.user import User
 from app.services.payments import _razorpay
 
@@ -188,7 +198,18 @@ class CourseService:
                 is_enrolled = True
 
         if not is_enrolled and not lesson.is_free_preview:
-            raise ForbiddenError("You must enroll in this course to watch this lesson.")
+            # Two different problems that used to share one message. A student
+            # whose session had simply ended was told to enroll in a course
+            # they had already paid for, so they tried to buy it again.
+            if user is None:
+                raise UnauthorizedError(
+                    "Please sign in to watch this lesson.",
+                    error_code="sign_in_required",
+                )
+            raise ForbiddenError(
+                "You must enroll in this course to watch this lesson.",
+                error_code="not_enrolled",
+            )
 
         # Anti-piracy watermark text (student mobile / email)
         watermark_text = None
@@ -201,7 +222,7 @@ class CourseService:
 
         # Generate secure embed / stream parameters
         now = int(time.time())
-        expires_at = now + 7200  # 2 hours validity
+        expires_at = now + settings.BUNNY_EMBED_TOKEN_TTL_SECONDS
 
         embed_url = ""
         token = None
@@ -212,13 +233,36 @@ class CourseService:
             # Bunny.net secure player iframe with SHA-256 token authentication
             lib_id = lesson.library_id or settings.BUNNY_STREAM_LIBRARY_ID
             token_key = settings.BUNNY_STREAM_TOKEN_KEY
+            # The token key belongs to one library. Signing for a different
+            # one produces a token Bunny rejects, and the student sees a 403
+            # with nothing in our logs to explain it.
+            if lib_id != settings.BUNNY_STREAM_LIBRARY_ID:
+                logger.warning(
+                    "Lesson {} points at Bunny library {} but the configured "
+                    "token key is for {}; the player will refuse it.",
+                    lesson.id,
+                    lib_id,
+                    settings.BUNNY_STREAM_LIBRARY_ID,
+                )
             if token_key:
                 # Official Bunny formula: SHA256_HEX(TokenSecurityKey + VideoID + ExpirationTimestamp)
                 raw_token = f"{token_key}{lesson.video_id}{expires_at}"
                 token = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
                 embed_url = f"https://iframe.mediadelivery.net/embed/{lib_id}/{lesson.video_id}?token={token}&expires={expires_at}"
             else:
-                embed_url = f"https://iframe.mediadelivery.net/embed/{lib_id}/{lesson.video_id}"
+                # An unsigned URL is not a degraded player, it is Bunny's 403
+                # page — and it arrives as HTTP 200, so nothing downstream
+                # would notice. Fail here, where the reason is still known.
+                logger.error(
+                    "BUNNY_STREAM_TOKEN_KEY is not set; lesson {} cannot be "
+                    "signed and the player would show a 403.",
+                    lesson.id,
+                )
+                raise ServiceUnavailableError(
+                    "Video playback is temporarily unavailable. "
+                    "Please try again shortly.",
+                    error_code="video_unavailable",
+                )
         else:
             embed_url = lesson.video_id
 
@@ -406,9 +450,14 @@ class CourseService:
                 payment_id="FREE_ENROLLMENT",
                 order_id="FREE_ORDER",
             )
-            await enrollment.insert()
-            course.total_students += 1
-            await course.save()
+            try:
+                await enrollment.insert()
+            except DuplicateKeyError:
+                pass
+            else:
+                await Course.find_one(Course.id == course.id).update(
+                    {"$inc": {"total_students": 1}}
+                )
             return {
                 "free_enrolled": True,
                 "course_id": str(course.id),
@@ -443,6 +492,19 @@ class CourseService:
             logger.error("Failed to create Razorpay order for course {}: {}", course.id, exc)
             raise ServiceUnavailableError("Failed to initiate payment gateway. Please try again.")
 
+        # Written down before the student is sent to checkout. Without this
+        # there was nothing tying a payment to a course: if the browser never
+        # came back, the money was simply gone, and support had no record that
+        # the attempt had happened at all.
+        await CourseOrder(
+            user_id=user.id,
+            course_id=course.id,
+            razorpay_order_id=rzp_order["id"],
+            receipt=receipt_id,
+            amount_paise=amount_paise,
+            currency="INR",
+        ).insert()
+
         return {
             "free_enrolled": False,
             "order_id": rzp_order["id"],
@@ -463,40 +525,60 @@ class CourseService:
         razorpay_payment_id: str,
         razorpay_signature: str,
     ) -> dict[str, Any]:
-        """Validates Razorpay signature and unlocks instant course access."""
+        """Confirms the payment the browser just reported, and enrolls.
+
+        The signature alone used to be the whole check. A signature only says
+        Razorpay issued that payment — not that it was for this course, this
+        student, or this amount. Any real payment on the account, a ten-rupee
+        wallet top-up included, could be replayed against any course id and
+        open it. The order this is bound to is what fixes that.
+        """
         course = await Course.find_one(Course.id == course_id, Course.is_deleted == False)
         if not course:
             raise NotFoundError("Course not found")
 
-        # Cryptographic signature validation
         expected = hmac.new(
             settings.RAZORPAY_KEY_SECRET.encode(),
             f"{razorpay_order_id}|{razorpay_payment_id}".encode(),
             hashlib.sha256,
         ).hexdigest()
-
         if not hmac.compare_digest(expected, razorpay_signature):
-            logger.error("Course payment signature mismatch: expected {}, got {}", expected, razorpay_signature)
-            raise BadRequestError("Payment verification failed. Invalid signature.")
-
-        # Check or create enrollment (idempotent)
-        enrollment = await CourseEnrollment.find_one(
-            CourseEnrollment.user_id == user.id,
-            CourseEnrollment.course_id == course.id,
-        )
-        if not enrollment:
-            enrollment = CourseEnrollment(
-                user_id=user.id,
-                course_id=course.id,
-                payment_id=razorpay_payment_id,
-                order_id=razorpay_order_id,
-                amount_paid=course.price,
-                currency="INR",
+            logger.warning(
+                "Course payment signature mismatch from {} for order {}",
+                user.email,
+                razorpay_order_id,
             )
-            await enrollment.insert()
-            course.total_students += 1
-            await course.save()
-            logger.info("User {} successfully enrolled in course {}", user.id, course.id)
+            raise BadRequestError(
+                "Payment verification failed. Invalid signature.",
+                error_code="invalid_signature",
+            )
+
+        order = await CourseOrder.find_one(
+            CourseOrder.razorpay_order_id == razorpay_order_id
+        )
+        # Every one of these is a way the old code could be made to hand out a
+        # course: an order from another student, an order for a cheaper
+        # course, or no order of ours at all.
+        if order is None:
+            raise NotFoundError("Payment order not found.", error_code="order_not_found")
+        if order.user_id != user.id or order.course_id != course.id:
+            logger.warning(
+                "Order {} belongs to user {} / course {}, but {} tried to use it "
+                "for course {}.",
+                razorpay_order_id,
+                order.user_id,
+                order.course_id,
+                user.id,
+                course.id,
+            )
+            raise NotFoundError("Payment order not found.", error_code="order_not_found")
+
+        enrollment = await CourseService._settle_course_order(
+            order=order,
+            course=course,
+            payment=await CourseService._fetch_course_payment(razorpay_payment_id),
+            via="callback",
+        )
 
         return {
             "success": True,
@@ -505,6 +587,277 @@ class CourseService:
             "course_slug": course.slug,
             "course_title": course.title,
         }
+
+    @staticmethod
+    async def _fetch_course_payment(payment_id: str) -> dict[str, Any]:
+        """Asks Razorpay what actually happened, rather than taking the
+        browser's word for the amount and the status."""
+        from app.core.exceptions import ServiceUnavailableError as _Unavailable
+
+        try:
+            return await asyncio.to_thread(_razorpay().payment.fetch, payment_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.opt(exception=exc).error(
+                "Could not fetch Razorpay payment {}", payment_id
+            )
+            raise _Unavailable(
+                "Could not confirm the payment with the gateway. If money was "
+                "debited, your access will be unlocked automatically.",
+                error_code="payment_fetch_failed",
+            ) from exc
+
+    @staticmethod
+    async def _settle_course_order(
+        *,
+        order: CourseOrder,
+        course: Course,
+        payment: dict[str, Any],
+        via: str,
+    ) -> CourseEnrollment:
+        """Turns a captured payment into an enrollment, once.
+
+        Reached from two directions — the browser returning from checkout and
+        Razorpay's webhook — so it has to be safe to run twice. The unique
+        index on (user_id, course_id) is what makes that true even when both
+        arrive at the same moment.
+        """
+        payment_id = payment["id"]
+
+        # Only `captured` counts. `authorized` means the bank is holding the
+        # money but Razorpay has not taken it, and that hold can still be
+        # voided — a course unlocked from one would be given away.
+        if payment.get("status") != "captured":
+            logger.info("Course payment {} is '{}', not enrolling yet.", payment_id, payment.get("status"))
+            raise BadRequestError(
+                "This payment has not completed yet.", error_code="payment_not_captured"
+            )
+
+        # If Razorpay included order_id or currency on the payment entity, they
+        # must belong to this CourseOrder.
+        payment_order_id = payment.get("order_id")
+        if payment_order_id and payment_order_id != order.razorpay_order_id:
+            logger.error(
+                "Payment {} belongs to order {} not {} — refusing to enroll.",
+                payment_id,
+                payment_order_id,
+                order.razorpay_order_id,
+            )
+            raise BadRequestError(
+                "The payment does not match the order.", error_code="order_mismatch"
+            )
+
+        payment_currency = payment.get("currency")
+        if payment_currency and payment_currency != order.currency:
+            logger.error(
+                "Payment {} currency {} does not match order {} currency {} — refusing to enroll.",
+                payment_id,
+                payment_currency,
+                order.razorpay_order_id,
+                order.currency,
+            )
+            raise BadRequestError(
+                "The payment currency does not match the order.", error_code="currency_mismatch"
+            )
+
+        amount_paise = int(payment["amount"])
+        if amount_paise != order.amount_paise:
+            logger.error(
+                "Payment {} is {} paise but order {} was for {} — refusing to enroll.",
+                payment_id,
+                amount_paise,
+                order.razorpay_order_id,
+                order.amount_paise,
+            )
+            raise BadRequestError(
+                "The payment does not match the order.", error_code="amount_mismatch"
+            )
+
+        enrollment = await CourseEnrollment.find_one(
+            CourseEnrollment.user_id == order.user_id,
+            CourseEnrollment.course_id == order.course_id,
+        )
+        if enrollment is None:
+            enrollment = CourseEnrollment(
+                user_id=order.user_id,
+                course_id=order.course_id,
+                payment_id=payment_id,
+                order_id=order.razorpay_order_id,
+                amount_paid=amount_paise / 100,
+                currency=order.currency,
+            )
+            try:
+                await enrollment.insert()
+            except DuplicateKeyError:
+                # The other path got there first, which is the point of the
+                # unique index. Use theirs.
+                enrollment = await CourseEnrollment.find_one(
+                    CourseEnrollment.user_id == order.user_id,
+                    CourseEnrollment.course_id == order.course_id,
+                )
+                if enrollment is None:  # pragma: no cover - the index just said it exists
+                    raise
+            else:
+                # Counted only on the insert that actually created the row, so
+                # the callback and the webhook cannot count one student twice.
+                await Course.find_one(Course.id == order.course_id).update(
+                    {"$inc": {"total_students": 1}}
+                )
+                logger.info(
+                    "User {} enrolled in course {} via {}", order.user_id, order.course_id, via
+                )
+
+        if order.status is not PaymentOrderStatus.PAID:
+            order.status = PaymentOrderStatus.PAID
+            order.razorpay_payment_id = payment_id
+            order.method = payment.get("method")
+            order.verified_via = via
+            order.paid_at = datetime.now(timezone.utc)
+            await order.save()
+
+        return enrollment
+
+    @staticmethod
+    async def enroll_from_webhook(
+        *, razorpay_order_id: str, payment: dict[str, Any]
+    ) -> str:
+        """The webhook's way in. Returns a short word for the event log.
+
+        This is the path that matters most: it does not need the student's
+        browser to still be open, which is exactly the case that was losing
+        people the course they had just paid for.
+        """
+        order = await CourseOrder.find_one(
+            CourseOrder.razorpay_order_id == razorpay_order_id
+        )
+        if order is None:
+            # Recover orders opened prior to CourseOrder persistence (or where
+            # order creation succeeded on Razorpay) if Razorpay's verified
+            # order/payment notes identify a valid course purchase.
+            notes = payment.get("notes") or {}
+            raw_course_id = notes.get("course_id")
+            raw_user_id = notes.get("user_id")
+            if (
+                notes.get("type") != "course_enrollment"
+                or not raw_course_id
+                or not raw_user_id
+                or not PydanticObjectId.is_valid(str(raw_course_id))
+                or not PydanticObjectId.is_valid(str(raw_user_id))
+            ):
+                return "not_a_course_order"
+
+            course = await Course.find_one(
+                Course.id == PydanticObjectId(str(raw_course_id)),
+                Course.is_deleted == False,
+            )
+            student = await User.get(PydanticObjectId(str(raw_user_id)))
+            if course is None or student is None:
+                return "course_missing"
+
+            expected_paise = int(round(course.price * 100))
+            paid_paise = int(payment.get("amount") or 0)
+            if expected_paise <= 0 or paid_paise < expected_paise:
+                logger.error(
+                    "Webhook recovery refused for order {}: paid {} < expected {}",
+                    razorpay_order_id,
+                    paid_paise,
+                    expected_paise,
+                )
+                return "amount_mismatch"
+
+            order = CourseOrder(
+                user_id=student.id,
+                course_id=course.id,
+                razorpay_order_id=razorpay_order_id,
+                receipt=f"webhook_recovered_{razorpay_order_id[-12:]}",
+                amount_paise=expected_paise,
+                currency=(payment.get("currency") or course.currency or "INR"),
+            )
+            try:
+                await order.insert()
+            except DuplicateKeyError:
+                order = await CourseOrder.find_one(
+                    CourseOrder.razorpay_order_id == razorpay_order_id
+                )
+                if order is None:  # pragma: no cover
+                    return "not_a_course_order"
+        else:
+            course = await Course.find_one(Course.id == order.course_id)
+            if course is None:
+                logger.error(
+                    "Course order {} points at course {}, which no longer exists.",
+                    razorpay_order_id,
+                    order.course_id,
+                )
+                return "course_missing"
+
+        already = order.status is PaymentOrderStatus.PAID
+        await CourseService._settle_course_order(
+            order=order, course=course, payment=payment, via="webhook"
+        )
+        return "already_enrolled" if already else "enrolled"
+
+    @staticmethod
+    async def refund_course_order(
+        *, razorpay_payment_id: str, amount_paise: int, refund: dict[str, Any]
+    ) -> str:
+        """Handles a processed refund for a course payment.
+
+        Full refunds mark the CourseOrder refunded and revoke the corresponding
+        enrollment so refunded purchases do not retain free lifetime access.
+        """
+        order = await CourseOrder.find_one(
+            CourseOrder.razorpay_payment_id == razorpay_payment_id
+        )
+        if order is None:
+            return "not_a_course_order"
+
+        if amount_paise < order.amount_paise:
+            logger.info(
+                "Partial course refund {} ({} / {} paise) recorded for order {}",
+                refund.get("id"),
+                amount_paise,
+                order.amount_paise,
+                order.razorpay_order_id,
+            )
+            return "partial_refund_logged"
+
+        enrollment = await CourseEnrollment.find_one(
+            CourseEnrollment.user_id == order.user_id,
+            CourseEnrollment.course_id == order.course_id,
+        )
+        if enrollment is not None:
+            await enrollment.delete()
+            await Course.find_one(
+                Course.id == order.course_id,
+                Course.total_students > 0,
+            ).update({"$inc": {"total_students": -1}})
+
+        if order.status is not PaymentOrderStatus.REFUNDED:
+            order.status = PaymentOrderStatus.REFUNDED
+            order.failure_reason = f"Refunded via webhook ({refund.get('id') or 'refund'})"
+            order.updated_at = datetime.now(timezone.utc)
+            await order.save()
+
+        return "refunded"
+
+    @staticmethod
+    async def fail_course_order(
+        *, razorpay_order_id: str, payment: dict[str, Any]
+    ) -> str:
+        """Records a failed attempt, so support can see it happened."""
+        order = await CourseOrder.find_one(
+            CourseOrder.razorpay_order_id == razorpay_order_id
+        )
+        if order is None:
+            return "not_a_course_order"
+        if order.status is PaymentOrderStatus.CREATED:
+            order.status = PaymentOrderStatus.FAILED
+            order.razorpay_payment_id = payment.get("id")
+            order.failure_reason = payment.get("error_description") or payment.get(
+                "error_reason"
+            )
+            await order.save()
+        return "marked_failed"
 
     @staticmethod
     async def get_user_enrollments_with_details(user: User) -> list[dict[str, Any]]:
@@ -630,12 +983,26 @@ class CourseService:
                 raise BadRequestError(f"Failed to create Bunny video placeholder: {res.text}")
             data = res.json()
             video_id = data.get("guid")
+
+            # Bunny's presigned upload: SHA256(library_id + api_key +
+            # expiry + video_id). The key stays here; the browser gets a
+            # signature that only opens this one video, and only for an hour.
+            # https://docs.bunny.net/stream/tus-resumable-uploads
+            expire = int(time.time()) + 3600
+            signature = hashlib.sha256(
+                f"{settings.BUNNY_STREAM_LIBRARY_ID}"
+                f"{settings.BUNNY_STREAM_API_KEY}"
+                f"{expire}"
+                f"{video_id}".encode()
+            ).hexdigest()
+
             return {
                 "video_id": video_id,
                 "library_id": settings.BUNNY_STREAM_LIBRARY_ID,
                 "title": title,
-                "upload_url": f"https://video.bunnycdn.com/library/{settings.BUNNY_STREAM_LIBRARY_ID}/videos/{video_id}",
-                "access_key": settings.BUNNY_STREAM_API_KEY,
+                "tus_endpoint": "https://video.bunnycdn.com/tusupload",
+                "authorization_signature": signature,
+                "authorization_expire": expire,
             }
 
     @staticmethod

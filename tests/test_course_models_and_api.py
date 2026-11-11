@@ -2,13 +2,14 @@
 
 from unittest.mock import AsyncMock, MagicMock
 import pytest
-from beanie import init_beanie
+from beanie import PydanticObjectId, init_beanie
 
 from app.models.course import (
     Course,
     CourseEnrollment,
     CourseLesson,
     CourseLessonProgress,
+    CourseOrder,
     CourseQuestion,
     CourseQuestionAnswer,
     CourseSection,
@@ -28,6 +29,9 @@ async def init_mock_beanie():
     mock_coll.create_index = AsyncMock()
     mock_coll.create_indexes = AsyncMock()
     mock_coll.index_information = AsyncMock(return_value={})
+    mock_coll.insert_one = AsyncMock(
+        side_effect=lambda *args, **kwargs: MagicMock(inserted_id=PydanticObjectId())
+    )
     mock_coll.find.return_value.to_list = AsyncMock(return_value=[])
     mock_db.__getitem__.return_value = mock_coll
 
@@ -39,6 +43,7 @@ async def init_mock_beanie():
             CourseLesson,
             CourseEnrollment,
             CourseLessonProgress,
+            CourseOrder,
             CourseQuestion,
             User,
         ],
