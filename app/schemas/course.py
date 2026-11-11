@@ -171,6 +171,7 @@ class CourseUpdateRequest(BaseModel):
 # Order & Payment Schemas
 class CourseOrderCreateResponse(BaseModel):
     free_enrolled: bool = False
+    already_paid: bool = False
     order_id: str | None = None
     amount_paise: int = 0
     amount_inr: float = 0.0
@@ -179,12 +180,27 @@ class CourseOrderCreateResponse(BaseModel):
     course_id: str
     course_title: str
     course_slug: str
+    message: str | None = None
 
 
 class CoursePaymentVerifyRequest(BaseModel):
     razorpay_order_id: str = Field(..., min_length=4)
     razorpay_payment_id: str = Field(..., min_length=4)
     razorpay_signature: str = Field(..., min_length=16)
+
+
+class CoursePaymentSyncRequest(BaseModel):
+    razorpay_order_id: str | None = None
+
+
+class CoursePaymentSyncResponse(BaseModel):
+    enrolled: bool
+    status: str
+    enrollment_id: str | None = None
+    course_id: str
+    course_slug: str
+    course_title: str
+    message: str = ""
 
 
 # Admin Section & Lesson CRUD Schemas
@@ -415,5 +431,78 @@ class CourseCertificateOut(BaseModel):
     signature_algorithm: str = "HMAC-SHA256 (FIPS 198-1 Standard)"
     is_signature_valid: bool = True
     tamper_check: dict[str, Any] = Field(default_factory=dict)
+
+
+# -----------------------------------------------------------------------------
+# ADMIN COURSE ORDERS & ENROLLMENTS MANAGEMENT SCHEMAS
+# -----------------------------------------------------------------------------
+class AdminCourseOrderOut(BaseModel):
+    id: str
+    user_id: str
+    student_name: str | None = None
+    student_email: str | None = None
+    student_phone: str | None = None
+    course_id: str
+    course_title: str | None = None
+    course_slug: str | None = None
+    razorpay_order_id: str
+    razorpay_payment_id: str | None = None
+    receipt: str = ""
+    amount_paise: int
+    amount_inr: float
+    currency: str = "INR"
+    status: str
+    method: str | None = None
+    failure_reason: str | None = None
+    verified_via: str | None = None
+    paid_at: datetime | None = None
+    created_at: datetime
+
+
+class AdminCourseOrderListResponse(BaseModel):
+    items: list[AdminCourseOrderOut] = Field(default_factory=list)
+    total: int = 0
+    page: int = 1
+    limit: int = 25
+    pages: int = 1
+    created_count: int = 0
+    paid_count: int = 0
+    failed_count: int = 0
+    refunded_count: int = 0
+
+
+class AdminCourseEnrollmentOut(BaseModel):
+    id: str
+    user_id: str
+    student_name: str | None = None
+    student_email: str | None = None
+    student_phone: str | None = None
+    course_id: str
+    course_title: str | None = None
+    course_slug: str | None = None
+    payment_id: str | None = None
+    order_id: str | None = None
+    amount_paid: float = 0.0
+    currency: str = "INR"
+    progress_percent: float = 0.0
+    certificate_issued: bool = False
+    enrolled_at: datetime
+    last_accessed_at: datetime
+
+
+class AdminCourseEnrollmentListResponse(BaseModel):
+    items: list[AdminCourseEnrollmentOut] = Field(default_factory=list)
+    total: int = 0
+    page: int = 1
+    limit: int = 25
+    pages: int = 1
+
+
+class AdminManualEnrollRequest(BaseModel):
+    user_id: str | None = None
+    email: str | None = None
+    amount_paid: float = Field(default=0.0, ge=0)
+    payment_id: str | None = Field(default=None, max_length=120)
+    note: str | None = Field(default=None, max_length=250)
 
 

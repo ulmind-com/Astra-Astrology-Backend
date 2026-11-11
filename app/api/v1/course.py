@@ -17,6 +17,8 @@ from app.schemas.course import (
     CourseEnrollmentOut,
     CourseListItemOut,
     CourseOrderCreateResponse,
+    CoursePaymentSyncRequest,
+    CoursePaymentSyncResponse,
     CoursePaymentVerifyRequest,
     CourseQuestionAnswerRequest,
     CourseQuestionAnswerOut,
@@ -179,6 +181,21 @@ async def verify_course_payment(
     return ApiResponse(data=result)
 
 
+@router.post("/{course_id}/sync-payment", response_model=ApiResponse[CoursePaymentSyncResponse])
+async def sync_course_payment(
+    course_id: PydanticObjectId,
+    user: Annotated[User, Depends(get_current_user)],
+    payload: CoursePaymentSyncRequest | None = None,
+) -> ApiResponse[CoursePaymentSyncResponse]:
+    """Recovers/confirms course enrollment by checking DB enrollment + Razorpay order status."""
+    result = await CourseService.sync_course_payment(
+        user=user,
+        course_id=course_id,
+        razorpay_order_id=payload.razorpay_order_id if payload else None,
+    )
+    return ApiResponse(data=CoursePaymentSyncResponse(**result))
+
+
 @router.get("/my/enrolled", response_model=ApiResponse[list[CourseEnrollmentOut]])
 async def get_my_enrolled_courses(
     user: Annotated[User, Depends(get_current_user)],
@@ -227,6 +244,21 @@ async def update_lesson_progress(
         mark_completed=payload.mark_completed,
     )
     return ApiResponse(data=result)
+
+
+@router.post("/{course_id}/sync-payment", response_model=ApiResponse[CoursePaymentSyncResponse])
+async def sync_course_payment(
+    course_id: PydanticObjectId,
+    user: Annotated[User, Depends(get_current_user)],
+    payload: CoursePaymentSyncRequest | None = None,
+) -> ApiResponse[CoursePaymentSyncResponse]:
+    """Recovers/confirms course enrollment by checking DB enrollment + Razorpay order status."""
+    result = await CourseService.sync_course_payment(
+        user=user,
+        course_id=course_id,
+        razorpay_order_id=payload.razorpay_order_id if payload else None,
+    )
+    return ApiResponse(data=CoursePaymentSyncResponse(**result))
 
 
 # -----------------------------------------------------------------------------

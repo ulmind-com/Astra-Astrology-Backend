@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import hmac
 import json
+import secrets
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -466,9 +467,37 @@ class CourseService:
                 "message": "Successfully enrolled in free course",
             }
 
+        # Before creating a new Razorpay order, inspect any recent open/failed orders
+        # for this student+course against Razorpay. If the browser/app never returned
+        # or a webhook was delayed after UPI payment, this settles the captured
+        # payment and unlocks access immediately instead of charging the student twice.
+        recent_orders = (
+            await CourseOrder.find(
+                CourseOrder.user_id == user.id,
+                CourseOrder.course_id == course.id,
+                {"status": {"$in": [PaymentOrderStatus.CREATED.value, PaymentOrderStatus.FAILED.value]}},
+            )
+            .sort([("created_at", -1)])
+            .limit(3)
+            .to_list()
+        )
+        for prev_order in recent_orders:
+            settled = await CourseService._try_settle_order_from_gateway(
+                order=prev_order, course=course, via="sync"
+            )
+            if settled is not None:
+                return {
+                    "free_enrolled": True,
+                    "already_paid": True,
+                    "course_id": str(course.id),
+                    "course_title": course.title,
+                    "course_slug": course.slug,
+                    "message": "Already enrolled from your completed payment",
+                }
+
         # Paid course: create Razorpay order
         amount_paise = int(round(course.price * 100))
-        receipt_id = f"crs_{str(course.id)[-6:]}_{int(time.time())}"
+        receipt_id = f"crs_{str(course.id)[-6:]}_{int(time.time())}_{secrets.token_hex(2)}"
 
         user_phone = getattr(user, "phone", None) or getattr(user, "mobile_number", None) or ""
         user_email = getattr(user, "email", "") or ""
@@ -573,6 +602,25 @@ class CourseService:
             )
             raise NotFoundError("Payment order not found.", error_code="order_not_found")
 
+        # Fast-path when webhook already settled this exact payment: do not fail
+        # the student's screen with a 503 if Razorpay's fetch API happens to blip.
+        if (
+            order.status is PaymentOrderStatus.PAID
+            and order.razorpay_payment_id == razorpay_payment_id
+        ):
+            existing_enrollment = await CourseEnrollment.find_one(
+                CourseEnrollment.user_id == user.id,
+                CourseEnrollment.course_id == course.id,
+            )
+            if existing_enrollment is not None:
+                return {
+                    "success": True,
+                    "enrollment_id": str(existing_enrollment.id),
+                    "course_id": str(course.id),
+                    "course_slug": course.slug,
+                    "course_title": course.title,
+                }
+
         enrollment = await CourseService._settle_course_order(
             order=order,
             course=course,
@@ -586,6 +634,119 @@ class CourseService:
             "course_id": str(course.id),
             "course_slug": course.slug,
             "course_title": course.title,
+        }
+
+    @staticmethod
+    async def _fetch_order_payments(razorpay_order_id: str) -> dict[str, Any] | list[dict[str, Any]]:
+        """Lists payments attempted against a Razorpay order."""
+        return await asyncio.to_thread(_razorpay().order.payments, razorpay_order_id)
+
+    @staticmethod
+    def _extract_payment_items(payments: Any) -> list[dict[str, Any]]:
+        if isinstance(payments, dict):
+            items = payments.get("items", [])
+            return items if isinstance(items, list) else []
+        return payments if isinstance(payments, list) else []
+
+    @staticmethod
+    async def _try_settle_order_from_gateway(
+        *, order: CourseOrder, course: Course, via: str
+    ) -> CourseEnrollment | None:
+        """Best-effort check against Razorpay for any captured payment on `order`."""
+        try:
+            payments = await CourseService._fetch_order_payments(order.razorpay_order_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Gateway lookup skipped for course order {}: {}",
+                order.razorpay_order_id,
+                exc,
+            )
+            return None
+
+        for payment in CourseService._extract_payment_items(payments):
+            if payment.get("status") == "captured":
+                try:
+                    return await CourseService._settle_course_order(
+                        order=order, course=course, payment=payment, via=via
+                    )
+                except BadRequestError:
+                    return None
+        return None
+
+    @staticmethod
+    async def sync_course_payment(
+        *,
+        user: User,
+        course_id: PydanticObjectId,
+        razorpay_order_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Checks whether the student's payment has landed (via webhook or Razorpay)
+        and unlocks enrollment immediately when confirmed.
+
+        Called by Web/App whenever checkout dismisses, returns from a UPI app, or
+        browser callback hits a transient network error.
+        """
+        course = await Course.find_one(Course.id == course_id)
+        if course is None or course.is_deleted:
+            raise NotFoundError("Course not found")
+
+        existing = await CourseEnrollment.find_one(
+            CourseEnrollment.user_id == user.id,
+            CourseEnrollment.course_id == course.id,
+        )
+        if existing is not None:
+            return {
+                "enrolled": True,
+                "status": PaymentOrderStatus.PAID.value,
+                "enrollment_id": str(existing.id),
+                "course_id": str(course.id),
+                "course_slug": course.slug,
+                "course_title": course.title,
+                "message": "Enrollment confirmed!",
+            }
+
+        if razorpay_order_id:
+            order = await CourseOrder.find_one(
+                CourseOrder.razorpay_order_id == razorpay_order_id
+            )
+            if order is None or order.user_id != user.id or order.course_id != course.id:
+                raise NotFoundError("Payment order not found.", error_code="order_not_found")
+            candidates = [order]
+        else:
+            candidates = (
+                await CourseOrder.find(
+                    CourseOrder.user_id == user.id,
+                    CourseOrder.course_id == course.id,
+                )
+                .sort([("created_at", -1)])
+                .limit(3)
+                .to_list()
+            )
+
+        for candidate in candidates:
+            enrollment = await CourseService._try_settle_order_from_gateway(
+                order=candidate, course=course, via="sync"
+            )
+            if enrollment is not None:
+                return {
+                    "enrolled": True,
+                    "status": PaymentOrderStatus.PAID.value,
+                    "enrollment_id": str(enrollment.id),
+                    "course_id": str(course.id),
+                    "course_slug": course.slug,
+                    "course_title": course.title,
+                    "message": "Payment confirmed and course unlocked!",
+                }
+
+        latest_status = candidates[0].status.value if candidates else "no_order"
+        return {
+            "enrolled": False,
+            "status": latest_status,
+            "enrollment_id": None,
+            "course_id": str(course.id),
+            "course_slug": course.slug,
+            "course_title": course.title,
+            "message": "Payment is not captured yet.",
         }
 
     @staticmethod
@@ -856,8 +1017,350 @@ class CourseService:
             order.failure_reason = payment.get("error_description") or payment.get(
                 "error_reason"
             )
+            order.updated_at = datetime.now(timezone.utc)
             await order.save()
         return "marked_failed"
+
+    @staticmethod
+    async def _enrich_users_and_courses(
+        user_ids: list[PydanticObjectId], course_ids: list[PydanticObjectId]
+    ) -> tuple[dict[str, User], dict[str, Course]]:
+        users_map: dict[str, User] = {}
+        courses_map: dict[str, Course] = {}
+        if user_ids:
+            users = await User.find({"_id": {"$in": list(set(user_ids))}}).to_list()
+            users_map = {str(u.id): u for u in users}
+        if course_ids:
+            courses = await Course.find({"_id": {"$in": list(set(course_ids))}}).to_list()
+            courses_map = {str(c.id): c for c in courses}
+        return users_map, courses_map
+
+    @staticmethod
+    def _serialize_admin_order(
+        order: CourseOrder, users_map: dict[str, User], courses_map: dict[str, Course]
+    ) -> dict[str, Any]:
+        u = users_map.get(str(order.user_id))
+        c = courses_map.get(str(order.course_id))
+        return {
+            "id": str(order.id),
+            "user_id": str(order.user_id),
+            "student_name": getattr(u, "full_name", None) if u else None,
+            "student_email": getattr(u, "email", None) if u else None,
+            "student_phone": (
+                (getattr(u, "phone", None) or getattr(u, "mobile_number", None)) if u else None
+            ),
+            "course_id": str(order.course_id),
+            "course_title": c.title if c else None,
+            "course_slug": c.slug if c else None,
+            "razorpay_order_id": order.razorpay_order_id,
+            "razorpay_payment_id": order.razorpay_payment_id,
+            "receipt": order.receipt,
+            "amount_paise": order.amount_paise,
+            "amount_inr": round(order.amount_paise / 100.0, 2),
+            "currency": order.currency,
+            "status": order.status.value,
+            "method": order.method,
+            "failure_reason": order.failure_reason,
+            "verified_via": order.verified_via,
+            "paid_at": order.paid_at,
+            "created_at": order.created_at,
+        }
+
+    @staticmethod
+    async def admin_list_course_orders(
+        *,
+        status_filter: str | None = None,
+        course_id: PydanticObjectId | None = None,
+        search: str | None = None,
+        page: int = 1,
+        limit: int = 25,
+    ) -> dict[str, Any]:
+        """Lists course checkout orders for support & reconciliation."""
+        query: dict[str, Any] = {}
+        if status_filter and status_filter != "all":
+            query["status"] = status_filter
+        if course_id is not None:
+            query["course_id"] = course_id
+
+        orders = await CourseOrder.find(query).sort([("created_at", -1)]).to_list()
+        users_map, courses_map = await CourseService._enrich_users_and_courses(
+            [o.user_id for o in orders], [o.course_id for o in orders]
+        )
+
+        serialized = [
+            CourseService._serialize_admin_order(o, users_map, courses_map) for o in orders
+        ]
+
+        if search and search.strip():
+            q = search.strip().lower()
+            serialized = [
+                item
+                for item in serialized
+                if (
+                    q in (item["razorpay_order_id"] or "").lower()
+                    or q in (item["razorpay_payment_id"] or "").lower()
+                    or q in (item["student_email"] or "").lower()
+                    or q in (item["student_name"] or "").lower()
+                    or q in (item["student_phone"] or "").lower()
+                    or q in (item["course_title"] or "").lower()
+                )
+            ]
+
+        total = len(serialized)
+        pages = max(1, (total + limit - 1) // limit)
+        start = (page - 1) * limit
+        paged = serialized[start : start + limit]
+
+        created_count = await CourseOrder.find(CourseOrder.status == PaymentOrderStatus.CREATED).count()
+        paid_count = await CourseOrder.find(CourseOrder.status == PaymentOrderStatus.PAID).count()
+        failed_count = await CourseOrder.find(CourseOrder.status == PaymentOrderStatus.FAILED).count()
+        refunded_count = await CourseOrder.find(CourseOrder.status == PaymentOrderStatus.REFUNDED).count()
+
+        return {
+            "items": paged,
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "pages": pages,
+            "created_count": created_count,
+            "paid_count": paid_count,
+            "failed_count": failed_count,
+            "refunded_count": refunded_count,
+        }
+
+    @staticmethod
+    async def admin_reconcile_course_order(order_id: PydanticObjectId) -> dict[str, Any]:
+        """Asks Razorpay what actually happened to a stuck/created course order and enrolls if captured."""
+        order = await CourseOrder.get(order_id)
+        if order is None:
+            raise NotFoundError("Course order not found.", error_code="order_not_found")
+
+        course = await Course.find_one(Course.id == order.course_id)
+        if course is None:
+            raise NotFoundError("Course associated with this order no longer exists.")
+
+        try:
+            payments = await CourseService._fetch_order_payments(order.razorpay_order_id)
+        except Exception as exc:  # noqa: BLE001
+            raise ServiceUnavailableError(
+                "Could not reach the payment gateway.", error_code="gateway_unavailable"
+            ) from exc
+
+        for payment in CourseService._extract_payment_items(payments):
+            if payment.get("status") == "captured":
+                await CourseService._settle_course_order(
+                    order=order, course=course, payment=payment, via="reconcile"
+                )
+                break
+        else:
+            if order.status is PaymentOrderStatus.CREATED:
+                order.status = PaymentOrderStatus.FAILED
+                order.failure_reason = "No captured payment found for this order."
+                order.updated_at = datetime.now(timezone.utc)
+                await order.save()
+
+        refreshed = await CourseOrder.get(order.id)
+        assert refreshed is not None
+        users_map, courses_map = await CourseService._enrich_users_and_courses(
+            [refreshed.user_id], [refreshed.course_id]
+        )
+        return CourseService._serialize_admin_order(refreshed, users_map, courses_map)
+
+    @staticmethod
+    async def admin_list_course_enrollments(
+        *,
+        course_id: PydanticObjectId | None = None,
+        search: str | None = None,
+        page: int = 1,
+        limit: int = 25,
+    ) -> dict[str, Any]:
+        query: dict[str, Any] = {}
+        if course_id is not None:
+            query["course_id"] = course_id
+
+        enrollments = (
+            await CourseEnrollment.find(query).sort([("enrolled_at", -1)]).to_list()
+        )
+        users_map, courses_map = await CourseService._enrich_users_and_courses(
+            [e.user_id for e in enrollments], [e.course_id for e in enrollments]
+        )
+
+        items = []
+        for e in enrollments:
+            u = users_map.get(str(e.user_id))
+            c = courses_map.get(str(e.course_id))
+            items.append(
+                {
+                    "id": str(e.id),
+                    "user_id": str(e.user_id),
+                    "student_name": getattr(u, "full_name", None) if u else None,
+                    "student_email": getattr(u, "email", None) if u else None,
+                    "student_phone": (
+                        (getattr(u, "phone", None) or getattr(u, "mobile_number", None))
+                        if u
+                        else None
+                    ),
+                    "course_id": str(e.course_id),
+                    "course_title": c.title if c else None,
+                    "course_slug": c.slug if c else None,
+                    "payment_id": e.payment_id,
+                    "order_id": e.order_id,
+                    "amount_paid": e.amount_paid,
+                    "currency": e.currency,
+                    "progress_percent": e.progress_percent,
+                    "certificate_issued": e.certificate_issued,
+                    "enrolled_at": e.enrolled_at,
+                    "last_accessed_at": e.last_accessed_at,
+                }
+            )
+
+        if search and search.strip():
+            q = search.strip().lower()
+            items = [
+                item
+                for item in items
+                if (
+                    q in (item["student_email"] or "").lower()
+                    or q in (item["student_name"] or "").lower()
+                    or q in (item["student_phone"] or "").lower()
+                    or q in (item["course_title"] or "").lower()
+                    or q in (item["payment_id"] or "").lower()
+                    or q in (item["order_id"] or "").lower()
+                )
+            ]
+
+        total = len(items)
+        pages = max(1, (total + limit - 1) // limit)
+        start = (page - 1) * limit
+        return {
+            "items": items[start : start + limit],
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "pages": pages,
+        }
+
+    @staticmethod
+    async def admin_grant_course_enrollment(
+        *,
+        course_id: PydanticObjectId,
+        user_id: str | None = None,
+        email: str | None = None,
+        amount_paid: float = 0.0,
+        payment_id: str | None = None,
+        note: str | None = None,
+    ) -> dict[str, Any]:
+        """Manually grants course access to a student (support / recovery path)."""
+        course = await Course.find_one(Course.id == course_id, Course.is_deleted == False)
+        if course is None:
+            raise NotFoundError("Course not found")
+
+        student: User | None = None
+        if user_id and PydanticObjectId.is_valid(user_id.strip()):
+            student = await User.get(PydanticObjectId(user_id.strip()))
+        elif email and email.strip():
+            student = await User.find_one(User.email == email.strip().lower())
+        else:
+            raise BadRequestError("Provide either student email or user_id.")
+
+        if student is None:
+            raise NotFoundError("Student account not found.")
+
+        existing = await CourseEnrollment.find_one(
+            CourseEnrollment.user_id == student.id,
+            CourseEnrollment.course_id == course.id,
+        )
+        if existing is not None:
+            users_map, courses_map = {str(student.id): student}, {str(course.id): course}
+            u = users_map.get(str(existing.user_id))
+            c = courses_map.get(str(existing.course_id))
+            return {
+                "already_enrolled": True,
+                "enrollment": {
+                    "id": str(existing.id),
+                    "user_id": str(existing.user_id),
+                    "student_name": getattr(u, "full_name", None) if u else None,
+                    "student_email": getattr(u, "email", None) if u else None,
+                    "student_phone": (
+                        (getattr(u, "phone", None) or getattr(u, "mobile_number", None)) if u else None
+                    ),
+                    "course_id": str(existing.course_id),
+                    "course_title": c.title if c else None,
+                    "course_slug": c.slug if c else None,
+                    "payment_id": existing.payment_id,
+                    "order_id": existing.order_id,
+                    "amount_paid": existing.amount_paid,
+                    "currency": existing.currency,
+                    "progress_percent": existing.progress_percent,
+                    "certificate_issued": existing.certificate_issued,
+                    "enrolled_at": existing.enrolled_at,
+                    "last_accessed_at": existing.last_accessed_at,
+                },
+            }
+
+        ref_payment_id = (
+            payment_id.strip()
+            if payment_id and payment_id.strip()
+            else f"ADMIN_GRANT:{(note or 'support').strip()[:80]}"
+        )
+        enrollment = CourseEnrollment(
+            user_id=student.id,
+            course_id=course.id,
+            payment_id=ref_payment_id,
+            order_id="ADMIN_MANUAL_ENROLL",
+            amount_paid=float(amount_paid),
+            currency=course.currency or "INR",
+        )
+        try:
+            await enrollment.insert()
+        except DuplicateKeyError:
+            enrollment = await CourseEnrollment.find_one(
+                CourseEnrollment.user_id == student.id,
+                CourseEnrollment.course_id == course.id,
+            )
+            assert enrollment is not None
+        else:
+            await Course.find_one(Course.id == course.id).update(
+                {"$inc": {"total_students": 1}}
+            )
+
+        return {
+            "already_enrolled": False,
+            "enrollment": {
+                "id": str(enrollment.id),
+                "user_id": str(enrollment.user_id),
+                "student_name": getattr(student, "full_name", None),
+                "student_email": getattr(student, "email", None),
+                "student_phone": getattr(student, "phone", None) or getattr(student, "mobile_number", None),
+                "course_id": str(course.id),
+                "course_title": course.title,
+                "course_slug": course.slug,
+                "payment_id": enrollment.payment_id,
+                "order_id": enrollment.order_id,
+                "amount_paid": enrollment.amount_paid,
+                "currency": enrollment.currency,
+                "progress_percent": enrollment.progress_percent,
+                "certificate_issued": enrollment.certificate_issued,
+                "enrolled_at": enrollment.enrolled_at,
+                "last_accessed_at": enrollment.last_accessed_at,
+            },
+        }
+
+    @staticmethod
+    async def admin_revoke_course_enrollment(
+        *, course_id: PydanticObjectId, enrollment_id: PydanticObjectId
+    ) -> None:
+        enrollment = await CourseEnrollment.find_one(
+            CourseEnrollment.id == enrollment_id,
+            CourseEnrollment.course_id == course_id,
+        )
+        if enrollment is None:
+            raise NotFoundError("Enrollment not found.")
+        await enrollment.delete()
+        await Course.find_one(
+            Course.id == course_id,
+            Course.total_students > 0,
+        ).update({"$inc": {"total_students": -1}})
 
     @staticmethod
     async def get_user_enrollments_with_details(user: User) -> list[dict[str, Any]]:

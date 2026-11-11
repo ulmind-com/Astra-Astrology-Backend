@@ -21,7 +21,7 @@ from httpx import AsyncClient
 
 from app.core.config import settings as app_settings
 from app.models.course import Course, CourseEnrollment, CourseOrder
-from app.models.enums import PaymentOrderStatus
+from app.models.enums import PaymentOrderStatus, UserRole
 from app.models.user import User
 from tests.test_calls import signed_in
 
@@ -688,3 +688,221 @@ async def test_tapping_enroll_twice_does_not_enroll_twice(
         CourseEnrollment.user_id == user.id, CourseEnrollment.course_id == course.id
     ).to_list()
     assert len(rows) == 1
+
+
+# ------------------------------------ self-recovery, fast-path & malformed webhook
+async def test_create_order_recovers_already_paid_open_order(client: AsyncClient) -> None:
+    """Clicking Buy again after an unverified capture settles the old order instead of double-charging."""
+    from app.services.course_service import CourseService
+
+    headers = await signed_in(client, "buyer_dup@test.dev")
+    user = await _user_for(headers)
+    course = await _course()
+    first_order_id = await _open_order(client, headers, course)
+
+    captured_collection = {"entity": "collection", "items": [_captured(first_order_id, "pay_dup_captured_1")]}
+    with (
+        patch.object(
+            CourseService,
+            "_fetch_order_payments",
+            new=AsyncMock(return_value=captured_collection),
+        ),
+        patch(
+            "app.services.course_service.asyncio.to_thread",
+            new=AsyncMock(side_effect=AssertionError("Should NOT create a duplicate Razorpay order!")),
+        ),
+    ):
+        resp = await client.post(f"{P}/courses/{course.id}/order", headers=headers)
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()["data"]
+    assert body["free_enrolled"] is True
+    assert body["already_paid"] is True
+
+    enrollment = await CourseEnrollment.find_one(
+        CourseEnrollment.user_id == user.id, CourseEnrollment.course_id == course.id
+    )
+    assert enrollment is not None
+    assert enrollment.payment_id == "pay_dup_captured_1"
+
+
+async def test_sync_payment_endpoint_recovers_unverified_captured_order(
+    client: AsyncClient,
+) -> None:
+    """POST /courses/{id}/sync-payment unlocks an order that settled in UPI/external browser."""
+    from app.services.course_service import CourseService
+
+    headers = await signed_in(client, "buyer_sync@test.dev")
+    user = await _user_for(headers)
+    course = await _course()
+    order_id = await _open_order(client, headers, course)
+
+    with patch.object(
+        CourseService,
+        "_fetch_order_payments",
+        new=AsyncMock(return_value={"entity": "collection", "items": [_captured(order_id, "pay_sync_upi_1")]}),
+    ):
+        resp = await client.post(
+            f"{P}/courses/{course.id}/sync-payment",
+            headers=headers,
+            json={"razorpay_order_id": order_id},
+        )
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()["data"]
+    assert data["enrolled"] is True
+    assert data["status"] == "paid"
+    assert data["enrollment_id"] is not None
+
+    stored = await CourseOrder.find_one(CourseOrder.razorpay_order_id == order_id)
+    assert stored is not None and stored.status is PaymentOrderStatus.PAID
+    assert stored.verified_via == "sync"
+
+    enrollment = await CourseEnrollment.find_one(
+        CourseEnrollment.user_id == user.id, CourseEnrollment.course_id == course.id
+    )
+    assert enrollment is not None
+
+
+async def test_verify_payment_fast_path_succeeds_if_webhook_already_settled(
+    client: AsyncClient,
+) -> None:
+    """If webhook beat the browser and payment.fetch errors later, verify-payment still returns 200."""
+    from app.services.course_service import CourseService
+
+    headers = await signed_in(client, "buyer_fast@test.dev")
+    course = await _course()
+    order_id = await _open_order(client, headers, course)
+    payment_id = "pay_fast_path_1"
+
+    await CourseService.enroll_from_webhook(
+        razorpay_order_id=order_id,
+        payment=_captured(order_id, payment_id),
+    )
+
+    with patch.object(
+        CourseService,
+        "_fetch_course_payment",
+        new=AsyncMock(side_effect=RuntimeError("Razorpay timeout")),
+    ):
+        resp = await client.post(
+            f"{P}/courses/{course.id}/verify-payment",
+            headers=headers,
+            json={
+                "razorpay_order_id": order_id,
+                "razorpay_payment_id": payment_id,
+                "razorpay_signature": _signature(order_id, payment_id),
+            },
+        )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["data"]["success"] is True
+
+
+async def test_malformed_webhook_payload_returns_400_instead_of_500(
+    client: AsyncClient,
+) -> None:
+    raw_bad = b"not-valid-json{{"
+    sig = hmac.new(TEST_WEBHOOK_SECRET.encode(), raw_bad, hashlib.sha256).hexdigest()
+
+    resp = await client.post(
+        f"{P}/webhooks/razorpay",
+        content=raw_bad,
+        headers={
+            "X-Razorpay-Signature": sig,
+            "Content-Type": "application/json",
+        },
+    )
+    assert resp.status_code == 400
+    assert resp.json()["error_code"] == "invalid_payload"
+
+
+# ------------------------------------ admin order reconciliation & manual grant
+async def test_admin_orders_reconcile_and_manual_enrollment_lifecycle(
+    client: AsyncClient,
+) -> None:
+    from app.services.course_service import CourseService
+
+    student_headers = await signed_in(client, "student_stuck@test.dev")
+    manual_student_headers = await signed_in(client, "student_manual@test.dev")
+    manual_student = await _user_for(manual_student_headers)
+
+    admin_headers = await signed_in(client, "course_admin@test.dev")
+    admin_user = await _user_for(admin_headers)
+    admin_user.role = UserRole.ADMIN
+    await admin_user.save()
+
+    course = await _course()
+    stuck_order_id = await _open_order(client, student_headers, course)
+
+    # Non-admin must be blocked
+    forbidden = await client.get(f"{P}/admin/courses/orders", headers=student_headers)
+    assert forbidden.status_code == 403
+
+    # 1. List stuck course orders
+    orders_resp = await client.get(
+        f"{P}/admin/courses/orders",
+        headers=admin_headers,
+        params={"course_id": str(course.id)},
+    )
+    assert orders_resp.status_code == 200, orders_resp.text
+    orders_data = orders_resp.json()["data"]
+    assert orders_data["total"] >= 1
+    matching = [o for o in orders_data["items"] if o["razorpay_order_id"] == stuck_order_id]
+    assert len(matching) == 1
+    assert matching[0]["status"] == "created"
+    order_db_id = matching[0]["id"]
+
+    # 2. Admin reconciles the stuck order with Razorpay
+    with patch.object(
+        CourseService,
+        "_fetch_order_payments",
+        new=AsyncMock(return_value={"entity": "collection", "items": [_captured(stuck_order_id, "pay_admin_rec_1")]}),
+    ):
+        rec_resp = await client.post(
+            f"{P}/admin/courses/orders/{order_db_id}/reconcile",
+            headers=admin_headers,
+        )
+    assert rec_resp.status_code == 200, rec_resp.text
+    rec_data = rec_resp.json()["data"]
+    assert rec_data["status"] == "paid"
+    assert rec_data["razorpay_payment_id"] == "pay_admin_rec_1"
+
+    # 3. Admin manually grants enrollment to a second student by email
+    grant_resp = await client.post(
+        f"{P}/admin/courses/{course.id}/enrollments",
+        headers=admin_headers,
+        json={
+            "email": manual_student.email,
+            "amount_paid": 1999.0,
+            "payment_id": "utr_manual_123",
+            "note": "Verified bank transfer",
+        },
+    )
+    assert grant_resp.status_code == 201, grant_resp.text
+    granted = grant_resp.json()["data"]
+    assert granted["user_id"] == str(manual_student.id)
+    assert granted["payment_id"] == "utr_manual_123"
+
+    # 4. Admin lists enrollments and revokes the manual one
+    enr_resp = await client.get(
+        f"{P}/admin/courses/enrollments",
+        headers=admin_headers,
+        params={"course_id": str(course.id)},
+    )
+    assert enr_resp.status_code == 200, enr_resp.text
+    assert enr_resp.json()["data"]["total"] == 2
+
+    del_resp = await client.delete(
+        f"{P}/admin/courses/{course.id}/enrollments/{granted['id']}",
+        headers=admin_headers,
+    )
+    assert del_resp.status_code == 200, del_resp.text
+
+    assert (
+        await CourseEnrollment.find_one(
+            CourseEnrollment.user_id == manual_student.id,
+            CourseEnrollment.course_id == course.id,
+        )
+        is None
+    )

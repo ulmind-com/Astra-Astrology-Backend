@@ -350,6 +350,55 @@ async def test_strict_enrollment_gate_no_staff_bypass():
         mock_insert.assert_not_called()
 
 
+def test_course_payment_and_admin_schemas():
+    from datetime import datetime, timezone
+    from app.schemas.course import (
+        AdminCourseOrderListResponse,
+        AdminCourseOrderOut,
+        CourseOrderCreateResponse,
+        CoursePaymentSyncResponse,
+    )
+
+    order_resp = CourseOrderCreateResponse(
+        free_enrolled=True,
+        already_paid=True,
+        course_id="c1",
+        course_title="Vedic Basics",
+        course_slug="vedic-basics",
+        message="Already paid",
+    )
+    assert order_resp.already_paid is True
+
+    sync_resp = CoursePaymentSyncResponse(
+        enrolled=True,
+        status="paid",
+        enrollment_id="e1",
+        course_id="c1",
+        course_slug="vedic-basics",
+        course_title="Vedic Basics",
+        message="Unlocked",
+    )
+    assert sync_resp.enrolled is True
+
+    admin_list = AdminCourseOrderListResponse(
+        items=[
+            AdminCourseOrderOut(
+                id="o1",
+                user_id="u1",
+                course_id="c1",
+                razorpay_order_id="order_123",
+                amount_paise=199900,
+                amount_inr=1999.0,
+                status="created",
+                created_at=datetime.now(timezone.utc),
+            )
+        ],
+        total=1,
+        created_count=1,
+    )
+    assert admin_list.items[0].status == "created"
+
+
 
 
 

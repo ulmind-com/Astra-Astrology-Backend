@@ -15,10 +15,15 @@ from app.models.course import Course, CourseLesson, CourseSection
 from app.schemas.common import ApiResponse
 from app.services.storage import safe_delete_cloudinary_image, upload_file
 from app.schemas.course import (
+    AdminCourseEnrollmentListResponse,
+    AdminCourseEnrollmentOut,
+    AdminCourseOrderListResponse,
+    AdminCourseOrderOut,
     AdminCourseQuestionAnswerRequest,
     AdminCourseQuestionDetailOut,
     AdminCourseQuestionListResponse,
     AdminCourseQuestionUpdateRequest,
+    AdminManualEnrollRequest,
     BunnyCreateVideoRequest,
     BunnyCreateVideoResponse,
     CourseCreateRequest,
@@ -280,6 +285,100 @@ async def admin_upload_course_thumbnail(
         },
         message="Course thumbnail uploaded and compressed successfully.",
     )
+
+
+# -----------------------------------------------------------------------------
+# COURSE ORDERS & ENROLLMENTS MANAGEMENT (ADMIN SUPPORT & RECONCILIATION)
+# (Registered before /{course_id} so static paths are never shadowed)
+# -----------------------------------------------------------------------------
+@router.get("/orders", response_model=ApiResponse[AdminCourseOrderListResponse])
+async def admin_list_course_orders(
+    _: AdminUser,
+    status_filter: Annotated[str | None, Query(alias="status", description="all, created, paid, failed, refunded")] = None,
+    course_id: Annotated[str | None, Query(description="Filter by Course ID")] = None,
+    search: Annotated[str | None, Query(description="Search by email, name, order_id or payment_id")] = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+) -> ApiResponse[AdminCourseOrderListResponse]:
+    """Lists course checkout attempts including incomplete/stuck/failed orders."""
+    cid_oid = PydanticObjectId(course_id) if course_id and PydanticObjectId.is_valid(course_id) else None
+    data = await CourseService.admin_list_course_orders(
+        status_filter=status_filter,
+        course_id=cid_oid,
+        search=search,
+        page=page,
+        limit=limit,
+    )
+    return ApiResponse(data=AdminCourseOrderListResponse(**data))
+
+
+@router.post("/orders/{order_id}/reconcile", response_model=ApiResponse[AdminCourseOrderOut])
+async def admin_reconcile_course_order(
+    order_id: PydanticObjectId,
+    _: AdminUser,
+) -> ApiResponse[AdminCourseOrderOut]:
+    """Asks Razorpay what happened to a stuck course order and unlocks enrollment if captured."""
+    data = await CourseService.admin_reconcile_course_order(order_id)
+    return ApiResponse(
+        message=f"Course order is {data['status']}.",
+        data=AdminCourseOrderOut(**data),
+    )
+
+
+@router.get("/enrollments", response_model=ApiResponse[AdminCourseEnrollmentListResponse])
+async def admin_list_course_enrollments(
+    _: AdminUser,
+    course_id: Annotated[str | None, Query(description="Filter by Course ID")] = None,
+    search: Annotated[str | None, Query(description="Search by student email, name, payment_id or course")] = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+) -> ApiResponse[AdminCourseEnrollmentListResponse]:
+    """Lists active student course enrollments."""
+    cid_oid = PydanticObjectId(course_id) if course_id and PydanticObjectId.is_valid(course_id) else None
+    data = await CourseService.admin_list_course_enrollments(
+        course_id=cid_oid,
+        search=search,
+        page=page,
+        limit=limit,
+    )
+    return ApiResponse(data=AdminCourseEnrollmentListResponse(**data))
+
+
+@router.post("/{course_id}/enrollments", response_model=ApiResponse[AdminCourseEnrollmentOut], status_code=status.HTTP_201_CREATED)
+async def admin_grant_course_enrollment(
+    course_id: PydanticObjectId,
+    payload: AdminManualEnrollRequest,
+    _: AdminUser,
+) -> ApiResponse[AdminCourseEnrollmentOut]:
+    """Manually grants course access to a student by email or user_id."""
+    res = await CourseService.admin_grant_course_enrollment(
+        course_id=course_id,
+        user_id=payload.user_id,
+        email=payload.email,
+        amount_paid=payload.amount_paid,
+        payment_id=payload.payment_id,
+        note=payload.note,
+    )
+    msg = (
+        "Student was already enrolled in this course."
+        if res["already_enrolled"]
+        else "Enrollment granted successfully."
+    )
+    return ApiResponse(message=msg, data=AdminCourseEnrollmentOut(**res["enrollment"]))
+
+
+@router.delete("/{course_id}/enrollments/{enrollment_id}", response_model=ApiResponse[dict])
+async def admin_revoke_course_enrollment(
+    course_id: PydanticObjectId,
+    enrollment_id: PydanticObjectId,
+    _: AdminUser,
+) -> ApiResponse[dict]:
+    """Revokes a student's course enrollment."""
+    await CourseService.admin_revoke_course_enrollment(
+        course_id=course_id,
+        enrollment_id=enrollment_id,
+    )
+    return ApiResponse(data={"message": "Enrollment revoked successfully."})
 
 
 @router.get("/{course_id}", response_model=ApiResponse[CourseDetailOut])
