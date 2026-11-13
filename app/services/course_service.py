@@ -33,12 +33,30 @@ from app.models.course import (
     CourseQuestionAnswer,
     CourseSection,
 )
-from app.models.enums import PaymentOrderStatus
+from app.models.enums import PaymentOrderStatus, UserRole
 from app.models.user import User
 from app.services.payments import _razorpay
 
 
 class CourseService:
+    # Staff may take part in the Q&A of a course they have not bought: an
+    # acharya answering a student is the point of the forum. It does not and
+    # must not imply access to the lessons — that still needs an enrollment.
+    STAFF_ROLES = frozenset({UserRole.ASTROLOGER, UserRole.ADMIN, UserRole.SUPER_ADMIN})
+
+    @staticmethod
+    def _is_staff(user: User) -> bool:
+        """Exact role match, not a substring of it.
+
+        `"admin" in str(role)` happens to be right for today's four roles, but
+        it reads any future role that merely contains the word — a
+        `pending_astrologer`, say — as staff, and nothing would flag it.
+        """
+        try:
+            return UserRole(str(getattr(user, "role", UserRole.USER))) in CourseService.STAFF_ROLES
+        except ValueError:
+            return False
+
     @staticmethod
     async def list_courses(
         category: str | None = None,
@@ -315,23 +333,18 @@ class CourseService:
             CourseEnrollment.course_id == course_id,
         )
         if not enrollment:
-            role_str = str(getattr(user, "role", "user")).lower()
-            if "admin" in role_str or "astrologer" in role_str:
-                enrollment = CourseEnrollment(
-                    user_id=user.id,
-                    course_id=course_id,
-                    payment_id="admin_access",
-                    order_id="admin_access",
-                    amount_paid=0.0,
-                    currency="INR",
-                )
-                await enrollment.insert()
-            else:
-                return {
-                    "progress_percent": 0.0,
-                    "completed_lesson_ids": [],
-                    "message": "Progress update skipped: user is not enrolled",
-                }
+            # Staff used to be enrolled here, silently and for free. The player
+            # calls this endpoint on its own as soon as a video plays, so an
+            # astrologer opening a free-preview lesson of a paid course walked
+            # away with lifetime access to it — and, through the certificate
+            # endpoint below, a certificate for a course they never took.
+            # Admins who need access now grant it to themselves explicitly,
+            # which leaves a record; see the admin enrollment endpoints.
+            return {
+                "progress_percent": 0.0,
+                "completed_lesson_ids": [],
+                "message": "Progress update skipped: user is not enrolled",
+            }
 
         # Upsert Lesson Progress
         prog = await CourseLessonProgress.find_one(
@@ -1665,10 +1678,7 @@ class CourseService:
             CourseEnrollment.user_id == user.id,
             CourseEnrollment.course_id == course_id,
         )
-        user_role_str = str(getattr(user, "role", "user")).lower()
-        is_admin_or_astrologer = "admin" in user_role_str or "astrologer" in user_role_str
-
-        if not enrollment and not lesson.is_free_preview and not is_admin_or_astrologer:
+        if not enrollment and not lesson.is_free_preview and not CourseService._is_staff(user):
             raise ForbiddenError("Please enroll in this course to participate in Gurukul Jigyasa Q&A.")
 
         user_name = getattr(user, "full_name", None) or "Astra Student"
@@ -1732,9 +1742,10 @@ class CourseService:
         if not question:
             raise NotFoundError("Question not found")
 
-        role = getattr(user, "role", "student")
-        role_str = str(role.value) if hasattr(role, "value") else str(role).lower()
-        is_admin_or_acharya = "admin" in role_str or "astrologer" in role_str
+        # The old form here was `str(role.value) if hasattr(role, "value")
+        # else str(role).lower()` — the `.lower()` only ever reached the second
+        # branch, so an uppercase role value would have been read as a student.
+        is_admin_or_acharya = CourseService._is_staff(user)
 
         final_is_official = is_official or is_admin_or_acharya
         user_name = getattr(user, "full_name", None) or ("Acharya Guru" if final_is_official else "Astra Student")
@@ -2843,21 +2854,14 @@ class CourseService:
             CourseEnrollment.course_id == course_id,
         )
         if not enrollment:
-            role_str = str(getattr(user, "role", "user")).lower()
-            if "admin" in role_str or "astrologer" in role_str:
-                enrollment = CourseEnrollment(
-                    user_id=user.id,
-                    course_id=course_id,
-                    payment_id="admin_access",
-                    order_id="admin_access",
-                    amount_paid=0.0,
-                    currency="INR",
-                    progress_percent=100.0,
-                    certificate_issued=True,
-                )
-                await enrollment.insert()
-            else:
-                raise ForbiddenError("You are not enrolled in this course.")
+            # This used to mint an enrollment at 100% with the certificate
+            # already issued, for anyone whose role contained "admin" or
+            # "astrologer" — a verifiable credential for a course they had
+            # never opened. A certificate has to be earned by the person
+            # holding it, whoever they are.
+            raise ForbiddenError(
+                "You are not enrolled in this course.", error_code="not_enrolled"
+            )
 
         # Ensure certificate fields are populated
         if enrollment.progress_percent < 100.0:
