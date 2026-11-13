@@ -110,3 +110,40 @@ async def send_astrologer_welcome_email(to: str, name: str, password: str) -> bo
         ),
     )
     return sent is not None
+
+
+async def send_course_certificate_email(
+    to: str,
+    user_name: str,
+    course_title: str,
+    certificate_id: str,
+    issued_date: str,
+    verify_url: str,
+    instructor_name: str = "Pt. Acharya Rahul Sharma",
+) -> bool:
+    """Dispatches the official Gurukul graduation certificate email to the student."""
+    from app.services.email_templates import course_certificate_email_html
+
+    subject = f"🎓 Congratulations {user_name}! Your Official Certificate of Completion for {course_title}"
+    html = course_certificate_email_html(
+        user_name=user_name,
+        course_title=course_title,
+        certificate_id=certificate_id,
+        issued_date=issued_date,
+        verify_url=verify_url,
+        instructor_name=instructor_name,
+    )
+    text = (
+        f"Congratulations {user_name}!\n\n"
+        f"You have successfully mastered 100% of the lessons in {course_title}.\n"
+        f"Your Official DivinLink Gurukul Certificate ID: {certificate_id}\n\n"
+        f"View and print your certificate here:\n{verify_url}\n\n"
+        "DivinLink Gurukul"
+    )
+    try:
+        sent = await send_email(to=to, subject=subject, html=html, text=text)
+        return sent is not None
+    except Exception as exc:
+        logger.opt(exception=exc).warning("Failed to deliver certificate email to {}", to)
+        return False
+

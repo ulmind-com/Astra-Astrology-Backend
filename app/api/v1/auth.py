@@ -14,8 +14,10 @@ from app.schemas.auth import (
     GoogleAuthRequest,
     OtpSentResult,
     PasswordLogin,
+    RefreshRequest,
     ResendOtpRequest,
     ResetPasswordRequest,
+    TokenPair,
     UserPublic,
 )
 from app.schemas.common import ApiResponse, MessageResponse
@@ -165,6 +167,21 @@ async def reset_password(payload: ResetPasswordRequest) -> MessageResponse:
 async def change_password(payload: ChangePasswordRequest, user: CurrentUser) -> MessageResponse:
     await auth_service.change_password(user, payload.current_password, payload.new_password)
     return MessageResponse(message="Your password has been changed.")
+
+
+@router.post(
+    "/refresh",
+    response_model=ApiResponse[TokenPair],
+    summary="Exchange a refresh token for a new pair",
+)
+async def refresh(payload: RefreshRequest) -> ApiResponse[TokenPair]:
+    """Keeps a signed-in session alive past the access token's day.
+
+    Deliberately takes no bearer token: the access token it is meant to
+    replace has usually expired by the time a client calls this.
+    """
+    tokens = await auth_service.refresh_tokens(payload.refresh_token)
+    return ApiResponse(message="Session refreshed.", data=tokens)
 
 
 @router.get("/me", response_model=ApiResponse[UserPublic], summary="The signed-in user")

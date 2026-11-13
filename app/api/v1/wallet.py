@@ -1,6 +1,7 @@
 """The signed-in user's wallet, and the Razorpay webhook."""
 
 from typing import Annotated, Any
+import json
 
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Header, Query, Request, status
@@ -8,6 +9,7 @@ from loguru import logger
 
 from app.api.dependencies import CurrentUser
 from app.core.config import settings
+from app.core.exceptions import BadRequestError
 from app.models.appointment import Appointment
 from app.models.astrologer import Astrologer
 from app.models.call import CallSession
@@ -367,7 +369,14 @@ async def razorpay_webhook(
     raw = await request.body()
     payment_service.verify_webhook_signature(raw, x_razorpay_signature)
 
-    body = await request.json()
+    try:
+        body = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BadRequestError("Malformed webhook payload.", error_code="invalid_payload") from exc
+
+    if not isinstance(body, dict):
+        raise BadRequestError("Malformed webhook payload.", error_code="invalid_payload")
+
     result = await payment_service.handle_webhook(event_id=x_razorpay_event_id, body=body)
     logger.info("Razorpay webhook '{}' -> {}", body.get("event"), result)
 

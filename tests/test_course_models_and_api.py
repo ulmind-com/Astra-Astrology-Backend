@@ -2,15 +2,19 @@
 
 from unittest.mock import AsyncMock, MagicMock
 import pytest
-from beanie import init_beanie
+from beanie import PydanticObjectId, init_beanie
 
 from app.models.course import (
     Course,
     CourseEnrollment,
     CourseLesson,
     CourseLessonProgress,
+    CourseOrder,
+    CourseQuestion,
+    CourseQuestionAnswer,
     CourseSection,
 )
+from app.models.user import User
 from app.services.course_service import CourseService
 
 
@@ -25,6 +29,9 @@ async def init_mock_beanie():
     mock_coll.create_index = AsyncMock()
     mock_coll.create_indexes = AsyncMock()
     mock_coll.index_information = AsyncMock(return_value={})
+    mock_coll.insert_one = AsyncMock(
+        side_effect=lambda *args, **kwargs: MagicMock(inserted_id=PydanticObjectId())
+    )
     mock_coll.find.return_value.to_list = AsyncMock(return_value=[])
     mock_db.__getitem__.return_value = mock_coll
 
@@ -36,6 +43,9 @@ async def init_mock_beanie():
             CourseLesson,
             CourseEnrollment,
             CourseLessonProgress,
+            CourseOrder,
+            CourseQuestion,
+            User,
         ],
         skip_indexes=True,
     )
@@ -137,6 +147,261 @@ async def test_create_course_order_user_attribute_resilience():
                 assert res["order_id"] == "order_test_123"
                 assert res["amount_paise"] == 14900
                 assert res["course_slug"] == "demo-course-1"
+
+
+def test_course_jigyasa_timestamp_formatting():
+    from app.services.course_service import CourseService
+
+    assert CourseService.format_timestamp(0) == "00:00"
+    assert CourseService.format_timestamp(45) == "00:45"
+    assert CourseService.format_timestamp(185) == "03:05"
+    assert CourseService.format_timestamp(3672) == "01:01:12"
+
+
+def test_course_question_model_structure():
+    from beanie import PydanticObjectId
+    from app.models.course import CourseQuestion, CourseQuestionAnswer
+
+    q = CourseQuestion(
+        course_id=PydanticObjectId(),
+        section_id=PydanticObjectId(),
+        lesson_id=PydanticObjectId(),
+        user_id=PydanticObjectId(),
+        user_name="Rahul Student",
+        timestamp_seconds=125,
+        timestamp_formatted="02:05",
+        title="Doubt regarding Jupiter in 7th House",
+        content="Is Jupiter considered benefic if conjunct Rahu in Navamsha chart?",
+    )
+    assert q.title == "Doubt regarding Jupiter in 7th House"
+    assert q.timestamp_formatted == "02:05"
+    assert q.upvote_count == 0
+    assert q.is_resolved is False
+
+    ans = CourseQuestionAnswer(
+        user_id=PydanticObjectId(),
+        user_name="Pt. Rahul Sharma (Acharya)",
+        user_role="admin",
+        is_official=True,
+        content="Jupiter conjunct Rahu forms Guru Chandal Yoga. Look at the Nakshatra lord for relief.",
+    )
+    q.answers.append(ans)
+    q.answer_count = len(q.answers)
+    q.has_official_answer = True
+    assert q.answer_count == 1
+    assert q.has_official_answer is True
+
+
+def test_admin_course_route_order():
+    """Ensures static routes like /questions precede /{course_id} to prevent path parameter shadowing."""
+    from app.api.v1.admin_course import router
+
+    questions_index = None
+    course_id_index = None
+
+    for idx, r in enumerate(router.routes):
+        if getattr(r, "path", None) == "/admin/courses/questions" and "GET" in getattr(r, "methods", set()):
+            questions_index = idx
+        elif getattr(r, "path", None) == "/admin/courses/{course_id}" and "GET" in getattr(r, "methods", set()):
+            course_id_index = idx
+
+    assert questions_index is not None, "GET /admin/courses/questions route must exist"
+    assert course_id_index is not None, "GET /admin/courses/{course_id} route must exist"
+    assert questions_index < course_id_index, (
+        f"Route shadowing bug! /admin/courses/questions (idx {questions_index}) "
+        f"must be registered before /admin/courses/{{course_id}} (idx {course_id_index})"
+    )
+
+
+def test_course_certificate_generation_and_html():
+    from datetime import datetime, timezone
+    from beanie import PydanticObjectId
+    from app.models.user import User
+    from app.schemas.course import CourseCertificateOut
+
+    user_id = PydanticObjectId()
+    course_id = PydanticObjectId()
+
+    user = User(
+        id=user_id,
+        email="samiran@example.com",
+        first_name="Samiran",
+        last_name="Samanta",
+    )
+    course = Course(
+        id=course_id,
+        title="Vedic Astrology Foundation Masterclass",
+        slug="vedic-astrology-foundation",
+        instructor_name="Acharya Rahul Sharma",
+        instructor_title="Vedic Jyotishacharya",
+    )
+    enrollment = CourseEnrollment(
+        user_id=user_id,
+        course_id=course_id,
+        progress_percent=100.0,
+        certificate_issued=True,
+        certificate_id="ASTRA-CERT-SAMIRAN-TEST",
+        certificate_issued_at=datetime.now(timezone.utc),
+        certificate_url="https://astra-astrology-web.vercel.app/verify/certificate/ASTRA-CERT-SAMIRAN-TEST",
+    )
+
+    cert_data = CourseService.generate_course_certificate_data(enrollment, course, user)
+    # Validate against Pydantic schema
+    cert_out = CourseCertificateOut(**cert_data)
+    assert cert_out.certificate_id == "ASTRA-CERT-SAMIRAN-TEST"
+    assert cert_out.student_name == "Samiran Samanta"
+    assert cert_out.course_title == "Vedic Astrology Foundation Masterclass"
+    assert cert_out.digital_seal["status"] == "VERIFIED_AUTHENTIC"
+    assert cert_out.instructor_name == "Acharya Rahul Sharma"
+    assert len(cert_out.cryptographic_signature) == 64
+    assert len(cert_out.canonical_hash) == 64
+    assert cert_out.is_signature_valid is True
+    assert cert_out.tamper_check["status"] == "CRYPTOGRAPHICALLY_VERIFIED_AUTHENTIC"
+
+    # Test anti-tampering check with forged signature token
+    tampered_data = CourseService.generate_course_certificate_data(
+        enrollment, course, user, signature_token="fake_malicious_signature_token"
+    )
+    assert tampered_data["is_signature_valid"] is False
+    assert tampered_data["tamper_check"]["status"] == "TAMPERED_OR_INVALID_SIGNATURE"
+    assert tampered_data["digital_seal"]["status"] == "TAMPERED"
+
+    # Validate HTML renderer
+    html = CourseService.generate_course_certificate_html(cert_data)
+    assert "Samiran Samanta" in html
+    assert "Vedic Astrology Foundation Masterclass" in html
+    assert "ASTRA-CERT-SAMIRAN-TEST" in html
+    assert "DivinLink Gurukul" in html
+    assert "HMAC-SHA256" in html
+
+
+def test_public_certificate_route_order():
+    """Ensures static /courses/certificate/verify route precedes parameterized /{course_id}."""
+    from app.api.v1.course import router
+
+    verify_idx = None
+    course_id_order_idx = None
+
+    for idx, r in enumerate(router.routes):
+        path = getattr(r, "path", None)
+        if path == "/courses/certificate/verify/{certificate_id}":
+            verify_idx = idx
+        elif path == "/courses/{course_id}/order":
+            course_id_order_idx = idx
+
+    assert verify_idx is not None, "GET /courses/certificate/verify/{certificate_id} route must exist"
+    assert course_id_order_idx is not None, "POST /courses/{course_id}/order route must exist"
+    assert verify_idx < course_id_order_idx, (
+        f"Route order error: verify route ({verify_idx}) must come before course_id route ({course_id_order_idx})"
+    )
+
+
+def test_api_response_ok_and_upload_result():
+    """Ensures ApiResponse.ok helper and UploadResult secure_url are always available and do not raise AttributeError."""
+    from app.schemas.common import ApiResponse
+    from app.services.storage import UploadResult
+
+    resp = ApiResponse.ok(data={"url": "https://res.cloudinary.com/test.webp"}, message="Uploaded")
+    assert resp.success is True
+    assert resp.message == "Uploaded"
+    assert resp.data["url"] == "https://res.cloudinary.com/test.webp"
+
+    res = ApiResponse(data={"key": "val"})
+    assert res.success is True
+    assert res.data["key"] == "val"
+
+    upload = UploadResult(
+        url="https://res.cloudinary.com/sample.webp",
+        public_id="courses/thumbnails/sample",
+        resource_type="image",
+        folder="courses/thumbnails",
+    )
+    assert upload.url == "https://res.cloudinary.com/sample.webp"
+    assert upload.secure_url == upload.url
+
+
+@pytest.mark.asyncio
+async def test_strict_enrollment_gate_no_staff_bypass():
+    """Ensures staff/admin users are NOT automatically enrolled into courses unless explicitly enrolled."""
+    from unittest.mock import patch
+    from beanie import PydanticObjectId
+
+    admin_user = User(
+        first_name="Admin",
+        last_name="Acharya",
+        role="admin",
+        email="admin@gurukul.com",
+    )
+    course = Course(
+        title="Exclusive Paid Masterclass",
+        slug="exclusive-paid-masterclass",
+        price=1999.0,
+    )
+    course.id = PydanticObjectId()
+
+    with patch.object(Course, "find_one", new_callable=AsyncMock, return_value=course), \
+         patch.object(CourseSection, "find", return_value=MagicMock(sort=MagicMock(return_value=MagicMock(to_list=AsyncMock(return_value=[]))))), \
+         patch.object(CourseEnrollment, "find_one", new_callable=AsyncMock, return_value=None), \
+         patch.object(CourseEnrollment, "insert", new_callable=AsyncMock) as mock_insert:
+
+        detail = await CourseService.get_course_by_slug("exclusive-paid-masterclass", user=admin_user)
+        assert detail["is_enrolled"] is False
+        assert detail["user_progress_percent"] == 0.0
+        mock_insert.assert_not_called()
+
+
+def test_course_payment_and_admin_schemas():
+    from datetime import datetime, timezone
+    from app.schemas.course import (
+        AdminCourseOrderListResponse,
+        AdminCourseOrderOut,
+        CourseOrderCreateResponse,
+        CoursePaymentSyncResponse,
+    )
+
+    order_resp = CourseOrderCreateResponse(
+        free_enrolled=True,
+        already_paid=True,
+        course_id="c1",
+        course_title="Vedic Basics",
+        course_slug="vedic-basics",
+        message="Already paid",
+    )
+    assert order_resp.already_paid is True
+
+    sync_resp = CoursePaymentSyncResponse(
+        enrolled=True,
+        status="paid",
+        enrollment_id="e1",
+        course_id="c1",
+        course_slug="vedic-basics",
+        course_title="Vedic Basics",
+        message="Unlocked",
+    )
+    assert sync_resp.enrolled is True
+
+    admin_list = AdminCourseOrderListResponse(
+        items=[
+            AdminCourseOrderOut(
+                id="o1",
+                user_id="u1",
+                course_id="c1",
+                razorpay_order_id="order_123",
+                amount_paise=199900,
+                amount_inr=1999.0,
+                status="created",
+                created_at=datetime.now(timezone.utc),
+            )
+        ],
+        total=1,
+        created_count=1,
+    )
+    assert admin_list.items[0].status == "created"
+
+
+
+
+
 
 
 

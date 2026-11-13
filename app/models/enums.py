@@ -110,6 +110,7 @@ class PaymentOrderStatus(StrEnum):
     PAID = "paid"
     FAILED = "failed"
     EXPIRED = "expired"
+    REFUNDED = "refunded"
 
 
 class CallStatus(StrEnum):

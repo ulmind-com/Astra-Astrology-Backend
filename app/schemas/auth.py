@@ -87,6 +87,12 @@ class UserPublic(BaseModel):
         return str(v)
 
 
+class RefreshRequest(BaseModel):
+    """The refresh token issued at sign-in, exchanged for a fresh pair."""
+
+    refresh_token: str = Field(min_length=10)
+
+
 class TokenPair(BaseModel):
     access_token: str
     refresh_token: str

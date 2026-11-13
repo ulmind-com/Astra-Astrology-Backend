@@ -6,6 +6,7 @@ and login need them.
 
 from datetime import UTC, datetime
 
+from beanie import PydanticObjectId
 from loguru import logger
 
 from app.core.exceptions import (
@@ -17,6 +18,7 @@ from app.core.exceptions import (
 from app.core.security import (
     create_access_token,
     create_refresh_token,
+    decode_token,
     hash_password,
     verify_password,
 )
@@ -39,6 +41,45 @@ def issue_tokens(user: User) -> TokenPair:
         expires_at=access_expires,
         refresh_expires_at=refresh_expires,
     )
+
+
+async def refresh_tokens(refresh_token: str) -> TokenPair:
+    """Exchanges a refresh token for a new pair.
+
+    The access token lasts a day and the refresh token a month, so without
+    this every student had to sign in again daily — and because the course
+    routes treated an expired token as "not signed in", what they actually
+    saw was "you must enroll" on a course they had paid for.
+
+    Both tokens are reissued rather than only the access token, so a student
+    who opens the app every few days stays signed in instead of being pushed
+    back to the sign-in screen a month after they first logged in.
+
+    The tokens are stateless, so the previous refresh token keeps working
+    until its own expiry: this is renewal, not revocation. Revoking a
+    specific session would need the issued `jti`s kept somewhere, which is a
+    separate piece of work and not what this bug was about.
+    """
+    # Raises 401 with `token_expired`, `invalid_token` or `invalid_token_type`,
+    # which is exactly what the clients need to tell apart.
+    payload = decode_token(refresh_token, expected_type="refresh")
+
+    subject = payload.get("sub")
+    if not subject or not PydanticObjectId.is_valid(subject):
+        raise UnauthorizedError("Malformed token subject.", error_code="invalid_token")
+
+    user = await User.get(PydanticObjectId(subject))
+    if user is None:
+        raise UnauthorizedError(
+            "This account no longer exists.", error_code="user_not_found"
+        )
+
+    # A suspended or deleted account must not be able to keep refreshing its
+    # way back in; this raises 403 with its own reason.
+    guard_account_status(user)
+
+    logger.debug("Refreshed tokens for user {}", user.id)
+    return issue_tokens(user)
 
 
 def build_auth_result(user: User, *, is_new_user: bool) -> AuthResult:

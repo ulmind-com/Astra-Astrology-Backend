@@ -1,11 +1,14 @@
 """Course, Lesson, Enrollment, and Certification Document Models for Astra Gurukul LMS."""
 
+import secrets
 from datetime import datetime, timezone
 from typing import Any
 
 from beanie import Document, Indexed, PydanticObjectId
-from pydantic import Field
+from pydantic import BaseModel, Field
 import pymongo
+
+from app.models.enums import PaymentOrderStatus
 
 
 class Course(Document):
@@ -154,13 +157,72 @@ class CourseEnrollment(Document):
     certificate_id: str | None = None
     certificate_url: str | None = None
     certificate_issued_at: datetime | None = None
+    certificate_email_sent: bool = Field(default=False)
+    certificate_signature: str | None = None
+    certificate_canonical_hash: str | None = None
 
     class Settings:
         name = "course_enrollments"
         indexes = [
-            [("user_id", pymongo.ASCENDING), ("course_id", pymongo.ASCENDING)],
+            # Unique, because two paths now race to create it: the browser
+            # coming back from checkout and Razorpay's webhook. Whichever
+            # arrives second must collide rather than enroll the student
+            # twice and count them twice in `total_students`.
+            pymongo.IndexModel(
+                [("user_id", pymongo.ASCENDING), ("course_id", pymongo.ASCENDING)],
+                name="enrollment_user_course_unique",
+                unique=True,
+            ),
             [("course_id", pymongo.ASCENDING)],
+            [("certificate_id", pymongo.ASCENDING)],
             [("enrolled_at", pymongo.DESCENDING)],
+        ]
+
+
+class CourseOrder(Document):
+    """One attempt to buy a course.
+
+    This did not exist, and that is where the money went. A Razorpay order was
+    opened and nothing was written down, so the only thing that could ever
+    turn a payment into an enrollment was the browser coming back to say so.
+    A closed tab, a dropped connection, an app sent to the background during
+    UPI — the money left the bank and no record tied it to anything.
+
+    Kept even when it fails or is abandoned: when a student says they paid and
+    got nothing, this is the only place that shows the attempt happened.
+    """
+
+    user_id: Indexed(PydanticObjectId)
+    course_id: Indexed(PydanticObjectId)
+
+    razorpay_order_id: Indexed(str, unique=True)
+    receipt: str = ""
+
+    # Frozen when the order is opened. The student was shown this price before
+    # they paid, so this is what the payment is checked against even if an
+    # admin re-prices the course while the checkout window is still open.
+    amount_paise: int = Field(gt=0)
+    currency: str = "INR"
+
+    status: PaymentOrderStatus = PaymentOrderStatus.CREATED
+
+    razorpay_payment_id: str | None = None
+    method: str | None = None  # upi / card / netbanking …
+    failure_reason: str | None = None
+    # Which path confirmed it: the browser callback, or the webhook.
+    verified_via: str | None = None
+    paid_at: datetime | None = None
+
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    class Settings:
+        name = "course_orders"
+        indexes = [
+            [("razorpay_order_id", pymongo.ASCENDING)],
+            [("user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+            [("course_id", pymongo.ASCENDING)],
+            [("status", pymongo.ASCENDING)],
         ]
 
 
@@ -182,3 +244,65 @@ class CourseLessonProgress(Document):
             [("user_id", pymongo.ASCENDING), ("lesson_id", pymongo.ASCENDING)],
             [("user_id", pymongo.ASCENDING), ("course_id", pymongo.ASCENDING)],
         ]
+
+
+class CourseQuestionAnswer(BaseModel):
+    """An individual reply or official instructor explanation inside a Q&A thread."""
+
+    id: str = Field(default_factory=lambda: secrets.token_hex(8))
+    user_id: PydanticObjectId
+    user_name: str = "Astra Student"
+    user_role: str = "student"  # "student", "admin", "astrologer"
+    user_avatar: str | None = None
+    is_official: bool = False  # True when answered by Gurukul Acharya / Admin
+    content: str = Field(..., min_length=1, max_length=5000)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class CourseQuestion(Document):
+    """Timestamped discussion or question posted on a specific video lecture in Gurukul LMS."""
+
+    course_id: Indexed(PydanticObjectId)
+    section_id: Indexed(PydanticObjectId)
+    lesson_id: Indexed(PydanticObjectId)
+    user_id: Indexed(PydanticObjectId)
+
+    # Student metadata at time of posting (denormalized for fast list rendering)
+    user_name: str = "Astra Student"
+    user_email: str | None = None
+    user_phone: str | None = None
+    user_avatar: str | None = None
+
+    # Video timestamp in seconds (e.g. 185 = 03:05 in video)
+    timestamp_seconds: int = Field(default=0, ge=0)
+    timestamp_formatted: str = Field(default="00:00")  # "03:05" or "General"
+
+    title: str = Field(..., min_length=2, max_length=300)
+    content: str = Field(..., min_length=2, max_length=5000)
+
+    # Community and Moderation
+    upvote_user_ids: list[str] = Field(default_factory=list)
+    upvote_count: int = Field(default=0)
+    answers: list[CourseQuestionAnswer] = Field(default_factory=list)
+    answer_count: int = Field(default=0)
+
+    # Status & Flags
+    is_resolved: bool = Field(default=False)
+    has_official_answer: bool = Field(default=False)
+    is_pinned: bool = Field(default=False)
+    is_hidden: bool = Field(default=False)
+
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    class Settings:
+        name = "course_questions"
+        indexes = [
+            [("lesson_id", pymongo.ASCENDING), ("timestamp_seconds", pymongo.ASCENDING)],
+            [("course_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+            [("user_id", pymongo.ASCENDING)],
+            [("has_official_answer", pymongo.ASCENDING)],
+            [("is_resolved", pymongo.ASCENDING)],
+        ]
+
