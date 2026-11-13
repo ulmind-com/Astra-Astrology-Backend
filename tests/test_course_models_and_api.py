@@ -322,7 +322,12 @@ def test_api_response_ok_and_upload_result():
 
 @pytest.mark.asyncio
 async def test_strict_enrollment_gate_no_staff_bypass():
-    """Ensures staff/admin users are NOT automatically enrolled into courses unless explicitly enrolled."""
+    """Reading a course page must not enroll a member of staff.
+
+    Narrow on purpose: it only covers `get_course_by_slug`. The two places
+    that actually created enrollments are covered by the tests at the end
+    of this file.
+    """
     from unittest.mock import patch
     from beanie import PydanticObjectId
 
@@ -399,9 +404,78 @@ def test_course_payment_and_admin_schemas():
     assert admin_list.items[0].status == "created"
 
 
+# --------------------------------------------------------- the staff bypass
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", ["astrologer", "admin", "super_admin"])
+async def test_watching_does_not_enroll_a_member_of_staff(role: str):
+    """The hole `test_strict_enrollment_gate_no_staff_bypass` never covered.
+
+    The player calls `update_progress` by itself the moment a video starts.
+    That used to create an enrollment for anyone whose role contained "admin"
+    or "astrologer", so opening the free sample of a paid course handed them
+    the whole thing — for nothing, and for life.
+    """
+    from unittest.mock import patch
+
+    from beanie import PydanticObjectId
+
+    staff = User(first_name="A", last_name="B", role=role, email=f"{role}@gurukul.com")
+    course_id, lesson_id = PydanticObjectId(), PydanticObjectId()
+
+    with patch.object(CourseEnrollment, "find_one", new_callable=AsyncMock, return_value=None), \
+         patch.object(CourseEnrollment, "insert", new_callable=AsyncMock) as mock_insert:
+
+        result = await CourseService.update_progress(
+            user=staff,
+            course_id=course_id,
+            lesson_id=lesson_id,
+            watched_seconds=30,
+            total_seconds=600,
+        )
+
+    mock_insert.assert_not_called()
+    assert result["progress_percent"] == 0.0
+    assert "not enrolled" in result["message"].lower()
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", ["astrologer", "admin", "super_admin"])
+async def test_staff_cannot_mint_a_certificate_for_a_course_they_never_took(role: str):
+    """The second hole, and the worse one.
+
+    This used to create an enrollment already at 100% with the certificate
+    issued — a verifiable credential for a course the holder never opened.
+    """
+    from unittest.mock import patch
+
+    from beanie import PydanticObjectId
+
+    from app.core.exceptions import ForbiddenError
+
+    staff = User(first_name="A", last_name="B", role=role, email=f"{role}2@gurukul.com")
+    course = Course(title="Paid", slug=f"paid-{role}", price=1999.0)
+    course.id = PydanticObjectId()
+
+    with patch.object(Course, "find_one", new_callable=AsyncMock, return_value=course), \
+         patch.object(CourseEnrollment, "find_one", new_callable=AsyncMock, return_value=None), \
+         patch.object(CourseEnrollment, "insert", new_callable=AsyncMock) as mock_insert:
+
+        with pytest.raises(ForbiddenError) as excinfo:
+            await CourseService.get_course_certificate(user=staff, course_id=course.id)
+
+    mock_insert.assert_not_called()
+    assert "not enrolled" in str(excinfo.value).lower()
 
 
+def test_staff_is_decided_by_an_exact_role_not_a_substring():
+    """`"admin" in role` would read a future `pending_astrologer` as staff."""
+    from types import SimpleNamespace
 
+    for role in ("astrologer", "admin", "super_admin"):
+        assert CourseService._is_staff(SimpleNamespace(role=role)) is True, role
 
+    for role in ("user", "pending_astrologer", "admin_assistant", "ex_admin", "badmin"):
+        assert CourseService._is_staff(SimpleNamespace(role=role)) is False, role
+
+    # A user object with no role at all must not come out as staff.
+    assert CourseService._is_staff(SimpleNamespace()) is False
