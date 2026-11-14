@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from typing import Any
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class LessonResourceOut(BaseModel):
@@ -63,6 +63,7 @@ class CourseListItemOut(BaseModel):
     rating_count: int = 0
     is_featured: bool = False
     certificate_enabled: bool = True
+    access_duration_days: int | None = None
     is_enrolled: bool = False
     user_progress_percent: float = 0.0
 
@@ -76,6 +77,8 @@ class CourseDetailOut(CourseListItemOut):
     tags: list[str] = Field(default_factory=list)
     sections: list[CourseSectionOut] = Field(default_factory=list)
     is_enrolled: bool = False
+    is_expired: bool = False
+    expires_at: datetime | None = None
     user_progress_percent: float = 0.0
     certificate_issued: bool = False
     certificate_id: str | None = None
@@ -91,6 +94,8 @@ class CourseEnrollmentOut(BaseModel):
     instructor_name: str | None = None
     enrolled_at: datetime
     expires_at: datetime | None = None
+    is_expired: bool = False
+    access_duration_days: int | None = None
     progress_percent: float
     completed_lesson_ids: list[str]
     certificate_issued: bool
@@ -148,10 +153,24 @@ class CourseCreateRequest(BaseModel):
     promo_video_provider: str = Field(default="youtube")
     price: float = Field(..., ge=0)
     mrp: float = Field(..., ge=0)
+    is_free: bool = False
+    access_duration_days: int | None = Field(
+        default=None, ge=1, description="None = Lifetime Access"
+    )
     certificate_enabled: bool = True
     what_you_will_learn: list[str] = Field(default_factory=list)
     prerequisites: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_pricing_and_free_intent(self) -> "CourseCreateRequest":
+        if self.price <= 0 and not self.is_free:
+            raise ValueError(
+                "Course price is ₹0. To publish a free course, you must explicitly set is_free=True."
+            )
+        if self.price > 0 and self.is_free:
+            raise ValueError("Course price cannot be greater than ₹0 when is_free=True.")
+        return self
 
 
 class CourseUpdateRequest(BaseModel):
@@ -169,12 +188,24 @@ class CourseUpdateRequest(BaseModel):
     promo_video_provider: str | None = None
     price: float | None = None
     mrp: float | None = None
+    is_free: bool | None = None
+    access_duration_days: int | None = Field(default=None, ge=1)
     is_published: bool | None = None
     is_featured: bool | None = None
     certificate_enabled: bool | None = None
     what_you_will_learn: list[str] | None = None
     prerequisites: list[str] | None = None
     tags: list[str] | None = None
+
+    @model_validator(mode="after")
+    def validate_pricing_and_free_intent(self) -> "CourseUpdateRequest":
+        if self.price is not None and self.price <= 0 and self.is_free is not True:
+            raise ValueError(
+                "Course price is set to ₹0. To make a course free, you must explicitly set is_free=True."
+            )
+        if self.price is not None and self.price > 0 and self.is_free is True:
+            raise ValueError("Course price cannot be greater than ₹0 when is_free=True.")
+        return self
 
 
 # Order & Payment Schemas
@@ -496,6 +527,8 @@ class AdminCourseEnrollmentOut(BaseModel):
     progress_percent: float = 0.0
     certificate_issued: bool = False
     enrolled_at: datetime
+    expires_at: datetime | None = None
+    is_expired: bool = False
     last_accessed_at: datetime
 
 
@@ -513,5 +546,7 @@ class AdminManualEnrollRequest(BaseModel):
     amount_paid: float = Field(default=0.0, ge=0)
     payment_id: str | None = Field(default=None, max_length=120)
     note: str | None = Field(default=None, max_length=250)
+    access_duration_days: int | None = Field(default=None, ge=1)
+    expires_at: datetime | None = None
 
 

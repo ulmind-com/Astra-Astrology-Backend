@@ -586,3 +586,108 @@ def test_certificate_numbers_are_random_not_derived():
         suffix = number.removeprefix("ASTRA-CERT-")
         assert len(suffix) == 16, suffix
         assert all(c in "0123456789ABCDEF" for c in suffix), suffix
+
+
+# ------------------------------------------------- expires_at & renewals
+def test_enrollment_active_and_expiration():
+    from datetime import datetime, timedelta, timezone
+    from types import SimpleNamespace
+    from app.services.course_service import CourseService
+
+    # 1. Lifetime access (expires_at is None)
+    lifetime_enr = SimpleNamespace(expires_at=None)
+    assert CourseService.is_enrollment_active(lifetime_enr) is True
+
+    # 2. Future expiration
+    future_enr = SimpleNamespace(expires_at=datetime.now(timezone.utc) + timedelta(days=30))
+    assert CourseService.is_enrollment_active(future_enr) is True
+
+    # 3. Past expiration
+    expired_enr = SimpleNamespace(expires_at=datetime.now(timezone.utc) - timedelta(days=1))
+    assert CourseService.is_enrollment_active(expired_enr) is False
+
+    # 4. None enrollment
+    assert CourseService.is_enrollment_active(None) is False
+
+
+# ------------------------------------------------- price & free course guard
+def test_course_pricing_intent_safeguards():
+    import pytest
+    from pydantic import ValidationError
+    from app.schemas.course import CourseCreateRequest
+
+    base_payload = {
+        "title": "Vedic Astrology Masterclass",
+        "slug": "vedic-astrology-masterclass",
+        "description": "Comprehensive course",
+        "thumbnail_url": "https://example.com/thumb.jpg",
+        "mrp": 2999,
+    }
+
+    # 1. Accidental price 0 without is_free=True must fail
+    with pytest.raises(ValidationError) as exc:
+        CourseCreateRequest(**base_payload, price=0.0, is_free=False)
+    assert "Course price is ₹0. To publish a free course" in str(exc.value)
+
+    # 2. Explicit free course with is_free=True must succeed
+    free_req = CourseCreateRequest(**base_payload, price=0.0, is_free=True)
+    assert free_req.price == 0.0
+    assert free_req.is_free is True
+
+    # 3. Paid course with positive price must succeed
+    paid_req = CourseCreateRequest(**base_payload, price=999.0, is_free=False)
+    assert paid_req.price == 999.0
+    assert paid_req.is_free is False
+
+    # 4. Inconsistent: positive price with is_free=True must fail
+    with pytest.raises(ValidationError) as exc2:
+        CourseCreateRequest(**base_payload, price=999.0, is_free=True)
+    assert "Course price cannot be greater than ₹0 when is_free=True" in str(exc2.value)
+
+
+# ------------------------------------------------- youtube_unlisted masking
+@pytest.mark.asyncio
+async def test_youtube_unlisted_video_id_is_masked_from_stream_response():
+    from unittest.mock import AsyncMock, patch
+    from beanie import PydanticObjectId
+    from types import SimpleNamespace
+    from app.services.course_service import CourseService
+    from app.models.course import CourseLesson, CourseEnrollment, CourseLessonProgress
+
+    mock_lesson = SimpleNamespace(
+        id=PydanticObjectId(),
+        course_id=PydanticObjectId(),
+        title="Secret Paid Lesson",
+        is_published=True,
+        is_free_preview=False,
+        video_provider="youtube_unlisted",
+        video_id="RAW_UNLISTED_YT_ID_123",
+        library_id=None,
+        duration_minutes=45,
+        notes_markdown="",
+        resources=[],
+    )
+
+    mock_enr = SimpleNamespace(
+        id=PydanticObjectId(),
+        expires_at=None,
+        completed_lesson_ids=[],
+    )
+
+    with patch.object(CourseLesson, "find_one", AsyncMock(return_value=mock_lesson)):
+        with patch.object(CourseEnrollment, "find_one", AsyncMock(return_value=mock_enr)):
+            with patch.object(CourseLessonProgress, "find_one", AsyncMock(return_value=None)):
+                with patch("app.models.user.User"):
+                    mock_user = SimpleNamespace(id=PydanticObjectId(), email="student@example.com")
+                    stream_res = await CourseService.get_lesson_stream(
+                        course_id=mock_lesson.course_id,
+                        lesson_id=mock_lesson.id,
+                        user=mock_user,
+                    )
+
+                    # Raw video_id must NOT be exposed
+                    assert stream_res["video_id"] is None
+                    # Secure embed URL must be provided with rel=0 & modestbranding
+                    assert "RAW_UNLISTED_YT_ID_123" in stream_res["embed_url"]
+                    assert "youtube-nocookie.com/embed" in stream_res["embed_url"]
+                    assert "rel=0" in stream_res["embed_url"]

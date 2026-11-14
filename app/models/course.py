@@ -63,6 +63,11 @@ class Course(Document):
     is_featured: bool = Field(default=False)
     certificate_enabled: bool = Field(default=True, description="Whether students get a verifiable certificate")
     is_deleted: bool = Field(default=False)
+    access_duration_days: int | None = Field(
+        default=None,
+        ge=1,
+        description="Access validity duration in days. None = Lifetime Access",
+    )
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

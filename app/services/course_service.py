@@ -6,7 +6,7 @@ import hmac
 import json
 import secrets
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from beanie import PydanticObjectId
@@ -80,6 +80,15 @@ class CourseService:
             return UserRole(str(getattr(user, "role", UserRole.USER))) in CourseService.STAFF_ROLES
         except ValueError:
             return False
+
+    @staticmethod
+    def is_enrollment_active(enrollment: CourseEnrollment | None) -> bool:
+        """Determines whether a course enrollment is currently valid and unexpired."""
+        if not enrollment:
+            return False
+        if enrollment.expires_at is None:
+            return True  # None represents Lifetime Access
+        return datetime.now(timezone.utc) < _aware_utc(enrollment.expires_at)
 
     @staticmethod
     def mint_certificate_id() -> str:
@@ -176,6 +185,8 @@ class CourseService:
 
         # Check if user is enrolled
         is_enrolled = False
+        is_expired = False
+        enrollment_expires_at = None
         user_progress_percent = 0.0
         completed_lesson_ids: set[str] = set()
 
@@ -185,7 +196,10 @@ class CourseService:
                 CourseEnrollment.course_id == course.id,
             )
             if enrollment:
-                is_enrolled = True
+                is_active = CourseService.is_enrollment_active(enrollment)
+                is_enrolled = is_active
+                is_expired = not is_active
+                enrollment_expires_at = enrollment.expires_at
                 completed_lesson_ids = set(enrollment.completed_lesson_ids)
                 total_published = await CourseLesson.find(
                     CourseLesson.course_id == course.id,
@@ -197,7 +211,7 @@ class CourseService:
                         enrollment.progress_percent = calculated_prog
                         await enrollment.save()
                 user_progress_percent = enrollment.progress_percent
-                if enrollment.progress_percent >= 100:
+                if is_active and enrollment.progress_percent >= 100:
                     web_url = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app")
                     if not enrollment.certificate_id:
                         enrollment.certificate_id = CourseService.mint_certificate_id()
@@ -234,6 +248,12 @@ class CourseService:
             lessons_data = []
             for les in lessons:
                 can_view = is_enrolled or les.is_free_preview
+                # Security hardening: Never expose raw unlisted YouTube video IDs in course hierarchy
+                masked_video_id = (
+                    None
+                    if les.video_provider == "youtube_unlisted"
+                    else (les.video_id if can_view else None)
+                )
                 lessons_data.append(
                     {
                         "id": str(les.id),
@@ -245,7 +265,7 @@ class CourseService:
                         "summary": les.summary,
                         "resources_count": len(les.resources or []),
                         "video_provider": les.video_provider if can_view else None,
-                        "video_id": les.video_id if can_view else None,
+                        "video_id": masked_video_id,
                         "is_completed": str(les.id) in completed_lesson_ids,
                     }
                 )
@@ -264,6 +284,8 @@ class CourseService:
         course_dict["id"] = str(course.id)
         course_dict["sections"] = sections_out
         course_dict["is_enrolled"] = is_enrolled
+        course_dict["is_expired"] = is_expired
+        course_dict["expires_at"] = enrollment_expires_at
         course_dict["user_progress_percent"] = user_progress_percent
         course_dict["certificate_issued"] = enrollment.certificate_issued if user and enrollment else False
         course_dict["certificate_id"] = enrollment.certificate_id if user and enrollment else None
@@ -286,22 +308,34 @@ class CourseService:
 
         # Enrollment verification unless it is a free preview
         is_enrolled = False
+        is_expired = False
         if user:
             enrollment = await CourseEnrollment.find_one(
                 CourseEnrollment.user_id == user.id,
                 CourseEnrollment.course_id == course_id,
             )
             if enrollment:
-                is_enrolled = True
+                if CourseService.is_enrollment_active(enrollment):
+                    is_enrolled = True
+                else:
+                    is_expired = True
 
         if not is_enrolled and not lesson.is_free_preview:
-            # Two different problems that used to share one message. A student
-            # whose session had simply ended was told to enroll in a course
-            # they had already paid for, so they tried to buy it again.
+            # Clear error reporting: distinguish between logged out, not enrolled, and expired
             if user is None:
                 raise UnauthorizedError(
                     "Please sign in to watch this lesson.",
                     error_code="sign_in_required",
+                )
+            if is_expired:
+                expiry_dt = (
+                    enrollment.expires_at.strftime("%d %B %Y")
+                    if enrollment and enrollment.expires_at
+                    else "previously"
+                )
+                raise ForbiddenError(
+                    f"Your course enrollment expired on {expiry_dt}. Please re-enroll to continue watching.",
+                    error_code="enrollment_expired",
                 )
             raise ForbiddenError(
                 "You must enroll in this course to watch this lesson.",
@@ -325,7 +359,10 @@ class CourseService:
         token = None
 
         if lesson.video_provider == "youtube_unlisted":
-            embed_url = f"https://www.youtube-nocookie.com/embed/{lesson.video_id}?rel=0&modestbranding=1"
+            embed_url = (
+                f"https://www.youtube-nocookie.com/embed/{lesson.video_id}"
+                f"?rel=0&modestbranding=1&controls=1&showinfo=0&disablekb=1&playsinline=1"
+            )
         elif lesson.video_provider == "bunny_stream":
             # Bunny.net secure player iframe with SHA-256 token authentication
             lib_id = lesson.library_id or settings.BUNNY_STREAM_LIBRARY_ID
@@ -384,7 +421,7 @@ class CourseService:
             "lesson_id": str(lesson.id),
             "title": lesson.title,
             "video_provider": lesson.video_provider,
-            "video_id": lesson.video_id,
+            "video_id": None if lesson.video_provider == "youtube_unlisted" else lesson.video_id,
             "library_id": lesson.library_id,
             "embed_url": embed_url,
             "token": token,
@@ -410,7 +447,7 @@ class CourseService:
             CourseEnrollment.user_id == user.id,
             CourseEnrollment.course_id == course_id,
         )
-        if not enrollment:
+        if not enrollment or not CourseService.is_enrollment_active(enrollment):
             # Staff used to be enrolled here, silently and for free. The player
             # calls this endpoint on its own as soon as a video plays, so an
             # astrologer opening a free-preview lesson of a paid course walked
@@ -418,10 +455,19 @@ class CourseService:
             # endpoint below, a certificate for a course they never took.
             # Admins who need access now grant it to themselves explicitly,
             # which leaves a record; see the admin enrollment endpoints.
+            msg = (
+                "Progress update skipped: enrollment expired"
+                if enrollment
+                else "Progress update skipped: user is not enrolled"
+            )
             return {
-                "progress_percent": 0.0,
+                "progress_percent": enrollment.progress_percent if enrollment else 0.0,
                 "completed_lesson_ids": [],
-                "message": "Progress update skipped: user is not enrolled",
+                "is_lesson_completed": False,
+                "certificate_issued": False,
+                "certificate_id": None,
+                "certificate_url": None,
+                "message": msg,
             }
 
         lesson = await CourseLesson.find_one(
@@ -580,12 +626,12 @@ class CourseService:
         if not course:
             raise NotFoundError("Course not found")
 
-        # Check existing enrollment
+        # Check existing enrollment (only active, unexpired enrollments prevent purchasing)
         existing = await CourseEnrollment.find_one(
             CourseEnrollment.user_id == user.id,
             CourseEnrollment.course_id == course.id,
         )
-        if existing:
+        if existing and CourseService.is_enrollment_active(existing):
             return {
                 "free_enrolled": True,
                 "course_id": str(course.id),
@@ -594,14 +640,38 @@ class CourseService:
                 "message": "Already enrolled",
             }
 
+        now = datetime.now(timezone.utc)
+        access_days = getattr(course, "access_duration_days", None)
+        expires_at = (
+            now + timedelta(days=access_days)
+            if (isinstance(access_days, int) and access_days > 0)
+            else None
+        )
+
         # If completely free (₹0)
         if course.price <= 0:
+            if existing:
+                existing.expires_at = expires_at
+                existing.enrolled_at = now
+                existing.payment_id = "FREE_ENROLLMENT_RENEW"
+                existing.order_id = "FREE_ORDER_RENEW"
+                await existing.save()
+                return {
+                    "free_enrolled": True,
+                    "course_id": str(course.id),
+                    "course_title": course.title,
+                    "course_slug": course.slug,
+                    "message": "Successfully renewed free course access",
+                }
+
             enrollment = CourseEnrollment(
                 user_id=user.id,
                 course_id=course.id,
                 amount_paid=0.0,
                 payment_id="FREE_ENROLLMENT",
                 order_id="FREE_ORDER",
+                enrolled_at=now,
+                expires_at=expires_at,
             )
             try:
                 await enrollment.insert()
@@ -985,6 +1055,14 @@ class CourseService:
                 "The payment does not match the order.", error_code="amount_mismatch"
             )
 
+        now = datetime.now(timezone.utc)
+        access_days = getattr(course, "access_duration_days", None)
+        expires_at = (
+            now + timedelta(days=access_days)
+            if (isinstance(access_days, int) and access_days > 0)
+            else None
+        )
+
         enrollment = await CourseEnrollment.find_one(
             CourseEnrollment.user_id == order.user_id,
             CourseEnrollment.course_id == order.course_id,
@@ -997,6 +1075,8 @@ class CourseService:
                 order_id=order.razorpay_order_id,
                 amount_paid=amount_paise / 100,
                 currency=order.currency,
+                enrolled_at=now,
+                expires_at=expires_at,
             )
             try:
                 await enrollment.insert()
@@ -1018,6 +1098,22 @@ class CourseService:
                 logger.info(
                     "User {} enrolled in course {} via {}", order.user_id, order.course_id, via
                 )
+        else:
+            # Re-enrollment or renewal: update access validity window
+            enrollment.payment_id = payment_id
+            enrollment.order_id = order.razorpay_order_id
+            enrollment.amount_paid = amount_paise / 100
+            enrollment.currency = order.currency
+            enrollment.enrolled_at = now
+            enrollment.expires_at = expires_at
+            await enrollment.save()
+            logger.info(
+                "User {} renewed course {} via {} (expires on {})",
+                order.user_id,
+                order.course_id,
+                via,
+                expires_at,
+            )
 
         if order.status is not PaymentOrderStatus.PAID:
             order.status = PaymentOrderStatus.PAID
@@ -1362,6 +1458,11 @@ class CourseService:
                     "progress_percent": e.progress_percent,
                     "certificate_issued": e.certificate_issued,
                     "enrolled_at": e.enrolled_at,
+                    "expires_at": e.expires_at,
+                    "is_expired": bool(
+                        e.expires_at
+                        and datetime.now(timezone.utc) >= _aware_utc(e.expires_at)
+                    ),
                     "last_accessed_at": e.last_accessed_at,
                 }
             )
@@ -1401,6 +1502,8 @@ class CourseService:
         amount_paid: float = 0.0,
         payment_id: str | None = None,
         note: str | None = None,
+        access_duration_days: int | None = None,
+        expires_at: datetime | None = None,
     ) -> dict[str, Any]:
         """Manually grants course access to a student (support / recovery path)."""
         course = await Course.find_one(Course.id == course_id, Course.is_deleted == False)
@@ -1418,11 +1521,31 @@ class CourseService:
         if student is None:
             raise NotFoundError("Student account not found.")
 
+        now = datetime.now(timezone.utc)
+        target_expires_at = expires_at
+        if target_expires_at is None:
+            access_days = access_duration_days or getattr(course, "access_duration_days", None)
+            if isinstance(access_days, int) and access_days > 0:
+                target_expires_at = now + timedelta(days=access_days)
+
+        ref_payment_id = (
+            payment_id.strip()
+            if payment_id and payment_id.strip()
+            else f"ADMIN_GRANT:{(note or 'support').strip()[:80]}"
+        )
+
         existing = await CourseEnrollment.find_one(
             CourseEnrollment.user_id == student.id,
             CourseEnrollment.course_id == course.id,
         )
         if existing is not None:
+            # If target expiration was provided or existing was expired, update expiration
+            if target_expires_at is not None or not CourseService.is_enrollment_active(existing):
+                existing.expires_at = target_expires_at
+                existing.payment_id = ref_payment_id
+                existing.amount_paid = float(amount_paid)
+                await existing.save()
+
             users_map, courses_map = {str(student.id): student}, {str(course.id): course}
             u = users_map.get(str(existing.user_id))
             c = courses_map.get(str(existing.course_id))
@@ -1446,15 +1569,15 @@ class CourseService:
                     "progress_percent": existing.progress_percent,
                     "certificate_issued": existing.certificate_issued,
                     "enrolled_at": existing.enrolled_at,
+                    "expires_at": existing.expires_at,
+                    "is_expired": bool(
+                        existing.expires_at
+                        and datetime.now(timezone.utc) >= _aware_utc(existing.expires_at)
+                    ),
                     "last_accessed_at": existing.last_accessed_at,
                 },
             }
 
-        ref_payment_id = (
-            payment_id.strip()
-            if payment_id and payment_id.strip()
-            else f"ADMIN_GRANT:{(note or 'support').strip()[:80]}"
-        )
         enrollment = CourseEnrollment(
             user_id=student.id,
             course_id=course.id,
@@ -1462,6 +1585,8 @@ class CourseService:
             order_id="ADMIN_MANUAL_ENROLL",
             amount_paid=float(amount_paid),
             currency=course.currency or "INR",
+            enrolled_at=now,
+            expires_at=target_expires_at,
         )
         try:
             await enrollment.insert()
@@ -1494,6 +1619,11 @@ class CourseService:
                 "progress_percent": enrollment.progress_percent,
                 "certificate_issued": enrollment.certificate_issued,
                 "enrolled_at": enrollment.enrolled_at,
+                "expires_at": enrollment.expires_at,
+                "is_expired": bool(
+                    enrollment.expires_at
+                    and datetime.now(timezone.utc) >= _aware_utc(enrollment.expires_at)
+                ),
                 "last_accessed_at": enrollment.last_accessed_at,
             },
         }
@@ -1545,6 +1675,11 @@ class CourseService:
                         "instructor_name": course.instructor_name,
                         "enrolled_at": e.enrolled_at,
                         "expires_at": e.expires_at,
+                        "is_expired": bool(
+                            e.expires_at
+                            and datetime.now(timezone.utc) >= _aware_utc(e.expires_at)
+                        ),
+                        "access_duration_days": course.access_duration_days,
                         "progress_percent": e.progress_percent,
                         "completed_lesson_ids": e.completed_lesson_ids,
                         "certificate_issued": e.certificate_issued,
@@ -1817,8 +1952,17 @@ class CourseService:
             CourseEnrollment.user_id == user.id,
             CourseEnrollment.course_id == course_id,
         )
-        if not enrollment and not lesson.is_free_preview and not CourseService._is_staff(user):
-            raise ForbiddenError("Please enroll in this course to participate in Gurukul Jigyasa Q&A.")
+        is_active = CourseService.is_enrollment_active(enrollment)
+        if not is_active and not lesson.is_free_preview and not CourseService._is_staff(user):
+            if enrollment:
+                raise ForbiddenError(
+                    "Your course enrollment has expired. Please renew your access to participate in Gurukul Jigyasa Q&A.",
+                    error_code="enrollment_expired",
+                )
+            raise ForbiddenError(
+                "Please enroll in this course to participate in Gurukul Jigyasa Q&A.",
+                error_code="not_enrolled",
+            )
 
         user_name = getattr(user, "full_name", None) or "Astra Student"
         user_phone = getattr(user, "phone", None) or getattr(user, "mobile_number", None) or ""

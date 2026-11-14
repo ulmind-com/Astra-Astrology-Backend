@@ -134,6 +134,7 @@ async def admin_create_course(
         mrp=payload.mrp,
         discount_percent=discount,
         certificate_enabled=payload.certificate_enabled,
+        access_duration_days=payload.access_duration_days,
         what_you_will_learn=payload.what_you_will_learn,
         prerequisites=payload.prerequisites,
         tags=payload.tags,
@@ -358,6 +359,8 @@ async def admin_grant_course_enrollment(
         amount_paid=payload.amount_paid,
         payment_id=payload.payment_id,
         note=payload.note,
+        access_duration_days=payload.access_duration_days,
+        expires_at=payload.expires_at,
     )
     msg = (
         "Student was already enrolled in this course."
@@ -488,6 +491,7 @@ async def admin_update_course(
     data = payload.model_dump(exclude_unset=True)
     # Don't re-assign slug from data since handled above
     data.pop("slug", None)
+    data.pop("is_free", None)
     for k, v in data.items():
         setattr(course, k, v)
 
