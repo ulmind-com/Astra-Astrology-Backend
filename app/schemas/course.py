@@ -122,6 +122,15 @@ class LessonProgressUpdateRequest(BaseModel):
     mark_completed: bool = False
 
 
+class LessonProgressUpdateResponse(BaseModel):
+    progress_percent: float = Field(default=0.0, ge=0, le=100)
+    is_lesson_completed: bool = False
+    certificate_issued: bool = False
+    certificate_id: str | None = None
+    certificate_url: str | None = None
+    message: str | None = None
+
+
 class CourseCreateRequest(BaseModel):
     title: str = Field(..., min_length=3, max_length=200)
     slug: str = Field(..., min_length=3, max_length=220)

@@ -479,3 +479,110 @@ def test_staff_is_decided_by_an_exact_role_not_a_substring():
 
     # A user object with no role at all must not come out as staff.
     assert CourseService._is_staff(SimpleNamespace()) is False
+
+
+# ------------------------------------------------- earning a certificate
+def test_a_lesson_cannot_be_completed_by_simply_saying_so():
+    """The ten-second certificate.
+
+    `mark_completed` comes from the same client that reports the position, so
+    one request per lesson used to carry a student to 100% — certificate
+    issued and emailed — without a second of video being played.
+    """
+    from types import SimpleNamespace
+
+    from app.services.course_service import CourseService
+
+    lesson = SimpleNamespace(duration_minutes=40)
+    claimed = SimpleNamespace(credited_seconds=1, total_seconds=1)
+
+    assert (
+        CourseService._has_watched_enough(
+            lesson=lesson, prog=claimed, mark_completed=True
+        )
+        is False
+    )
+
+
+def test_a_lesson_completes_once_enough_of_it_has_been_credited():
+    from types import SimpleNamespace
+
+    from app.services.course_service import COMPLETION_FRACTION, CourseService
+
+    lesson = SimpleNamespace(duration_minutes=40)
+    needed = int(40 * 60 * COMPLETION_FRACTION)
+
+    just_under = SimpleNamespace(credited_seconds=needed - 1, total_seconds=2400)
+    assert CourseService._has_watched_enough(
+        lesson=lesson, prog=just_under, mark_completed=True
+    ) is False
+
+    enough = SimpleNamespace(credited_seconds=needed, total_seconds=2400)
+    assert CourseService._has_watched_enough(
+        lesson=lesson, prog=enough, mark_completed=True
+    ) is True
+
+
+def test_the_servers_own_duration_is_what_counts():
+    """A client that inflates its own `total_seconds` gains nothing."""
+    from types import SimpleNamespace
+
+    from app.services.course_service import CourseService
+
+    lesson = SimpleNamespace(duration_minutes=40)
+    # Claims the lesson is two seconds long and that both were watched.
+    liar = SimpleNamespace(credited_seconds=2, total_seconds=2)
+
+    assert CourseService._has_watched_enough(
+        lesson=lesson, prog=liar, mark_completed=True
+    ) is False
+
+
+def test_a_lesson_with_no_recorded_length_falls_back_to_the_player():
+    """Older lessons have no duration. They must still be completable."""
+    from types import SimpleNamespace
+
+    from app.services.course_service import COMPLETION_FRACTION, CourseService
+
+    lesson = SimpleNamespace(duration_minutes=0)
+    prog = SimpleNamespace(credited_seconds=int(600 * COMPLETION_FRACTION), total_seconds=600)
+
+    assert CourseService._has_watched_enough(
+        lesson=lesson, prog=prog, mark_completed=True
+    ) is True
+
+
+def test_real_time_is_what_bounds_the_credit():
+    """A 40 minute lesson cannot be credited in ten seconds, whatever the
+    player claims, because credit is capped by the clock."""
+    from app.services.course_service import (
+        COMPLETION_FRACTION,
+        MAX_PLAYBACK_SPEED,
+        PING_GRACE_SECONDS,
+    )
+
+    needed = 40 * 60 * COMPLETION_FRACTION
+    # The most that can be credited in ten seconds of real time.
+    best_case = 10 * MAX_PLAYBACK_SPEED + PING_GRACE_SECONDS
+    assert best_case < needed
+
+    # And the honest floor: even at the fastest playback the players offer.
+    minimum_real_seconds = needed / MAX_PLAYBACK_SPEED
+    assert minimum_real_seconds > 13 * 60
+
+
+# ------------------------------------------------- the certificate number
+def test_certificate_numbers_are_random_not_derived():
+    """They used to be built out of the ids they belonged to, so one student's
+    number could be worked out from another's — and two students whose
+    ObjectIds ended alike shared a number outright."""
+    from app.services.course_service import CourseService
+
+    minted = {CourseService.mint_certificate_id() for _ in range(500)}
+    assert len(minted) == 500, "certificate numbers collided"
+
+    for number in list(minted)[:20]:
+        assert number.startswith("ASTRA-CERT-")
+        suffix = number.removeprefix("ASTRA-CERT-")
+        assert len(suffix) == 16, suffix
+        assert all(c in "0123456789ABCDEF" for c in suffix), suffix

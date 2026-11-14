@@ -25,6 +25,7 @@ from app.schemas.course import (
     CourseQuestionCreateRequest,
     CourseQuestionOut,
     LessonProgressUpdateRequest,
+    LessonProgressUpdateResponse,
     LessonStreamResponse,
 )
 from app.services.course_service import CourseService
@@ -226,14 +227,14 @@ async def get_lesson_stream(
 
 @router.post(
     "/{course_id}/lessons/{lesson_id}/progress",
-    response_model=ApiResponse[dict],
+    response_model=ApiResponse[LessonProgressUpdateResponse],
 )
 async def update_lesson_progress(
     course_id: PydanticObjectId,
     lesson_id: PydanticObjectId,
     payload: LessonProgressUpdateRequest,
     user: Annotated[User, Depends(get_current_user)],
-) -> ApiResponse[dict]:
+) -> ApiResponse[LessonProgressUpdateResponse]:
     """Saves student playback position and recalculates overall course completion percentage."""
     result = await CourseService.update_progress(
         user=user,
@@ -243,22 +244,7 @@ async def update_lesson_progress(
         total_seconds=payload.total_seconds,
         mark_completed=payload.mark_completed,
     )
-    return ApiResponse(data=result)
-
-
-@router.post("/{course_id}/sync-payment", response_model=ApiResponse[CoursePaymentSyncResponse])
-async def sync_course_payment(
-    course_id: PydanticObjectId,
-    user: Annotated[User, Depends(get_current_user)],
-    payload: CoursePaymentSyncRequest | None = None,
-) -> ApiResponse[CoursePaymentSyncResponse]:
-    """Recovers/confirms course enrollment by checking DB enrollment + Razorpay order status."""
-    result = await CourseService.sync_course_payment(
-        user=user,
-        course_id=course_id,
-        razorpay_order_id=payload.razorpay_order_id if payload else None,
-    )
-    return ApiResponse(data=CoursePaymentSyncResponse(**result))
+    return ApiResponse(data=LessonProgressUpdateResponse(**result))
 
 
 # -----------------------------------------------------------------------------

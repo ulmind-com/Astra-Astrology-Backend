@@ -174,7 +174,14 @@ class CourseEnrollment(Document):
                 unique=True,
             ),
             [("course_id", pymongo.ASCENDING)],
-            [("certificate_id", pymongo.ASCENDING)],
+            # Unique and sparse: a certificate number must identify exactly
+            # one credential, and most enrollments have not earned one yet.
+            pymongo.IndexModel(
+                [("certificate_id", pymongo.ASCENDING)],
+                name="enrollment_certificate_unique",
+                unique=True,
+                partialFilterExpression={"certificate_id": {"$type": "string"}},
+            ),
             [("enrolled_at", pymongo.DESCENDING)],
         ]
 
@@ -233,9 +240,20 @@ class CourseLessonProgress(Document):
     course_id: Indexed(PydanticObjectId)
     lesson_id: Indexed(PydanticObjectId)
 
+    # What the player says the playhead is at. Useful for resuming, and
+    # nothing else: it comes from the client and a client can say anything.
     watched_seconds: int = Field(default=0, ge=0)
     total_seconds: int = Field(default=0, ge=0)
+
+    # What the server is willing to believe was actually watched. Advanced in
+    # steps no larger than the real time that passed between check-ins, so a
+    # whole course cannot be completed in one request — which is how students
+    # were collecting certificates in seconds.
+    credited_seconds: int = Field(default=0, ge=0)
+    first_watched_at: datetime | None = None
+
     is_completed: bool = Field(default=False)
+    completed_at: datetime | None = None
     last_watched_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     class Settings:

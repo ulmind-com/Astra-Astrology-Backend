@@ -38,6 +38,30 @@ from app.models.user import User
 from app.services.payments import _razorpay
 
 
+def _aware_utc(value: datetime) -> datetime:
+    """Mongo hands back naive datetimes; compare them in UTC."""
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+# --- how a lesson is judged to have been watched -----------------------------
+# Players report their own position, so the server credits time against its own
+# clock instead. These are the allowances that keep honest viewers unaffected.
+
+# Fast playback is normal; 2.5x covers every speed the players offer. A 40
+# minute lesson therefore still needs about 15 minutes of real time.
+MAX_PLAYBACK_SPEED = 2.5
+# Pings are not perfectly regular, and one can be missed entirely.
+PING_GRACE_SECONDS = 15
+# A first check-in has no previous one to measure from.
+FIRST_PING_CREDIT_SECONDS = 15
+# Every legitimate lesson has a duration floor so an attacker cannot report
+# duration = 1s and complete the course in seconds.
+MIN_LESSON_SECONDS = 60
+# How much of a lesson counts as having watched it. The last tenth is usually
+# credits and goodbyes.
+COMPLETION_FRACTION = 0.90
+
+
 class CourseService:
     # Staff may take part in the Q&A of a course they have not bought: an
     # acharya answering a student is the point of the forum. It does not and
@@ -56,6 +80,48 @@ class CourseService:
             return UserRole(str(getattr(user, "role", UserRole.USER))) in CourseService.STAFF_ROLES
         except ValueError:
             return False
+
+    @staticmethod
+    def mint_certificate_id() -> str:
+        """A fresh, unguessable credential number.
+
+        These used to be built from the ids they belonged to —
+        `ASTRA-CERT-{user_id[-6:]}-{course_id[-4:]}` — which made them both
+        guessable from a student's id and able to collide: two students whose
+        ObjectIds happen to end the same way, on the same course, were issued
+        the same certificate number.
+
+        Existing numbers are left alone, so every certificate already in
+        circulation keeps verifying.
+        """
+        return f"ASTRA-CERT-{secrets.token_hex(8).upper()}"
+
+    @staticmethod
+    def _has_watched_enough(
+        *,
+        lesson: CourseLesson,
+        prog: CourseLessonProgress,
+        mark_completed: bool = False,
+    ) -> bool:
+        """Whether this lesson counts as watched.
+
+        `mark_completed` is honoured only when the time backs it up. It still
+        matters: a player that reaches the end fires it, and without it a
+        lesson whose last seconds are silent credits would never close.
+        """
+        # The length we hold ourselves, not the one the client reported.
+        duration = (getattr(lesson, "duration_minutes", 0) or 0) * 60
+        if duration <= 0:
+            # An unpublished duration is common on older lessons. Fall back to
+            # the player's own figure, bounded by MIN_LESSON_SECONDS floor.
+            duration = max(getattr(prog, "total_seconds", 0) or 0, MIN_LESSON_SECONDS)
+
+        # Enforce minimum duration floor so duration cannot be spoofed to 1 second
+        effective_duration = max(duration, MIN_LESSON_SECONDS)
+        required = int(effective_duration * COMPLETION_FRACTION)
+        credited = getattr(prog, "credited_seconds", 0) or 0
+        return credited >= required
+
 
     @staticmethod
     async def list_courses(
@@ -134,10 +200,22 @@ class CourseService:
                 if enrollment.progress_percent >= 100:
                     web_url = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app")
                     if not enrollment.certificate_id:
-                        enrollment.certificate_id = f"ASTRA-CERT-{str(user.id)[-6:].upper()}-{str(course.id)[-4:].upper()}"
+                        enrollment.certificate_id = CourseService.mint_certificate_id()
                         enrollment.certificate_issued_at = datetime.now(timezone.utc)
-                    if not enrollment.certificate_url:
-                        enrollment.certificate_url = f"{web_url}/verify/certificate/{enrollment.certificate_id}"
+                    if not enrollment.certificate_url or "?sig=" not in enrollment.certificate_url or not enrollment.certificate_signature:
+                        student_name = getattr(user, "full_name", None) or "DivinLink Gurukul Scholar"
+                        issued_dt = enrollment.certificate_issued_at or datetime.now(timezone.utc)
+                        canonical_hash, signature = CourseService.compute_certificate_crypto(
+                            cert_id=enrollment.certificate_id,
+                            user_id=str(user.id),
+                            student_name=student_name,
+                            course_id=str(course.id),
+                            course_title=course.title,
+                            issued_iso=issued_dt.isoformat(),
+                        )
+                        enrollment.certificate_canonical_hash = canonical_hash
+                        enrollment.certificate_signature = signature
+                        enrollment.certificate_url = f"{web_url}/verify/certificate/{enrollment.certificate_id}?sig={signature[:32]}"
                     enrollment.certificate_issued = True
                     await enrollment.save()
 
@@ -346,27 +424,71 @@ class CourseService:
                 "message": "Progress update skipped: user is not enrolled",
             }
 
+        lesson = await CourseLesson.find_one(
+            CourseLesson.id == lesson_id, CourseLesson.course_id == course_id
+        )
+        if lesson is None:
+            raise NotFoundError("Lesson not found")
+
+        now = datetime.now(timezone.utc)
+
         # Upsert Lesson Progress
         prog = await CourseLessonProgress.find_one(
             CourseLessonProgress.user_id == user.id,
             CourseLessonProgress.lesson_id == lesson_id,
         )
         if not prog:
+            first_credit = min(max(0, watched_seconds), FIRST_PING_CREDIT_SECONDS)
             prog = CourseLessonProgress(
                 user_id=user.id,
                 course_id=course_id,
                 lesson_id=lesson_id,
                 watched_seconds=watched_seconds,
                 total_seconds=total_seconds,
-                is_completed=mark_completed or (total_seconds > 0 and watched_seconds >= total_seconds * 0.9),
+                credited_seconds=first_credit,
+                first_watched_at=now,
+                last_watched_at=now,
             )
             await prog.insert()
         else:
+            first_watched = _aware_utc(prog.first_watched_at or prog.last_watched_at or now)
+            if not prog.first_watched_at:
+                prog.first_watched_at = first_watched
+
+            last_watched = _aware_utc(prog.last_watched_at or now)
+            elapsed = max(0.0, (now - last_watched).total_seconds())
+
+            # Position advance claimed by client
+            claimed = max(0, watched_seconds - prog.watched_seconds)
+            # Allowed credit for this step based on elapsed server time * max playback speed
+            step_allowed = int(elapsed * MAX_PLAYBACK_SPEED)
+
+            # Cumulative real-time bound: Total credit can never exceed real time since first watch * 2.5 + first_ping
+            total_real_elapsed = max(0.0, (now - first_watched).total_seconds())
+            max_cumulative_allowed = int(total_real_elapsed * MAX_PLAYBACK_SPEED) + FIRST_PING_CREDIT_SECONDS
+
+            # Also bounded by total lesson length
+            lesson_sec = (getattr(lesson, "duration_minutes", 0) or 0) * 60
+            if lesson_sec <= 0:
+                lesson_sec = max(total_seconds, prog.total_seconds, MIN_LESSON_SECONDS)
+
+            new_credited = prog.credited_seconds + min(claimed, step_allowed)
+            prog.credited_seconds = min(new_credited, max_cumulative_allowed, lesson_sec)
+
             prog.watched_seconds = max(prog.watched_seconds, watched_seconds)
             prog.total_seconds = max(prog.total_seconds, total_seconds)
-            if mark_completed or (total_seconds > 0 and watched_seconds >= total_seconds * 0.9):
-                prog.is_completed = True
-            prog.last_watched_at = datetime.now(timezone.utc)
+            prog.last_watched_at = now
+            await prog.save()
+
+        # Completion is earned, not declared. `mark_completed` arrives from the
+        # same client that reports the position, so on its own it meant a
+        # student could finish an entire course in one request and have the
+        # certificate emailed to them seconds later.
+        if not prog.is_completed and CourseService._has_watched_enough(
+            lesson=lesson, prog=prog, mark_completed=mark_completed
+        ):
+            prog.is_completed = True
+            prog.completed_at = now
             await prog.save()
 
         # Update enrollment completed lessons set
@@ -388,28 +510,40 @@ class CourseService:
             if enrollment.progress_percent >= 100.0:
                 enrollment.certificate_issued = True
                 if not enrollment.certificate_id:
-                    enrollment.certificate_id = f"ASTRA-CERT-{str(user.id)[-6:].upper()}-{str(course_id)[-4:].upper()}"
+                    enrollment.certificate_id = CourseService.mint_certificate_id()
                     enrollment.certificate_issued_at = datetime.now(timezone.utc)
+
                 web_url = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app")
-                if not enrollment.certificate_url:
-                    enrollment.certificate_url = f"{web_url}/verify/certificate/{enrollment.certificate_id}"
+                student_name = getattr(user, "full_name", None) or "DivinLink Gurukul Scholar"
+                course_item = await Course.find_one(Course.id == course_id)
+                course_title = course_item.title if course_item else "DivinLink Gurukul Masterclass"
+                issued_dt = enrollment.certificate_issued_at or datetime.now(timezone.utc)
+
+                canonical_hash, signature = CourseService.compute_certificate_crypto(
+                    cert_id=enrollment.certificate_id,
+                    user_id=str(user.id),
+                    student_name=student_name,
+                    course_id=str(course_id),
+                    course_title=course_title,
+                    issued_iso=issued_dt.isoformat(),
+                )
+                enrollment.certificate_canonical_hash = canonical_hash
+                enrollment.certificate_signature = signature
+                enrollment.certificate_url = f"{web_url}/verify/certificate/{enrollment.certificate_id}?sig={signature[:32]}"
 
                 # Send official congratulations certificate email if not sent yet
                 user_email = getattr(user, "email", None)
                 if not enrollment.certificate_email_sent and user_email:
                     try:
                         from app.services.email import send_course_certificate_email
-                        course_item = await Course.find_one(Course.id == course_id)
-                        c_title = course_item.title if course_item else "DivinLink Gurukul Masterclass"
-                        u_name = getattr(user, "full_name", None) or "DivinLink Gurukul Scholar"
-                        dt_str = (enrollment.certificate_issued_at or datetime.now(timezone.utc)).strftime("%d %B %Y")
-                        v_link = f"{web_url}/verify/certificate/{enrollment.certificate_id}"
+                        dt_str = issued_dt.strftime("%d %B %Y")
+                        v_link = enrollment.certificate_url
                         inst_name = course_item.instructor_name if course_item else "Pt. Acharya Rahul Sharma"
 
                         await send_course_certificate_email(
                             to=user_email,
-                            user_name=u_name,
-                            course_title=c_title,
+                            user_name=student_name,
+                            course_title=course_title,
                             certificate_id=enrollment.certificate_id,
                             issued_date=dt_str,
                             verify_url=v_link,
@@ -423,12 +557,17 @@ class CourseService:
         enrollment.last_accessed_at = datetime.now(timezone.utc)
         await enrollment.save()
 
+        message = None
+        if mark_completed and not prog.is_completed:
+            message = "Please watch at least 90% of the lesson before marking it as complete."
+
         return {
             "progress_percent": enrollment.progress_percent,
             "is_lesson_completed": prog.is_completed,
             "certificate_issued": enrollment.certificate_issued,
             "certificate_id": enrollment.certificate_id,
             "certificate_url": enrollment.certificate_url,
+            "message": message,
         }
 
     # =========================================================================
@@ -1388,7 +1527,7 @@ class CourseService:
             course = await Course.find_one(Course.id == e.course_id)
             if course and not course.is_deleted:
                 web_url = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app")
-                cert_id = e.certificate_id or (f"ASTRA-CERT-{str(user.id)[-6:].upper()}-{str(course.id)[-4:].upper()}" if e.progress_percent >= 100 else None)
+                cert_id = e.certificate_id or (CourseService.mint_certificate_id() if e.progress_percent >= 100 else None)
                 cert_url = e.certificate_url or (f"{web_url}/verify/certificate/{cert_id}" if cert_id else None)
                 if e.progress_percent >= 100 and (not e.certificate_id or not e.certificate_url):
                     e.certificate_issued = True
@@ -2000,12 +2139,13 @@ class CourseService:
         course: Course,
         user: User,
         signature_token: str | None = None,
+        is_public_verification: bool = False,
     ) -> dict[str, Any]:
         """Builds structured certificate metadata and cryptographically verifiable seal."""
         web_url = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app")
         api_url = getattr(settings, "API_BASE_URL", "https://astra-astrology-backend.onrender.com")
 
-        cert_id = enrollment.certificate_id or f"ASTRA-CERT-{str(user.id)[-6:].upper()}-{str(course.id)[-4:].upper()}"
+        cert_id = enrollment.certificate_id or CourseService.mint_certificate_id()
         issued_dt = enrollment.certificate_issued_at or datetime.now(timezone.utc)
         student_name = getattr(user, "full_name", None) or "DivinLink Gurukul Scholar"
         student_email = getattr(user, "email", None)
@@ -2020,28 +2160,82 @@ class CourseService:
             issued_iso=issued_dt.isoformat(),
         )
 
-        # Record signature on enrollment if empty
-        if not enrollment.certificate_signature or not enrollment.certificate_canonical_hash:
+        # Record the number and the seal on the enrollment if either is
+        # missing. The number has to be written down now that it is random:
+        # deriving it again would produce a different one each time, and the
+        # seal is computed over it.
+        if (
+            not enrollment.certificate_id
+            or not enrollment.certificate_signature
+            or not enrollment.certificate_canonical_hash
+        ):
+            enrollment.certificate_id = cert_id
             enrollment.certificate_canonical_hash = canonical_hash
             enrollment.certificate_signature = signature
 
-        # Check signature verification against provided token if passed
+        # Two separate questions:
+        # 1. Does the seal recorded when this was issued still match the record?
         is_signature_valid = True
         tamper_reason = None
-        if signature_token:
-            clean_token = signature_token.strip().lower()
-            expected_prefix = signature[: len(clean_token)].lower()
-            if not hmac.compare_digest(clean_token, expected_prefix):
+        stored_signature = enrollment.certificate_signature
+        if stored_signature and not hmac.compare_digest(stored_signature, signature):
+            is_signature_valid = False
+            tamper_reason = (
+                "This record no longer matches the seal issued with it. "
+                "Its details have been altered since."
+            )
+
+        # 2. Cryptographic signature check:
+        # In public verification, a valid cryptographic signature token (?sig=...) is strictly required.
+        # Without it, an attacker knowing or guessing another user's certificate ID cannot claim
+        # the credential was cryptographically verified.
+        signature_checked = False
+        if is_public_verification:
+            if not signature_token or not signature_token.strip():
                 is_signature_valid = False
-                tamper_reason = "Cryptographic signature mismatch. Token or URL parameters have been tampered with."
+                signature_checked = False
+                tamper_reason = (
+                    "Cryptographic signature token (?sig=...) is required for authentic public verification. "
+                    "Without the authentic seal signature, credential authenticity cannot be verified."
+                )
+            else:
+                signature_checked = True
+                clean_token = signature_token.strip().lower()
+                if len(clean_token) < 16:
+                    is_signature_valid = False
+                    tamper_reason = "Signature token is too short (minimum 16 hexadecimal characters required)."
+                else:
+                    expected_prefix = signature[: len(clean_token)].lower()
+                    if not hmac.compare_digest(clean_token, expected_prefix):
+                        is_signature_valid = False
+                        tamper_reason = "Cryptographic signature mismatch. Token or URL parameters have been tampered with."
+        elif signature_token:
+            signature_checked = True
+            clean_token = signature_token.strip().lower()
+            if len(clean_token) < 16:
+                is_signature_valid = False
+                tamper_reason = "Signature token is too short (minimum 16 hexadecimal characters required)."
+            else:
+                expected_prefix = signature[: len(clean_token)].lower()
+                if not hmac.compare_digest(clean_token, expected_prefix):
+                    is_signature_valid = False
+                    tamper_reason = "Cryptographic signature mismatch. Token or URL parameters have been tampered with."
 
         verify_url = f"{web_url}/verify/certificate/{cert_id}?sig={signature[:32]}"
-        html_url = f"{api_url}/api/v1/courses/certificate/verify/{cert_id}/html"
+        html_url = f"{api_url}/api/v1/courses/certificate/verify/{cert_id}/html?sig={signature[:32]}"
+
+        if is_signature_valid:
+            status_text = "CRYPTOGRAPHICALLY_VERIFIED_AUTHENTIC"
+        elif is_public_verification and (not signature_token or not signature_token.strip()):
+            status_text = "SIGNATURE_REQUIRED_FOR_VERIFICATION"
+        else:
+            status_text = "TAMPERED_OR_INVALID_SIGNATURE"
 
         tamper_check = {
-            "status": "CRYPTOGRAPHICALLY_VERIFIED_AUTHENTIC" if is_signature_valid else "TAMPERED_OR_INVALID_SIGNATURE",
+            "status": status_text,
             "is_valid": is_signature_valid,
             "tamper_reason": tamper_reason,
+            "signature_token_checked": signature_checked,
             "hash_verified": True,
             "canonical_hash": canonical_hash,
             "signature_truncated": f"{signature[:12]}...{signature[-8:]}",
@@ -2084,7 +2278,7 @@ class CourseService:
                 "verification_hash": canonical_hash[:24].upper(),
                 "seal_title": "DivinLink Gurukul Consecrated",
                 "seal_motto": "विद्या ददाति विनयं विनयाद्याति पात्रताम्",
-                "status": "VERIFIED_AUTHENTIC" if is_signature_valid else "TAMPERED",
+                "status": "VERIFIED_AUTHENTIC" if is_signature_valid else ("UNVERIFIED_MISSING_SIGNATURE" if (is_public_verification and not signature_token) else "TAMPERED"),
                 "signature": f"Pt. Acharya Rahul Sharma • {issued_dt.strftime('%d-%m-%Y')}",
             },
         }
@@ -2876,7 +3070,7 @@ class CourseService:
 
         web_url = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app")
         if not enrollment.certificate_id:
-            enrollment.certificate_id = f"ASTRA-CERT-{str(user.id)[-6:].upper()}-{str(course_id)[-4:].upper()}"
+            enrollment.certificate_id = CourseService.mint_certificate_id()
             enrollment.certificate_issued_at = datetime.now(timezone.utc)
         if not enrollment.certificate_url:
             enrollment.certificate_url = f"{web_url}/verify/certificate/{enrollment.certificate_id}"
