@@ -58,9 +58,19 @@ def _product_out(p: Product) -> ProductOut:
         deity=p.deity,
         benefits=p.benefits or [],
         life_pillars=p.life_pillars or [],
+        purpose_tags=getattr(p, "purpose_tags", []) or [],
         recommended_for_rashis=p.recommended_for_rashis or [],
+        crystal_type=getattr(p, "crystal_type", None),
         beej_mantra=p.beej_mantra,
         wear_instructions=p.wear_instructions,
+        free_gift_title=getattr(p, "free_gift_title", None),
+        free_gift_value=getattr(p, "free_gift_value", None),
+        free_gift_badge=getattr(p, "free_gift_badge", None),
+        free_gift_image_url=getattr(p, "free_gift_image_url", None),
+        cashback_percent=getattr(p, "cashback_percent", None),
+        lab_certified=getattr(p, "lab_certified", True),
+        lab_certificate_name=getattr(p, "lab_certificate_name", "Govt. Approved Gemological Lab"),
+        lab_certificate_number=getattr(p, "lab_certificate_number", None),
         mrp=p.mrp,
         sale_price=p.sale_price,
         cost_price=p.cost_price,
@@ -374,9 +384,19 @@ async def create_product(payload: ProductCreate) -> ProductOut:
         deity=payload.deity,
         benefits=payload.benefits,
         life_pillars=payload.life_pillars,
+        purpose_tags=payload.purpose_tags or [],
         recommended_for_rashis=payload.recommended_for_rashis,
+        crystal_type=payload.crystal_type,
         beej_mantra=payload.beej_mantra,
         wear_instructions=payload.wear_instructions,
+        free_gift_title=payload.free_gift_title,
+        free_gift_value=payload.free_gift_value,
+        free_gift_badge=payload.free_gift_badge,
+        free_gift_image_url=payload.free_gift_image_url,
+        cashback_percent=payload.cashback_percent,
+        lab_certified=payload.lab_certified if payload.lab_certified is not None else True,
+        lab_certificate_name=payload.lab_certificate_name,
+        lab_certificate_number=payload.lab_certificate_number,
         mrp=payload.mrp,
         sale_price=payload.sale_price,
         cost_price=payload.cost_price,
@@ -444,12 +464,32 @@ async def update_product(prod_id: str, payload: ProductUpdate) -> ProductOut:
         product.benefits = payload.benefits
     if payload.life_pillars is not None:
         product.life_pillars = payload.life_pillars
+    if payload.purpose_tags is not None:
+        product.purpose_tags = payload.purpose_tags
     if payload.recommended_for_rashis is not None:
         product.recommended_for_rashis = payload.recommended_for_rashis
+    if payload.crystal_type is not None:
+        product.crystal_type = payload.crystal_type
     if payload.beej_mantra is not None:
         product.beej_mantra = payload.beej_mantra
     if payload.wear_instructions is not None:
         product.wear_instructions = payload.wear_instructions
+    if "free_gift_title" in fields_set:
+        product.free_gift_title = payload.free_gift_title
+    if "free_gift_value" in fields_set:
+        product.free_gift_value = payload.free_gift_value
+    if "free_gift_badge" in fields_set:
+        product.free_gift_badge = payload.free_gift_badge
+    if "free_gift_image_url" in fields_set:
+        product.free_gift_image_url = payload.free_gift_image_url
+    if "cashback_percent" in fields_set:
+        product.cashback_percent = payload.cashback_percent
+    if payload.lab_certified is not None:
+        product.lab_certified = payload.lab_certified
+    if payload.lab_certificate_name is not None:
+        product.lab_certificate_name = payload.lab_certificate_name
+    if "lab_certificate_number" in fields_set:
+        product.lab_certificate_number = payload.lab_certificate_number
     if payload.mrp is not None:
         product.mrp = payload.mrp
     if payload.sale_price is not None:
@@ -671,7 +711,7 @@ async def get_inventory_summary() -> InventorySummaryResponse:
 
 
 async def get_shop_banner_settings() -> ShopBannerSettingsOut:
-    """Returns store announcement bar & hero carousel configurations."""
+    """Returns store announcement bar, marquee, cashback, free gift, and hero carousel configurations."""
     cms = await ShopCMS.find_one(ShopCMS.key == CMS_KEY_SHOP)
     if not cms:
         cms = ShopCMS(key=CMS_KEY_SHOP)
@@ -681,12 +721,25 @@ async def get_shop_banner_settings() -> ShopBannerSettingsOut:
         announcement_bar_text=cms.announcement_bar_text,
         announcement_bar_link=cms.announcement_bar_link,
         announcement_bar_active=cms.announcement_bar_active,
+        marquee_items=getattr(cms, "marquee_items", []) or [],
         hero_banners=cms.hero_banners or [],
+        cashback_enabled=getattr(cms, "cashback_enabled", True),
+        cashback_percent=getattr(cms, "cashback_percent", 100),
+        cashback_max_cap_inr=getattr(cms, "cashback_max_cap_inr", None),
+        free_gift_default_title=getattr(cms, "free_gift_default_title", "Raw Selenite Charging Plate"),
+        free_gift_default_value=getattr(cms, "free_gift_default_value", 729.0),
+        free_gift_default_badge=getattr(cms, "free_gift_default_badge", "FREE Raw Selenite Plate worth ₹729"),
+        free_gift_default_image_url=getattr(cms, "free_gift_default_image_url", None),
+        free_shipping_threshold=getattr(cms, "free_shipping_threshold", 499.0),
+        standard_shipping_fee=getattr(cms, "standard_shipping_fee", 70.0),
+        cod_enabled=getattr(cms, "cod_enabled", True),
+        cod_extra_charge=getattr(cms, "cod_extra_charge", 0.0),
+        reels=getattr(cms, "reels", []) or [],
     )
 
 
 async def update_shop_banner_settings(payload: ShopBannerSettingsUpdate) -> ShopBannerSettingsOut:
-    """Saves updated store promotional banners and announcement headline."""
+    """Saves updated store promotional banners, 100% cashback rules, free gift defaults, and logistics settings."""
     cms = await ShopCMS.find_one(ShopCMS.key == CMS_KEY_SHOP)
     if not cms:
         cms = ShopCMS(key=CMS_KEY_SHOP)
@@ -694,16 +747,24 @@ async def update_shop_banner_settings(payload: ShopBannerSettingsUpdate) -> Shop
     cms.announcement_bar_text = payload.announcement_bar_text
     cms.announcement_bar_link = payload.announcement_bar_link
     cms.announcement_bar_active = payload.announcement_bar_active
+    cms.marquee_items = payload.marquee_items
     cms.hero_banners = [b.model_dump() for b in payload.hero_banners]
+    cms.cashback_enabled = payload.cashback_enabled
+    cms.cashback_percent = payload.cashback_percent
+    cms.cashback_max_cap_inr = payload.cashback_max_cap_inr
+    cms.free_gift_default_title = payload.free_gift_default_title
+    cms.free_gift_default_value = payload.free_gift_default_value
+    cms.free_gift_default_badge = payload.free_gift_default_badge
+    cms.free_gift_default_image_url = payload.free_gift_default_image_url
+    cms.free_shipping_threshold = payload.free_shipping_threshold
+    cms.standard_shipping_fee = payload.standard_shipping_fee
+    cms.cod_enabled = payload.cod_enabled
+    cms.cod_extra_charge = payload.cod_extra_charge
+    cms.reels = payload.reels
 
     await cms.save()
-    logger.info("Updated Shop CMS banner settings")
-    return ShopBannerSettingsOut(
-        announcement_bar_text=cms.announcement_bar_text,
-        announcement_bar_link=cms.announcement_bar_link,
-        announcement_bar_active=cms.announcement_bar_active,
-        hero_banners=cms.hero_banners,
-    )
+    logger.info("Updated Shop CMS store settings (cashback_percent={}%, free_shipping_threshold={})", cms.cashback_percent, cms.free_shipping_threshold)
+    return await get_shop_banner_settings()
 
 
 # ===========================================================================

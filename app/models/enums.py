@@ -103,6 +103,10 @@ class TransactionReason(StrEnum):
     APPOINTMENT_BALANCE = "appointment_balance"
     # Coins deducted for using platform astrology / scanning features (Kundli, KP, etc.)
     FEATURE_USAGE = "feature_usage"
+    # Remedy Store / E-Commerce 100% Wallet Cashback & Wallet purchases
+    SHOP_CASHBACK = "shop_cashback"
+    SHOP_PURCHASE = "shop_purchase"
+    SHOP_CASHBACK_REVERSAL = "shop_cashback_reversal"
 
 
 class PaymentOrderStatus(StrEnum):
@@ -206,11 +210,20 @@ class ShopOrderStatus(StrEnum):
     PLACED = "placed"
     CONFIRMED = "confirmed"
     SANCTIFYING = "sanctifying"  # Sacred Vedic Pran-Pratishtha / Energization
+    PACKED = "packed"
     SHIPPED = "shipped"
     OUT_FOR_DELIVERY = "out_for_delivery"
     DELIVERED = "delivered"
     CANCELLED = "cancelled"
     RETURNED = "returned"
+
+
+class ShopPaymentMethod(StrEnum):
+    """How the customer paid for their remedy order."""
+
+    RAZORPAY = "razorpay"
+    COD = "cod"
+    WALLET = "wallet"
 
 
 class ShopPaymentStatus(StrEnum):

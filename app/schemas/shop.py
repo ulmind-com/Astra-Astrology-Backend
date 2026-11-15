@@ -4,7 +4,12 @@ from datetime import datetime
 from typing import Any
 from pydantic import BaseModel, Field
 
-from app.models.enums import ProductCategoryType, ShopOrderStatus, ShopPaymentStatus
+from app.models.enums import (
+    ProductCategoryType,
+    ShopOrderStatus,
+    ShopPaymentMethod,
+    ShopPaymentStatus,
+)
 
 
 # ===========================================================================
@@ -79,9 +84,25 @@ class ProductCreate(BaseModel):
     deity: str | None = None
     benefits: list[str] = Field(default_factory=list)
     life_pillars: list[str] = Field(default_factory=list)
+    purpose_tags: list[str] = Field(default_factory=list)
     recommended_for_rashis: list[str] = Field(default_factory=list)
+    crystal_type: str | None = None
     beej_mantra: str | None = None
     wear_instructions: str | None = None
+
+    # High-Value Free Gift Bundling
+    free_gift_title: str | None = None
+    free_gift_value: float | None = None
+    free_gift_badge: str | None = None
+    free_gift_image_url: str | None = None
+
+    # 100% Wallet Cashback Override
+    cashback_percent: int | None = Field(default=None, ge=0, le=200)
+
+    # Government / Lab Certification
+    lab_certified: bool = True
+    lab_certificate_name: str | None = "Govt. Approved Gemological Lab"
+    lab_certificate_number: str | None = None
 
     # Pricing & Inventory (INR ₹)
     mrp: float = Field(gt=0, description="Original Strike-through MRP in ₹")
@@ -117,9 +138,22 @@ class ProductUpdate(BaseModel):
     deity: str | None = None
     benefits: list[str] | None = None
     life_pillars: list[str] | None = None
+    purpose_tags: list[str] | None = None
     recommended_for_rashis: list[str] | None = None
+    crystal_type: str | None = None
     beej_mantra: str | None = None
     wear_instructions: str | None = None
+
+    free_gift_title: str | None = None
+    free_gift_value: float | None = None
+    free_gift_badge: str | None = None
+    free_gift_image_url: str | None = None
+
+    cashback_percent: int | None = Field(default=None, ge=0, le=200)
+
+    lab_certified: bool | None = None
+    lab_certificate_name: str | None = None
+    lab_certificate_number: str | None = None
 
     mrp: float | None = Field(default=None, gt=0)
     sale_price: float | None = Field(default=None, gt=0)
@@ -153,9 +187,22 @@ class ProductOut(BaseModel):
     deity: str | None = None
     benefits: list[str] = Field(default_factory=list)
     life_pillars: list[str] = Field(default_factory=list)
+    purpose_tags: list[str] = Field(default_factory=list)
     recommended_for_rashis: list[str] = Field(default_factory=list)
+    crystal_type: str | None = None
     beej_mantra: str | None = None
     wear_instructions: str | None = None
+
+    free_gift_title: str | None = None
+    free_gift_value: float | None = None
+    free_gift_badge: str | None = None
+    free_gift_image_url: str | None = None
+
+    cashback_percent: int | None = None
+
+    lab_certified: bool = True
+    lab_certificate_name: str | None = "Govt. Approved Gemological Lab"
+    lab_certificate_number: str | None = None
 
     mrp: float
     sale_price: float
@@ -233,14 +280,56 @@ class ShopBannerSettingsUpdate(BaseModel):
     announcement_bar_text: str | None = None
     announcement_bar_link: str | None = None
     announcement_bar_active: bool = True
+    marquee_items: list[str] = Field(default_factory=list)
     hero_banners: list[ShopHeroBannerItem] = Field(default_factory=list)
+
+    # 100% Wallet Cashback Controls
+    cashback_enabled: bool = True
+    cashback_percent: int = Field(default=100, ge=0, le=200)
+    cashback_max_cap_inr: float | None = None
+
+    # Free Gift Defaults
+    free_gift_default_title: str = "Raw Selenite Charging Plate"
+    free_gift_default_value: float = 729.0
+    free_gift_default_badge: str = "FREE Raw Selenite Plate worth ₹729"
+    free_gift_default_image_url: str | None = None
+
+    # Logistics
+    free_shipping_threshold: float = 499.0
+    standard_shipping_fee: float = 70.0
+    cod_enabled: bool = True
+    cod_extra_charge: float = 0.0
+
+    # Reels
+    reels: list[dict] = Field(default_factory=list)
 
 
 class ShopBannerSettingsOut(BaseModel):
     announcement_bar_text: str | None = None
     announcement_bar_link: str | None = None
     announcement_bar_active: bool = True
+    marquee_items: list[str] = Field(default_factory=list)
     hero_banners: list[ShopHeroBannerItem] = Field(default_factory=list)
+
+    # 100% Wallet Cashback Controls
+    cashback_enabled: bool = True
+    cashback_percent: int = 100
+    cashback_max_cap_inr: float | None = None
+
+    # Free Gift Defaults
+    free_gift_default_title: str = "Raw Selenite Charging Plate"
+    free_gift_default_value: float = 729.0
+    free_gift_default_badge: str = "FREE Raw Selenite Plate worth ₹729"
+    free_gift_default_image_url: str | None = None
+
+    # Logistics
+    free_shipping_threshold: float = 499.0
+    standard_shipping_fee: float = 70.0
+    cod_enabled: bool = True
+    cod_extra_charge: float = 0.0
+
+    # Reels
+    reels: list[dict] = Field(default_factory=list)
 
 
 # ===========================================================================
@@ -293,6 +382,188 @@ class StockReservationResponse(BaseModel):
     product_id: str
     quantity: int
     message: str
+
+
+# ===========================================================================
+# Cart, Checkout & Order Schemas
+# ===========================================================================
+
+
+class CartItemInput(BaseModel):
+    product_id: str
+    quantity: int = Field(default=1, ge=1, le=50)
+
+
+class CartItemOut(BaseModel):
+    product_id: str
+    title: str
+    slug: str
+    sku: str
+    featured_image: str
+    unit_mrp: float
+    unit_sale_price: float
+    quantity: int
+    line_total: float
+    in_stock: bool
+    stock_quantity: int
+    free_gift_title: str | None = None
+    free_gift_value: float | None = None
+    free_gift_badge: str | None = None
+    cashback_percent: int = 100
+
+
+class CartOut(BaseModel):
+    items: list[CartItemOut] = Field(default_factory=list)
+    subtotal: float = 0.0
+    discount_amount: float = 0.0
+    coupon_code: str | None = None
+    shipping_fee: float = 0.0
+    free_shipping_threshold: float = 499.0
+    free_shipping_remaining: float = 0.0
+    grand_total: float = 0.0
+    total_cashback_coins: int = 0
+    bundled_free_gifts: list[dict] = Field(default_factory=list)
+
+
+class CheckoutAddressInput(BaseModel):
+    recipient_name: str = Field(min_length=2, max_length=100)
+    phone_number: str = Field(min_length=10, max_length=15)
+    alternate_phone: str | None = None
+    address_line1: str = Field(min_length=5, max_length=255)
+    address_line2: str | None = None
+    landmark: str | None = None
+    city: str = Field(min_length=2, max_length=100)
+    state: str = Field(min_length=2, max_length=100)
+    pincode: str = Field(min_length=6, max_length=10)
+    address_type: str = "home"
+
+
+class CheckoutSankalpaInput(BaseModel):
+    devotee_name: str | None = None
+    gotra: str | None = None
+    date_of_birth: str | None = None
+    birth_time: str | None = None
+    birth_place: str | None = None
+    special_prayer_wish: str | None = None
+
+
+class ShopCheckoutRequest(BaseModel):
+    items: list[CartItemInput] = Field(min_length=1)
+    shipping_address: CheckoutAddressInput
+    sankalpa: CheckoutSankalpaInput | None = None
+    payment_method: ShopPaymentMethod = ShopPaymentMethod.RAZORPAY
+    coupon_code: str | None = None
+
+
+class ShopCheckoutResponse(BaseModel):
+    order_id: str
+    order_number: str
+    subtotal: float
+    discount_amount: float
+    shipping_fee: float
+    grand_total: float
+    payment_method: ShopPaymentMethod
+    payment_status: ShopPaymentStatus
+    order_status: ShopOrderStatus
+    razorpay_order_id: str | None = None
+    razorpay_key_id: str | None = None
+    cashback_percent: int = 100
+    cashback_coins_eligible: int = 0
+    free_gifts: list[dict] = Field(default_factory=list)
+
+
+class ShopPaymentVerifyRequest(BaseModel):
+    order_id: str
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
+
+
+class ShopOrderItemOut(BaseModel):
+    product_id: str
+    title: str
+    slug: str
+    sku: str
+    category_name: str
+    featured_image: str
+    unit_mrp: float
+    unit_sale_price: float
+    quantity: int
+    line_total: float
+    free_gift_title: str | None = None
+    free_gift_value: float | None = None
+    lab_certified: bool = True
+    lab_certificate_number: str | None = None
+
+
+class ShopOrderStatusLogOut(BaseModel):
+    status: ShopOrderStatus
+    changed_at: datetime
+    notes: str | None = None
+
+
+class ShopOrderOut(BaseModel):
+    id: str
+    order_number: str
+    user_id: str
+    user_email: str
+    user_phone: str
+    shipping_address: dict
+    items: list[ShopOrderItemOut]
+    sankalpa: dict | None = None
+    subtotal: float
+    discount_amount: float
+    coupon_code: str | None = None
+    shipping_fee: float
+    tax_amount: float
+    grand_total: float
+    payment_method: ShopPaymentMethod
+    payment_status: ShopPaymentStatus
+    order_status: ShopOrderStatus
+    razorpay_order_id: str | None = None
+    razorpay_payment_id: str | None = None
+    cashback_percent: int = 100
+    cashback_coins_eligible: int = 0
+    cashback_coins_credited: int = 0
+    cashback_credited_at: datetime | None = None
+    free_gifts: list[dict] = Field(default_factory=list)
+    courier_partner: str | None = None
+    tracking_id: str | None = None
+    tracking_url: str | None = None
+    estimated_delivery_date: datetime | None = None
+    delivered_at: datetime | None = None
+    consecration_certificate_url: str | None = None
+    status_history: list[ShopOrderStatusLogOut] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class ShopOrderListResponse(BaseModel):
+    items: list[ShopOrderOut]
+    total: int
+    page: int
+    limit: int
+    pages: int
+
+
+class ShopAdminOrderUpdate(BaseModel):
+    order_status: ShopOrderStatus | None = None
+    courier_partner: str | None = None
+    tracking_id: str | None = None
+    tracking_url: str | None = None
+    estimated_delivery_date: datetime | None = None
+    notes: str | None = None
+    consecration_certificate_url: str | None = None
+
+
+class PincodeCheckResponse(BaseModel):
+    pincode: str
+    city: str
+    state: str
+    is_serviceable: bool = True
+    cod_available: bool = True
+    estimated_delivery_days: int = 4
+    estimated_delivery_date: str
 
 
 

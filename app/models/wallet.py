@@ -75,6 +75,9 @@ class TransactionRef(BaseModel):
     astrologer_name: str | None = None
     astrologer_image_url: str | None = None
     consultation_mode: str | None = None
+    # Remedy Store / E-Commerce metadata
+    shop_order_id: PydanticObjectId | None = None
+    shop_order_number: str | None = None
 
 
 class WalletTransaction(TimestampedDocument):
