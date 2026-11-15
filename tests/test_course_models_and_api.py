@@ -197,18 +197,26 @@ def test_admin_course_route_order():
     from app.api.v1.admin_course import router
 
     questions_index = None
+    preview_token_index = None
     course_id_index = None
 
     for idx, r in enumerate(router.routes):
         if getattr(r, "path", None) == "/admin/courses/questions" and "GET" in getattr(r, "methods", set()):
             questions_index = idx
+        elif getattr(r, "path", None) == "/admin/courses/preview-token/{video_id}" and "GET" in getattr(r, "methods", set()):
+            preview_token_index = idx
         elif getattr(r, "path", None) == "/admin/courses/{course_id}" and "GET" in getattr(r, "methods", set()):
             course_id_index = idx
 
     assert questions_index is not None, "GET /admin/courses/questions route must exist"
+    assert preview_token_index is not None, "GET /admin/courses/preview-token/{video_id} route must exist"
     assert course_id_index is not None, "GET /admin/courses/{course_id} route must exist"
     assert questions_index < course_id_index, (
         f"Route shadowing bug! /admin/courses/questions (idx {questions_index}) "
+        f"must be registered before /admin/courses/{{course_id}} (idx {course_id_index})"
+    )
+    assert preview_token_index < course_id_index, (
+        f"Route shadowing bug! /admin/courses/preview-token/{{video_id}} (idx {preview_token_index}) "
         f"must be registered before /admin/courses/{{course_id}} (idx {course_id_index})"
     )
 
@@ -1048,4 +1056,95 @@ async def test_qa_empty_content_rejected():
             question_id=PydanticObjectId(),
             content="   \n   ",
         )
+
+
+def test_signed_bunny_embed_url():
+    """Validates that get_signed_bunny_embed_url generates a tokenized URL preventing 403 Forbidden."""
+    from unittest.mock import patch
+    with patch("app.core.config.settings.BUNNY_STREAM_TOKEN_KEY", "test_secret_key_123"), \
+         patch("app.core.config.settings.BUNNY_STREAM_LIBRARY_ID", "803267"):
+        url = CourseService.get_signed_bunny_embed_url("6af0c892-1430-970e-2598-77ef12345678")
+        assert "https://iframe.mediadelivery.net/embed/803267/6af0c892-1430-970e-2598-77ef12345678" in url
+        assert "?token=" in url
+        assert "&expires=" in url
+
+
+@pytest.mark.asyncio
+async def test_discount_percent_reset_when_mrp_lowered():
+    """Validates that updating a course with mrp <= price resets discount_percent to 0."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, patch
+    from beanie import PydanticObjectId
+    from app.api.v1.admin_course import admin_update_course
+    from app.schemas.course import CourseUpdateRequest
+
+    course_id = PydanticObjectId()
+    existing_course = SimpleNamespace(
+        id=course_id,
+        mrp=1000.0,
+        price=500.0,
+        discount_percent=50,
+        thumbnail_url=None,
+        promo_video_url=None,
+        promo_video_provider=None,
+        instructor_avatar=None,
+        updated_at=None,
+        save=AsyncMock(),
+    )
+
+    with patch("app.api.v1.admin_course.Course.find_one", AsyncMock(return_value=existing_course)):
+        # Admin updates price to 500 and MRP to 500 (discount removed)
+        update_payload = CourseUpdateRequest(price=500.0, mrp=500.0)
+        res = await admin_update_course(
+            course_id=course_id,
+            payload=update_payload,
+            _=SimpleNamespace(),
+        )
+        assert existing_course.discount_percent == 0
+        assert existing_course.save.called
+
+
+@pytest.mark.asyncio
+async def test_admin_delete_course_blocked_when_active_enrollments():
+    """Validates that deleting a course with enrolled students is blocked unless force=True."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, patch
+    from beanie import PydanticObjectId
+    from app.core.exceptions import BadRequestError
+    from app.api.v1.admin_course import admin_delete_course
+
+    course_id = PydanticObjectId()
+    existing_course = SimpleNamespace(
+        id=course_id,
+        thumbnail_url=None,
+        instructor_avatar=None,
+        promo_video_url=None,
+        slug="astrology-101",
+        is_deleted=False,
+        is_published=True,
+        save=AsyncMock(),
+    )
+
+    with patch("app.api.v1.admin_course.Course.find_one", AsyncMock(return_value=existing_course)), \
+         patch("app.api.v1.admin_course.CourseEnrollment.find", return_value=SimpleNamespace(count=AsyncMock(return_value=5))):
+
+        # Deleting without force=True must raise BadRequestError
+        with pytest.raises(BadRequestError) as exc_info:
+            await admin_delete_course(
+                course_id=course_id,
+                _=SimpleNamespace(),
+                force=False,
+            )
+        assert "5 student(s) are currently enrolled" in str(exc_info.value.message)
+
+        # Deleting with force=True succeeds
+        res = await admin_delete_course(
+            course_id=course_id,
+            _=SimpleNamespace(),
+            force=True,
+        )
+        assert existing_course.is_deleted is True
+        assert existing_course.is_published is False
+        assert existing_course.save.called
+
 

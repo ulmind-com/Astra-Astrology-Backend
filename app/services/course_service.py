@@ -1695,7 +1695,7 @@ class CourseService:
         result = []
         for e in enrollments:
             course = await Course.find_one(Course.id == e.course_id)
-            if course and not course.is_deleted:
+            if course:
                 web_url = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app")
                 if e.progress_percent >= 100:
                     e.certificate_issued = True
@@ -1850,6 +1850,29 @@ class CourseService:
                 "authorization_signature": signature,
                 "authorization_expire": expire,
             }
+
+    @staticmethod
+    def get_signed_bunny_embed_url(
+        video_id: str,
+        library_id: str | None = None,
+        expires_in_seconds: int = 7200,
+    ) -> str:
+        """Generates a signed Bunny.net embed URL with token authentication.
+        Prevents 403 Forbidden errors in admin preview and classroom players.
+        """
+        clean_id = str(video_id or "").strip()
+        if "/" in clean_id:
+            clean_id = clean_id.split("?")[0].rstrip("/").split("/")[-1]
+
+        lib_id = library_id or settings.BUNNY_STREAM_LIBRARY_ID
+        token_key = settings.BUNNY_STREAM_TOKEN_KEY
+        expires_at = int(time.time()) + max(300, expires_in_seconds)
+
+        if token_key and clean_id:
+            raw_token = f"{token_key}{clean_id}{expires_at}"
+            token = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+            return f"https://iframe.mediadelivery.net/embed/{lib_id}/{clean_id}?token={token}&expires={expires_at}"
+        return f"https://iframe.mediadelivery.net/embed/{lib_id}/{clean_id}"
 
     @staticmethod
     async def safe_delete_bunny_video(video_id: str | None, library_id: str | None = None) -> bool:

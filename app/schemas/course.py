@@ -175,6 +175,7 @@ class CourseCreateRequest(BaseModel):
 
 class CourseUpdateRequest(BaseModel):
     title: str | None = None
+    slug: str | None = None
     subtitle: str | None = None
     description: str | None = None
     category: str | None = None
