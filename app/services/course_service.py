@@ -1488,6 +1488,7 @@ class CourseService:
                         if u
                         else None
                     ),
+                    "student_avatar": getattr(u, "avatar_url", None) if u else None,
                     "course_id": str(e.course_id),
                     "course_title": c.title if c else None,
                     "course_slug": c.slug if c else None,
@@ -1496,7 +1497,12 @@ class CourseService:
                     "amount_paid": e.amount_paid,
                     "currency": e.currency,
                     "progress_percent": e.progress_percent,
+                    "completed_lessons_count": len(e.completed_lesson_ids or []),
+                    "total_lessons_count": c.total_lessons if c else len(e.completed_lesson_ids or []),
                     "certificate_issued": e.certificate_issued,
+                    "certificate_id": e.certificate_id,
+                    "certificate_url": e.certificate_url,
+                    "certificate_issued_at": e.certificate_issued_at,
                     "enrolled_at": e.enrolled_at,
                     "expires_at": e.expires_at,
                     "is_expired": bool(
@@ -1531,6 +1537,272 @@ class CourseService:
             "page": page,
             "limit": limit,
             "pages": pages,
+        }
+
+    @staticmethod
+    async def admin_get_course_learners(
+        *,
+        course_id: PydanticObjectId,
+        search: str | None = None,
+        progress_status: str | None = None,
+        sort_by: str | None = "enrolled_desc",
+        page: int = 1,
+        limit: int = 25,
+    ) -> dict[str, Any]:
+        course = await Course.get(course_id)
+        if not course:
+            raise NotFoundError("Course not found.", error_code="course_not_found")
+
+        total_lessons_in_course = await CourseLesson.find(CourseLesson.course_id == course_id).count()
+
+        all_enrollments = (
+            await CourseEnrollment.find(CourseEnrollment.course_id == course_id).sort([("enrolled_at", -1)]).to_list()
+        )
+
+        user_ids = [e.user_id for e in all_enrollments]
+        users = await User.find({"_id": {"$in": user_ids}}).to_list() if user_ids else []
+        users_map = {str(u.id): u for u in users}
+
+        # Calculate overall summary stats across ALL enrolled learners in this course
+        total_enrolled = len(all_enrollments)
+        completed_count = 0
+        in_progress_count = 0
+        not_started_count = 0
+        total_progress_sum = 0.0
+        total_revenue = 0.0
+
+        items: list[dict[str, Any]] = []
+
+        for e in all_enrollments:
+            u = users_map.get(str(e.user_id))
+            is_completed = e.progress_percent >= 100 or bool(e.certificate_issued)
+            is_expired = bool(
+                e.expires_at and datetime.now(timezone.utc) >= _aware_utc(e.expires_at)
+            )
+
+            if is_completed:
+                completed_count += 1
+            elif e.progress_percent > 0:
+                in_progress_count += 1
+            else:
+                not_started_count += 1
+
+            total_progress_sum += e.progress_percent
+            total_revenue += e.amount_paid
+
+            items.append({
+                "id": str(e.id),
+                "user_id": str(e.user_id),
+                "student_name": getattr(u, "full_name", None) if u else None,
+                "student_email": getattr(u, "email", None) if u else None,
+                "student_phone": (
+                    (getattr(u, "phone", None) or getattr(u, "mobile_number", None))
+                    if u
+                    else None
+                ),
+                "student_avatar": getattr(u, "avatar_url", None) if u else None,
+                "course_id": str(course.id),
+                "course_title": course.title,
+                "course_slug": course.slug,
+                "payment_id": e.payment_id,
+                "order_id": e.order_id,
+                "amount_paid": e.amount_paid,
+                "currency": e.currency,
+                "progress_percent": e.progress_percent,
+                "completed_lessons_count": len(e.completed_lesson_ids or []),
+                "total_lessons_count": total_lessons_in_course,
+                "certificate_issued": e.certificate_issued,
+                "certificate_id": e.certificate_id,
+                "certificate_url": e.certificate_url,
+                "certificate_issued_at": e.certificate_issued_at,
+                "enrolled_at": e.enrolled_at,
+                "expires_at": e.expires_at,
+                "is_expired": is_expired,
+                "last_accessed_at": e.last_accessed_at,
+            })
+
+        avg_progress = round(total_progress_sum / max(1, total_enrolled), 1)
+
+        # Filtering
+        filtered_items = items
+        if search and search.strip():
+            q = search.strip().lower()
+            filtered_items = [
+                item for item in filtered_items
+                if (
+                    q in (item["student_email"] or "").lower()
+                    or q in (item["student_name"] or "").lower()
+                    or q in (item["student_phone"] or "").lower()
+                    or q in (item["payment_id"] or "").lower()
+                    or q in (item["order_id"] or "").lower()
+                    or q in (item["certificate_id"] or "").lower()
+                )
+            ]
+
+        if progress_status and progress_status != "all":
+            if progress_status == "completed":
+                filtered_items = [i for i in filtered_items if i["progress_percent"] >= 100 or i["certificate_issued"]]
+            elif progress_status == "in_progress":
+                filtered_items = [i for i in filtered_items if 0 < i["progress_percent"] < 100 and not i["certificate_issued"]]
+            elif progress_status == "not_started":
+                filtered_items = [i for i in filtered_items if i["progress_percent"] == 0]
+            elif progress_status == "expired":
+                filtered_items = [i for i in filtered_items if i["is_expired"]]
+
+        # Sorting
+        if sort_by == "enrolled_asc":
+            filtered_items.sort(key=lambda x: x["enrolled_at"])
+        elif sort_by == "progress_desc":
+            filtered_items.sort(key=lambda x: x["progress_percent"], reverse=True)
+        elif sort_by == "progress_asc":
+            filtered_items.sort(key=lambda x: x["progress_percent"])
+        elif sort_by == "last_active_desc":
+            filtered_items.sort(key=lambda x: x["last_accessed_at"], reverse=True)
+        else:
+            filtered_items.sort(key=lambda x: x["enrolled_at"], reverse=True)
+
+        total_filtered = len(filtered_items)
+        pages = max(1, (total_filtered + limit - 1) // limit)
+        start = (page - 1) * limit
+
+        return {
+            "course_id": str(course.id),
+            "course_title": course.title,
+            "course_slug": course.slug,
+            "price": course.price,
+            "stats": {
+                "total_enrolled": total_enrolled,
+                "completed_count": completed_count,
+                "in_progress_count": in_progress_count,
+                "not_started_count": not_started_count,
+                "average_progress_percent": avg_progress,
+                "total_revenue": total_revenue,
+                "total_lessons_in_course": total_lessons_in_course,
+            },
+            "items": filtered_items[start : start + limit],
+            "total": total_filtered,
+            "page": page,
+            "limit": limit,
+            "pages": pages,
+        }
+
+    @staticmethod
+    async def admin_get_learner_progress(
+        *,
+        course_id: PydanticObjectId,
+        user_id: PydanticObjectId,
+    ) -> dict[str, Any]:
+        course = await Course.get(course_id)
+        if not course:
+            raise NotFoundError("Course not found.", error_code="course_not_found")
+
+        enrollment = await CourseEnrollment.find_one(
+            CourseEnrollment.course_id == course_id,
+            CourseEnrollment.user_id == user_id,
+        )
+        if not enrollment:
+            raise NotFoundError(
+                "Student is not enrolled in this course.",
+                error_code="enrollment_not_found",
+            )
+
+        user = await User.get(user_id)
+
+        # Fetch sections and lessons
+        sections = (
+            await CourseSection.find(CourseSection.course_id == course_id)
+            .sort([("order", 1)])
+            .to_list()
+        )
+        lessons = (
+            await CourseLesson.find(CourseLesson.course_id == course_id)
+            .sort([("order", 1)])
+            .to_list()
+        )
+
+        # Fetch progress records
+        progress_records = (
+            await CourseLessonProgress.find(
+                CourseLessonProgress.course_id == course_id,
+                CourseLessonProgress.user_id == user_id,
+            ).to_list()
+        )
+        progress_map = {str(p.lesson_id): p for p in progress_records}
+        completed_set = set(enrollment.completed_lesson_ids or [])
+
+        # Group lessons by section
+        lessons_by_section: dict[str, list[Any]] = {}
+        total_watched_sec = 0
+
+        for l in lessons:
+            sec_id = str(l.section_id)
+            if sec_id not in lessons_by_section:
+                lessons_by_section[sec_id] = []
+
+            p = progress_map.get(str(l.id))
+            is_comp = (str(l.id) in completed_set) or (p.is_completed if p else False)
+            watched_sec = p.watched_seconds if p else 0
+            credited_sec = p.credited_seconds if p else 0
+            total_watched_sec += max(watched_sec, credited_sec)
+
+            lessons_by_section[sec_id].append({
+                "lesson_id": str(l.id),
+                "title": l.title,
+                "order": l.order,
+                "duration_minutes": l.duration_minutes,
+                "is_completed": is_comp,
+                "completed_at": p.completed_at if p else None,
+                "watched_seconds": watched_sec,
+                "credited_seconds": credited_sec,
+                "last_watched_at": p.last_watched_at if p else None,
+            })
+
+        sections_out = []
+        for s in sections:
+            sec_id = str(s.id)
+            sections_out.append({
+                "section_id": sec_id,
+                "title": s.title,
+                "order": s.order,
+                "lessons": lessons_by_section.get(sec_id, []),
+            })
+
+        is_expired = bool(
+            enrollment.expires_at
+            and datetime.now(timezone.utc) >= _aware_utc(enrollment.expires_at)
+        )
+
+        return {
+            "enrollment_id": str(enrollment.id),
+            "user_id": str(user_id),
+            "student_name": getattr(user, "full_name", None) if user else None,
+            "student_email": getattr(user, "email", None) if user else None,
+            "student_phone": (
+                (getattr(user, "phone", None) or getattr(user, "mobile_number", None))
+                if user
+                else None
+            ),
+            "student_avatar": getattr(user, "avatar_url", None) if user else None,
+            "course_id": str(course.id),
+            "course_title": course.title,
+            "course_slug": course.slug,
+            "enrolled_at": enrollment.enrolled_at,
+            "expires_at": enrollment.expires_at,
+            "is_expired": is_expired,
+            "payment_id": enrollment.payment_id,
+            "order_id": enrollment.order_id,
+            "amount_paid": enrollment.amount_paid,
+            "currency": enrollment.currency,
+            "progress_percent": enrollment.progress_percent,
+            "completed_lessons_count": len(enrollment.completed_lesson_ids or []),
+            "total_lessons_count": len(lessons),
+            "total_watched_seconds": total_watched_sec,
+            "certificate_issued": enrollment.certificate_issued,
+            "certificate_id": enrollment.certificate_id,
+            "certificate_url": enrollment.certificate_url,
+            "certificate_issued_at": enrollment.certificate_issued_at,
+            "last_accessed_at": enrollment.last_accessed_at,
+            "sections": sections_out,
         }
 
     @staticmethod

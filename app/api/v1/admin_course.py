@@ -24,6 +24,8 @@ from app.services.storage import safe_delete_cloudinary_image, upload_file
 from app.schemas.course import (
     AdminCourseEnrollmentListResponse,
     AdminCourseEnrollmentOut,
+    AdminCourseLearnerDetailOut,
+    AdminCourseLearnersResponse,
     AdminCourseOrderListResponse,
     AdminCourseOrderOut,
     AdminCourseQuestionAnswerRequest,
@@ -400,6 +402,42 @@ async def admin_revoke_course_enrollment(
         enrollment_id=enrollment_id,
     )
     return ApiResponse(data={"message": "Enrollment revoked successfully."})
+
+
+@router.get("/{course_id}/learners", response_model=ApiResponse[AdminCourseLearnersResponse])
+async def admin_get_course_learners(
+    course_id: PydanticObjectId,
+    _: AdminUser,
+    search: Annotated[str | None, Query(description="Search by student name, email, phone, order, cert")] = None,
+    progress_status: Annotated[str | None, Query(description="Filter by progress: all, completed, in_progress, not_started, expired")] = None,
+    sort_by: Annotated[str | None, Query(description="Sort order: enrolled_desc, enrolled_asc, progress_desc, progress_asc, last_active_desc")] = "enrolled_desc",
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+) -> ApiResponse[AdminCourseLearnersResponse]:
+    """Retrieves deep learner analytics, completion rates, and enrolled students list for a specific course."""
+    data = await CourseService.admin_get_course_learners(
+        course_id=course_id,
+        search=search,
+        progress_status=progress_status,
+        sort_by=sort_by,
+        page=page,
+        limit=limit,
+    )
+    return ApiResponse(data=AdminCourseLearnersResponse(**data))
+
+
+@router.get("/{course_id}/learners/{user_id}/progress", response_model=ApiResponse[AdminCourseLearnerDetailOut])
+async def admin_get_course_learner_progress(
+    course_id: PydanticObjectId,
+    user_id: PydanticObjectId,
+    _: AdminUser,
+) -> ApiResponse[AdminCourseLearnerDetailOut]:
+    """Retrieves full lesson-by-lesson progress breakdown, watch duration, and completion details for a specific student."""
+    data = await CourseService.admin_get_learner_progress(
+        course_id=course_id,
+        user_id=user_id,
+    )
+    return ApiResponse(data=AdminCourseLearnerDetailOut(**data))
 
 
 @router.get("/{course_id}", response_model=ApiResponse[CourseDetailOut])

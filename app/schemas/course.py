@@ -519,6 +519,7 @@ class AdminCourseEnrollmentOut(BaseModel):
     student_name: str | None = None
     student_email: str | None = None
     student_phone: str | None = None
+    student_avatar: str | None = None
     course_id: str
     course_title: str | None = None
     course_slug: str | None = None
@@ -527,7 +528,13 @@ class AdminCourseEnrollmentOut(BaseModel):
     amount_paid: float = 0.0
     currency: str = "INR"
     progress_percent: float = 0.0
+    completed_lessons_count: int = 0
+    total_lessons_count: int = 0
     certificate_issued: bool = False
+    certificate_id: str | None = None
+    certificate_url: str | None = None
+    certificate_issued_at: datetime | None = None
+    total_watched_seconds: int = 0
     enrolled_at: datetime
     expires_at: datetime | None = None
     is_expired: bool = False
@@ -550,5 +557,76 @@ class AdminManualEnrollRequest(BaseModel):
     note: str | None = Field(default=None, max_length=250)
     access_duration_days: int | None = Field(default=None, ge=1)
     expires_at: datetime | None = None
+
+
+class AdminCourseLearnerProgressLesson(BaseModel):
+    lesson_id: str
+    title: str
+    order: int
+    duration_minutes: int = 0
+    is_completed: bool = False
+    completed_at: datetime | None = None
+    watched_seconds: int = 0
+    credited_seconds: int = 0
+    last_watched_at: datetime | None = None
+
+
+class AdminCourseLearnerProgressSection(BaseModel):
+    section_id: str
+    title: str
+    order: int
+    lessons: list[AdminCourseLearnerProgressLesson] = Field(default_factory=list)
+
+
+class AdminCourseLearnerDetailOut(BaseModel):
+    enrollment_id: str
+    user_id: str
+    student_name: str | None = None
+    student_email: str | None = None
+    student_phone: str | None = None
+    student_avatar: str | None = None
+    course_id: str
+    course_title: str
+    course_slug: str | None = None
+    enrolled_at: datetime
+    expires_at: datetime | None = None
+    is_expired: bool = False
+    payment_id: str | None = None
+    order_id: str | None = None
+    amount_paid: float = 0.0
+    currency: str = "INR"
+    progress_percent: float = 0.0
+    completed_lessons_count: int = 0
+    total_lessons_count: int = 0
+    total_watched_seconds: int = 0
+    certificate_issued: bool = False
+    certificate_id: str | None = None
+    certificate_url: str | None = None
+    certificate_issued_at: datetime | None = None
+    last_accessed_at: datetime
+    sections: list[AdminCourseLearnerProgressSection] = Field(default_factory=list)
+
+
+class AdminCourseLearnersSummaryStats(BaseModel):
+    total_enrolled: int = 0
+    completed_count: int = 0
+    in_progress_count: int = 0
+    not_started_count: int = 0
+    average_progress_percent: float = 0.0
+    total_revenue: float = 0.0
+    total_lessons_in_course: int = 0
+
+
+class AdminCourseLearnersResponse(BaseModel):
+    course_id: str
+    course_title: str
+    course_slug: str
+    price: float = 0.0
+    stats: AdminCourseLearnersSummaryStats
+    items: list[AdminCourseEnrollmentOut] = Field(default_factory=list)
+    total: int = 0
+    page: int = 1
+    limit: int = 25
+    pages: int = 1
 
 
