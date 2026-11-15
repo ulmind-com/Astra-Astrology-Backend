@@ -1,6 +1,6 @@
 """Public and Student Course & LMS Endpoints for Astra Gurukul."""
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, Query, status

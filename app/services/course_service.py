@@ -6,6 +6,7 @@ import hmac
 import json
 import secrets
 import time
+import urllib.parse
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -104,6 +105,18 @@ class CourseService:
         circulation keeps verifying.
         """
         return f"ASTRA-CERT-{secrets.token_hex(8).upper()}"
+
+    @staticmethod
+    def format_certificate_issued_iso(dt: datetime | None) -> str:
+        """
+        Formats certificate issued timestamp into a canonical, deterministic UTC ISO-8601 string.
+        Truncates microseconds to seconds (%Y-%m-%dT%H:%M:%SZ) so MongoDB BSON Date millisecond truncation
+        never corrupts the SHA-256 canonical hash or HMAC-SHA256 signature across database round-trips.
+        """
+        if dt is None:
+            dt = datetime.now(timezone.utc)
+        aware_dt = _aware_utc(dt).astimezone(timezone.utc)
+        return aware_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     @staticmethod
     def _has_watched_enough(
@@ -215,17 +228,20 @@ class CourseService:
                     web_url = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app")
                     if not enrollment.certificate_id:
                         enrollment.certificate_id = CourseService.mint_certificate_id()
-                        enrollment.certificate_issued_at = datetime.now(timezone.utc)
+                        enrollment.certificate_issued_at = datetime.now(timezone.utc).replace(microsecond=0)
+                    elif not enrollment.certificate_issued_at:
+                        enrollment.certificate_issued_at = datetime.now(timezone.utc).replace(microsecond=0)
                     if not enrollment.certificate_url or "?sig=" not in enrollment.certificate_url or not enrollment.certificate_signature:
                         student_name = getattr(user, "full_name", None) or "DivinLink Gurukul Scholar"
-                        issued_dt = enrollment.certificate_issued_at or datetime.now(timezone.utc)
+                        issued_dt = enrollment.certificate_issued_at
+                        issued_iso = CourseService.format_certificate_issued_iso(issued_dt)
                         canonical_hash, signature = CourseService.compute_certificate_crypto(
                             cert_id=enrollment.certificate_id,
                             user_id=str(user.id),
                             student_name=student_name,
                             course_id=str(course.id),
                             course_title=course.title,
-                            issued_iso=issued_dt.isoformat(),
+                            issued_iso=issued_iso,
                         )
                         enrollment.certificate_canonical_hash = canonical_hash
                         enrollment.certificate_signature = signature
@@ -557,13 +573,16 @@ class CourseService:
                 enrollment.certificate_issued = True
                 if not enrollment.certificate_id:
                     enrollment.certificate_id = CourseService.mint_certificate_id()
-                    enrollment.certificate_issued_at = datetime.now(timezone.utc)
+                    enrollment.certificate_issued_at = datetime.now(timezone.utc).replace(microsecond=0)
+                elif not enrollment.certificate_issued_at:
+                    enrollment.certificate_issued_at = datetime.now(timezone.utc).replace(microsecond=0)
 
                 web_url = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app")
                 student_name = getattr(user, "full_name", None) or "DivinLink Gurukul Scholar"
                 course_item = await Course.find_one(Course.id == course_id)
                 course_title = course_item.title if course_item else "DivinLink Gurukul Masterclass"
-                issued_dt = enrollment.certificate_issued_at or datetime.now(timezone.utc)
+                issued_dt = enrollment.certificate_issued_at
+                issued_iso = CourseService.format_certificate_issued_iso(issued_dt)
 
                 canonical_hash, signature = CourseService.compute_certificate_crypto(
                     cert_id=enrollment.certificate_id,
@@ -571,7 +590,7 @@ class CourseService:
                     student_name=student_name,
                     course_id=str(course_id),
                     course_title=course_title,
-                    issued_iso=issued_dt.isoformat(),
+                    issued_iso=issued_iso,
                 )
                 enrollment.certificate_canonical_hash = canonical_hash
                 enrollment.certificate_signature = signature
@@ -1657,12 +1676,28 @@ class CourseService:
             course = await Course.find_one(Course.id == e.course_id)
             if course and not course.is_deleted:
                 web_url = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app")
-                cert_id = e.certificate_id or (CourseService.mint_certificate_id() if e.progress_percent >= 100 else None)
-                cert_url = e.certificate_url or (f"{web_url}/verify/certificate/{cert_id}" if cert_id else None)
-                if e.progress_percent >= 100 and (not e.certificate_id or not e.certificate_url):
+                if e.progress_percent >= 100:
                     e.certificate_issued = True
-                    e.certificate_id = cert_id
-                    e.certificate_url = cert_url
+                    if not e.certificate_id:
+                        e.certificate_id = CourseService.mint_certificate_id()
+                    if not e.certificate_issued_at:
+                        e.certificate_issued_at = datetime.now(timezone.utc).replace(microsecond=0)
+
+                    # Ensure certificate signature and signed verification URL are always present
+                    if not e.certificate_signature or not e.certificate_url or "?sig=" not in e.certificate_url:
+                        student_name = getattr(user, "full_name", None) or "DivinLink Gurukul Scholar"
+                        issued_iso = CourseService.format_certificate_issued_iso(e.certificate_issued_at)
+                        c_hash, c_sig = CourseService.compute_certificate_crypto(
+                            cert_id=e.certificate_id,
+                            user_id=str(user.id),
+                            student_name=student_name,
+                            course_id=str(course.id),
+                            course_title=course.title,
+                            issued_iso=issued_iso,
+                        )
+                        e.certificate_canonical_hash = c_hash
+                        e.certificate_signature = c_sig
+                        e.certificate_url = f"{web_url}/verify/certificate/{e.certificate_id}?sig={c_sig[:32]}"
                     await e.save()
 
                 result.append(
@@ -1683,8 +1718,8 @@ class CourseService:
                         "progress_percent": e.progress_percent,
                         "completed_lesson_ids": e.completed_lesson_ids,
                         "certificate_issued": e.certificate_issued,
-                        "certificate_id": cert_id,
-                        "certificate_url": cert_url,
+                        "certificate_id": e.certificate_id,
+                        "certificate_url": e.certificate_url,
                     }
                 )
         return result
@@ -2290,9 +2325,11 @@ class CourseService:
         api_url = getattr(settings, "API_BASE_URL", "https://astra-astrology-backend.onrender.com")
 
         cert_id = enrollment.certificate_id or CourseService.mint_certificate_id()
-        issued_dt = enrollment.certificate_issued_at or datetime.now(timezone.utc)
+        issued_dt = enrollment.certificate_issued_at or datetime.now(timezone.utc).replace(microsecond=0)
         student_name = getattr(user, "full_name", None) or "DivinLink Gurukul Scholar"
         student_email = getattr(user, "email", None)
+
+        issued_iso = CourseService.format_certificate_issued_iso(issued_dt)
 
         # Compute deterministic canonical hash & HMAC-SHA256 signature
         canonical_hash, signature = CourseService.compute_certificate_crypto(
@@ -2301,8 +2338,23 @@ class CourseService:
             student_name=student_name,
             course_id=str(course.id),
             course_title=course.title,
-            issued_iso=issued_dt.isoformat(),
+            issued_iso=issued_iso,
         )
+
+        # Backward compatibility fallback for legacy certificates minted with dt.isoformat()
+        if enrollment.certificate_signature and not hmac.compare_digest(enrollment.certificate_signature, signature):
+            legacy_iso = issued_dt.isoformat()
+            legacy_hash, legacy_sig = CourseService.compute_certificate_crypto(
+                cert_id=cert_id,
+                user_id=str(user.id),
+                student_name=student_name,
+                course_id=str(course.id),
+                course_title=course.title,
+                issued_iso=legacy_iso,
+            )
+            if hmac.compare_digest(enrollment.certificate_signature, legacy_sig):
+                canonical_hash, signature = legacy_hash, legacy_sig
+                issued_iso = legacy_iso
 
         # Record the number and the seal on the enrollment if either is
         # missing. The number has to be written down now that it is random:
@@ -2391,7 +2443,7 @@ class CourseService:
                 "certificate_id": cert_id,
                 "student_name": student_name,
                 "course_title": course.title,
-                "issued_iso": issued_dt.isoformat(),
+                "issued_iso": issued_iso,
                 "lessons_count": len(enrollment.completed_lesson_ids),
             },
         }
@@ -2438,7 +2490,8 @@ class CourseService:
         distinction = cert.get("distinction", "Vidya Parangata (Summa Cum Laude)")
         total_lessons = cert.get("total_lessons_completed", 0)
         web_url = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app")
-        qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={cert['verification_url']}"
+        encoded_verify_url = urllib.parse.quote(cert.get("verification_url", ""), safe="")
+        qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={encoded_verify_url}"
 
         return f"""<!DOCTYPE html>
 <html lang="en">
@@ -3215,15 +3268,18 @@ class CourseService:
         web_url = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app")
         if not enrollment.certificate_id:
             enrollment.certificate_id = CourseService.mint_certificate_id()
-            enrollment.certificate_issued_at = datetime.now(timezone.utc)
-        if not enrollment.certificate_url:
-            enrollment.certificate_url = f"{web_url}/verify/certificate/{enrollment.certificate_id}"
+        if not enrollment.certificate_issued_at:
+            enrollment.certificate_issued_at = datetime.now(timezone.utc).replace(microsecond=0)
         enrollment.certificate_issued = True
 
         cert_data = CourseService.generate_course_certificate_data(enrollment, course, user)
         if not enrollment.certificate_signature or not enrollment.certificate_canonical_hash:
             enrollment.certificate_signature = cert_data.get("cryptographic_signature")
             enrollment.certificate_canonical_hash = cert_data.get("canonical_hash")
+
+        expected_cert_url = cert_data.get("verification_url")
+        if not enrollment.certificate_url or "?sig=" not in enrollment.certificate_url:
+            enrollment.certificate_url = expected_cert_url
 
         await enrollment.save()
         return cert_data
@@ -3261,5 +3317,6 @@ class CourseService:
             course,
             mock_user,
             signature_token=signature_token,
+            is_public_verification=True,
         )
 

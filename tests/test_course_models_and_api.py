@@ -274,6 +274,116 @@ def test_course_certificate_generation_and_html():
     assert "DivinLink Gurukul" in html
     assert "HMAC-SHA256" in html
 
+    # Check QR code contains properly percent-encoded verification link
+    import urllib.parse
+    expected_encoded_url = urllib.parse.quote(cert_data["verification_url"], safe="")
+    assert f"data={expected_encoded_url}" in html
+
+
+def test_public_certificate_verification_signature_enforcement():
+    """Validates that public verification strictly requires and enforces the ?sig= token."""
+    from datetime import datetime, timezone
+    from beanie import PydanticObjectId
+    from app.models.user import User
+
+    user_id = PydanticObjectId()
+    course_id = PydanticObjectId()
+    user = User(id=user_id, email="student@example.com", first_name="Astra", last_name="Student")
+    course = Course(id=course_id, title="Jyotish Masterclass", slug="jyotish")
+    enrollment = CourseEnrollment(
+        user_id=user_id,
+        course_id=course_id,
+        progress_percent=100.0,
+        certificate_issued=True,
+        certificate_id="ASTRA-CERT-PUBLIC-TEST",
+        certificate_issued_at=datetime.now(timezone.utc),
+    )
+
+    # 1. Public verification without sig token MUST fail
+    unauthed = CourseService.generate_course_certificate_data(
+        enrollment, course, user, signature_token=None, is_public_verification=True
+    )
+    assert unauthed["is_valid"] is False
+    assert unauthed["tamper_check"]["status"] == "SIGNATURE_REQUIRED_FOR_VERIFICATION"
+    assert unauthed["digital_seal"]["status"] == "UNVERIFIED_MISSING_SIGNATURE"
+
+    # 2. Public verification with fake sig token MUST fail
+    forged = CourseService.generate_course_certificate_data(
+        enrollment, course, user, signature_token="bad_signature_0000000000", is_public_verification=True
+    )
+    assert forged["is_valid"] is False
+    assert forged["tamper_check"]["status"] == "TAMPERED_OR_INVALID_SIGNATURE"
+    assert forged["digital_seal"]["status"] == "TAMPERED"
+
+    # 3. Public verification with authentic sig token MUST succeed
+    valid_sig = enrollment.certificate_signature[:32]
+    authed = CourseService.generate_course_certificate_data(
+        enrollment, course, user, signature_token=valid_sig, is_public_verification=True
+    )
+    assert authed["is_valid"] is True
+    assert authed["tamper_check"]["status"] == "CRYPTOGRAPHICALLY_VERIFIED_AUTHENTIC"
+    assert authed["digital_seal"]["status"] == "VERIFIED_AUTHENTIC"
+
+
+def test_microsecond_truncation_does_not_break_signature_verification():
+    """
+    Validates that MongoDB's millisecond/microsecond truncation never corrupts
+    the canonical SHA-256 hash or HMAC-SHA256 signature.
+    """
+    from datetime import datetime, timezone
+    from beanie import PydanticObjectId
+    from app.models.user import User
+
+    user_id = PydanticObjectId()
+    course_id = PydanticObjectId()
+    user = User(id=user_id, email="student@example.com", first_name="Astra", last_name="Student")
+    course = Course(id=course_id, title="Vedic Jyotish", slug="vedic-jyotish")
+
+    # Time with arbitrary microseconds
+    now_full_micro = datetime(2026, 11, 15, 14, 30, 45, 987654, tzinfo=timezone.utc)
+    # MongoDB BSON Date drops microseconds to milliseconds (.987000)
+    mongo_truncated_micro = datetime(2026, 11, 15, 14, 30, 45, 987000, tzinfo=timezone.utc)
+    # Or rounded to zero microseconds
+    zero_micro = datetime(2026, 11, 15, 14, 30, 45, 0, tzinfo=timezone.utc)
+
+    iso_full = CourseService.format_certificate_issued_iso(now_full_micro)
+    iso_mongo = CourseService.format_certificate_issued_iso(mongo_truncated_micro)
+    iso_zero = CourseService.format_certificate_issued_iso(zero_micro)
+
+    assert iso_full == "2026-11-15T14:30:45Z"
+    assert iso_mongo == "2026-11-15T14:30:45Z"
+    assert iso_zero == "2026-11-15T14:30:45Z"
+
+    # Hash and signature must be 100% identical
+    hash1, sig1 = CourseService.compute_certificate_crypto(
+        "ASTRA-CERT-MICRO-TEST", str(user_id), "Astra Student", str(course_id), course.title, iso_full
+    )
+    hash2, sig2 = CourseService.compute_certificate_crypto(
+        "ASTRA-CERT-MICRO-TEST", str(user_id), "Astra Student", str(course_id), course.title, iso_mongo
+    )
+    assert hash1 == hash2
+    assert sig1 == sig2
+
+    # Verify enrollment created with now_full_micro re-verifies perfectly when loaded with mongo_truncated_micro
+    enrollment = CourseEnrollment(
+        user_id=user_id,
+        course_id=course_id,
+        progress_percent=100.0,
+        certificate_issued=True,
+        certificate_id="ASTRA-CERT-MICRO-TEST",
+        certificate_issued_at=now_full_micro,
+    )
+    cert1 = CourseService.generate_course_certificate_data(enrollment, course, user)
+    assert cert1["is_valid"] is True
+
+    # Simulate reloading enrollment from MongoDB where microseconds were truncated
+    enrollment.certificate_issued_at = mongo_truncated_micro
+    cert2 = CourseService.generate_course_certificate_data(
+        enrollment, course, user, signature_token=cert1["cryptographic_signature"][:32], is_public_verification=True
+    )
+    assert cert2["is_valid"] is True
+    assert cert2["tamper_check"]["status"] == "CRYPTOGRAPHICALLY_VERIFIED_AUTHENTIC"
+
 
 def test_public_certificate_route_order():
     """Ensures static /courses/certificate/verify route precedes parameterized /{course_id}."""
