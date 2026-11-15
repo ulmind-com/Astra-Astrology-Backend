@@ -377,7 +377,7 @@ class CourseService:
         if lesson.video_provider == "youtube_unlisted":
             embed_url = (
                 f"https://www.youtube-nocookie.com/embed/{lesson.video_id}"
-                f"?rel=0&modestbranding=1&controls=1&showinfo=0&disablekb=1&playsinline=1"
+                f"?enablejsapi=1&rel=0&modestbranding=1&controls=1&showinfo=0&disablekb=1&playsinline=1"
             )
         elif lesson.video_provider == "bunny_stream":
             # Bunny.net secure player iframe with SHA-256 token authentication
@@ -553,10 +553,17 @@ class CourseService:
             prog.completed_at = now
             await prog.save()
 
-        # Update enrollment completed lessons set
+        # Update enrollment completed lessons set atomically in MongoDB
         str_id = str(lesson_id)
-        if prog.is_completed and str_id not in enrollment.completed_lesson_ids:
-            enrollment.completed_lesson_ids.append(str_id)
+        if prog.is_completed:
+            await CourseEnrollment.find_one(CourseEnrollment.id == enrollment.id).update(
+                {"$addToSet": {"completed_lesson_ids": str_id}}
+            )
+
+        # Reload fresh enrollment state to avoid race conditions with concurrent lesson completions
+        fresh_enrollment = await CourseEnrollment.find_one(CourseEnrollment.id == enrollment.id)
+        if fresh_enrollment:
+            enrollment = fresh_enrollment
 
         # Count total lessons in course
         total_lessons = await CourseLesson.find(
@@ -619,8 +626,22 @@ class CourseService:
                     except Exception as err:
                         logger.warning("Failed to send graduation certificate email to {}: {}", user_email, err)
 
-        enrollment.last_accessed_at = datetime.now(timezone.utc)
-        await enrollment.save()
+        # Atomic field update preserving completed_lesson_ids set
+        set_fields: dict[str, Any] = {
+            "progress_percent": enrollment.progress_percent,
+            "last_accessed_at": datetime.now(timezone.utc),
+        }
+        if enrollment.certificate_issued:
+            set_fields.update({
+                "certificate_issued": True,
+                "certificate_id": enrollment.certificate_id,
+                "certificate_issued_at": enrollment.certificate_issued_at,
+                "certificate_canonical_hash": enrollment.certificate_canonical_hash,
+                "certificate_signature": enrollment.certificate_signature,
+                "certificate_url": enrollment.certificate_url,
+                "certificate_email_sent": enrollment.certificate_email_sent,
+            })
+        await CourseEnrollment.find_one(CourseEnrollment.id == enrollment.id).update({"$set": set_fields})
 
         message = None
         if mark_completed and not prog.is_completed:

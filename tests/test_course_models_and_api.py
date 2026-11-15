@@ -758,7 +758,7 @@ def test_course_pricing_intent_safeguards():
 # ------------------------------------------------- youtube_unlisted masking
 @pytest.mark.asyncio
 async def test_youtube_unlisted_video_id_is_masked_from_stream_response():
-    from unittest.mock import AsyncMock, patch
+    from unittest.mock import AsyncMock, MagicMock, patch
     from beanie import PydanticObjectId
     from types import SimpleNamespace
     from app.services.course_service import CourseService
@@ -797,7 +797,72 @@ async def test_youtube_unlisted_video_id_is_masked_from_stream_response():
 
                     # Raw video_id must NOT be exposed
                     assert stream_res["video_id"] is None
-                    # Secure embed URL must be provided with rel=0 & modestbranding
+                    # Secure embed URL must be provided with rel=0, enablejsapi=1 & modestbranding
                     assert "RAW_UNLISTED_YT_ID_123" in stream_res["embed_url"]
                     assert "youtube-nocookie.com/embed" in stream_res["embed_url"]
+                    assert "enablejsapi=1" in stream_res["embed_url"]
                     assert "rel=0" in stream_res["embed_url"]
+
+
+@pytest.mark.asyncio
+async def test_update_progress_atomic_add_to_set_preserves_completed_lessons():
+    """Validates that update_progress uses atomic $addToSet and does not overwrite existing completed lessons."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from beanie import PydanticObjectId
+    course_id = PydanticObjectId()
+    lesson1_id = PydanticObjectId()
+    user_id = PydanticObjectId()
+    mock_user = SimpleNamespace(id=user_id, email="student@example.com")
+
+    update_mock = AsyncMock()
+    enr_mock = SimpleNamespace(
+        id=PydanticObjectId(),
+        user_id=user_id,
+        course_id=course_id,
+        expires_at=None,
+        completed_lesson_ids=[str(lesson1_id)],
+        progress_percent=50.0,
+        certificate_issued=False,
+        certificate_id=None,
+        certificate_issued_at=None,
+        certificate_canonical_hash=None,
+        certificate_signature=None,
+        certificate_url=None,
+        certificate_email_sent=False,
+        update=update_mock,
+    )
+
+    class MockBeanieQuery:
+        def __init__(self, result):
+            self.result = result
+            self.update = update_mock
+
+        def __await__(self):
+            async def _coro():
+                return self.result
+            return _coro().__await__()
+
+    mock_query = MockBeanieQuery(enr_mock)
+    find_one_mock = MagicMock(return_value=mock_query)
+
+    with patch.object(CourseEnrollment, "find_one", find_one_mock), \
+         patch.object(CourseLesson, "find_one", AsyncMock(return_value=SimpleNamespace(id=lesson1_id, course_id=course_id, duration_minutes=10))), \
+         patch.object(CourseLessonProgress, "find_one", AsyncMock(return_value=SimpleNamespace(
+             watched_seconds=600, total_seconds=600, credited_seconds=600,
+             first_watched_at=None, last_watched_at=None, is_completed=True, save=AsyncMock()
+         ))), \
+         patch.object(CourseService, "_has_watched_enough", return_value=True), \
+         patch("app.models.course.CourseLesson.find", return_value=SimpleNamespace(count=AsyncMock(return_value=2))):
+
+        res = await CourseService.update_progress(
+            user=mock_user,
+            course_id=course_id,
+            lesson_id=lesson1_id,
+            watched_seconds=600,
+            total_seconds=600,
+            mark_completed=True,
+        )
+
+    # Validate atomic $addToSet was invoked
+    update_mock.assert_any_call({"$addToSet": {"completed_lesson_ids": str(lesson1_id)}})
