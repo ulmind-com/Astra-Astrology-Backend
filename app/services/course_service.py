@@ -1927,7 +1927,7 @@ class CourseService:
         query: dict[str, Any] = {
             "course_id": course_id,
             "lesson_id": lesson_id,
-            "is_hidden": False,
+            "is_hidden": {"$ne": True},
         }
 
         # Sorting logic
@@ -2052,6 +2052,33 @@ class CourseService:
         if not question:
             raise NotFoundError("Question not found")
 
+        is_staff = CourseService._is_staff(user)
+        if getattr(question, "is_hidden", False) and not is_staff:
+            raise NotFoundError("Question not found or has been hidden.")
+
+        if not is_staff:
+            enrollment = await CourseEnrollment.find_one(
+                CourseEnrollment.user_id == user.id,
+                CourseEnrollment.course_id == question.course_id,
+            )
+            is_active = CourseService.is_enrollment_active(enrollment)
+            if not is_active:
+                lesson = await CourseLesson.find_one(
+                    CourseLesson.id == question.lesson_id,
+                    CourseLesson.course_id == question.course_id,
+                )
+                is_preview = bool(lesson and getattr(lesson, "is_free_preview", False))
+                if not is_preview:
+                    if enrollment:
+                        raise ForbiddenError(
+                            "Your course enrollment has expired. Please renew your access to participate in Gurukul Jigyasa Q&A.",
+                            error_code="enrollment_expired",
+                        )
+                    raise ForbiddenError(
+                        "Please enroll in this course to participate in Gurukul Jigyasa Q&A.",
+                        error_code="not_enrolled",
+                    )
+
         user_id_str = str(user.id)
         if user_id_str in question.upvote_user_ids:
             question.upvote_user_ids.remove(user_id_str)
@@ -2077,14 +2104,43 @@ class CourseService:
         mark_resolved: bool = False,
     ) -> CourseQuestionAnswer:
         """Posts an answer or Acharya explanation to a student question thread."""
+        stripped_content = content.strip()
+        if not stripped_content:
+            raise BadRequestError("Answer content cannot be empty.")
+
         question = await CourseQuestion.find_one(CourseQuestion.id == question_id)
         if not question:
             raise NotFoundError("Question not found")
 
-        # The old form here was `str(role.value) if hasattr(role, "value")
-        # else str(role).lower()` — the `.lower()` only ever reached the second
-        # branch, so an uppercase role value would have been read as a student.
         is_admin_or_acharya = CourseService._is_staff(user)
+
+        # 1. Reject answer if question was hidden by moderator/admin
+        if getattr(question, "is_hidden", False) and not is_admin_or_acharya:
+            raise NotFoundError("Question not found or has been hidden.")
+
+        # 2. Verify active course enrollment for non-staff students
+        if not is_admin_or_acharya:
+            enrollment = await CourseEnrollment.find_one(
+                CourseEnrollment.user_id == user.id,
+                CourseEnrollment.course_id == question.course_id,
+            )
+            is_active = CourseService.is_enrollment_active(enrollment)
+            if not is_active:
+                lesson = await CourseLesson.find_one(
+                    CourseLesson.id == question.lesson_id,
+                    CourseLesson.course_id == question.course_id,
+                )
+                is_preview = bool(lesson and getattr(lesson, "is_free_preview", False))
+                if not is_preview:
+                    if enrollment:
+                        raise ForbiddenError(
+                            "Your course enrollment has expired. Please renew your access to answer questions in Gurukul Jigyasa Q&A.",
+                            error_code="enrollment_expired",
+                        )
+                    raise ForbiddenError(
+                        "Please enroll in this course to answer questions in Gurukul Jigyasa Q&A.",
+                        error_code="not_enrolled",
+                    )
 
         final_is_official = is_official or is_admin_or_acharya
         user_name = getattr(user, "full_name", None) or ("Acharya Guru" if final_is_official else "Astra Student")
@@ -2095,7 +2151,7 @@ class CourseService:
             user_role="admin" if is_admin_or_acharya else "student",
             user_avatar=getattr(user, "avatar_url", None),
             is_official=final_is_official,
-            content=content.strip(),
+            content=stripped_content,
         )
 
         question.answers.append(answer)
@@ -2113,13 +2169,13 @@ class CourseService:
     async def admin_list_questions(
         course_id: PydanticObjectId | None = None,
         lesson_id: PydanticObjectId | None = None,
-        status: str = "all",  # "all", "unanswered", "answered", "resolved"
+        status: str = "all",  # "all", "unanswered", "answered", "resolved", "hidden"
         search: str | None = None,
         limit: int = 50,
         skip: int = 0,
     ) -> dict[str, Any]:
         """Provides full Q&A inquiry management with course, lesson & student details."""
-        query: dict[str, Any] = {"is_hidden": {"$ne": True}}
+        query: dict[str, Any] = {}
         if course_id:
             query["course_id"] = course_id
         if lesson_id:
@@ -2128,10 +2184,17 @@ class CourseService:
         if status == "unanswered":
             query["has_official_answer"] = {"$ne": True}
             query["is_resolved"] = {"$ne": True}
+            query["is_hidden"] = {"$ne": True}
         elif status == "answered":
             query["has_official_answer"] = True
+            query["is_hidden"] = {"$ne": True}
         elif status == "resolved":
             query["is_resolved"] = True
+            query["is_hidden"] = {"$ne": True}
+        elif status == "hidden":
+            query["is_hidden"] = True
+        else:
+            query["is_hidden"] = {"$ne": True}
 
         if search:
             query["$or"] = [
@@ -2147,6 +2210,7 @@ class CourseService:
             {"has_official_answer": {"$ne": True}, "is_resolved": {"$ne": True}, "is_hidden": {"$ne": True}}
         ).count()
         resolved_count = await CourseQuestion.find({"is_resolved": True, "is_hidden": {"$ne": True}}).count()
+        hidden_count = await CourseQuestion.find({"is_hidden": True}).count()
 
         questions = (
             await CourseQuestion.find(query)
@@ -2249,6 +2313,7 @@ class CourseService:
             "total": total,
             "unanswered_count": unanswered_count,
             "resolved_count": resolved_count,
+            "hidden_count": hidden_count,
         }
 
     @staticmethod

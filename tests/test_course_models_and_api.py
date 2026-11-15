@@ -866,3 +866,186 @@ async def test_update_progress_atomic_add_to_set_preserves_completed_lessons():
 
     # Validate atomic $addToSet was invoked
     update_mock.assert_any_call({"$addToSet": {"completed_lesson_ids": str(lesson1_id)}})
+
+
+@pytest.mark.asyncio
+async def test_qa_unenrolled_user_cannot_answer_question():
+    """Validates that a non-staff user without course enrollment cannot post an answer (Q&A spam protection)."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, patch
+    from beanie import PydanticObjectId
+    from app.core.exceptions import ForbiddenError
+    from app.models.course import CourseQuestion, CourseEnrollment, CourseLesson
+
+    user_id = PydanticObjectId()
+    course_id = PydanticObjectId()
+    question_id = PydanticObjectId()
+    lesson_id = PydanticObjectId()
+
+    student_user = SimpleNamespace(id=user_id, role="user", full_name="Outsider")
+    mock_question = SimpleNamespace(
+        id=question_id,
+        course_id=course_id,
+        lesson_id=lesson_id,
+        is_hidden=False,
+        answers=[],
+        answer_count=0,
+        has_official_answer=False,
+        is_resolved=False,
+        save=AsyncMock(),
+    )
+
+    with patch.object(CourseQuestion, "find_one", AsyncMock(return_value=mock_question)), \
+         patch.object(CourseEnrollment, "find_one", AsyncMock(return_value=None)), \
+         patch.object(CourseLesson, "find_one", AsyncMock(return_value=SimpleNamespace(id=lesson_id, is_free_preview=False))):
+
+        with pytest.raises(ForbiddenError) as exc_info:
+            await CourseService.answer_question(
+                user=student_user,
+                question_id=question_id,
+                content="Spam link or unauthorized answer",
+            )
+        assert exc_info.value.error_code == "not_enrolled"
+
+
+@pytest.mark.asyncio
+async def test_qa_expired_enrollment_user_cannot_answer_question():
+    """Validates that an enrolled student whose access expired cannot post an answer."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, patch
+    from beanie import PydanticObjectId
+    from datetime import datetime, timezone, timedelta
+    from app.core.exceptions import ForbiddenError
+    from app.models.course import CourseQuestion, CourseEnrollment, CourseLesson
+
+    user_id = PydanticObjectId()
+    course_id = PydanticObjectId()
+    question_id = PydanticObjectId()
+    lesson_id = PydanticObjectId()
+
+    student_user = SimpleNamespace(id=user_id, role="user", full_name="Expired Student")
+    mock_question = SimpleNamespace(
+        id=question_id,
+        course_id=course_id,
+        lesson_id=lesson_id,
+        is_hidden=False,
+        answers=[],
+        save=AsyncMock(),
+    )
+    # Expired enrollment
+    expired_enr = SimpleNamespace(
+        id=PydanticObjectId(),
+        user_id=user_id,
+        course_id=course_id,
+        expires_at=datetime.now(timezone.utc) - timedelta(days=1),
+    )
+
+    with patch.object(CourseQuestion, "find_one", AsyncMock(return_value=mock_question)), \
+         patch.object(CourseEnrollment, "find_one", AsyncMock(return_value=expired_enr)), \
+         patch.object(CourseLesson, "find_one", AsyncMock(return_value=SimpleNamespace(id=lesson_id, is_free_preview=False))):
+
+        with pytest.raises(ForbiddenError) as exc_info:
+            await CourseService.answer_question(
+                user=student_user,
+                question_id=question_id,
+                content="My expired reply",
+            )
+        assert exc_info.value.error_code == "enrollment_expired"
+
+
+@pytest.mark.asyncio
+async def test_qa_hidden_question_rejected_for_students():
+    """Validates that answering or upvoting a hidden (spam/abuse) question is blocked for non-staff."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, patch
+    from beanie import PydanticObjectId
+    from app.core.exceptions import NotFoundError
+    from app.models.course import CourseQuestion
+
+    user_id = PydanticObjectId()
+    course_id = PydanticObjectId()
+    question_id = PydanticObjectId()
+
+    student_user = SimpleNamespace(id=user_id, role="user", full_name="Active Student")
+    hidden_question = SimpleNamespace(
+        id=question_id,
+        course_id=course_id,
+        is_hidden=True,
+        answers=[],
+        upvote_user_ids=[],
+        save=AsyncMock(),
+    )
+
+    with patch.object(CourseQuestion, "find_one", AsyncMock(return_value=hidden_question)):
+        with pytest.raises(NotFoundError):
+            await CourseService.answer_question(
+                user=student_user,
+                question_id=question_id,
+                content="Answering a hidden question",
+            )
+
+        with pytest.raises(NotFoundError):
+            await CourseService.toggle_question_upvote(
+                user=student_user,
+                question_id=question_id,
+            )
+
+
+@pytest.mark.asyncio
+async def test_qa_staff_can_answer_even_without_enrollment():
+    """Validates that faculty/admin/astrologer can answer questions (official answer) without regular enrollment."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, patch
+    from beanie import PydanticObjectId
+    from app.models.course import CourseQuestion
+    from app.models.enums import UserRole
+
+    admin_id = PydanticObjectId()
+    course_id = PydanticObjectId()
+    question_id = PydanticObjectId()
+    lesson_id = PydanticObjectId()
+
+    admin_user = SimpleNamespace(id=admin_id, role=UserRole.ADMIN, full_name="Pt. Shiva (Guru)")
+    mock_question = SimpleNamespace(
+        id=question_id,
+        course_id=course_id,
+        lesson_id=lesson_id,
+        is_hidden=False,
+        answers=[],
+        answer_count=0,
+        has_official_answer=False,
+        is_resolved=False,
+        updated_at=None,
+        save=AsyncMock(),
+    )
+
+    with patch.object(CourseQuestion, "find_one", AsyncMock(return_value=mock_question)):
+        ans = await CourseService.answer_question(
+            user=admin_user,
+            question_id=question_id,
+            content="Official explanation of 7th house Saturn.",
+            mark_resolved=True,
+        )
+        assert ans.is_official is True
+        assert ans.user_role == "admin"
+        assert ans.content == "Official explanation of 7th house Saturn."
+        assert mock_question.has_official_answer is True
+        assert mock_question.is_resolved is True
+        assert mock_question.save.called
+
+
+@pytest.mark.asyncio
+async def test_qa_empty_content_rejected():
+    """Validates that empty or whitespace-only answers are rejected with BadRequestError."""
+    from types import SimpleNamespace
+    from beanie import PydanticObjectId
+    from app.core.exceptions import BadRequestError
+
+    user = SimpleNamespace(id=PydanticObjectId(), role="user")
+    with pytest.raises(BadRequestError):
+        await CourseService.answer_question(
+            user=user,
+            question_id=PydanticObjectId(),
+            content="   \n   ",
+        )
+

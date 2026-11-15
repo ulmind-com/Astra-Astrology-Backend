@@ -446,6 +446,7 @@ class AdminCourseQuestionListResponse(BaseModel):
     total: int = 0
     unanswered_count: int = 0
     resolved_count: int = 0
+    hidden_count: int = 0
 
 
 class CourseCertificateOut(BaseModel):
