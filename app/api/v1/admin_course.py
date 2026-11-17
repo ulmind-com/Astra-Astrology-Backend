@@ -10,13 +10,22 @@ from loguru import logger
 
 from app.api.dependencies import AdminUser
 from app.core.config import settings
-from app.core.exceptions import NotFoundError
-from app.models.course import Course, CourseLesson, CourseSection
+from app.core.exceptions import BadRequestError, NotFoundError
+from app.models.course import (
+    Course,
+    CourseEnrollment,
+    CourseLesson,
+    CourseLessonProgress,
+    CourseQuestion,
+    CourseSection,
+)
 from app.schemas.common import ApiResponse
 from app.services.storage import safe_delete_cloudinary_image, upload_file
 from app.schemas.course import (
     AdminCourseEnrollmentListResponse,
     AdminCourseEnrollmentOut,
+    AdminCourseLearnerDetailOut,
+    AdminCourseLearnersResponse,
     AdminCourseOrderListResponse,
     AdminCourseOrderOut,
     AdminCourseQuestionAnswerRequest,
@@ -134,6 +143,7 @@ async def admin_create_course(
         mrp=payload.mrp,
         discount_percent=discount,
         certificate_enabled=payload.certificate_enabled,
+        access_duration_days=payload.access_duration_days,
         what_you_will_learn=payload.what_you_will_learn,
         prerequisites=payload.prerequisites,
         tags=payload.tags,
@@ -156,6 +166,17 @@ async def admin_create_bunny_video_placeholder(
         clean_title = f"Lecture Video {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}"
     result = await CourseService.create_bunny_video_placeholder(title=clean_title)
     return ApiResponse(data=BunnyCreateVideoResponse(**result))
+
+
+@router.get("/preview-token/{video_id}", response_model=ApiResponse[dict])
+async def admin_get_video_preview_token(
+    video_id: str,
+    _: AdminUser,
+    library_id: str | None = None,
+) -> ApiResponse[dict]:
+    """Generates a signed Bunny.net embed URL with token authentication for admin curriculum preview."""
+    embed_url = CourseService.get_signed_bunny_embed_url(video_id=video_id, library_id=library_id)
+    return ApiResponse(data={"video_id": video_id, "embed_url": embed_url})
 
 
 # -----------------------------------------------------------------------------
@@ -358,6 +379,8 @@ async def admin_grant_course_enrollment(
         amount_paid=payload.amount_paid,
         payment_id=payload.payment_id,
         note=payload.note,
+        access_duration_days=payload.access_duration_days,
+        expires_at=payload.expires_at,
     )
     msg = (
         "Student was already enrolled in this course."
@@ -379,6 +402,42 @@ async def admin_revoke_course_enrollment(
         enrollment_id=enrollment_id,
     )
     return ApiResponse(data={"message": "Enrollment revoked successfully."})
+
+
+@router.get("/{course_id}/learners", response_model=ApiResponse[AdminCourseLearnersResponse])
+async def admin_get_course_learners(
+    course_id: PydanticObjectId,
+    _: AdminUser,
+    search: Annotated[str | None, Query(description="Search by student name, email, phone, order, cert")] = None,
+    progress_status: Annotated[str | None, Query(description="Filter by progress: all, completed, in_progress, not_started, expired")] = None,
+    sort_by: Annotated[str | None, Query(description="Sort order: enrolled_desc, enrolled_asc, progress_desc, progress_asc, last_active_desc")] = "enrolled_desc",
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+) -> ApiResponse[AdminCourseLearnersResponse]:
+    """Retrieves deep learner analytics, completion rates, and enrolled students list for a specific course."""
+    data = await CourseService.admin_get_course_learners(
+        course_id=course_id,
+        search=search,
+        progress_status=progress_status,
+        sort_by=sort_by,
+        page=page,
+        limit=limit,
+    )
+    return ApiResponse(data=AdminCourseLearnersResponse(**data))
+
+
+@router.get("/{course_id}/learners/{user_id}/progress", response_model=ApiResponse[AdminCourseLearnerDetailOut])
+async def admin_get_course_learner_progress(
+    course_id: PydanticObjectId,
+    user_id: PydanticObjectId,
+    _: AdminUser,
+) -> ApiResponse[AdminCourseLearnerDetailOut]:
+    """Retrieves full lesson-by-lesson progress breakdown, watch duration, and completion details for a specific student."""
+    data = await CourseService.admin_get_learner_progress(
+        course_id=course_id,
+        user_id=user_id,
+    )
+    return ApiResponse(data=AdminCourseLearnerDetailOut(**data))
 
 
 @router.get("/{course_id}", response_model=ApiResponse[CourseDetailOut])
@@ -488,6 +547,7 @@ async def admin_update_course(
     data = payload.model_dump(exclude_unset=True)
     # Don't re-assign slug from data since handled above
     data.pop("slug", None)
+    data.pop("is_free", None)
     for k, v in data.items():
         setattr(course, k, v)
 
@@ -509,6 +569,8 @@ async def admin_update_course(
 
     if course.mrp > 0 and course.mrp > course.price:
         course.discount_percent = int(round(((course.mrp - course.price) / course.mrp) * 100))
+    else:
+        course.discount_percent = 0
 
     course.updated_at = datetime.now(timezone.utc)
     await course.save()
@@ -519,31 +581,48 @@ async def admin_update_course(
 async def admin_delete_course(
     course_id: PydanticObjectId,
     _: AdminUser,
+    force: bool = Query(default=False, description="Force delete even if active enrollments exist"),
 ) -> ApiResponse[dict]:
-    """Soft deletes a course from the catalog and cleans up Cloudinary and Bunny media assets."""
+    """Soft deletes a course from the catalog and safely manages student access and media."""
     course = await Course.find_one(Course.id == course_id)
     if not course:
         raise NotFoundError("Course not found")
 
-    if course.thumbnail_url:
-        logger.info(f"Course {course_id} deleted. Purging thumbnail from Cloudinary: {course.thumbnail_url}")
-        asyncio.create_task(safe_delete_cloudinary_image(course.thumbnail_url))
+    # Safety check for paying/enrolled students
+    active_enrollments = await CourseEnrollment.find(CourseEnrollment.course_id == course_id).count()
+    if active_enrollments > 0 and not force:
+        raise BadRequestError(
+            f"Cannot delete course: {active_enrollments} student(s) are currently enrolled. "
+            "Please unpublish the course instead to preserve purchased student access, or pass ?force=true to confirm deletion."
+        )
 
-    if course.instructor_avatar:
-        logger.info(f"Course {course_id} deleted. Purging instructor avatar from Cloudinary: {course.instructor_avatar}")
-        asyncio.create_task(safe_delete_cloudinary_image(course.instructor_avatar))
+    # Only purge media if NO enrolled students exist
+    # If students are enrolled, preserving the media ensures paying students are not defrauded
+    if active_enrollments == 0:
+        if course.thumbnail_url:
+            logger.info(f"Course {course_id} deleted. Purging thumbnail from Cloudinary: {course.thumbnail_url}")
+            asyncio.create_task(safe_delete_cloudinary_image(course.thumbnail_url))
 
-    # Bunny Stream Auto-Cleanup: Purge promo video
-    if course.promo_video_url and (course.promo_video_provider == "bunny_stream" or "bunny" in str(course.promo_video_url) or len(str(course.promo_video_url)) > 20):
-        logger.info(f"Course {course_id} deleted. Purging promo video from Bunny: {course.promo_video_url}")
-        asyncio.create_task(CourseService.safe_delete_bunny_video(course.promo_video_url))
+        if course.instructor_avatar:
+            logger.info(f"Course {course_id} deleted. Purging instructor avatar from Cloudinary: {course.instructor_avatar}")
+            asyncio.create_task(safe_delete_cloudinary_image(course.instructor_avatar))
 
-    # Bunny Stream Auto-Cleanup: Purge all lesson videos belonging to this course
-    course_lessons = await CourseLesson.find(CourseLesson.course_id == course_id).to_list()
-    for l in course_lessons:
-        if l.video_id:
-            logger.info(f"Course {course_id} deleted. Purging Bunny video {l.video_id} for lesson {l.id}")
-            asyncio.create_task(CourseService.safe_delete_bunny_video(l.video_id, l.library_id))
+        # Bunny Stream Auto-Cleanup: Purge promo video
+        if course.promo_video_url and (course.promo_video_provider == "bunny_stream" or "bunny" in str(course.promo_video_url) or len(str(course.promo_video_url)) > 20):
+            logger.info(f"Course {course_id} deleted. Purging promo video from Bunny: {course.promo_video_url}")
+            asyncio.create_task(CourseService.safe_delete_bunny_video(course.promo_video_url))
+
+        # Bunny Stream Auto-Cleanup: Purge all lesson videos belonging to this course
+        course_lessons = await CourseLesson.find(CourseLesson.course_id == course_id).to_list()
+        for l in course_lessons:
+            if l.video_id:
+                logger.info(f"Course {course_id} deleted. Purging Bunny video {l.video_id} for lesson {l.id}")
+                asyncio.create_task(CourseService.safe_delete_bunny_video(l.video_id, l.library_id))
+    else:
+        logger.warning(
+            f"Course {course_id} deleted with {active_enrollments} enrolled students (force=True). "
+            "Preserving Bunny lesson media so paying students are not blocked."
+        )
 
     import secrets
 
@@ -553,7 +632,7 @@ async def admin_delete_course(
     course.slug = f"{course.slug}-deleted-{secrets.token_hex(4)}"
     course.updated_at = datetime.now(timezone.utc)
     await course.save()
-    return ApiResponse(data={"message": "Course deleted successfully"})
+    return ApiResponse(data={"message": "Course deleted successfully", "active_enrollments": active_enrollments})
 
 
 # -----------------------------------------------------------------------------
@@ -612,6 +691,14 @@ async def admin_delete_section(
         if l.video_id:
             logger.info(f"Section {section_id} deleted. Purging Bunny video {l.video_id} for lesson {l.id}")
             asyncio.create_task(CourseService.safe_delete_bunny_video(l.video_id, l.library_id))
+
+    # Cascade cleanup: delete orphaned questions and progress for this section and its lessons
+    lesson_ids = [l.id for l in lessons]
+    if lesson_ids:
+        await CourseQuestion.find({"$or": [{"section_id": section_id}, {"lesson_id": {"$in": lesson_ids}}]}).delete()
+        await CourseLessonProgress.find({"lesson_id": {"$in": lesson_ids}}).delete()
+    else:
+        await CourseQuestion.find(CourseQuestion.section_id == section_id).delete()
 
     # Delete associated lessons
     await CourseLesson.find(CourseLesson.section_id == section_id).delete()
@@ -718,6 +805,10 @@ async def admin_delete_lesson(
     if lesson.video_id and (lesson.video_provider == "bunny_stream" or len(lesson.video_id) > 15):
         logger.info(f"Lesson {lesson_id} deleted. Purging Bunny video {lesson.video_id}")
         asyncio.create_task(CourseService.safe_delete_bunny_video(lesson.video_id, lesson.library_id))
+
+    # Cascade cleanup: delete orphaned questions and progress for this lesson
+    await CourseQuestion.find(CourseQuestion.lesson_id == lesson_id).delete()
+    await CourseLessonProgress.find(CourseLessonProgress.lesson_id == lesson_id).delete()
 
     await lesson.delete()
 

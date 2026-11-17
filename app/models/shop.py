@@ -22,6 +22,7 @@ from app.models.enums import (
     CouponDiscountType,
     ProductCategoryType,
     ShopOrderStatus,
+    ShopPaymentMethod,
     ShopPaymentStatus,
 )
 
@@ -84,9 +85,26 @@ class Product(TimestampedDocument):
     deity: str | None = Field(default=None, description="e.g. Lord Shiva, Goddess Lakshmi, Lord Ganesha")
     benefits: list[str] = Field(default_factory=list, description="Target benefits e.g. Career, Wealth, Health, Marriage")
     life_pillars: list[str] = Field(default_factory=list, description="Pillars e.g. career, finance, health, love, family, luck")
+    purpose_tags: list[str] = Field(default_factory=list, description="Shop by What Matters tags: wealth, love, protection, career, health, luck, dosha")
     recommended_for_rashis: list[str] = Field(default_factory=list, description="Beneficial zodiac signs e.g. Leo, Capricorn")
+    crystal_type: str | None = Field(default=None, description="e.g. Pyrite, Citrine, Rudraksha, Karungali, Selenite")
     beej_mantra: str | None = Field(default=None, description="Consecrated chanting mantra for wearing")
     wear_instructions: str | None = Field(default=None, description="Auspicious day, direction, and wearing protocol")
+
+    # High-Value Free Gift Bundling (Admin Configurable per product or inherits global)
+    free_gift_title: str | None = Field(default=None, description="e.g. Raw Selenite Charging Plate")
+    free_gift_value: float | None = Field(default=None, description="e.g. 729.0")
+    free_gift_badge: str | None = Field(default=None, description="e.g. FREE Raw Selenite Plate worth ₹729")
+    free_gift_image_url: str | None = Field(default=None, description="Free gift image")
+
+    # 100% Wallet Cashback Override (None = inherits global cashback setting)
+    cashback_percent: int | None = Field(default=None, ge=0, le=200, description="Cashback percentage override for this product")
+
+    # Government / Gemological Lab Certification Details
+    lab_certified: bool = Field(default=True, description="Whether product comes with verified lab certification")
+    lab_certificate_name: str | None = Field(default="Govt. Approved Gemological Lab", description="Name of certifying laboratory")
+    lab_certificate_number: str | None = Field(default=None, description="Certificate ID / Report No.")
+    certificate_image_url: str | None = Field(default=None, description="Government or Gemological lab authenticity certificate")
 
     # Pricing & Inventory (Strictly in INR ₹)
     mrp: float = Field(gt=0, description="Maximum Retail Price (Original / Strike-through Price in ₹)")
@@ -287,6 +305,10 @@ class OrderItemSnapshot(BaseModel):
     quantity: int
     line_total: float
     weight_grams: float = 100.0
+    free_gift_title: str | None = None
+    free_gift_value: float | None = None
+    lab_certified: bool = True
+    lab_certificate_number: str | None = None
 
 
 class SankalpaDetails(BaseModel):
@@ -331,13 +353,25 @@ class ShopOrder(TimestampedDocument):
     tax_amount: float = Field(default=0.0, ge=0, description="Applicable taxes/GST in ₹")
     grand_total: float = Field(gt=0, description="Total INR amount charged to customer")
 
-    # Payment Gateway Metadata (Razorpay Direct INR)
+    # Payment Gateway Metadata (Razorpay Direct INR / COD / Wallet)
+    payment_method: ShopPaymentMethod = ShopPaymentMethod.RAZORPAY
     payment_gateway: str = "razorpay"
     razorpay_order_id: str | None = None
     razorpay_payment_id: str | None = None
     razorpay_signature: str | None = None
     payment_status: ShopPaymentStatus = ShopPaymentStatus.PENDING
     paid_at: datetime | None = None
+
+    # 100% Wallet Cashback Accounting (Prevents Double Credit & Handles Reversals)
+    cashback_percent: int = 100
+    cashback_coins_eligible: int = 0
+    cashback_coins_credited: int = 0
+    cashback_credited_at: datetime | None = None
+    cashback_transaction_id: PydanticObjectId | None = None
+    cashback_reversed_at: datetime | None = None
+
+    # High-Value Bundled Free Gifts
+    free_gifts: list[dict] = Field(default_factory=list, description="Bundled free items e.g. Raw Selenite Plate worth ₹729")
 
     # Fulfillment & Delivery State
     order_status: ShopOrderStatus = ShopOrderStatus.PLACED
@@ -354,6 +388,7 @@ class ShopOrder(TimestampedDocument):
     # Consecration & Invoice
     invoice_number: str | None = None
     consecration_certificate_id: str | None = None
+    consecration_certificate_url: str | None = None
 
     class Settings:
         name = "shop_orders"

@@ -270,8 +270,7 @@ async def test_shop_banner_and_reels_settings():
     from app.models.cms import CMS_KEY_SHOP, ShopCMS
     from app.schemas.shop import ShopBannerSettingsUpdate, ShopHeroBannerItem, ShopStoreReelItem
 
-    mock_cms = MagicMock()
-    mock_cms.key = CMS_KEY_SHOP
+    mock_cms = ShopCMS(key=CMS_KEY_SHOP)
     mock_cms.announcement_bar_text = "✨ Test Announcement"
     mock_cms.announcement_bar_link = "/shop"
     mock_cms.announcement_bar_active = True
@@ -279,7 +278,7 @@ async def test_shop_banner_and_reels_settings():
     mock_cms.reels = []
 
     with patch.object(ShopCMS, "find_one", AsyncMock(return_value=mock_cms)), \
-         patch.object(mock_cms, "save", AsyncMock()):
+         patch.object(ShopCMS, "save", AsyncMock()):
 
         # 1. Verify get returns default banners & reels when empty
         settings = await shop_admin.get_shop_banner_settings()

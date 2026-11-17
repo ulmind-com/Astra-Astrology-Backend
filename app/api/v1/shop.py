@@ -9,17 +9,25 @@ Endpoints:
 
 from fastapi import APIRouter, Query
 
+from app.api.dependencies import CurrentUser
 from app.schemas.common import ApiResponse
 from app.schemas.shop import (
+    PincodeCheckResponse,
     ProductCategoryOut,
     ProductListResponse,
     ProductOut,
     ShopBannerSettingsOut,
+    ShopCheckoutRequest,
+    ShopCheckoutResponse,
+    ShopOrderListResponse,
+    ShopOrderOut,
+    ShopPaymentVerifyRequest,
     ShopProductRecommendationOut,
     StockReservationRequest,
     StockReservationResponse,
 )
 from app.services import shop_admin, shop_remedy_recommender
+from app.services.shop_order_service import ShopOrderService
 
 router = APIRouter(prefix="/shop", tags=["shop"])
 
@@ -161,6 +169,111 @@ async def release_stock(
             message="Stock released back to inventory successfully.",
         )
     )
+
+
+# ===========================================================================
+# Pincode Serviceability Check
+# ===========================================================================
+
+
+@router.get(
+    "/pincode/{pincode}",
+    response_model=ApiResponse[PincodeCheckResponse],
+    summary="Check delivery timeline and COD availability by Indian PIN code",
+)
+async def check_pincode_availability(pincode: str) -> ApiResponse[PincodeCheckResponse]:
+    result = ShopOrderService.check_pincode(pincode)
+    return ApiResponse.ok(data=result)
+
+
+# ===========================================================================
+# Checkout & Order Placement with 100% Wallet Cashback
+# ===========================================================================
+
+
+@router.post(
+    "/checkout",
+    response_model=ApiResponse[ShopCheckoutResponse],
+    summary="Place a remedy order with Vedic Sankalpa, free gifts, and 100% wallet cashback calculation",
+)
+async def shop_checkout(
+    payload: ShopCheckoutRequest,
+    user: CurrentUser,
+) -> ApiResponse[ShopCheckoutResponse]:
+    result = await ShopOrderService.create_order(
+        user_id=user.id,
+        user_email=user.email,
+        user_phone=user.phone_number or "",
+        payload=payload,
+    )
+    return ApiResponse.ok(data=result)
+
+
+@router.post(
+    "/verify-payment",
+    response_model=ApiResponse[ShopOrderOut],
+    summary="Verify Razorpay payment signature and execute instant 100% wallet cashback credit",
+)
+async def shop_verify_payment(
+    payload: ShopPaymentVerifyRequest,
+    user: CurrentUser,
+) -> ApiResponse[ShopOrderOut]:
+    order = await ShopOrderService.verify_razorpay_payment(
+        user_id=user.id,
+        payload=payload,
+    )
+    return ApiResponse.ok(data=order)
+
+
+@router.get(
+    "/orders/mine",
+    response_model=ApiResponse[ShopOrderListResponse],
+    summary="List past remedy orders placed by current user",
+)
+async def list_my_shop_orders(
+    user: CurrentUser,
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=50),
+) -> ApiResponse[ShopOrderListResponse]:
+    result = await ShopOrderService.get_user_orders(
+        user_id=user.id,
+        page=page,
+        limit=limit,
+    )
+    return ApiResponse.ok(data=result)
+
+
+@router.get(
+    "/orders/{order_key}",
+    response_model=ApiResponse[ShopOrderOut],
+    summary="Get order details, Vedic consecration status, and tracking information",
+)
+async def get_shop_order_detail(
+    order_key: str,
+    user: CurrentUser,
+) -> ApiResponse[ShopOrderOut]:
+    order = await ShopOrderService.get_order_by_number_or_id(
+        order_key=order_key,
+        user_id=user.id,
+    )
+    return ApiResponse.ok(data=order)
+
+
+@router.post(
+    "/orders/{order_key}/cancel",
+    response_model=ApiResponse[ShopOrderOut],
+    summary="Cancel order before shipment with automatic cashback claw-back",
+)
+async def cancel_my_shop_order(
+    order_key: str,
+    user: CurrentUser,
+) -> ApiResponse[ShopOrderOut]:
+    order = await ShopOrderService.cancel_order(
+        order_id=order_key,
+        user_id=user.id,
+        reason="Cancelled by devotee from order tracking dashboard",
+    )
+    return ApiResponse.ok(data=order)
 
 
 

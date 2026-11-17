@@ -248,19 +248,49 @@ def default_shop_reels() -> list[dict]:
     ]
 
 
+def default_shop_marquee_items() -> list[str]:
+    return [
+        "⚡ 100% Cashback in Astra Wallet on All Prepaid Orders",
+        "🔱 Consecrated & Energised by Vedic Pandits in Varanasi",
+        "💎 100% Natural & Govt. Lab Certified Gemstones & Rudraksha",
+        "✨ FREE Raw Selenite Charging Plate worth ₹729 with Zodiac Bracelets",
+        "🚚 Free Express Shipping across India on orders above ₹499",
+        "🛡️ 7-Day Easy Replacement Guarantee • Cash on Delivery Available",
+    ]
+
+
 class ShopCMS(TimestampedDocument):
     """Singleton document storing customizable store hero banners, announcements, and reels."""
 
     key: str = CMS_KEY_SHOP
 
+    # Announcement & Marquee
     announcement_bar_text: str | None = Field(
         default="🛍️ Discover Sacred Jewellery & Energised Remedies Based on Your Mulank & Kundli ✨",
         max_length=300,
     )
     announcement_bar_link: str | None = Field(default="/shop", max_length=300)
     announcement_bar_active: bool = True
+    marquee_items: list[str] = Field(default_factory=default_shop_marquee_items)
     hero_banners: list[dict] = Field(default_factory=default_shop_hero_banners)
     reels: list[dict] = Field(default_factory=default_shop_reels)
+
+    # 100% Wallet Cashback Hook Controls (Admin Configurable)
+    cashback_enabled: bool = True
+    cashback_percent: int = Field(default=100, ge=0, le=200, description="Default wallet cashback percentage on prepaid orders")
+    cashback_max_cap_inr: float | None = Field(default=None, description="Optional cap in INR for cashback (None = uncapped)")
+
+    # High-Value Free Gift Defaults (Admin Configurable)
+    free_gift_default_title: str = "Raw Selenite Charging Plate"
+    free_gift_default_value: float = 729.0
+    free_gift_default_badge: str = "FREE Raw Selenite Plate worth ₹729"
+    free_gift_default_image_url: str | None = "https://images.unsplash.com/photo-1611591475879-166258f33cf2?w=600&auto=format&fit=crop&q=80"
+
+    # Shipping & Logistics Controls
+    free_shipping_threshold: float = Field(default=499.0, ge=0, description="Order subtotal threshold in ₹ for free shipping")
+    standard_shipping_fee: float = Field(default=70.0, ge=0, description="Standard courier shipping fee in ₹ below threshold")
+    cod_enabled: bool = True
+    cod_extra_charge: float = Field(default=0.0, ge=0, description="Extra fee for Cash on Delivery (0 for free COD)")
 
     class Settings:
         name = "cms_shop"

@@ -12,6 +12,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, File, Query, UploadFile
 
 from app.api.dependencies import AdminUser
+from app.models.enums import ShopOrderStatus, ShopPaymentStatus
 from app.schemas.common import ApiResponse
 from app.schemas.shop import (
     CloudinaryOrphanCleanupReport,
@@ -23,11 +24,15 @@ from app.schemas.shop import (
     ProductListResponse,
     ProductOut,
     ProductUpdate,
+    ShopAdminOrderUpdate,
     ShopBannerSettingsOut,
     ShopBannerSettingsUpdate,
+    ShopOrderListResponse,
+    ShopOrderOut,
     StockUpdatePayload,
 )
 from app.services import shop_admin
+from app.services.shop_order_service import ShopOrderService
 from app.services.storage import upload_product_image
 
 router = APIRouter(prefix="/admin/shop", tags=["admin: shop"])
@@ -319,4 +324,81 @@ async def update_store_banner_settings(
 ) -> ApiResponse[ShopBannerSettingsOut]:
     settings = await shop_admin.update_shop_banner_settings(payload)
     return ApiResponse.ok(data=settings, message="Store banners updated successfully.")
+
+
+# ===========================================================================
+# Remedy Orders Fulfillment Management
+# ===========================================================================
+
+
+@router.get(
+    "/orders",
+    response_model=ApiResponse[ShopOrderListResponse],
+    summary="List all remedy store orders with status and search filtering",
+)
+async def admin_list_shop_orders(
+    admin: AdminUser = None,
+    status: ShopOrderStatus | None = Query(default=None),
+    payment_status: ShopPaymentStatus | None = Query(default=None),
+    search: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+) -> ApiResponse[ShopOrderListResponse]:
+    result = await ShopOrderService.list_admin_orders(
+        status=status,
+        payment_status=payment_status,
+        search=search,
+        page=page,
+        limit=limit,
+    )
+    return ApiResponse.ok(data=result)
+
+
+@router.get(
+    "/orders/{order_id}",
+    response_model=ApiResponse[ShopOrderOut],
+    summary="Get single order details including devotee Sankalpa for temple puja printing",
+)
+async def admin_get_shop_order(
+    order_id: str,
+    admin: AdminUser = None,
+) -> ApiResponse[ShopOrderOut]:
+    order = await ShopOrderService.get_order_by_number_or_id(order_key=order_id)
+    return ApiResponse.ok(data=order)
+
+
+@router.patch(
+    "/orders/{order_id}",
+    response_model=ApiResponse[ShopOrderOut],
+    summary="Update order fulfillment status, courier AWB tracking, and trigger COD cashback upon delivery",
+)
+async def admin_update_shop_order(
+    order_id: str,
+    payload: ShopAdminOrderUpdate,
+    admin: AdminUser = None,
+) -> ApiResponse[ShopOrderOut]:
+    order = await ShopOrderService.update_order_by_admin(
+        order_id=order_id,
+        payload=payload,
+        admin_id=admin.id,
+    )
+    return ApiResponse.ok(data=order, message="Order updated successfully.")
+
+
+@router.post(
+    "/orders/{order_id}/cancel",
+    response_model=ApiResponse[ShopOrderOut],
+    summary="Cancel order by admin with automatic stock replenishment and cashback claw-back",
+)
+async def admin_cancel_shop_order(
+    order_id: str,
+    reason: str | None = Query(default="Cancelled by store administrator"),
+    admin: AdminUser = None,
+) -> ApiResponse[ShopOrderOut]:
+    order = await ShopOrderService.cancel_order(
+        order_id=order_id,
+        user_id=None,
+        reason=reason,
+    )
+    return ApiResponse.ok(data=order, message="Order cancelled successfully.")
 
