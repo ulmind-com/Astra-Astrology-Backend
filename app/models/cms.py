@@ -122,39 +122,145 @@ def default_shop_hero_banners() -> list[dict]:
     return [
         {
             "id": "banner-1",
-            "title": "Sacred Certified Nepali Rudraksha",
-            "subtitle": "Consecrated with Vedic Pran-Pratishtha by Vedic Pandits for spiritual protection & prosperity.",
-            "cta_text": "Explore Rudraksha",
-            "cta_link": "/shop?category=rudraksha",
-            "badge_text": "100% Authentic & Lab Certified",
-            "image_url": "https://images.unsplash.com/photo-1602751584552-8ba73aad10e1?auto=format&fit=crop&w=1200&q=80",
+            "title": "WEAR YOUR ZODIAC",
+            "subtitle": "Discover the new zodiac ring collection handcrafted in sterling silver and energized with Vedic rituals.",
+            "cta_text": "SHOP NOW",
+            "cta_link": "/shop?category=zodiac",
+            "badge_text": "NEW LAUNCH",
+            "image_url": "https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=1600&q=80",
             "is_active": True,
         },
         {
             "id": "banner-2",
-            "title": "Natural Astrological Gemstones",
-            "subtitle": "Unheated, untreated Vedic gems with government recognized laboratory certification.",
-            "cta_text": "Discover Gemstones",
-            "cta_link": "/shop?category=gemstone",
-            "badge_text": "Govt. Lab Certified",
-            "image_url": "https://images.unsplash.com/photo-1599707367072-cd6ada2bc375?auto=format&fit=crop&w=1200&q=80",
+            "title": "SACRED NEPALI RUDRAKSHA",
+            "subtitle": "1 to 14 Mukhi divine Rudraksha beads collected from the high Himalayas with government lab certification.",
+            "cta_text": "EXPLORE MALAS",
+            "cta_link": "/shop?category=rudraksha",
+            "badge_text": "100% PRANA-PRATISHTHIT",
+            "image_url": "https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=1600&q=80",
+            "is_active": True,
+        },
+        {
+            "id": "banner-3",
+            "title": "SUPER DHAN YOG BAND",
+            "subtitle": "Activate Mahalakshmi and Kuber vibrations to attract financial breakthroughs, wealth retention, and business growth.",
+            "cta_text": "ORDER NOW",
+            "cta_link": "/shop?category=bracelets",
+            "badge_text": "BESTSELLER",
+            "image_url": "https://images.unsplash.com/photo-1611591475879-166258f33cf2?auto=format&fit=crop&w=1600&q=80",
+            "is_active": True,
+        },
+        {
+            "id": "banner-4",
+            "title": "ORIGINAL KARUNGALI MALA",
+            "subtitle": "Pure black ebony wood beads for shielding against malefic Rahu, evil eye, negative entities and karmic blocks.",
+            "cta_text": "VIEW KARUNGALI",
+            "cta_link": "/shop?category=karungali",
+            "badge_text": "DIVINE SHIELD",
+            "image_url": "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&w=1600&q=80",
+            "is_active": True,
+        },
+        {
+            "id": "banner-5",
+            "title": "PRAN-PRATISHTHIT RATNA",
+            "subtitle": "Unheated, untreated natural gemstones tested and certified by government recognized gemological laboratories.",
+            "cta_text": "DISCOVER RATNA",
+            "cta_link": "/shop?category=gemstones",
+            "badge_text": "LAB CERTIFIED",
+            "image_url": "https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?auto=format&fit=crop&w=1600&q=80",
+            "is_active": True,
+        },
+    ]
+
+
+def default_shop_reels() -> list[dict]:
+    return [
+        {
+            "id": "reel-1",
+            "user_handle": "@sneha_vats",
+            "user_name": "Sneha Vats",
+            "rating": 5,
+            "quote": "Wearing the 7-Mukhi Rudraksha cleared my Saturn Sade Sati career blocks in 3 weeks! 🌟",
+            "thumbnail_url": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80",
+            "video_url": "https://assets.mixkit.co/videos/preview/mixkit-hands-holding-a-sparkling-gemstone-41315-large.mp4",
+            "likes_count": "4.8k",
+            "tagged_product_title": "খাঁটি নেপালি ৭-মুখী রুদ্রাক্ষ",
+            "tagged_product_price": 1899,
+            "tagged_product_slug": "nepali-7-mukhi-rudraksha",
+            "is_active": True,
+        },
+        {
+            "id": "reel-2",
+            "user_handle": "@rohit_astroglow",
+            "user_name": "Rohit K.",
+            "rating": 5,
+            "quote": "Unboxing my Super Dhan Yog Band! The energy feel is absolutely authentic and energizing. 💰",
+            "thumbnail_url": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=600&q=80",
+            "video_url": "https://assets.mixkit.co/videos/preview/mixkit-woman-wearing-spiritual-beads-bracelet-43098-large.mp4",
+            "likes_count": "3.9k",
+            "tagged_product_title": "Super Dhan Yog Band",
+            "tagged_product_price": 1099,
+            "tagged_product_slug": "super-dhan-yog-band",
+            "is_active": True,
+        },
+        {
+            "id": "reel-3",
+            "user_handle": "@dr_kunal",
+            "user_name": "Dr. Kunal Mehta",
+            "rating": 5,
+            "quote": "Pyrite Stud Ring transformed my clinic consultation inquiries within a month! ✨",
+            "thumbnail_url": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=600&q=80",
+            "video_url": "https://assets.mixkit.co/videos/preview/mixkit-shiny-gemstones-and-crystals-on-display-42410-large.mp4",
+            "likes_count": "5.2k",
+            "tagged_product_title": "Pyrite Stud Ring",
+            "tagged_product_price": 799,
+            "tagged_product_slug": "pyrite-stud-ring",
+            "is_active": True,
+        },
+        {
+            "id": "reel-4",
+            "user_handle": "@ananya_sen",
+            "user_name": "Ananya Sen",
+            "rating": 5,
+            "quote": "Original Karungali Mala quality is incredible, heavy and pure ebony wood with silver caps. 🙏",
+            "thumbnail_url": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=600&q=80",
+            "video_url": "https://assets.mixkit.co/videos/preview/mixkit-close-up-of-hands-holding-rosary-beads-42998-large.mp4",
+            "likes_count": "4.1k",
+            "tagged_product_title": "Original Karungali Malai (108 Beads)",
+            "tagged_product_price": 1299,
+            "tagged_product_slug": "original-karungali-malai",
+            "is_active": True,
+        },
+        {
+            "id": "reel-5",
+            "user_handle": "@vikram_aditya",
+            "user_name": "Vikram Aditya",
+            "rating": 5,
+            "quote": "Mulank 4 Rahu bracelet brought immense mental focus and shielded me from burnout. 🔮",
+            "thumbnail_url": "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=600&q=80",
+            "video_url": "https://assets.mixkit.co/videos/preview/mixkit-person-meditating-with-crystals-in-front-42350-large.mp4",
+            "likes_count": "2.8k",
+            "tagged_product_title": "Mulank 4 Rahu Crystal Bracelet",
+            "tagged_product_price": 999,
+            "tagged_product_slug": "mulank-4-rahu-crystal-bracelet",
             "is_active": True,
         },
     ]
 
 
 class ShopCMS(TimestampedDocument):
-    """Singleton document storing customizable store hero banners and announcements."""
+    """Singleton document storing customizable store hero banners, announcements, and reels."""
 
     key: str = CMS_KEY_SHOP
 
     announcement_bar_text: str | None = Field(
-        default="✨ Special Navagraha Shanti: Free Vedic Consecration & Energization on all Sacred Remedies!",
+        default="🛍️ Discover Sacred Jewellery & Energised Remedies Based on Your Mulank & Kundli ✨",
         max_length=300,
     )
     announcement_bar_link: str | None = Field(default="/shop", max_length=300)
     announcement_bar_active: bool = True
     hero_banners: list[dict] = Field(default_factory=default_shop_hero_banners)
+    reels: list[dict] = Field(default_factory=default_shop_reels)
 
     class Settings:
         name = "cms_shop"

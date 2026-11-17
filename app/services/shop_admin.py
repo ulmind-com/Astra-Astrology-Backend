@@ -16,7 +16,12 @@ from beanie.operators import In, RegEx
 from loguru import logger
 
 from app.core.exceptions import BadRequestError, NotFoundError
-from app.models.cms import CMS_KEY_SHOP, ShopCMS
+from app.models.cms import (
+    CMS_KEY_SHOP,
+    ShopCMS,
+    default_shop_hero_banners,
+    default_shop_reels,
+)
 from app.models.shop import Product, ProductCategory, ShopOrder
 from app.schemas.shop import (
     CloudinaryOrphanCleanupReport,
@@ -677,11 +682,17 @@ async def get_shop_banner_settings() -> ShopBannerSettingsOut:
         cms = ShopCMS(key=CMS_KEY_SHOP)
         await cms.insert()
 
+    banners = cms.hero_banners if (cms.hero_banners and len(cms.hero_banners) >= 4) else default_shop_hero_banners()
+    reels = getattr(cms, "reels", None)
+    if not reels:
+        reels = default_shop_reels()
+
     return ShopBannerSettingsOut(
         announcement_bar_text=cms.announcement_bar_text,
         announcement_bar_link=cms.announcement_bar_link,
         announcement_bar_active=cms.announcement_bar_active,
-        hero_banners=cms.hero_banners or [],
+        hero_banners=banners,
+        reels=reels,
     )
 
 
@@ -695,6 +706,7 @@ async def update_shop_banner_settings(payload: ShopBannerSettingsUpdate) -> Shop
     cms.announcement_bar_link = payload.announcement_bar_link
     cms.announcement_bar_active = payload.announcement_bar_active
     cms.hero_banners = [b.model_dump() for b in payload.hero_banners]
+    cms.reels = [r.model_dump() for r in payload.reels]
 
     await cms.save()
     logger.info("Updated Shop CMS banner settings")
@@ -703,6 +715,7 @@ async def update_shop_banner_settings(payload: ShopBannerSettingsUpdate) -> Shop
         announcement_bar_link=cms.announcement_bar_link,
         announcement_bar_active=cms.announcement_bar_active,
         hero_banners=cms.hero_banners,
+        reels=cms.reels,
     )
 
 

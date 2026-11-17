@@ -264,3 +264,55 @@ async def test_stock_reservation_and_release_flow():
         released = await shop_admin.atomic_release_stock(prod_id, 1)
         assert released is True
 
+
+@pytest.mark.asyncio
+async def test_shop_banner_and_reels_settings():
+    from app.models.cms import CMS_KEY_SHOP, ShopCMS
+    from app.schemas.shop import ShopBannerSettingsUpdate, ShopHeroBannerItem, ShopStoreReelItem
+
+    mock_cms = MagicMock()
+    mock_cms.key = CMS_KEY_SHOP
+    mock_cms.announcement_bar_text = "✨ Test Announcement"
+    mock_cms.announcement_bar_link = "/shop"
+    mock_cms.announcement_bar_active = True
+    mock_cms.hero_banners = []
+    mock_cms.reels = []
+
+    with patch.object(ShopCMS, "find_one", AsyncMock(return_value=mock_cms)), \
+         patch.object(mock_cms, "save", AsyncMock()):
+
+        # 1. Verify get returns default banners & reels when empty
+        settings = await shop_admin.get_shop_banner_settings()
+        assert len(settings.hero_banners) >= 4
+        assert len(settings.reels) >= 4
+        assert settings.hero_banners[0].title == "WEAR YOUR ZODIAC"
+
+        # 2. Update with custom reels & banners
+        update_payload = ShopBannerSettingsUpdate(
+            announcement_bar_text="Updated Banner",
+            hero_banners=[
+                ShopHeroBannerItem(
+                    id="b-custom",
+                    title="Custom Zodiac",
+                    subtitle="Custom Sub",
+                    cta_text="Shop",
+                    cta_link="/shop",
+                    image_url="https://example.com/b.jpg",
+                )
+            ],
+            reels=[
+                ShopStoreReelItem(
+                    id="r-custom",
+                    user_handle="@user1",
+                    quote="Great remedy",
+                    thumbnail_url="https://example.com/r.jpg",
+                )
+            ],
+        )
+
+        updated = await shop_admin.update_shop_banner_settings(update_payload)
+        assert updated.announcement_bar_text == "Updated Banner"
+        assert len(updated.hero_banners) == 1
+        assert len(updated.reels) == 1
+        assert updated.reels[0].user_handle == "@user1"
+

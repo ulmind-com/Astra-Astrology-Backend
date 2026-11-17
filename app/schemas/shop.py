@@ -229,11 +229,27 @@ class ShopHeroBannerItem(BaseModel):
     is_active: bool = True
 
 
+class ShopStoreReelItem(BaseModel):
+    id: str
+    user_handle: str
+    user_name: str | None = None
+    rating: int = 5
+    quote: str
+    thumbnail_url: str
+    video_url: str | None = None
+    likes_count: str = "3.8k"
+    tagged_product_title: str | None = None
+    tagged_product_price: int | None = None
+    tagged_product_slug: str | None = None
+    is_active: bool = True
+
+
 class ShopBannerSettingsUpdate(BaseModel):
     announcement_bar_text: str | None = None
     announcement_bar_link: str | None = None
     announcement_bar_active: bool = True
     hero_banners: list[ShopHeroBannerItem] = Field(default_factory=list)
+    reels: list[ShopStoreReelItem] = Field(default_factory=list)
 
 
 class ShopBannerSettingsOut(BaseModel):
@@ -241,6 +257,7 @@ class ShopBannerSettingsOut(BaseModel):
     announcement_bar_link: str | None = None
     announcement_bar_active: bool = True
     hero_banners: list[ShopHeroBannerItem] = Field(default_factory=list)
+    reels: list[ShopStoreReelItem] = Field(default_factory=list)
 
 
 # ===========================================================================
