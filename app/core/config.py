@@ -76,9 +76,9 @@ class Settings(BaseSettings):
 
     # -------------------------------------------------------------- resend
     RESEND_API_KEY: str = ""
-    RESEND_FROM_EMAIL: str = "no-reply@example.com"
+    RESEND_FROM_EMAIL: str = "noreply@divinlink.com"
     RESEND_FROM_NAME: str = "DivinLink"
-    SUPPORT_EMAIL: str = "support@example.com"
+    SUPPORT_EMAIL: str = "support@divinlink.com"
 
     # ---------------------------------------------------------- cloudinary
     CLOUDINARY_CLOUD_NAME: str = ""
