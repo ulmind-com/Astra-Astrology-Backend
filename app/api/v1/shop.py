@@ -85,17 +85,19 @@ async def get_public_product_detail(id_or_slug: str) -> ApiResponse[ProductOut]:
 @router.get(
     "/banners",
     response_model=ApiResponse[ShopBannerSettingsOut],
-    summary="Get active store hero banners and announcements",
+    summary="Get active store hero banners, announcements and reels",
 )
 async def get_public_banners() -> ApiResponse[ShopBannerSettingsOut]:
     settings = await shop_admin.get_shop_banner_settings()
     active_banners = [b for b in settings.hero_banners if b.is_active]
+    active_reels = [r for r in settings.reels if r.is_active]
     return ApiResponse.ok(
         data=ShopBannerSettingsOut(
             announcement_bar_text=settings.announcement_bar_text if settings.announcement_bar_active else None,
             announcement_bar_link=settings.announcement_bar_link if settings.announcement_bar_active else None,
             announcement_bar_active=settings.announcement_bar_active,
             hero_banners=active_banners,
+            reels=active_reels,
         )
     )
 
