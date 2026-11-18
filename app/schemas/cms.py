@@ -4,6 +4,20 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 
+class HeroSlideItem(BaseModel):
+    id: Optional[str] = None
+    title: str = Field(..., max_length=200)
+    subtitle: str = Field(..., max_length=200)
+    description: Optional[str] = Field(None, max_length=1000)
+    cta_text: str = Field(..., max_length=100)
+    cta_link: str = Field(..., max_length=300)
+    badge_text: str = Field(..., max_length=200)
+    badge_rating: Optional[str] = Field(None, max_length=50)
+    image_url: str = Field(..., max_length=1000)
+    bg_gradient: Optional[str] = Field(None, max_length=300)
+    border_color: Optional[str] = Field(None, max_length=100)
+
+
 class HeroCardItem(BaseModel):
     title: str = Field(..., max_length=100)
     subtitle: str = Field(..., max_length=100)
@@ -17,6 +31,9 @@ class TrustStatItem(BaseModel):
 
 
 class HomePageCMSOut(BaseModel):
+    # Hero Slides
+    hero_slides: list[HeroSlideItem]
+
     # Hero Section
     hero_eyebrow: str
     hero_title_line1: str
@@ -63,6 +80,9 @@ class HomePageCMSOut(BaseModel):
 
 
 class HomePageCMSUpdate(BaseModel):
+    # Hero Slides
+    hero_slides: Optional[list[HeroSlideItem]] = None
+
     # Hero Section
     hero_eyebrow: Optional[str] = None
     hero_title_line1: Optional[str] = None

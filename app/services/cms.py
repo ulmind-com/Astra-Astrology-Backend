@@ -4,14 +4,17 @@ from loguru import logger
 from app.models.cms import (
     CMS_KEY_HOMEPAGE,
     HomePageCMS,
+    HeroSlideConfig,
     HeroCardConfig,
     TrustStatConfig,
+    default_hero_slides,
     default_hero_cards,
     default_trust_stats,
 )
 from app.schemas.cms import (
     HomePageCMSOut,
     HomePageCMSUpdate,
+    HeroSlideItem,
     HeroCardItem,
     TrustStatItem,
 )
@@ -19,6 +22,22 @@ from app.schemas.cms import (
 
 def to_homepage_out(doc: HomePageCMS) -> HomePageCMSOut:
     return HomePageCMSOut(
+        hero_slides=[
+            HeroSlideItem(
+                id=s.id,
+                title=s.title,
+                subtitle=s.subtitle,
+                description=s.description,
+                cta_text=s.cta_text,
+                cta_link=s.cta_link,
+                badge_text=s.badge_text,
+                badge_rating=s.badge_rating,
+                image_url=s.image_url,
+                bg_gradient=s.bg_gradient,
+                border_color=s.border_color,
+            )
+            for s in doc.hero_slides
+        ],
         hero_eyebrow=doc.hero_eyebrow,
         hero_title_line1=doc.hero_title_line1,
         hero_title_line2=doc.hero_title_line2,
@@ -87,7 +106,9 @@ async def update_homepage(payload: HomePageCMSUpdate) -> HomePageCMS:
     for field, val in update_data.items():
         if val is None:
             continue
-        if field == "hero_cards":
+        if field == "hero_slides":
+            doc.hero_slides = [HeroSlideConfig(**item) if isinstance(item, dict) else HeroSlideConfig(**item.model_dump()) for item in val]
+        elif field == "hero_cards":
             doc.hero_cards = [HeroCardConfig(**item) if isinstance(item, dict) else HeroCardConfig(**item.model_dump()) for item in val]
         elif field == "trust_stats":
             doc.trust_stats = [TrustStatConfig(**item) if isinstance(item, dict) else TrustStatConfig(**item.model_dump()) for item in val]

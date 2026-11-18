@@ -12,6 +12,23 @@ from app.models.base import TimestampedDocument
 CMS_KEY_HOMEPAGE = "homepage"
 
 
+class HeroSlideConfig(BaseModel):
+    id: str = Field(default="slide-1", max_length=50)
+    title: str = Field(default="Enjoy your relationship", max_length=200)
+    subtitle: str = Field(default="don't stress over it", max_length=200)
+    description: str = Field(
+        default="Talk to India's top Vedic astrologers & tarot readers for instant relationship clarity.",
+        max_length=1000,
+    )
+    cta_text: str = Field(default="Consult for FREE", max_length=100)
+    cta_link: str = Field(default="/astrologers", max_length=300)
+    badge_text: str = Field(default="India's Best Astrology Platform", max_length=200)
+    badge_rating: str = Field(default="4.9/5", max_length=50)
+    image_url: str = Field(default="/images/hero-couple.jpg", max_length=1000)
+    bg_gradient: str = Field(default="from-[#fffbf0] via-[#fff8dc] to-[#fceeb5]", max_length=300)
+    border_color: str = Field(default="border-[#ebd881]", max_length=100)
+
+
 class HeroCardConfig(BaseModel):
     title: str = Field(default="Zodiac Signs", max_length=100)
     subtitle: str = Field(default="READ MORE", max_length=100)
@@ -22,6 +39,89 @@ class HeroCardConfig(BaseModel):
 class TrustStatConfig(BaseModel):
     value: str = Field(default="500+", max_length=50)
     label: str = Field(default="VERIFIED ASTROLOGERS", max_length=100)
+
+
+def default_hero_slides() -> list[HeroSlideConfig]:
+    return [
+        HeroSlideConfig(
+            id="slide-1",
+            title="Enjoy your relationship",
+            subtitle="don't stress over it",
+            description="Talk to India's top Vedic astrologers & tarot readers for instant relationship clarity.",
+            cta_text="Consult for FREE",
+            cta_link="/astrologers",
+            badge_text="India's Best Astrology Platform",
+            badge_rating="4.9/5",
+            image_url="/images/hero/hero-couple-exploring.png",
+            bg_gradient="from-[#fffbf0] via-[#fff8dc] to-[#fceeb5]",
+            border_color="border-[#ebd881]",
+        ),
+        HeroSlideConfig(
+            id="slide-2",
+            title="Know your destiny & future",
+            subtitle="with free Vedic Janam Kundli",
+            description="Accurate planetary calculations, dosha analysis, and personalized remedies by Vedic experts.",
+            cta_text="Generate Free Kundli",
+            cta_link="/kundli",
+            badge_text="100% Free & Accurate Kundli",
+            badge_rating="500k+ Created",
+            image_url="/images/hero/hero-parchment-kundli.png",
+            bg_gradient="from-[#fff9e6] via-[#fff3cc] to-[#fde5a3]",
+            border_color="border-[#e8ce6b]",
+        ),
+        HeroSlideConfig(
+            id="slide-3",
+            title="Check marriage compatibility",
+            subtitle="find your perfect soulmate",
+            description="Detailed 36-Gun Milan, Manglik Dosha report & life-long harmony analysis for bride & groom.",
+            cta_text="Match Kundli Now",
+            cta_link="/kundli-matching",
+            badge_text="Trusted Matchmaking",
+            badge_rating="36 Gunas Score",
+            image_url="/images/hero/hero-indian-wedding.png",
+            bg_gradient="from-[#fff6f0] via-[#ffeedd] to-[#ffdcb8]",
+            border_color="border-[#f2b992]",
+        ),
+        HeroSlideConfig(
+            id="slide-4",
+            title="Unlock secrets in your palm",
+            subtitle="with modern 3D AI biometrics",
+            description="Explore heart, head & life lines with interactive real-time 3D hand visualization.",
+            cta_text="Start Palm Reading",
+            cta_link="/palm-reading",
+            badge_text="Next-Gen 3D Biometrics",
+            badge_rating="99% Precision",
+            image_url="/images/hero/hero-mint-mandala.png",
+            bg_gradient="from-[#f3faf6] via-[#e2f5ec] to-[#c7eedb]",
+            border_color="border-[#93dab7]",
+        ),
+        HeroSlideConfig(
+            id="slide-5",
+            title="Discover your true potential",
+            subtitle="via 78 Arcana Tarot guidance",
+            description="Daily forecasts, love spreads & career clarity synchronized with planetary dasha cycles.",
+            cta_text="Get Tarot Reading",
+            cta_link="/tarot",
+            badge_text="Sacred Arcana Cards",
+            badge_rating="78 Cards",
+            image_url="/images/hero/hero-mystical-tarot.png",
+            bg_gradient="from-[#faf5ff] via-[#f3e8ff] to-[#e4ceff]",
+            border_color="border-[#cfa7f7]",
+        ),
+        HeroSlideConfig(
+            id="slide-6",
+            title="Harmonize your living space",
+            subtitle="attract wealth, peace & health",
+            description="Interactive 16-zone Vastu directional compass and elemental balance remedies for home & office.",
+            cta_text="Explore Vastu Guide",
+            cta_link="/vastu",
+            badge_text="Ancient Vedic Architecture",
+            badge_rating="16 Zones",
+            image_url="/images/hero/hero-golden-compass.png",
+            bg_gradient="from-[#fffdf0] via-[#fdf6cc] to-[#fce48b]",
+            border_color="border-[#ebd36a]",
+        ),
+    ]
 
 
 def default_hero_cards() -> list[HeroCardConfig]:
@@ -45,6 +145,9 @@ class HomePageCMS(TimestampedDocument):
     """Singleton document storing all customizable static texts & media on the homepage."""
 
     key: str = CMS_KEY_HOMEPAGE
+
+    # Hero Slides (carousel banners)
+    hero_slides: list[HeroSlideConfig] = Field(default_factory=default_hero_slides)
 
     # Hero Section
     hero_eyebrow: str = Field(default="Explore the Horoscope", max_length=150)
