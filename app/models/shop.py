@@ -351,7 +351,7 @@ class ShopOrder(TimestampedDocument):
     coupon_code: str | None = None
     shipping_fee: float = Field(default=0.0, ge=0, description="Delivery shipping cost in ₹")
     tax_amount: float = Field(default=0.0, ge=0, description="Applicable taxes/GST in ₹")
-    grand_total: float = Field(gt=0, description="Total INR amount charged to customer")
+    grand_total: float = Field(ge=0, description="Total INR amount charged to customer")
 
     # Payment Gateway Metadata (Razorpay Direct INR / COD / Wallet)
     payment_method: ShopPaymentMethod = ShopPaymentMethod.RAZORPAY
