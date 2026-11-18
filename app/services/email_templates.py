@@ -551,6 +551,63 @@ def astrologer_welcome_email_html(name: str, email: str, password: str) -> str:
     )
 
 
+def purohit_welcome_email_html(name: str, email: str, password: str) -> str:
+    """Sent when a Purohit (Vedic Priest) account is created with temporary credentials."""
+    login_url = "https://admin.divinlink.com/login"
+    app_name = settings.APP_NAME or "DivinLink"
+
+    headline = f"পবিত্র DivinLink পুরোহিত পোর্টালে স্বাগতম"
+    lead_text = (
+        f"নমস্কার {name}! DivinLink বৈদিক ই-পূজা প্ল্যাটফর্মে আপনার পুরোহিত অ্যাকাউন্ট তৈরি সম্পন্ন হয়েছে। "
+        f"নিচে আপনার লগইন তথ্য দেওয়া হলো। এই তথ্য দিয়ে আপনি পুরোহিত ড্যাশবোর্ডে প্রবেশ করে আপনার পূজার রেট ও উপস্থিতি নিয়ন্ত্রণ করতে পারবেন:"
+    )
+
+    content = f"""
+      <!-- Credentials Card -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 24px;background:#FFF9F2;border:1.5px solid #FED7AA;border-radius:18px;">
+        <tr>
+          <td style="padding:22px 24px;text-align:left;">
+            <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#9A3412;text-transform:uppercase;letter-spacing:1px;">
+              Email / ইউজারনেম
+            </p>
+            <p style="margin:0 0 16px;font-size:15px;font-weight:600;color:#1F2937;">
+              {email}
+            </p>
+            <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#9A3412;text-transform:uppercase;letter-spacing:1px;">
+              Temporary Password / পাসওয়ার্ড
+            </p>
+            <p style="margin:0;font-size:22px;font-weight:800;letter-spacing:2px;color:#C2410C;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;">
+              {password}
+            </p>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Pill Button -->
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 16px;">
+        <tr>
+          <td align="center">
+            <a href="{login_url}" target="_blank" class="cta-button" style="display:inline-block;background:#B45309;background:linear-gradient(135deg,#D97706 0%,#B45309 100%);color:#ffffff;font-size:16px;font-weight:700;padding:16px 44px;border-radius:9999px;text-decoration:none;text-align:center;box-shadow:0 6px 20px rgba(180,83,9,0.38);letter-spacing:-0.2px;">
+              পুরোহিত পোর্টালে লগইন করুন &rarr;
+            </a>
+          </td>
+        </tr>
+      </table>
+
+      <p style="margin:0 auto;font-size:12px;color:#9A3412;background:#FEF3C7;padding:8px 14px;border-radius:8px;display:inline-block;text-align:center;">
+        &#9888; <strong>নিরাপত্তা বার্তা:</strong> প্রথমবার লগইন করার পরেই সিকিউরিটি সেটিংস থেকে আপনার পাসওয়ার্ড পরিবর্তন করে নিন।
+      </p>
+    """
+
+    return render_email(
+        title=f"Welcome to {app_name} Purohit Portal",
+        content_html=content,
+        preheader=f"Welcome to {app_name} Purohit Portal, {name}. Your credentials are ready.",
+        headline=headline,
+        lead_text=lead_text,
+    )
+
+
 def generate_google_calendar_url(
     title: str,
     description: str,
