@@ -98,6 +98,14 @@ async def get_public_banners() -> ApiResponse[ShopBannerSettingsOut]:
             announcement_bar_active=settings.announcement_bar_active,
             hero_banners=active_banners,
             reels=active_reels,
+            cashback_enabled=settings.cashback_enabled,
+            cashback_percent=settings.cashback_percent,
+            cashback_credit_timing=settings.cashback_credit_timing,
+            allow_user_cancellation=settings.allow_user_cancellation,
+            cancellation_grace_hours=settings.cancellation_grace_hours,
+            cod_enabled=settings.cod_enabled,
+            free_shipping_threshold=settings.free_shipping_threshold,
+            standard_shipping_fee=settings.standard_shipping_fee,
         )
     )
 
@@ -182,7 +190,7 @@ async def release_stock(
     summary="Check delivery timeline and COD availability by Indian PIN code",
 )
 async def check_pincode_availability(pincode: str) -> ApiResponse[PincodeCheckResponse]:
-    result = ShopOrderService.check_pincode(pincode)
+    result = await ShopOrderService.check_pincode(pincode)
     return ApiResponse.ok(data=result)
 
 

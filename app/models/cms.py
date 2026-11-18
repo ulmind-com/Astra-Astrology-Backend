@@ -382,6 +382,22 @@ class ShopCMS(TimestampedDocument):
     cashback_enabled: bool = True
     cashback_percent: int = Field(default=100, ge=0, le=200, description="Default wallet cashback percentage on prepaid orders")
     cashback_max_cap_inr: float | None = Field(default=None, description="Optional cap in INR for cashback (None = uncapped)")
+    cashback_credit_timing: str = Field(
+        default="on_delivery",
+        description="When cashback coins are credited: 'on_delivery' (safe anti-fraud) or 'on_payment' (instant)",
+    )
+
+    # Customer Order Cancellation & Anti-Fraud Policy Controls
+    allow_user_cancellation: bool = Field(
+        default=True,
+        description="Whether customers can cancel orders online before shipment",
+    )
+    cancellation_grace_hours: int = Field(
+        default=24,
+        ge=1,
+        le=168,
+        description="Hours from placement within which customers can cancel before shipment",
+    )
 
     # High-Value Free Gift Defaults (Admin Configurable)
     free_gift_default_title: str = "Raw Selenite Charging Plate"

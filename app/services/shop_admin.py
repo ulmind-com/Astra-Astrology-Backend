@@ -736,6 +736,9 @@ async def get_shop_banner_settings() -> ShopBannerSettingsOut:
         cashback_enabled=getattr(cms, "cashback_enabled", True),
         cashback_percent=getattr(cms, "cashback_percent", 100),
         cashback_max_cap_inr=getattr(cms, "cashback_max_cap_inr", None),
+        cashback_credit_timing=getattr(cms, "cashback_credit_timing", "on_delivery") or "on_delivery",
+        allow_user_cancellation=getattr(cms, "allow_user_cancellation", True),
+        cancellation_grace_hours=getattr(cms, "cancellation_grace_hours", 24),
         free_gift_default_title=getattr(cms, "free_gift_default_title", "Raw Selenite Charging Plate"),
         free_gift_default_value=getattr(cms, "free_gift_default_value", 729.0),
         free_gift_default_badge=getattr(cms, "free_gift_default_badge", "FREE Raw Selenite Plate worth ₹729"),
@@ -762,6 +765,9 @@ async def update_shop_banner_settings(payload: ShopBannerSettingsUpdate) -> Shop
     cms.cashback_enabled = payload.cashback_enabled
     cms.cashback_percent = payload.cashback_percent
     cms.cashback_max_cap_inr = payload.cashback_max_cap_inr
+    cms.cashback_credit_timing = payload.cashback_credit_timing or "on_delivery"
+    cms.allow_user_cancellation = payload.allow_user_cancellation
+    cms.cancellation_grace_hours = payload.cancellation_grace_hours
     cms.free_gift_default_title = payload.free_gift_default_title
     cms.free_gift_default_value = payload.free_gift_default_value
     cms.free_gift_default_badge = payload.free_gift_default_badge

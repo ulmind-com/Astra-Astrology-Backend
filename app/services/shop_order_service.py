@@ -19,7 +19,7 @@ from loguru import logger
 
 from app.core.config import settings
 from app.core.exceptions import BadRequestError, ForbiddenError, NotFoundError, ServiceUnavailableError
-from app.models.cms import ShopCMS
+from app.models.cms import CMS_KEY_SHOP, ShopCMS
 from app.models.enums import (
     ShopOrderStatus,
     ShopPaymentMethod,
@@ -36,7 +36,7 @@ from app.models.shop import (
     ShopCoupon,
     ShopOrder,
 )
-from app.models.wallet import TransactionRef
+from app.models.wallet import TransactionRef, Wallet
 from app.schemas.shop import (
     PincodeCheckResponse,
     ShopAdminOrderUpdate,
@@ -136,7 +136,7 @@ class ShopOrderService:
             raise BadRequestError("Cart is empty.")
 
         # 1. Fetch Store CMS Settings
-        cms = await ShopCMS.find_one(ShopCMS.key == "shop_cms")
+        cms = await ShopCMS.find_one({"$or": [{"key": CMS_KEY_SHOP}, {"key": "shop_cms"}]})
         cashback_enabled = getattr(cms, "cashback_enabled", True) if cms else True
         default_cashback_pct = getattr(cms, "cashback_percent", 100) if cms else 100
         free_shipping_threshold = getattr(cms, "free_shipping_threshold", 499.0) if cms else 499.0
@@ -145,7 +145,10 @@ class ShopOrderService:
         cod_extra_charge = getattr(cms, "cod_extra_charge", 0.0) if cms else 0.0
 
         if payload.payment_method == ShopPaymentMethod.COD and not cod_enabled:
-            raise BadRequestError("Cash on Delivery is currently unavailable.")
+            raise BadRequestError(
+                "ক্যাশ অন ডেলিভারি (COD) বর্তমানে সাময়িকভাবে বন্ধ আছে। অনুগ্রহ করে অনলাইন পেমেন্ট বেছে নিন।",
+                error_code="cod_disabled",
+            )
 
         # 2. Validate Items & Inventory
         item_snapshots: list[OrderItemSnapshot] = []
@@ -461,32 +464,46 @@ class ShopOrderService:
         # -------------------------------------------------------------
         # EXECUTE 100% WALLET CASHBACK (Idempotent & Anti-Abuse)
         # -------------------------------------------------------------
-        if order.cashback_coins_eligible > 0 and order.cashback_coins_credited == 0:
-            cb_idempotency = f"shop_cashback_{order.order_number}"
-            try:
-                txn, was_created = await wallet_service.credit(
-                    user_id=order.user_id,
-                    amount_coins=order.cashback_coins_eligible,
-                    reason=TransactionReason.SHOP_CASHBACK,
-                    idempotency_key=cb_idempotency,
-                    ref=TransactionRef(
-                        razorpay_payment_id=payload.razorpay_payment_id,
-                        shop_order_id=order.id,
-                        shop_order_number=order.order_number,
-                    ),
-                    note=f"100% Cashback for Sacred Remedy Order #{order.order_number}",
+        cms = await ShopCMS.find_one({"$or": [{"key": CMS_KEY_SHOP}, {"key": "shop_cms"}]})
+        cashback_timing = getattr(cms, "cashback_credit_timing", "on_delivery") if cms else "on_delivery"
+
+        if cashback_timing == "on_payment":
+            # Instant Credit Mode
+            if order.cashback_coins_eligible > 0 and order.cashback_coins_credited == 0:
+                cb_idempotency = f"shop_cashback_{order.order_number}"
+                try:
+                    txn, was_created = await wallet_service.credit(
+                        user_id=order.user_id,
+                        amount_coins=order.cashback_coins_eligible,
+                        reason=TransactionReason.SHOP_CASHBACK,
+                        idempotency_key=cb_idempotency,
+                        ref=TransactionRef(
+                            razorpay_payment_id=payload.razorpay_payment_id,
+                            shop_order_id=order.id,
+                            shop_order_number=order.order_number,
+                        ),
+                        note=f"100% Cashback for Sacred Remedy Order #{order.order_number}",
+                    )
+                    order.cashback_coins_credited = order.cashback_coins_eligible
+                    order.cashback_credited_at = datetime.now(UTC)
+                    order.cashback_transaction_id = txn.id
+                    logger.info(
+                        "Credited {} cashback coins to user {} for order {}",
+                        order.cashback_coins_eligible,
+                        order.user_id,
+                        order.order_number,
+                    )
+                except Exception as e:
+                    logger.error("Failed to credit cashback for order {}: {}", order.order_number, e)
+        else:
+            # Safe Anti-Fraud Mode ('on_delivery'):
+            # Cashback coins remain eligible and are credited automatically once parcel is DELIVERED.
+            order.status_history.append(
+                OrderStatusLog(
+                    status=ShopOrderStatus.CONFIRMED,
+                    notes=f"100% Cashback benefit of {order.cashback_coins_eligible} coins reserved. Coins will be credited to wallet upon safe doorstep delivery.",
                 )
-                order.cashback_coins_credited = order.cashback_coins_eligible
-                order.cashback_credited_at = datetime.now(UTC)
-                order.cashback_transaction_id = txn.id
-                logger.info(
-                    "Credited {} cashback coins to user {} for order {}",
-                    order.cashback_coins_eligible,
-                    order.user_id,
-                    order.order_number,
-                )
-            except Exception as e:
-                logger.error("Failed to credit cashback for order {}: {}", order.order_number, e)
+            )
 
         await order.save()
         return cls._order_to_out(order)
@@ -517,14 +534,45 @@ class ShopOrderService:
         if order.order_status == ShopOrderStatus.CANCELLED:
             return cls._order_to_out(order)
 
-        # 1. Restore Stock
-        for it in order.items:
-            await Product.find_one(Product.id == it.product_id).update(
-                {"$inc": {"stock_quantity": it.quantity}}
-            )
+        # Policy checks for customer-initiated cancellation
+        cms = await ShopCMS.find_one({"$or": [{"key": CMS_KEY_SHOP}, {"key": "shop_cms"}]})
+        if user_id:
+            allow_cancel = getattr(cms, "allow_user_cancellation", True) if cms else True
+            if not allow_cancel:
+                raise BadRequestError(
+                    "অর্ডারটি সরাসরি অনলাইন থেকে বাতিল করার সুবিধা সাময়িকভাবে বন্ধ রয়েছে। সহায়তার জন্য অনুগ্রহ করে কাস্টমার সাপোর্টে যোগাযোগ করুন।",
+                    error_code="cancellation_disabled",
+                )
+            grace_hours = getattr(cms, "cancellation_grace_hours", 24) if cms else 24
+            order_age_hours = (datetime.now(UTC) - order.created_at).total_seconds() / 3600.0
+            if order_age_hours > grace_hours:
+                raise BadRequestError(
+                    f"অর্ডার বাতিলের অনুমোদিত সময়সীমা ({grace_hours} ঘণ্টা) উত্তীর্ণ হয়েছে। অর্ডারটি কাশীর ঘাটে সংকল্প ব্যাচে প্রস্তুত হচ্ছে। সহায়তার জন্য কাস্টমার সাপোর্টে যোগাযোগ করুন।",
+                    error_code="cancellation_window_expired",
+                )
 
-        # 2. Claw Back Credited Cashback (Anti-Gaming Safeguard)
+        # ---------------------------------------------------------------------
+        # ANTI-FRAUD COIN PROTECTION: Check if user already spent their cashback coins
+        # ---------------------------------------------------------------------
         if order.cashback_coins_credited > 0 and not order.cashback_reversed_at:
+            wallet = await Wallet.find_one(Wallet.user_id == order.user_id)
+            blocked = getattr(wallet, "blocked_coins", 0) or 0
+            available_coins = max(0, (wallet.balance_coins if wallet else 0) - blocked)
+
+            if available_coins < order.cashback_coins_credited:
+                logger.warning(
+                    "Anti-fraud blocked cancellation: User {} has already spent cashback coins for order {} (Balance: {}, Required: {})",
+                    order.user_id,
+                    order.order_number,
+                    available_coins,
+                    order.cashback_coins_credited,
+                )
+                raise BadRequestError(
+                    "এই অর্ডারের জন্য প্রাপ্ত ক্যাশব্যাক কয়েন ইতিমধ্যে জ্যোতিষী পরামর্শে ব্যবহার করা হয়েছে। তাই এই অর্ডারটি সরাসরি বাতিল করা সম্ভব নয়। বিশদ সহায়তার জন্য অনুগ্রহ করে কাস্টমার সাপোর্টে যোগাযোগ করুন।",
+                    error_code="cashback_already_spent",
+                )
+
+            # User has sufficient coins -> Claw back the cashback
             rev_key = f"shop_cashback_rev_{order.order_number}"
             try:
                 await wallet_service.debit(
@@ -539,9 +587,16 @@ class ShopOrderService:
                 logger.info("Reversed {} cashback coins for cancelled order {}", order.cashback_coins_credited, order.order_number)
             except Exception as e:
                 logger.error("Error reversing cashback for cancelled order {}: {}", order.order_number, e)
+                raise BadRequestError(f"অর্ডার বাতিলের সময় ক্যাশব্যাক কয়েন রিভার্স করা যায়নি: {str(e)}")
+
+        # 1. Restore Stock
+        for it in order.items:
+            await Product.find_one(Product.id == it.product_id).update(
+                {"$inc": {"stock_quantity": it.quantity}}
+            )
 
         order.order_status = ShopOrderStatus.CANCELLED
-        order.cancellation_reason = reason or "Cancelled by user"
+        order.cancellation_reason = reason or ("Cancelled by customer" if user_id else "Cancelled by administrator")
         order.status_history.append(
             OrderStatusLog(
                 status=ShopOrderStatus.CANCELLED,
@@ -598,9 +653,9 @@ class ShopOrderService:
                     order.payment_status = ShopPaymentStatus.PAID
                     order.paid_at = datetime.now(UTC)
 
-                # Credit cashback upon delivery for COD orders
+                # Credit cashback upon delivery for any order that hasn't received coins yet
                 if order.cashback_coins_eligible > 0 and order.cashback_coins_credited == 0:
-                    cb_key = f"shop_cashback_cod_{order.order_number}"
+                    cb_key = f"shop_cashback_del_{order.order_number}"
                     try:
                         txn, _ = await wallet_service.credit(
                             user_id=order.user_id,
@@ -608,13 +663,20 @@ class ShopOrderService:
                             reason=TransactionReason.SHOP_CASHBACK,
                             idempotency_key=cb_key,
                             ref=TransactionRef(shop_order_id=order.id, shop_order_number=order.order_number),
-                            note=f"100% Cashback for Delivered COD Order #{order.order_number}",
+                            note=f"100% Cashback for Delivered Remedy Order #{order.order_number}",
                         )
                         order.cashback_coins_credited = order.cashback_coins_eligible
                         order.cashback_credited_at = datetime.now(UTC)
                         order.cashback_transaction_id = txn.id
+                        order.status_history.append(
+                            OrderStatusLog(
+                                status=ShopOrderStatus.DELIVERED,
+                                notes=f"Credited {order.cashback_coins_eligible} cashback coins to user wallet upon verified delivery.",
+                            )
+                        )
+                        logger.info("Successfully credited {} delivery cashback coins for order {}", order.cashback_coins_eligible, order.order_number)
                     except Exception as e:
-                        logger.error("Failed to credit COD cashback on delivery for {}: {}", order.order_number, e)
+                        logger.error("Failed to credit cashback on delivery for {}: {}", order.order_number, e)
 
         await order.save()
         return cls._order_to_out(order)
@@ -705,12 +767,15 @@ class ShopOrderService:
             pages=pages,
         )
 
-    @staticmethod
-    def check_pincode(pincode: str) -> PincodeCheckResponse:
+    @classmethod
+    async def check_pincode(cls, pincode: str) -> PincodeCheckResponse:
         """Fast Indian delivery serviceability and COD validator."""
         clean = pincode.strip()
         if not clean.isdigit() or len(clean) != 6:
             raise BadRequestError("Pincode must be a 6-digit numeric postal code.")
+
+        cms = await ShopCMS.find_one({"$or": [{"key": CMS_KEY_SHOP}, {"key": "shop_cms"}]})
+        store_cod_enabled = getattr(cms, "cod_enabled", True) if cms else True
 
         prefix = clean[:2]
         state_map = {
@@ -753,7 +818,7 @@ class ShopOrderService:
             city=city,
             state=state,
             is_serviceable=True,
-            cod_available=True,
+            cod_available=store_cod_enabled,
             estimated_delivery_days=est_days,
             estimated_delivery_date=del_date,
         )
