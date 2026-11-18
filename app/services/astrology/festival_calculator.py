@@ -1101,13 +1101,17 @@ def _find_lunar_tithi_date(
             # Scan each day between m_start and m_end for target_tithi_idx
             curr = m_start
             while curr <= m_end:
-                jd = swe.julday(curr.year, curr.month, curr.day, 0.5)
-                s_lon = swe.calc_ut(jd, swe.SUN, swe.FLG_SIDEREAL)[0][0]
-                m_lon = swe.calc_ut(jd, swe.MOON, swe.FLG_SIDEREAL)[0][0]
-                t_idx = int(((m_lon - s_lon) % 360.0) / 12.0)
+                # Check across the 4 praharas of the day (00:30, 06:00, 12:00, 18:00 UT / 6am, 11:30am, 5:30pm, 11:30pm IST)
+                # to ensure kshaya tithis (starting and ending between sunrises) are never skipped.
+                for h in (0.5, 6.0, 12.0, 18.0):
+                    jd = swe.julday(curr.year, curr.month, curr.day, h)
+                    s_lon = swe.calc_ut(jd, swe.SUN, swe.FLG_SIDEREAL)[0][0]
+                    m_lon = swe.calc_ut(jd, swe.MOON, swe.FLG_SIDEREAL)[0][0]
+                    t_idx = int(((m_lon - s_lon) % 360.0) / 12.0)
 
-                if t_idx == target_tithi_idx:
-                    candidates.append(curr)
+                    if t_idx == target_tithi_idx:
+                        candidates.append(curr)
+                        break
                 curr += timedelta(days=1)
 
     # Prioritize candidate that matches the target year
