@@ -198,10 +198,16 @@ async def shop_checkout(
     payload: ShopCheckoutRequest,
     user: CurrentUser,
 ) -> ApiResponse[ShopCheckoutResponse]:
+    user_phone = (
+        getattr(user, "phone", None)
+        or getattr(user, "phone_number", None)
+        or payload.shipping_address.phone_number
+        or ""
+    )
     result = await ShopOrderService.create_order(
         user_id=user.id,
         user_email=user.email,
-        user_phone=user.phone_number or "",
+        user_phone=user_phone,
         payload=payload,
     )
     return ApiResponse.ok(data=result)

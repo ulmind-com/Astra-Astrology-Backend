@@ -18,7 +18,7 @@ from beanie import PydanticObjectId
 from loguru import logger
 
 from app.core.config import settings
-from app.core.exceptions import BadRequestError, ForbiddenError, NotFoundError
+from app.core.exceptions import BadRequestError, ForbiddenError, NotFoundError, ServiceUnavailableError
 from app.models.cms import ShopCMS
 from app.models.enums import (
     ShopOrderStatus,
@@ -153,18 +153,23 @@ class ShopOrderService:
         subtotal = 0.0
 
         for line in payload.items:
+            product = None
             try:
                 prod_oid = PydanticObjectId(line.product_id)
+                product = await Product.get(prod_oid)
             except Exception:
-                raise BadRequestError(f"Invalid product ID: {line.product_id}")
+                pass
 
-            product = await Product.get(prod_oid)
-            if not product or product.is_deleted or not product.is_active:
+            if not product:
+                product = await Product.find_one(Product.slug == line.product_id)
+
+            if not product or getattr(product, "is_deleted", False) or not getattr(product, "is_active", True):
                 raise NotFoundError(f"Product '{line.product_id}' is no longer available.")
 
-            if product.stock_quantity < line.quantity:
+            stock_left = getattr(product, "stock_quantity", 0)
+            if stock_left < line.quantity:
                 raise BadRequestError(
-                    f"Insufficient inventory for '{product.title}'. Only {product.stock_quantity} remaining."
+                    f"Insufficient inventory for '{product.title}'. Only {stock_left} remaining."
                 )
 
             line_total = round(product.sale_price * line.quantity, 2)
@@ -191,13 +196,13 @@ class ShopOrderService:
                     title=product.title,
                     slug=product.slug,
                     sku=product.sku,
-                    category_name=product.category_slug,
+                    category_name=getattr(product, "category_slug", None) or "remedy",
                     featured_image=product.featured_image,
                     unit_mrp=product.mrp,
                     unit_sale_price=product.sale_price,
                     quantity=line.quantity,
                     line_total=line_total,
-                    weight_grams=product.weight_grams,
+                    weight_grams=getattr(product, "weight_grams", 100.0) or 100.0,
                     free_gift_title=gift_title,
                     free_gift_value=gift_val,
                     lab_certified=getattr(product, "lab_certified", True),
@@ -302,22 +307,31 @@ class ShopOrderService:
         if payload.payment_method == ShopPaymentMethod.RAZORPAY:
             if settings.razorpay_configured:
                 amount_paise = int(round(grand_total * 100))
-                rzp_resp = await asyncio.to_thread(
-                    _razorpay().order.create,
-                    {
-                        "amount": amount_paise,
-                        "currency": "INR",
-                        "receipt": order_number,
-                        "notes": {
-                            "order_number": order_number,
-                            "user_id": str(user_id),
-                            "store": "Astra AstroStore",
+                try:
+                    rzp_resp = await asyncio.to_thread(
+                        _razorpay().order.create,
+                        {
+                            "amount": amount_paise,
+                            "currency": "INR",
+                            "receipt": order_number,
+                            "notes": {
+                                "order_number": order_number,
+                                "user_id": str(user_id),
+                                "store": "Astra AstroStore",
+                            },
                         },
-                    },
-                )
-                razorpay_order_id = rzp_resp.get("id")
-                razorpay_key_id = settings.RAZORPAY_KEY_ID
-                order.razorpay_order_id = razorpay_order_id
+                    )
+                    razorpay_order_id = rzp_resp.get("id")
+                    razorpay_key_id = settings.RAZORPAY_KEY_ID
+                    order.razorpay_order_id = razorpay_order_id
+                except Exception as exc:
+                    logger.opt(exception=exc).error(
+                        "Razorpay order creation failed for shop order {}: {}", order_number, exc
+                    )
+                    raise ServiceUnavailableError(
+                        "Payment gateway could not initiate transaction. Please try again or choose Cash on Delivery.",
+                        error_code="razorpay_order_failed",
+                    ) from exc
             else:
                 # Mock order id for test/sandbox
                 razorpay_order_id = f"order_mock_{secrets.token_hex(8)}"
@@ -369,9 +383,9 @@ class ShopOrderService:
 
         # Decrement stock atomically
         for it in item_snapshots:
-            await Product.find_one(Product.id == it.product_id).update(
-                {"$inc": {"stock_quantity": -it.quantity}}
-            )
+            prod_doc = await Product.get(it.product_id)
+            if prod_doc:
+                await prod_doc.update({"$inc": {"stock_quantity": -it.quantity}})
 
         await order.insert()
         logger.info(
