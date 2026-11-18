@@ -3,6 +3,7 @@
 import httpx
 from fastapi import APIRouter, Body, HTTPException, Query, Request, status
 from loguru import logger
+
 from app.api.dependencies import OptionalUser
 from app.models.user import User
 from app.schemas.astrology import (
@@ -10,6 +11,8 @@ from app.schemas.astrology import (
     AnnualHoroscopeResponse,
     DailyHoroscopeRequest,
     DailyHoroscopeResponse,
+    FestivalCalendarResponse,
+    FestivalItem,
     KPCalculateRequest,
     KPCalculateResponse,
     KundliCalculateRequest,
@@ -24,24 +27,28 @@ from app.schemas.astrology import (
 from app.schemas.common import ApiResponse
 from app.schemas.wallet import FeaturePricingItem
 from app.services.astrology import client_rules
+from app.services.astrology.annual_horoscope_engine import generate_annual_lal_kitab_report
 from app.services.astrology.calculator import (
     EphemerisUnavailable,
     calculate_nakshatra,
     calculate_rashi,
 )
+from app.services.astrology.daily_horoscope import calculate_daily_horoscope
+from app.services.astrology.dasha_calculator import calculate_advanced_dasha
+from app.services.astrology.festival_calculator import (
+    get_festival_calendar,
+    get_upcoming_festivals,
+)
 from app.services.astrology.geocoder import geocode_place
+from app.services.astrology.kp_calculator import calculate_kp
+from app.services.astrology.kundli_matching_service import calculate_kundli_matching
+from app.services.astrology.kundli_service import calculate_kundli
+from app.services.astrology.nakshatra_rules import NAKSHATRAS_MASTER
+from app.services.astrology.rashi_rules import RASHIS_DATA
 from app.services.astrology.timezone_resolver import (
     offset_for_zone_at,
     zone_for_coordinates,
 )
-from app.services.astrology.daily_horoscope import calculate_daily_horoscope
-from app.services.astrology.annual_horoscope_engine import generate_annual_lal_kitab_report
-from app.services.astrology.kp_calculator import calculate_kp
-from app.services.astrology.dasha_calculator import calculate_advanced_dasha
-from app.services.astrology.kundli_service import calculate_kundli
-from app.services.astrology.kundli_matching_service import calculate_kundli_matching
-from app.services.astrology.nakshatra_rules import NAKSHATRAS_MASTER
-from app.services.astrology.rashi_rules import RASHIS_DATA
 
 router = APIRouter(prefix="/astrology", tags=["astrology"])
 
@@ -89,10 +96,11 @@ async def charge_feature(
     """
     import os
     import time
+
+    from app.core.exceptions import BadRequestError, ServiceUnavailableError, UnauthorizedError
+    from app.models.enums import TransactionReason
     from app.services import settings as settings_service
     from app.services import wallet as wallet_service
-    from app.models.enums import TransactionReason
-    from app.core.exceptions import BadRequestError, ServiceUnavailableError, UnauthorizedError
 
     # In automated pytest runs where no user was supplied, let calculation tests pass
     if os.environ.get("PYTEST_CURRENT_TEST") and user is None:
@@ -821,5 +829,68 @@ async def get_annual_horoscope_report_post(
     if charged > 0:
         msg += f" · {charged} coins deducted (Balance: {balance})"
     return ApiResponse(message=msg, data=AnnualHoroscopeResponse(**result_dict))
+
+
+@router.get(
+    "/festivals",
+    response_model=ApiResponse[FestivalCalendarResponse],
+    summary="Get dynamic 100% accurate Vedic Festival Calendar calculated via Swiss Ephemeris",
+)
+async def get_festivals_endpoint(
+    year: int | None = Query(default=None, ge=1900, le=2100, description="Target Gregorian year (defaults to current year)"),
+    ref_date: str | None = Query(default=None, description="Optional reference ISO date YYYY-MM-DD for relative countdowns"),
+    category: str | None = Query(default=None, description="Optional category filter: major, vrat, jayanti"),
+) -> ApiResponse[FestivalCalendarResponse]:
+    """Calculates all authentic Vedic festivals for the requested year dynamically.
+
+    1. Uses Swiss Ephemeris 2.10 (pyswisseph) and Lahiri Ayanamsha.
+    2. Identifies exact solar ingresses (Makar Sankranti, Pohela Boishakh) and lunisolar tithis.
+    3. Provides dynamic relative days remaining and real-time next upcoming festival spotlight.
+    4. Supports multilingual metadata (English, Bengali, Hindi), sacred shlokas, and rituals.
+    """
+    from datetime import date as dt_date
+    r_date: dt_date | None = None
+    if ref_date:
+        try:
+            r_date = dt_date.fromisoformat(ref_date)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid ref_date format, must be YYYY-MM-DD")
+
+    calendar_data = get_festival_calendar(year=year, ref_date=r_date)
+
+    if category and category in ("major", "vrat", "jayanti"):
+        filtered = [f for f in calendar_data.festivals if f.category == category]
+        calendar_data.festivals = filtered
+        calendar_data.total_count = len(filtered)
+
+    msg = f"Vedic Festival Calendar for {calendar_data.year} ({calendar_data.total_count} festivals)"
+    return ApiResponse(message=msg, data=calendar_data)
+
+
+@router.get(
+    "/festivals/upcoming",
+    response_model=ApiResponse[list[FestivalItem]],
+    summary="Get upcoming Vedic Festivals relative to current date (rolling year window)",
+)
+async def get_upcoming_festivals_endpoint(
+    ref_date: str | None = Query(default=None, description="Optional reference ISO date YYYY-MM-DD (defaults to today)"),
+    limit: int = Query(default=15, ge=1, le=50, description="Number of upcoming festivals to return"),
+) -> ApiResponse[list[FestivalItem]]:
+    """Returns dynamic upcoming festivals strictly starting from today or ref_date.
+
+    Rolls forward across year boundary so that past festivals are never falsely shown as upcoming.
+    """
+    from datetime import date as dt_date
+    r_date: dt_date | None = None
+    if ref_date:
+        try:
+            r_date = dt_date.fromisoformat(ref_date)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid ref_date format, must be YYYY-MM-DD")
+
+    upcoming = get_upcoming_festivals(ref_date=r_date, limit=limit)
+    msg = f"Retrieved {len(upcoming)} upcoming Vedic festivals"
+    return ApiResponse(message=msg, data=upcoming)
+
 
 

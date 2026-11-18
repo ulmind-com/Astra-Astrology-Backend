@@ -1966,6 +1966,36 @@ class AnnualHoroscopeResponse(BaseModel):
     store_recommendations: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class FestivalItem(BaseModel):
+    id: str
+    name: dict[str, str]
+    date: str  # YYYY-MM-DD
+    date_formatted: dict[str, str]
+    day_of_week: dict[str, str]
+    tithi: dict[str, str]
+    category: Literal["major", "vrat", "jayanti"]
+    badge: dict[str, str]
+    accent_color: str
+    muhurat: dict[str, str]
+    shloka: str
+    desc: dict[str, str]
+    rituals: dict[str, list[str]]
+    days_remaining: int
+    is_today: bool = False
+    is_upcoming: bool = False
+    is_past: bool = False
+
+
+class FestivalCalendarResponse(BaseModel):
+    year: int
+    total_count: int
+    next_upcoming: FestivalItem | None = None
+    festivals: list[FestivalItem] = Field(default_factory=list)
+    engine: str = "Swiss Ephemeris 2.10 (pyswisseph)"
+    calculated_at: str
+
+
+
 
 
 
