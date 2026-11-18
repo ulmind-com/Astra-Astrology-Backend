@@ -6,6 +6,7 @@ from enum import StrEnum
 class UserRole(StrEnum):
     USER = "user"
     ASTROLOGER = "astrologer"
+    PUROHIT = "purohit"
     ADMIN = "admin"
     SUPER_ADMIN = "super_admin"
 
@@ -251,4 +252,23 @@ class CouponDiscountType(StrEnum):
 
     PERCENTAGE = "percentage"
     FLAT = "flat"
+
+
+class PujaBookingStatus(StrEnum):
+    """Lifecycle states of an online Purohit puja booking."""
+
+    PENDING = "pending"
+    CONFIRMED = "confirmed"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+class PujaPaymentStatus(StrEnum):
+    """Payment state for Purohit booking."""
+
+    PENDING = "pending"
+    PAID = "paid"
+    FAILED = "failed"
+    REFUNDED = "refunded"
 

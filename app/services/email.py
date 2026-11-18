@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.core.exceptions import ServiceUnavailableError
 from app.services.email_templates import (
     astrologer_welcome_email_html,
+    purohit_welcome_email_html,
     otp_email_html,
     welcome_email_html,
 )
@@ -107,6 +108,24 @@ async def send_astrologer_welcome_email(to: str, name: str, password: str) -> bo
             f"Welcome to {settings.APP_NAME}, {name}.\n\n"
             f"Sign in with:\n  Email: {to}\n  Temporary password: {password}\n\n"
             "Please change this password after your first sign-in."
+        ),
+    )
+    return sent is not None
+
+
+async def send_purohit_welcome_email(to: str, name: str, password: str) -> bool:
+    """Carries the generated password for newly onboarded Purohit (Vedic Priest)."""
+    sent = await send_email(
+        to=to,
+        subject=f"স্বাগতম — আপনার {settings.APP_NAME} পুরোহিত অ্যাকাউন্ট প্রস্তুত",
+        html=purohit_welcome_email_html(name=name, email=to, password=password),
+        text=(
+            f"নমস্কার {name}!\n\n"
+            f"{settings.APP_NAME} প্ল্যাটফর্মে আপনার পুরোহিত অ্যাকাউন্ট তৈরি সম্পন্ন হয়েছে।\n\n"
+            f"লগইন পোর্টাল: https://admin.divinlink.com/login\n"
+            f"Email: {to}\n"
+            f"পাসওয়ার্ড: {password}\n\n"
+            "প্রথমবার লগইনের পর দয়া করে পাসওয়ার্ড পরিবর্তন করুন।"
         ),
     )
     return sent is not None
