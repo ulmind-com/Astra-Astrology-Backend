@@ -37,3 +37,8 @@ class TimestampedDocument(Document):
         data = self.model_dump(mode="json", by_alias=False, **kwargs)
         data["id"] = str(self.id)
         return data
+
+    @classmethod
+    def get_motor_collection(cls) -> Any:
+        """Compatibility alias returning the async collection (get_pymongo_collection)."""
+        return cls.get_pymongo_collection()

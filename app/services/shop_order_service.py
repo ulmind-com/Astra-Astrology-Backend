@@ -247,187 +247,213 @@ class ShopOrderService:
         if cashback_enabled and effective_cashback_pct > 0:
             cashback_coins_eligible = int(round(grand_total * (effective_cashback_pct / 100.0) * coins_per_rupee))
 
-        # 6. Build Order Entity
-        today_str = datetime.now(UTC).strftime("%Y%m%d")
-        order_number = f"ASTRA-ORD-{today_str}-{secrets.token_hex(3).upper()}"
-
-        shipping_snap = ShippingAddressSnapshot(
-            recipient_name=payload.shipping_address.recipient_name,
-            phone_number=payload.shipping_address.phone_number,
-            alternate_phone=payload.shipping_address.alternate_phone,
-            address_line1=payload.shipping_address.address_line1,
-            address_line2=payload.shipping_address.address_line2,
-            landmark=payload.shipping_address.landmark,
-            city=payload.shipping_address.city,
-            state=payload.shipping_address.state,
-            pincode=payload.shipping_address.pincode,
-            address_type=payload.shipping_address.address_type,
-        )
-
-        sankalpa_snap = None
-        if payload.sankalpa and payload.sankalpa.devotee_name:
-            sankalpa_snap = SankalpaDetails(
-                devotee_name=payload.sankalpa.devotee_name.strip(),
-                gotra=(payload.sankalpa.gotra or "Kashyap").strip(),
-                date_of_birth=payload.sankalpa.date_of_birth,
-                birth_time=payload.sankalpa.birth_time,
-                birth_place=payload.sankalpa.birth_place,
-                special_prayer_wish=payload.sankalpa.special_prayer_wish,
-            )
-
-        order = ShopOrder(
-            order_number=order_number,
-            user_id=user_id,
-            user_email=user_email,
-            user_phone=user_phone or payload.shipping_address.phone_number,
-            shipping_address=shipping_snap,
-            items=item_snapshots,
-            sankalpa=sankalpa_snap,
-            subtotal=subtotal,
-            discount_amount=discount_amount,
-            coupon_code=applied_coupon,
-            shipping_fee=shipping_fee,
-            tax_amount=0.0,
-            grand_total=grand_total,
-            payment_method=payload.payment_method,
-            payment_status=ShopPaymentStatus.PENDING,
-            order_status=ShopOrderStatus.PLACED,
-            cashback_percent=effective_cashback_pct,
-            cashback_coins_eligible=cashback_coins_eligible,
-            cashback_coins_credited=0,
-            free_gifts=bundled_gifts,
-            estimated_delivery_date=datetime.now(UTC) + timedelta(days=4),
-            status_history=[
-                OrderStatusLog(
-                    status=ShopOrderStatus.PLACED,
-                    notes="Order placed by devotee. Consecration and packing queued.",
-                )
-            ],
-        )
-
-        # 7. Payment Handling: Razorpay, Wallet, or COD
-        razorpay_order_id = None
-        razorpay_key_id = None
-
-        if payload.payment_method == ShopPaymentMethod.RAZORPAY:
-            if settings.razorpay_configured:
-                amount_paise = int(round(grand_total * 100))
-                try:
-                    rzp_resp = await asyncio.to_thread(
-                        _razorpay().order.create,
-                        {
-                            "amount": amount_paise,
-                            "currency": "INR",
-                            "receipt": order_number,
-                            "notes": {
-                                "order_number": order_number,
-                                "user_id": str(user_id),
-                                "store": "Astra AstroStore",
-                            },
-                        },
-                    )
-                    razorpay_order_id = rzp_resp.get("id")
-                    razorpay_key_id = settings.RAZORPAY_KEY_ID
-                    order.razorpay_order_id = razorpay_order_id
-                except Exception as exc:
-                    logger.opt(exception=exc).error(
-                        "Razorpay order creation failed for shop order {}: {}", order_number, exc
-                    )
-                    raise ServiceUnavailableError(
-                        "Payment gateway could not initiate transaction. Please try again or choose Cash on Delivery.",
-                        error_code="razorpay_order_failed",
-                    ) from exc
-            else:
-                # Mock order id for test/sandbox
-                razorpay_order_id = f"order_mock_{secrets.token_hex(8)}"
-                razorpay_key_id = "rzp_test_mock"
-                order.razorpay_order_id = razorpay_order_id
-
-        elif payload.payment_method == ShopPaymentMethod.WALLET:
-            # Pay directly using consultation wallet coins
-            required_coins = int(round(grand_total * coins_per_rupee))
-            user_wallet = await wallet_service.get_or_create_wallet(user_id)
-            if user_wallet.available_coins < required_coins:
-                raise BadRequestError(
-                    f"Insufficient wallet balance. Required: {required_coins} coins, Available: {user_wallet.available_coins} coins."
-                )
-
-            # Atomic debit
-            debit_key = f"shop_wallet_pay_{order_number}"
-            await wallet_service.debit(
-                user_id=user_id,
-                amount_coins=required_coins,
-                reason=TransactionReason.SHOP_PURCHASE,
-                idempotency_key=debit_key,
-                ref=TransactionRef(shop_order_number=order_number),
-                note=f"Payment for Sacred Remedy Order #{order_number}",
-            )
-
-            order.payment_status = ShopPaymentStatus.PAID
-            order.paid_at = datetime.now(UTC)
-            order.order_status = ShopOrderStatus.CONFIRMED
-
-            # Instantly credit 100% wallet cashback for prepaid wallet purchase!
-            if cashback_coins_eligible > 0:
-                cb_key = f"shop_cashback_{order_number}"
-                txn, _ = await wallet_service.credit(
-                    user_id=user_id,
-                    amount_coins=cashback_coins_eligible,
-                    reason=TransactionReason.SHOP_CASHBACK,
-                    idempotency_key=cb_key,
-                    ref=TransactionRef(shop_order_number=order_number),
-                    note=f"100% Cashback for Order #{order_number}",
-                )
-                order.cashback_coins_credited = cashback_coins_eligible
-                order.cashback_credited_at = datetime.now(UTC)
-                order.cashback_transaction_id = txn.id
-
-        elif payload.payment_method == ShopPaymentMethod.COD:
-            order.payment_status = ShopPaymentStatus.PENDING
-            order.order_status = ShopOrderStatus.PLACED
-
-        # Stock Reservation & Safeguards (Loophole 1 & Loophole 3)
-        reservation_minutes = getattr(cms, "checkout_reservation_minutes", 20) if cms else 20
-        if payload.payment_method == ShopPaymentMethod.RAZORPAY:
-            order.stock_reserved_until = datetime.now(UTC) + timedelta(minutes=reservation_minutes)
-            order.status_history.append(
-                OrderStatusLog(
-                    status=ShopOrderStatus.PLACED,
-                    notes=f"Inventory reserved for {reservation_minutes} minutes pending Razorpay online payment.",
-                )
-            )
-        else:
-            order.stock_reserved_until = None
-        order.is_stock_restored = False
-
-        # Atomically reserve stock with conditional safeguard (Zero overselling)
+        # 6. ATOMIC INVENTORY RESERVATION (Strict Zero-Overselling Guard - Loophole 3)
+        # We execute MongoDB conditional atomic decrement BEFORE touching payments, wallets, or external gateways.
+        # This completely guarantees that two concurrent users clicking "Pay" at the same microsecond
+        # will NEVER oversell inventory or drive stock below zero.
         reserved_items: list[tuple[PydanticObjectId, int]] = []
         for it in item_snapshots:
-            res = await Product.get_motor_collection().update_one(
-                {"_id": it.product_id, "stock_quantity": {"$gte": it.quantity}, "is_active": True},
+            res = await Product.get_pymongo_collection().update_one(
+                {
+                    "_id": it.product_id,
+                    "stock_quantity": {"$gte": it.quantity},
+                    "is_active": True,
+                    "is_deleted": False,
+                },
                 {"$inc": {"stock_quantity": -it.quantity}},
             )
             if res.modified_count == 0:
-                # Insufficient stock or concurrent order took the last units
+                # Concurrent race conflict: another devotee just purchased the remaining available stock!
+                # Atomically rollback any items already decremented in this checkout
                 for rollback_id, rollback_qty in reserved_items:
-                    await Product.get_motor_collection().update_one(
+                    await Product.get_pymongo_collection().update_one(
                         {"_id": rollback_id},
                         {"$inc": {"stock_quantity": rollback_qty}},
                     )
                 raise BadRequestError(
-                    f"দুঃখিত, '{it.title}' এর পর্যাপ্ত স্টক এই মুহূর্তে অবশিষ্ট নেই। অনুগ্রহ করে কার্টটি পুনরায় যাচাই করুন।",
+                    f"দুঃখিত, '{it.title}' এর পর্যাপ্ত স্টক এই মুহূর্তে অবশিষ্ট নেই। অন্য একজন ভক্ত এইমাত্র শেষ সামগ্রীটি সংগ্রহ করেছেন। অনুগ্রহ করে কার্টটি পুনরায় যাচাই করুন।",
                     error_code="insufficient_stock",
                 )
             reserved_items.append((it.product_id, it.quantity))
 
-        await order.insert()
-        logger.info(
-            "Created Shop Order '{}' (grand_total=₹{}, payment_method={}, cashback_coins={})",
-            order.order_number,
-            order.grand_total,
-            order.payment_method,
-            order.cashback_coins_eligible,
-        )
+        # 7. TRANSACTIONAL EXECUTION (Payment Gateway / Wallet Charging / Order Insertion)
+        # Wrapped in a fail-safe try-except block: if ANY payment gateway or database insert step fails,
+        # the reserved inventory is immediately and safely returned to the active warehouse catalog!
+        try:
+            today_str = datetime.now(UTC).strftime("%Y%m%d")
+            order_number = f"ASTRA-ORD-{today_str}-{secrets.token_hex(3).upper()}"
+
+            shipping_snap = ShippingAddressSnapshot(
+                recipient_name=payload.shipping_address.recipient_name,
+                phone_number=payload.shipping_address.phone_number,
+                alternate_phone=payload.shipping_address.alternate_phone,
+                address_line1=payload.shipping_address.address_line1,
+                address_line2=payload.shipping_address.address_line2,
+                landmark=payload.shipping_address.landmark,
+                city=payload.shipping_address.city,
+                state=payload.shipping_address.state,
+                pincode=payload.shipping_address.pincode,
+                address_type=payload.shipping_address.address_type,
+            )
+
+            sankalpa_snap = None
+            if payload.sankalpa and payload.sankalpa.devotee_name:
+                sankalpa_snap = SankalpaDetails(
+                    devotee_name=payload.sankalpa.devotee_name.strip(),
+                    gotra=(payload.sankalpa.gotra or "Kashyap").strip(),
+                    date_of_birth=payload.sankalpa.date_of_birth,
+                    birth_time=payload.sankalpa.birth_time,
+                    birth_place=payload.sankalpa.birth_place,
+                    special_prayer_wish=payload.sankalpa.special_prayer_wish,
+                )
+
+            reservation_minutes = getattr(cms, "checkout_reservation_minutes", 20) if cms else 20
+            stock_reserved_until = (
+                datetime.now(UTC) + timedelta(minutes=reservation_minutes)
+                if payload.payment_method == ShopPaymentMethod.RAZORPAY
+                else None
+            )
+
+            order = ShopOrder(
+                order_number=order_number,
+                user_id=user_id,
+                user_email=user_email,
+                user_phone=user_phone or payload.shipping_address.phone_number,
+                shipping_address=shipping_snap,
+                items=item_snapshots,
+                sankalpa=sankalpa_snap,
+                subtotal=subtotal,
+                discount_amount=discount_amount,
+                coupon_code=applied_coupon,
+                shipping_fee=shipping_fee,
+                tax_amount=0.0,
+                grand_total=grand_total,
+                payment_method=payload.payment_method,
+                payment_status=ShopPaymentStatus.PENDING,
+                order_status=ShopOrderStatus.PLACED,
+                cashback_percent=effective_cashback_pct,
+                cashback_coins_eligible=cashback_coins_eligible,
+                cashback_coins_credited=0,
+                free_gifts=bundled_gifts,
+                stock_reserved_until=stock_reserved_until,
+                is_stock_restored=False,
+                estimated_delivery_date=datetime.now(UTC) + timedelta(days=4),
+                status_history=[
+                    OrderStatusLog(
+                        status=ShopOrderStatus.PLACED,
+                        notes=(
+                            f"Inventory atomically reserved for {reservation_minutes} minutes pending Razorpay online payment."
+                            if payload.payment_method == ShopPaymentMethod.RAZORPAY
+                            else "Order placed by devotee. Consecration and packing queued."
+                        ),
+                    )
+                ],
+            )
+
+            # Payment Handling: Razorpay, Wallet, or COD
+            razorpay_order_id = None
+            razorpay_key_id = None
+
+            if payload.payment_method == ShopPaymentMethod.RAZORPAY:
+                if settings.razorpay_configured:
+                    amount_paise = int(round(grand_total * 100))
+                    try:
+                        rzp_resp = await asyncio.to_thread(
+                            _razorpay().order.create,
+                            {
+                                "amount": amount_paise,
+                                "currency": "INR",
+                                "receipt": order_number,
+                                "notes": {
+                                    "order_number": order_number,
+                                    "user_id": str(user_id),
+                                    "store": "Astra AstroStore",
+                                },
+                            },
+                        )
+                        razorpay_order_id = rzp_resp.get("id")
+                        razorpay_key_id = settings.RAZORPAY_KEY_ID
+                        order.razorpay_order_id = razorpay_order_id
+                    except Exception as exc:
+                        logger.opt(exception=exc).error(
+                            "Razorpay order creation failed for shop order {}: {}", order_number, exc
+                        )
+                        raise ServiceUnavailableError(
+                            "Payment gateway could not initiate transaction. Please try again or choose Cash on Delivery.",
+                            error_code="razorpay_order_failed",
+                        ) from exc
+                else:
+                    # Mock order id for test/sandbox
+                    razorpay_order_id = f"order_mock_{secrets.token_hex(8)}"
+                    razorpay_key_id = "rzp_test_mock"
+                    order.razorpay_order_id = razorpay_order_id
+
+            elif payload.payment_method == ShopPaymentMethod.WALLET:
+                # Pay directly using consultation wallet coins
+                required_coins = int(round(grand_total * coins_per_rupee))
+                user_wallet = await wallet_service.get_or_create_wallet(user_id)
+                if user_wallet.available_coins < required_coins:
+                    raise BadRequestError(
+                        f"Insufficient wallet balance. Required: {required_coins} coins, Available: {user_wallet.available_coins} coins."
+                    )
+
+                # Atomic debit
+                debit_key = f"shop_wallet_pay_{order_number}"
+                await wallet_service.debit(
+                    user_id=user_id,
+                    amount_coins=required_coins,
+                    reason=TransactionReason.SHOP_PURCHASE,
+                    idempotency_key=debit_key,
+                    ref=TransactionRef(shop_order_number=order_number),
+                    note=f"Payment for Sacred Remedy Order #{order_number}",
+                )
+
+                order.payment_status = ShopPaymentStatus.PAID
+                order.paid_at = datetime.now(UTC)
+                order.order_status = ShopOrderStatus.CONFIRMED
+
+                # Instantly credit 100% wallet cashback for prepaid wallet purchase!
+                if cashback_coins_eligible > 0:
+                    cb_key = f"shop_cashback_{order_number}"
+                    txn, _ = await wallet_service.credit(
+                        user_id=user_id,
+                        amount_coins=cashback_coins_eligible,
+                        reason=TransactionReason.SHOP_CASHBACK,
+                        idempotency_key=cb_key,
+                        ref=TransactionRef(shop_order_number=order_number),
+                        note=f"100% Cashback for Order #{order_number}",
+                    )
+                    order.cashback_coins_credited = cashback_coins_eligible
+                    order.cashback_credited_at = datetime.now(UTC)
+                    order.cashback_transaction_id = txn.id
+
+            elif payload.payment_method == ShopPaymentMethod.COD:
+                order.payment_status = ShopPaymentStatus.PENDING
+                order.order_status = ShopOrderStatus.PLACED
+
+            await order.insert()
+            logger.info(
+                "Created Shop Order '{}' (grand_total=₹{}, payment_method={}, cashback_coins={})",
+                order.order_number,
+                order.grand_total,
+                order.payment_method,
+                order.cashback_coins_eligible,
+            )
+        except Exception as exc:
+            # Critical Transaction Rollback: if Razorpay, Wallet, or DB insert throws any error,
+            # release all reserved items back into the active stock collection immediately!
+            for rollback_id, rollback_qty in reserved_items:
+                await Product.get_pymongo_collection().update_one(
+                    {"_id": rollback_id},
+                    {"$inc": {"stock_quantity": rollback_qty}},
+                )
+            logger.error(
+                "Checkout failed for user {}. Safely rolled back {} reserved item(s). Error: {}",
+                user_id,
+                len(reserved_items),
+                exc,
+            )
+            raise exc
 
         return ShopCheckoutResponse(
             order_id=str(order.id),
@@ -482,7 +508,7 @@ class ShopOrderService:
             reclaimed_items: list[tuple[PydanticObjectId, int]] = []
             can_reclaim_all = True
             for it in order.items:
-                res = await Product.get_motor_collection().update_one(
+                res = await Product.get_pymongo_collection().update_one(
                     {"_id": it.product_id, "stock_quantity": {"$gte": it.quantity}, "is_active": True},
                     {"$inc": {"stock_quantity": -it.quantity}},
                 )
@@ -504,7 +530,7 @@ class ShopOrderService:
                 )
             else:
                 for r_id, r_qty in reclaimed_items:
-                    await Product.get_motor_collection().update_one(
+                    await Product.get_pymongo_collection().update_one(
                         {"_id": r_id},
                         {"$inc": {"stock_quantity": r_qty}},
                     )
@@ -670,7 +696,7 @@ class ShopOrderService:
         # 1. Restore Stock atomically (if not already restored)
         if not order.is_stock_restored:
             for it in order.items:
-                await Product.get_motor_collection().update_one(
+                await Product.get_pymongo_collection().update_one(
                     {"_id": it.product_id},
                     {"$inc": {"stock_quantity": it.quantity}},
                 )
@@ -731,7 +757,7 @@ class ShopOrderService:
             # If order is cancelled or expired, restore stock if not already restored
             if payload.order_status in (ShopOrderStatus.CANCELLED, ShopOrderStatus.EXPIRED) and not order.is_stock_restored:
                 for it in order.items:
-                    await Product.get_motor_collection().update_one(
+                    await Product.get_pymongo_collection().update_one(
                         {"_id": it.product_id},
                         {"$inc": {"stock_quantity": it.quantity}},
                     )

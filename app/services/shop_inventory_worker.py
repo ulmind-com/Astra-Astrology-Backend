@@ -59,7 +59,7 @@ async def sweep_abandoned_shop_checkouts() -> int:
     for order in expired_orders:
         try:
             # Atomically lock and update this order to avoid race conditions with payment webhook or concurrent sweeps
-            updated_doc = await ShopOrder.get_motor_collection().find_one_and_update(
+            updated_doc = await ShopOrder.get_pymongo_collection().find_one_and_update(
                 {
                     "_id": order.id,
                     "payment_status": ShopPaymentStatus.PENDING,
@@ -92,7 +92,7 @@ async def sweep_abandoned_shop_checkouts() -> int:
 
             # Safely restore inventory for all items in this order
             for it in order.items:
-                await Product.get_motor_collection().update_one(
+                await Product.get_pymongo_collection().update_one(
                     {"_id": it.product_id},
                     {"$inc": {"stock_quantity": it.quantity}},
                 )
