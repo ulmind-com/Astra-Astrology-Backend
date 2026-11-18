@@ -303,6 +303,11 @@ class ShopBannerSettingsUpdate(BaseModel):
     cashback_enabled: bool = True
     cashback_percent: int = Field(default=100, ge=0, le=200)
     cashback_max_cap_inr: float | None = None
+    cashback_credit_timing: str = "on_delivery"
+
+    # Customer Order Cancellation & Anti-Fraud Policy Controls
+    allow_user_cancellation: bool = True
+    cancellation_grace_hours: int = Field(default=24, ge=1, le=168)
 
     # Free Gift Defaults
     free_gift_default_title: str = "Raw Selenite Charging Plate"
@@ -329,6 +334,11 @@ class ShopBannerSettingsOut(BaseModel):
     cashback_enabled: bool = True
     cashback_percent: int = 100
     cashback_max_cap_inr: float | None = None
+    cashback_credit_timing: str = "on_delivery"
+
+    # Customer Order Cancellation & Anti-Fraud Policy Controls
+    allow_user_cancellation: bool = True
+    cancellation_grace_hours: int = 24
 
     # Free Gift Defaults
     free_gift_default_title: str = "Raw Selenite Charging Plate"
