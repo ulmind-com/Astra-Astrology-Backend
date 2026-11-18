@@ -9,7 +9,7 @@ Endpoints:
 
 from fastapi import APIRouter, Query
 
-from app.api.dependencies import CurrentUser
+from app.api.dependencies import CurrentUser, OptionalUser
 from app.schemas.common import ApiResponse
 from app.schemas.shop import (
     PincodeCheckResponse,
@@ -187,10 +187,15 @@ async def release_stock(
 @router.get(
     "/pincode/{pincode}",
     response_model=ApiResponse[PincodeCheckResponse],
-    summary="Check delivery timeline and COD availability by Indian PIN code",
+    summary="Check delivery timeline and COD availability by Indian PIN code with anti-abuse blacklist check",
 )
-async def check_pincode_availability(pincode: str) -> ApiResponse[PincodeCheckResponse]:
-    result = await ShopOrderService.check_pincode(pincode)
+async def check_pincode_availability(
+    pincode: str,
+    phone: str | None = None,
+    user: OptionalUser = None,
+) -> ApiResponse[PincodeCheckResponse]:
+    uid = user.id if user else None
+    result = await ShopOrderService.check_pincode(pincode=pincode, phone=phone, user_id=uid)
     return ApiResponse.ok(data=result)
 
 

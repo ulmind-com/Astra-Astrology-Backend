@@ -217,6 +217,7 @@ class ShopOrderStatus(StrEnum):
     CANCELLED = "cancelled"
     RETURNED = "returned"
     EXPIRED = "expired"
+    RTO = "rto"  # Return to Origin (Courier returned parcel: customer refused or unreachable)
 
 
 class ShopPaymentMethod(StrEnum):

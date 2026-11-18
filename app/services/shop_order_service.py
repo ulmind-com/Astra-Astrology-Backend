@@ -120,10 +120,76 @@ class ShopOrderService:
             consecration_certificate_url=order.consecration_certificate_url,
             stock_reserved_until=order.stock_reserved_until,
             is_stock_restored=order.is_stock_restored,
+            rto_at=order.rto_at,
+            rto_reason=order.rto_reason,
             status_history=history_out,
             created_at=order.created_at,
             updated_at=order.updated_at,
         )
+
+    @classmethod
+    async def is_cod_blacklisted(
+        cls,
+        phone: str | None,
+        user_id: PydanticObjectId | None = None,
+    ) -> tuple[bool, str | None]:
+        """Anti-Abuse Engine: Checks if customer phone or account is blacklisted from COD due to past RTO shipments."""
+        cms = None
+        try:
+            cms = await ShopCMS.find_one({"$or": [{"key": CMS_KEY_SHOP}, {"key": "shop_cms"}]})
+        except Exception:
+            cms = None
+
+        max_rto = getattr(cms, "cod_max_rto_allowed", 2) or 2
+        blacklisted_phones = getattr(cms, "cod_blacklisted_phones", []) or []
+
+        clean_phone = phone.strip() if phone else ""
+        digits_only = "".join(filter(str.isdigit, clean_phone))
+        last10 = digits_only[-10:] if len(digits_only) >= 10 else digits_only
+
+        # Check explicit admin blacklist
+        if last10 and any(last10 in b for b in blacklisted_phones):
+            return (
+                True,
+                "পূর্ববর্তী পার্সেল ডেলিভারি সংক্রান্ত জটিলতার কারণে আপনার নম্বরে ক্যাশ অন ডেলিভারি (COD) সাময়িকভাবে স্থগিত রয়েছে। অনুগ্রহ করে প্রিপেইড মোডে (UPI, কার্ড) অর্ডার সম্পন্ন করুন।",
+            )
+
+        # Count previous RTO orders for this phone or account
+        query_conditions = []
+        if last10:
+            query_conditions.append({"shipping_address.phone_number": {"$regex": f"{last10}$"}})
+            query_conditions.append({"user_phone": {"$regex": f"{last10}$"}})
+        if user_id:
+            query_conditions.append({"user_id": user_id})
+
+        if not query_conditions:
+            return False, None
+
+        rto_count = 0
+        try:
+            rto_count = await ShopOrder.find(
+                {
+                    "order_status": ShopOrderStatus.RTO,
+                    "payment_method": ShopPaymentMethod.COD,
+                    "$or": query_conditions,
+                }
+            ).count()
+        except Exception:
+            rto_count = 0
+
+        if rto_count >= max_rto:
+            # Auto-blacklist this phone if not yet registered in CMS blacklist
+            if clean_phone and cms and clean_phone not in blacklisted_phones:
+                await ShopCMS.get_pymongo_collection().update_one(
+                    {"_id": cms.id},
+                    {"$addToSet": {"cod_blacklisted_phones": clean_phone}},
+                )
+            return (
+                True,
+                f"আপনার নম্বর থেকে পূর্ববর্তী {rto_count}টি ক্যাশ অন ডেলিভারি (COD) পার্সেল গ্রহণ না করার (RTO) কারণে COD সুবিধা স্থগিত করা হয়েছে। অনুগ্রহ করে প্রিপেইড পেমেন্ট (UPI, কার্ড, নেট ব্যাংকিং) বেছে নিন।",
+            )
+
+        return False, None
 
     @classmethod
     async def create_order(
@@ -146,11 +212,17 @@ class ShopOrderService:
         cod_enabled = getattr(cms, "cod_enabled", True) if cms else True
         cod_extra_charge = getattr(cms, "cod_extra_charge", 0.0) if cms else 0.0
 
-        if payload.payment_method == ShopPaymentMethod.COD and not cod_enabled:
-            raise BadRequestError(
-                "ক্যাশ অন ডেলিভারি (COD) বর্তমানে সাময়িকভাবে বন্ধ আছে। অনুগ্রহ করে অনলাইন পেমেন্ট বেছে নিন।",
-                error_code="cod_disabled",
-            )
+        if payload.payment_method == ShopPaymentMethod.COD:
+            if not cod_enabled:
+                raise BadRequestError(
+                    "ক্যাশ অন ডেলিভারি (COD) বর্তমানে সাময়িকভাবে বন্ধ আছে। অনুগ্রহ করে অনলাইন পেমেন্ট বেছে নিন।",
+                    error_code="cod_disabled",
+                )
+            # Anti-Abuse Check: Verify that user or recipient phone is not blacklisted from COD due to past RTO shipments
+            recipient_phone = payload.shipping_address.phone_number or user_phone
+            is_blacklisted, bl_msg = await cls.is_cod_blacklisted(phone=recipient_phone, user_id=user_id)
+            if is_blacklisted:
+                raise BadRequestError(bl_msg, error_code="cod_blacklisted")
 
         # 2. Validate Items & Inventory
         item_snapshots: list[OrderItemSnapshot] = []
@@ -632,8 +704,11 @@ class ShopOrderService:
         if user_id and order.user_id != user_id:
             raise ForbiddenError("Not authorized to cancel this order.")
 
-        if order.order_status in (ShopOrderStatus.SHIPPED, ShopOrderStatus.OUT_FOR_DELIVERY, ShopOrderStatus.DELIVERED):
-            raise BadRequestError("Cannot cancel an order that is already shipped or delivered. Please initiate a return.")
+        if order.order_status in (ShopOrderStatus.SHIPPED, ShopOrderStatus.OUT_FOR_DELIVERY, ShopOrderStatus.DELIVERED, ShopOrderStatus.RTO):
+            raise BadRequestError(
+                "কাশী বিশ্বনাথ থেকে সিদ্ধ ও প্রাণ-প্রতিষ্ঠিত পবিত্র বৈদিক সামগ্রী একবার ডিসপ্যাচ বা ডেলিভারি হওয়ার পর কোনো রিটার্ন নেওয়া হয় না।",
+                error_code="return_not_allowed",
+            )
 
         if order.order_status == ShopOrderStatus.CANCELLED:
             return cls._order_to_out(order)
@@ -754,8 +829,8 @@ class ShopOrderService:
                 )
             )
 
-            # If order is cancelled or expired, restore stock if not already restored
-            if payload.order_status in (ShopOrderStatus.CANCELLED, ShopOrderStatus.EXPIRED) and not order.is_stock_restored:
+            # If order is cancelled, expired, or returned to origin (RTO), restore stock if not already restored
+            if payload.order_status in (ShopOrderStatus.CANCELLED, ShopOrderStatus.EXPIRED, ShopOrderStatus.RTO) and not order.is_stock_restored:
                 for it in order.items:
                     await Product.get_pymongo_collection().update_one(
                         {"_id": it.product_id},
@@ -763,6 +838,32 @@ class ShopOrderService:
                     )
                 order.is_stock_restored = True
                 order.stock_restored_at = datetime.now(UTC)
+
+            # Handle Courier Return to Origin (RTO) and auto-blacklist evaluation
+            if payload.order_status == ShopOrderStatus.RTO:
+                order.rto_at = datetime.now(UTC)
+                order.rto_reason = payload.rto_reason or payload.notes or "Courier Return to Origin (Customer refused delivery / address unreachable)"
+                # If COD order, evaluate phone for auto-blacklist
+                clean_phone = order.shipping_address.phone_number or order.user_phone
+                if clean_phone and order.payment_method == ShopPaymentMethod.COD:
+                    cms = await ShopCMS.find_one({"$or": [{"key": CMS_KEY_SHOP}, {"key": "shop_cms"}]})
+                    max_rto = getattr(cms, "cod_max_rto_allowed", 2) or 2
+                    digits_only = "".join(filter(str.isdigit, clean_phone))
+                    last10 = digits_only[-10:] if len(digits_only) >= 10 else digits_only
+                    rto_count = await ShopOrder.find({
+                        "order_status": ShopOrderStatus.RTO,
+                        "payment_method": ShopPaymentMethod.COD,
+                        "$or": [
+                            {"shipping_address.phone_number": {"$regex": f"{last10}$"}},
+                            {"user_phone": {"$regex": f"{last10}$"}},
+                        ],
+                    }).count()
+                    if rto_count >= max_rto and cms:
+                        await ShopCMS.get_pymongo_collection().update_one(
+                            {"_id": cms.id},
+                            {"$addToSet": {"cod_blacklisted_phones": clean_phone}},
+                        )
+                        logger.warning("Auto-blacklisted phone {} from COD after {} RTO deliveries", clean_phone, rto_count)
 
             # If COD order was successfully DELIVERED, mark PAID and credit 100% cashback!
             if payload.order_status == ShopOrderStatus.DELIVERED:
@@ -886,14 +987,38 @@ class ShopOrderService:
         )
 
     @classmethod
-    async def check_pincode(cls, pincode: str) -> PincodeCheckResponse:
-        """Fast Indian delivery serviceability and COD validator."""
+    async def check_pincode(
+        cls,
+        pincode: str,
+        phone: str | None = None,
+        user_id: PydanticObjectId | None = None,
+    ) -> PincodeCheckResponse:
+        """Fast Indian delivery serviceability and COD validator with anti-abuse blacklist check."""
         clean = pincode.strip()
         if not clean.isdigit() or len(clean) != 6:
             raise BadRequestError("Pincode must be a 6-digit numeric postal code.")
 
-        cms = await ShopCMS.find_one({"$or": [{"key": CMS_KEY_SHOP}, {"key": "shop_cms"}]})
-        store_cod_enabled = getattr(cms, "cod_enabled", True) if cms else True
+        store_cod_enabled = True
+        try:
+            cms = await ShopCMS.find_one({"$or": [{"key": CMS_KEY_SHOP}, {"key": "shop_cms"}]})
+            if cms:
+                store_cod_enabled = getattr(cms, "cod_enabled", True)
+        except Exception:
+            pass
+
+        is_cod_avail = store_cod_enabled
+        cod_disabled_reason = None
+
+        if store_cod_enabled and (phone or user_id):
+            try:
+                is_blacklisted, bl_reason = await cls.is_cod_blacklisted(phone=phone, user_id=user_id)
+                if is_blacklisted:
+                    is_cod_avail = False
+                    cod_disabled_reason = bl_reason
+            except Exception:
+                pass
+        elif not store_cod_enabled:
+            cod_disabled_reason = "ক্যাশ অন ডেলিভারি (COD) বর্তমানে পুরো স্টোরে বন্ধ রয়েছে।"
 
         prefix = clean[:2]
         state_map = {
@@ -936,7 +1061,8 @@ class ShopOrderService:
             city=city,
             state=state,
             is_serviceable=True,
-            cod_available=store_cod_enabled,
+            cod_available=is_cod_avail,
+            cod_disabled_reason=cod_disabled_reason,
             estimated_delivery_days=est_days,
             estimated_delivery_date=del_date,
         )

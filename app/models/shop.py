@@ -395,6 +395,8 @@ class ShopOrder(TimestampedDocument):
     estimated_delivery_date: datetime | None = None
     delivered_at: datetime | None = None
     cancellation_reason: str | None = None
+    rto_at: datetime | None = None
+    rto_reason: str | None = None
 
     # Consecration & Invoice
     invoice_number: str | None = None
@@ -409,6 +411,7 @@ class ShopOrder(TimestampedDocument):
             pymongo.IndexModel([("razorpay_order_id", pymongo.ASCENDING)], name="order_rzp_order_idx"),
             pymongo.IndexModel([("razorpay_payment_id", pymongo.ASCENDING)], name="order_rzp_payment_idx"),
             pymongo.IndexModel([("order_status", pymongo.ASCENDING)], name="order_status_idx"),
+            pymongo.IndexModel([("user_phone", pymongo.ASCENDING), ("order_status", pymongo.ASCENDING)], name="order_phone_status_idx"),
             pymongo.IndexModel([("payment_status", pymongo.ASCENDING)], name="order_payment_status_idx"),
             pymongo.IndexModel(
                 [

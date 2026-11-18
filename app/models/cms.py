@@ -419,6 +419,18 @@ class ShopCMS(TimestampedDocument):
         description="Minutes to hold/reserve inventory for pending Razorpay checkouts before auto-restoring stock",
     )
 
+    # COD Blacklist & Anti-Abuse Controls
+    cod_max_rto_allowed: int = Field(
+        default=2,
+        ge=1,
+        le=10,
+        description="Number of unreceived COD RTO shipments before phone number is blacklisted from COD",
+    )
+    cod_blacklisted_phones: list[str] = Field(
+        default_factory=list,
+        description="List of phone numbers manually or automatically blacklisted from Cash on Delivery",
+    )
+
     class Settings:
         name = "cms_shop"
         indexes = [

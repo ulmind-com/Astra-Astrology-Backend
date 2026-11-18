@@ -748,6 +748,8 @@ async def get_shop_banner_settings() -> ShopBannerSettingsOut:
         cod_enabled=getattr(cms, "cod_enabled", True),
         cod_extra_charge=getattr(cms, "cod_extra_charge", 0.0),
         checkout_reservation_minutes=getattr(cms, "checkout_reservation_minutes", 20) or 20,
+        cod_max_rto_allowed=getattr(cms, "cod_max_rto_allowed", 2) or 2,
+        cod_blacklisted_phones=getattr(cms, "cod_blacklisted_phones", []) or [],
         reels=reels,
     )
 
@@ -778,6 +780,8 @@ async def update_shop_banner_settings(payload: ShopBannerSettingsUpdate) -> Shop
     cms.cod_enabled = payload.cod_enabled
     cms.cod_extra_charge = payload.cod_extra_charge
     cms.checkout_reservation_minutes = payload.checkout_reservation_minutes or 20
+    cms.cod_max_rto_allowed = payload.cod_max_rto_allowed or 2
+    cms.cod_blacklisted_phones = [p.strip() for p in payload.cod_blacklisted_phones if p.strip()]
     cms.reels = [r.model_dump() for r in payload.reels]
 
     await cms.save()

@@ -321,6 +321,8 @@ class ShopBannerSettingsUpdate(BaseModel):
     cod_enabled: bool = True
     cod_extra_charge: float = 0.0
     checkout_reservation_minutes: int = Field(default=20, ge=5, le=120)
+    cod_max_rto_allowed: int = Field(default=2, ge=1, le=10)
+    cod_blacklisted_phones: list[str] = Field(default_factory=list)
 
 
 class ShopBannerSettingsOut(BaseModel):
@@ -347,12 +349,14 @@ class ShopBannerSettingsOut(BaseModel):
     free_gift_default_badge: str = "FREE Raw Selenite Plate worth ₹729"
     free_gift_default_image_url: str | None = None
 
-    # Logistics
+    # Logistics & Anti-Abuse
     free_shipping_threshold: float = 499.0
     standard_shipping_fee: float = 70.0
     cod_enabled: bool = True
     cod_extra_charge: float = 0.0
     checkout_reservation_minutes: int = 20
+    cod_max_rto_allowed: int = 2
+    cod_blacklisted_phones: list[str] = Field(default_factory=list)
 
 
 # ===========================================================================
@@ -558,6 +562,8 @@ class ShopOrderOut(BaseModel):
     consecration_certificate_url: str | None = None
     stock_reserved_until: datetime | None = None
     is_stock_restored: bool = False
+    rto_at: datetime | None = None
+    rto_reason: str | None = None
     status_history: list[ShopOrderStatusLogOut] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
@@ -579,6 +585,7 @@ class ShopAdminOrderUpdate(BaseModel):
     estimated_delivery_date: datetime | None = None
     notes: str | None = None
     consecration_certificate_url: str | None = None
+    rto_reason: str | None = None
 
 
 class PincodeCheckResponse(BaseModel):
@@ -587,6 +594,7 @@ class PincodeCheckResponse(BaseModel):
     state: str
     is_serviceable: bool = True
     cod_available: bool = True
+    cod_disabled_reason: str | None = None
     estimated_delivery_days: int = 4
     estimated_delivery_date: str
 
