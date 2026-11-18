@@ -216,6 +216,7 @@ class ShopOrderStatus(StrEnum):
     DELIVERED = "delivered"
     CANCELLED = "cancelled"
     RETURNED = "returned"
+    EXPIRED = "expired"
 
 
 class ShopPaymentMethod(StrEnum):
@@ -233,6 +234,7 @@ class ShopPaymentStatus(StrEnum):
     PAID = "paid"
     FAILED = "failed"
     REFUNDED = "refunded"
+    EXPIRED = "expired"
 
 
 class AddressType(StrEnum):

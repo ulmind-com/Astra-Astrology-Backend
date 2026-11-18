@@ -377,6 +377,17 @@ class ShopOrder(TimestampedDocument):
     order_status: ShopOrderStatus = ShopOrderStatus.PLACED
     status_history: list[OrderStatusLog] = Field(default_factory=list)
 
+    # Stock Reservation & Abandoned Checkout Safeguards
+    stock_reserved_until: datetime | None = Field(
+        default=None,
+        description="TTL timestamp until which product stock is temporarily held for uncompleted Razorpay checkout",
+    )
+    is_stock_restored: bool = Field(
+        default=False,
+        description="Whether stock was released back into inventory upon cancellation, expiration, or abandonment",
+    )
+    stock_restored_at: datetime | None = None
+
     # Logistics & Courier Tracking
     courier_partner: str | None = Field(default=None, description="e.g. BlueDart, Delhivery, IndiaPost, Shiprocket")
     tracking_id: str | None = Field(default=None, description="Courier AWB or Consignment Number")
@@ -399,6 +410,14 @@ class ShopOrder(TimestampedDocument):
             pymongo.IndexModel([("razorpay_payment_id", pymongo.ASCENDING)], name="order_rzp_payment_idx"),
             pymongo.IndexModel([("order_status", pymongo.ASCENDING)], name="order_status_idx"),
             pymongo.IndexModel([("payment_status", pymongo.ASCENDING)], name="order_payment_status_idx"),
+            pymongo.IndexModel(
+                [
+                    ("payment_status", pymongo.ASCENDING),
+                    ("payment_method", pymongo.ASCENDING),
+                    ("stock_reserved_until", pymongo.ASCENDING),
+                ],
+                name="order_abandoned_ttl_idx",
+            ),
             pymongo.IndexModel([("created_at", pymongo.DESCENDING)], name="order_created_recent"),
         ]
 

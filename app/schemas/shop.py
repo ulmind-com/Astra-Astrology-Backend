@@ -320,6 +320,7 @@ class ShopBannerSettingsUpdate(BaseModel):
     standard_shipping_fee: float = 70.0
     cod_enabled: bool = True
     cod_extra_charge: float = 0.0
+    checkout_reservation_minutes: int = Field(default=20, ge=5, le=120)
 
 
 class ShopBannerSettingsOut(BaseModel):
@@ -351,6 +352,7 @@ class ShopBannerSettingsOut(BaseModel):
     standard_shipping_fee: float = 70.0
     cod_enabled: bool = True
     cod_extra_charge: float = 0.0
+    checkout_reservation_minutes: int = 20
 
 
 # ===========================================================================
@@ -554,6 +556,8 @@ class ShopOrderOut(BaseModel):
     estimated_delivery_date: datetime | None = None
     delivered_at: datetime | None = None
     consecration_certificate_url: str | None = None
+    stock_reserved_until: datetime | None = None
+    is_stock_restored: bool = False
     status_history: list[ShopOrderStatusLogOut] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime

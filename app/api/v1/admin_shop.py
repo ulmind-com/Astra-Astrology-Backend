@@ -402,3 +402,20 @@ async def admin_cancel_shop_order(
     )
     return ApiResponse.ok(data=order, message="Order cancelled successfully.")
 
+
+@router.post(
+    "/inventory/sweep-abandoned",
+    response_model=ApiResponse[dict],
+    summary="Manually sweep expired abandoned checkouts and restore reserved stock to inventory",
+)
+async def admin_sweep_abandoned_inventory(
+    admin: AdminUser = None,
+) -> ApiResponse[dict]:
+    from app.services.shop_inventory_worker import sweep_abandoned_shop_checkouts
+
+    restored_count = await sweep_abandoned_shop_checkouts()
+    return ApiResponse.ok(
+        data={"restored_orders_count": restored_count},
+        message=f"Swept abandoned checkouts: {restored_count} expired order(s) processed and stock safely restored.",
+    )
+

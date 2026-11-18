@@ -118,6 +118,8 @@ class ShopOrderService:
             estimated_delivery_date=order.estimated_delivery_date,
             delivered_at=order.delivered_at,
             consecration_certificate_url=order.consecration_certificate_url,
+            stock_reserved_until=order.stock_reserved_until,
+            is_stock_restored=order.is_stock_restored,
             status_history=history_out,
             created_at=order.created_at,
             updated_at=order.updated_at,
@@ -384,11 +386,39 @@ class ShopOrderService:
             order.payment_status = ShopPaymentStatus.PENDING
             order.order_status = ShopOrderStatus.PLACED
 
-        # Decrement stock atomically
+        # Stock Reservation & Safeguards (Loophole 1 & Loophole 3)
+        reservation_minutes = getattr(cms, "checkout_reservation_minutes", 20) if cms else 20
+        if payload.payment_method == ShopPaymentMethod.RAZORPAY:
+            order.stock_reserved_until = datetime.now(UTC) + timedelta(minutes=reservation_minutes)
+            order.status_history.append(
+                OrderStatusLog(
+                    status=ShopOrderStatus.PLACED,
+                    notes=f"Inventory reserved for {reservation_minutes} minutes pending Razorpay online payment.",
+                )
+            )
+        else:
+            order.stock_reserved_until = None
+        order.is_stock_restored = False
+
+        # Atomically reserve stock with conditional safeguard (Zero overselling)
+        reserved_items: list[tuple[PydanticObjectId, int]] = []
         for it in item_snapshots:
-            prod_doc = await Product.get(it.product_id)
-            if prod_doc:
-                await prod_doc.update({"$inc": {"stock_quantity": -it.quantity}})
+            res = await Product.get_motor_collection().update_one(
+                {"_id": it.product_id, "stock_quantity": {"$gte": it.quantity}, "is_active": True},
+                {"$inc": {"stock_quantity": -it.quantity}},
+            )
+            if res.modified_count == 0:
+                # Insufficient stock or concurrent order took the last units
+                for rollback_id, rollback_qty in reserved_items:
+                    await Product.get_motor_collection().update_one(
+                        {"_id": rollback_id},
+                        {"$inc": {"stock_quantity": rollback_qty}},
+                    )
+                raise BadRequestError(
+                    f"দুঃখিত, '{it.title}' এর পর্যাপ্ত স্টক এই মুহূর্তে অবশিষ্ট নেই। অনুগ্রহ করে কার্টটি পুনরায় যাচাই করুন।",
+                    error_code="insufficient_stock",
+                )
+            reserved_items.append((it.product_id, it.quantity))
 
         await order.insert()
         logger.info(
@@ -446,6 +476,54 @@ class ShopOrderService:
             if not hmac.compare_digest(expected, payload.razorpay_signature):
                 logger.warning("Invalid Razorpay signature for shop order '{}'", order.order_number)
                 raise BadRequestError("Payment verification failed: invalid signature.")
+
+        # Handle late payment if order was swept by TTL background cleaner
+        if order.order_status == ShopOrderStatus.EXPIRED or order.is_stock_restored:
+            reclaimed_items: list[tuple[PydanticObjectId, int]] = []
+            can_reclaim_all = True
+            for it in order.items:
+                res = await Product.get_motor_collection().update_one(
+                    {"_id": it.product_id, "stock_quantity": {"$gte": it.quantity}, "is_active": True},
+                    {"$inc": {"stock_quantity": -it.quantity}},
+                )
+                if res.modified_count == 0:
+                    can_reclaim_all = False
+                    break
+                reclaimed_items.append((it.product_id, it.quantity))
+
+            if can_reclaim_all:
+                order.is_stock_restored = False
+                order.stock_restored_at = None
+                order.stock_reserved_until = None
+                order.order_status = ShopOrderStatus.CONFIRMED
+                order.status_history.append(
+                    OrderStatusLog(
+                        status=ShopOrderStatus.CONFIRMED,
+                        notes="Late payment captured after timeout. Inventory successfully re-reserved for devotee.",
+                    )
+                )
+            else:
+                for r_id, r_qty in reclaimed_items:
+                    await Product.get_motor_collection().update_one(
+                        {"_id": r_id},
+                        {"$inc": {"stock_quantity": r_qty}},
+                    )
+                order.payment_status = ShopPaymentStatus.PAID
+                order.paid_at = datetime.now(UTC)
+                order.razorpay_payment_id = payload.razorpay_payment_id
+                order.razorpay_signature = payload.razorpay_signature
+                order.order_status = ShopOrderStatus.CANCELLED
+                order.cancellation_reason = "Payment captured after checkout timeout, but stock is now exhausted. Auto-refund required."
+                order.status_history.append(
+                    OrderStatusLog(
+                        status=ShopOrderStatus.CANCELLED,
+                        notes=order.cancellation_reason,
+                    )
+                )
+                await order.save()
+                return cls._order_to_out(order)
+        else:
+            order.stock_reserved_until = None
 
         # Mark Paid if not already
         if order.payment_status != ShopPaymentStatus.PAID:
@@ -589,11 +667,15 @@ class ShopOrderService:
                 logger.error("Error reversing cashback for cancelled order {}: {}", order.order_number, e)
                 raise BadRequestError(f"অর্ডার বাতিলের সময় ক্যাশব্যাক কয়েন রিভার্স করা যায়নি: {str(e)}")
 
-        # 1. Restore Stock
-        for it in order.items:
-            await Product.find_one(Product.id == it.product_id).update(
-                {"$inc": {"stock_quantity": it.quantity}}
-            )
+        # 1. Restore Stock atomically (if not already restored)
+        if not order.is_stock_restored:
+            for it in order.items:
+                await Product.get_motor_collection().update_one(
+                    {"_id": it.product_id},
+                    {"$inc": {"stock_quantity": it.quantity}},
+                )
+            order.is_stock_restored = True
+            order.stock_restored_at = datetime.now(UTC)
 
         order.order_status = ShopOrderStatus.CANCELLED
         order.cancellation_reason = reason or ("Cancelled by customer" if user_id else "Cancelled by administrator")
@@ -645,6 +727,16 @@ class ShopOrderService:
                     updated_by=admin_id,
                 )
             )
+
+            # If order is cancelled or expired, restore stock if not already restored
+            if payload.order_status in (ShopOrderStatus.CANCELLED, ShopOrderStatus.EXPIRED) and not order.is_stock_restored:
+                for it in order.items:
+                    await Product.get_motor_collection().update_one(
+                        {"_id": it.product_id},
+                        {"$inc": {"stock_quantity": it.quantity}},
+                    )
+                order.is_stock_restored = True
+                order.stock_restored_at = datetime.now(UTC)
 
             # If COD order was successfully DELIVERED, mark PAID and credit 100% cashback!
             if payload.order_status == ShopOrderStatus.DELIVERED:

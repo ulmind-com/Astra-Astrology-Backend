@@ -747,6 +747,7 @@ async def get_shop_banner_settings() -> ShopBannerSettingsOut:
         standard_shipping_fee=getattr(cms, "standard_shipping_fee", 70.0),
         cod_enabled=getattr(cms, "cod_enabled", True),
         cod_extra_charge=getattr(cms, "cod_extra_charge", 0.0),
+        checkout_reservation_minutes=getattr(cms, "checkout_reservation_minutes", 20) or 20,
         reels=reels,
     )
 
@@ -776,6 +777,7 @@ async def update_shop_banner_settings(payload: ShopBannerSettingsUpdate) -> Shop
     cms.standard_shipping_fee = payload.standard_shipping_fee
     cms.cod_enabled = payload.cod_enabled
     cms.cod_extra_charge = payload.cod_extra_charge
+    cms.checkout_reservation_minutes = payload.checkout_reservation_minutes or 20
     cms.reels = [r.model_dump() for r in payload.reels]
 
     await cms.save()

@@ -153,11 +153,19 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     except Exception as e:
         logger.warning("Could not start Cloudinary orphan cleaner worker: {}", e)
 
+    # Start 5-minute automated shop inventory TTL & abandoned checkout stock reversion worker
+    inventory_cleaner_task: asyncio.Task | None = None
+    try:
+        from app.services.shop_inventory_worker import periodic_shop_inventory_cleanup_loop
+        inventory_cleaner_task = asyncio.create_task(periodic_shop_inventory_cleanup_loop())
+    except Exception as e:
+        logger.warning("Could not start Shop inventory TTL cleaner worker: {}", e)
+
     logger.success("{} is ready on port {}.", settings.APP_NAME, settings.PORT)
     yield
 
     logger.info("Shutting down...")
-    for bg_task in (reminder_task, cloudinary_cleaner_task):
+    for bg_task in (reminder_task, cloudinary_cleaner_task, inventory_cleaner_task):
         if bg_task and not bg_task.done():
             bg_task.cancel()
             try:

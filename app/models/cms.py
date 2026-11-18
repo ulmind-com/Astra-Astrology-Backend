@@ -411,6 +411,14 @@ class ShopCMS(TimestampedDocument):
     cod_enabled: bool = True
     cod_extra_charge: float = Field(default=0.0, ge=0, description="Extra fee for Cash on Delivery (0 for free COD)")
 
+    # Stock Reservation & Abandoned Checkout TTL Controls
+    checkout_reservation_minutes: int = Field(
+        default=20,
+        ge=5,
+        le=120,
+        description="Minutes to hold/reserve inventory for pending Razorpay checkouts before auto-restoring stock",
+    )
+
     class Settings:
         name = "cms_shop"
         indexes = [
