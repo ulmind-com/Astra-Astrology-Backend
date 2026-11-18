@@ -307,7 +307,9 @@ async def get_kundli_matching(
 async def get_kp(
     payload: KPCalculateRequest,
     user: OptionalUser = None,
-    feature: str | None = Query(default=None, description="Feature identifier e.g. dasha_calculator or kp_calculator"),
+    feature: str | None = Query(
+        default=None, description="Feature identifier e.g. dasha_calculator or kp_calculator"
+    ),
 ) -> ApiResponse[KPCalculateResponse]:
     """Calculates 100% accurate KP Astrology parameters, Placidus 12 cusps,
     Ruling Planets for DOB and Casting Time, Panchang, and Vimshottari Dasha hierarchy.
@@ -400,7 +402,6 @@ async def list_nakshatras() -> ApiResponse[list[dict]]:
     return ApiResponse(message="27 Nakshatras fetched.", data=NAKSHATRAS_MASTER)
 
 
-
 @router.get(
     "/geo-search",
     response_model=ApiResponse[list[dict]],
@@ -409,10 +410,12 @@ async def list_nakshatras() -> ApiResponse[list[dict]]:
 async def search_city(
     q: str = Query(..., min_length=2, max_length=120, description="City or location name"),
     year: int | None = Query(
-        default=None, ge=1800, le=2100,
+        default=None,
+        ge=1800,
+        le=2100,
         description="Birth year. Given with month and day, the returned offset is the "
-                    "one actually in force at that date, so daylight saving and "
-                    "historical changes are reflected.",
+        "one actually in force at that date, so daylight saving and "
+        "historical changes are reflected.",
     ),
     month: int | None = Query(default=None, ge=1, le=12),
     day: int | None = Query(default=None, ge=1, le=31),
@@ -454,9 +457,26 @@ async def _reverse_geocode(lat: float, lon: float) -> dict | None:
                 elif addr.get("neighbourhood"):
                     road_parts.append(addr["neighbourhood"])
 
-                line1 = " ".join(road_parts) or addr.get("suburb") or addr.get("residential") or data.get("name") or ""
-                line2 = addr.get("suburb") if line1 != addr.get("suburb") else (addr.get("city_district") or "")
-                city = addr.get("city") or addr.get("town") or addr.get("village") or addr.get("municipality") or addr.get("county") or ""
+                line1 = (
+                    " ".join(road_parts)
+                    or addr.get("suburb")
+                    or addr.get("residential")
+                    or data.get("name")
+                    or ""
+                )
+                line2 = (
+                    addr.get("suburb")
+                    if line1 != addr.get("suburb")
+                    else (addr.get("city_district") or "")
+                )
+                city = (
+                    addr.get("city")
+                    or addr.get("town")
+                    or addr.get("village")
+                    or addr.get("municipality")
+                    or addr.get("county")
+                    or ""
+                )
                 state = addr.get("state") or addr.get("state_district") or ""
                 postal_code = addr.get("postcode") or ""
                 country = addr.get("country") or "India"
@@ -526,12 +546,30 @@ async def detect_ip_location(request: Request) -> ApiResponse[dict]:
     is_private = (
         not client_ip
         or client_ip in ("127.0.0.1", "::1", "localhost", "testclient")
-        or client_ip.startswith((
-            "10.", "192.168.", "172.16.", "172.17.", "172.18.", "172.19.",
-            "172.20.", "172.21.", "172.22.", "172.23.", "172.24.", "172.25.",
-            "172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31.",
-            "fc00:", "fe80:"
-        ))
+        or client_ip.startswith(
+            (
+                "10.",
+                "192.168.",
+                "172.16.",
+                "172.17.",
+                "172.18.",
+                "172.19.",
+                "172.20.",
+                "172.21.",
+                "172.22.",
+                "172.23.",
+                "172.24.",
+                "172.25.",
+                "172.26.",
+                "172.27.",
+                "172.28.",
+                "172.29.",
+                "172.30.",
+                "172.31.",
+                "fc00:",
+                "fe80:",
+            )
+        )
     )
 
     detected: dict = {}
@@ -584,13 +622,15 @@ async def detect_ip_location(request: Request) -> ApiResponse[dict]:
             return ApiResponse(
                 message="Location detected via network",
                 data={
-                    "display_name": geo_enriched.get("display_name", "") or f"{detected.get('city')}, {detected.get('state')}",
+                    "display_name": geo_enriched.get("display_name", "")
+                    or f"{detected.get('city')}, {detected.get('state')}",
                     "line1": geo_enriched.get("line1", "") or detected.get("city", ""),
                     "line2": geo_enriched.get("line2", ""),
                     "landmark": geo_enriched.get("landmark", ""),
                     "city": geo_enriched.get("city") or detected.get("city", ""),
                     "state": geo_enriched.get("state") or detected.get("state", ""),
-                    "postal_code": geo_enriched.get("postal_code") or detected.get("postal_code", ""),
+                    "postal_code": geo_enriched.get("postal_code")
+                    or detected.get("postal_code", ""),
                     "country": geo_enriched.get("country") or detected.get("country", "India"),
                     "latitude": lat,
                     "longitude": lon,
@@ -717,7 +757,9 @@ async def get_daily_horoscope_post(
     summary="Get 100% accurate Daily Horoscope by query parameters",
 )
 async def get_daily_horoscope_get(
-    date: str | None = Query(default=None, description="Target date in YYYY-MM-DD or None for today"),
+    date: str | None = Query(
+        default=None, description="Target date in YYYY-MM-DD or None for today"
+    ),
     sign: str | None = Query(default=None, description="Optional sign filter e.g. aries"),
     language: str = Query(default="en", pattern="^(en|bn|hi)$"),
     latitude: float = Query(default=22.5726, ge=-90.0, le=90.0),
@@ -758,9 +800,10 @@ async def unlock_daily_sign(
     """
     import time  # noqa: F401
     from datetime import date as _date
-    from app.services import wallet as wallet_service
-    from app.models.enums import TransactionReason
+
     from app.core.exceptions import BadRequestError, UnauthorizedError
+    from app.models.enums import TransactionReason
+    from app.services import wallet as wallet_service
 
     cost = 10
     if user is None:
@@ -784,7 +827,9 @@ async def unlock_daily_sign(
         idempotency_key=idempotency_key,
         note="Daily horoscope — detailed sign reading",
     )
-    return ApiResponse(message="Unlocked", data={"charged": cost, "balance": txn.balance_after_coins})
+    return ApiResponse(
+        message="Unlocked", data={"charged": cost, "balance": txn.balance_after_coins}
+    )
 
 
 @router.post(
@@ -804,8 +849,10 @@ async def get_annual_horoscope_report_post(
     5. Special Mahaupay & 8 Gomti Chakra Remedies
     6. Consecrated Royal Vedic Digital Seal & Verification Proof
     """
-    charged, balance = await _charge_feature("annual_horoscope", "1-Year Annual Horoscope & Lal Kitab Report", user)
-    
+    charged, balance = await _charge_feature(
+        "annual_horoscope", "1-Year Annual Horoscope & Lal Kitab Report", user
+    )
+
     c_name = payload.client_name
     if not c_name and user:
         c_name = getattr(user, "full_name", None) or getattr(user, "name", None)
@@ -837,9 +884,18 @@ async def get_annual_horoscope_report_post(
     summary="Get dynamic 100% accurate Vedic Festival Calendar calculated via Swiss Ephemeris",
 )
 async def get_festivals_endpoint(
-    year: int | None = Query(default=None, ge=1900, le=2100, description="Target Gregorian year (defaults to current year)"),
-    ref_date: str | None = Query(default=None, description="Optional reference ISO date YYYY-MM-DD for relative countdowns"),
-    category: str | None = Query(default=None, description="Optional category filter: major, vrat, jayanti"),
+    year: int | None = Query(
+        default=None,
+        ge=1900,
+        le=2100,
+        description="Target Gregorian year (defaults to current year)",
+    ),
+    ref_date: str | None = Query(
+        default=None, description="Optional reference ISO date YYYY-MM-DD for relative countdowns"
+    ),
+    category: str | None = Query(
+        default=None, description="Optional category filter: major, vrat, jayanti"
+    ),
 ) -> ApiResponse[FestivalCalendarResponse]:
     """Calculates all authentic Vedic festivals for the requested year dynamically.
 
@@ -849,12 +905,15 @@ async def get_festivals_endpoint(
     4. Supports multilingual metadata (English, Bengali, Hindi), sacred shlokas, and rituals.
     """
     from datetime import date as dt_date
+
     r_date: dt_date | None = None
     if ref_date:
         try:
             r_date = dt_date.fromisoformat(ref_date)
         except ValueError:
-            raise HTTPException(status_code=422, detail="Invalid ref_date format, must be YYYY-MM-DD")
+            raise HTTPException(
+                status_code=422, detail="Invalid ref_date format, must be YYYY-MM-DD"
+            )
 
     calendar_data = get_festival_calendar(year=year, ref_date=r_date)
 
@@ -863,7 +922,9 @@ async def get_festivals_endpoint(
         calendar_data.festivals = filtered
         calendar_data.total_count = len(filtered)
 
-    msg = f"Vedic Festival Calendar for {calendar_data.year} ({calendar_data.total_count} festivals)"
+    msg = (
+        f"Vedic Festival Calendar for {calendar_data.year} ({calendar_data.total_count} festivals)"
+    )
     return ApiResponse(message=msg, data=calendar_data)
 
 
@@ -873,24 +934,28 @@ async def get_festivals_endpoint(
     summary="Get upcoming Vedic Festivals relative to current date (rolling year window)",
 )
 async def get_upcoming_festivals_endpoint(
-    ref_date: str | None = Query(default=None, description="Optional reference ISO date YYYY-MM-DD (defaults to today)"),
-    limit: int = Query(default=15, ge=1, le=50, description="Number of upcoming festivals to return"),
+    ref_date: str | None = Query(
+        default=None, description="Optional reference ISO date YYYY-MM-DD (defaults to today)"
+    ),
+    limit: int = Query(
+        default=15, ge=1, le=50, description="Number of upcoming festivals to return"
+    ),
 ) -> ApiResponse[list[FestivalItem]]:
     """Returns dynamic upcoming festivals strictly starting from today or ref_date.
 
     Rolls forward across year boundary so that past festivals are never falsely shown as upcoming.
     """
     from datetime import date as dt_date
+
     r_date: dt_date | None = None
     if ref_date:
         try:
             r_date = dt_date.fromisoformat(ref_date)
         except ValueError:
-            raise HTTPException(status_code=422, detail="Invalid ref_date format, must be YYYY-MM-DD")
+            raise HTTPException(
+                status_code=422, detail="Invalid ref_date format, must be YYYY-MM-DD"
+            )
 
     upcoming = get_upcoming_festivals(ref_date=r_date, limit=limit)
     msg = f"Retrieved {len(upcoming)} upcoming Vedic festivals"
     return ApiResponse(message=msg, data=upcoming)
-
-
-

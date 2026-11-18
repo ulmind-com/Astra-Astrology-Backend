@@ -80,7 +80,9 @@ async def test_festivals_api_endpoints():
         assert date.fromisoformat(data["next_upcoming"]["date"]) >= date(2026, 11, 19)
 
         # 2. Upcoming festivals endpoint
-        resp_up = await client.get("/api/v1/astrology/festivals/upcoming?ref_date=2026-11-19&limit=5")
+        resp_up = await client.get(
+            "/api/v1/astrology/festivals/upcoming?ref_date=2026-11-19&limit=5"
+        )
         assert resp_up.status_code == 200
         up_data = resp_up.json()["data"]
         assert len(up_data) == 5

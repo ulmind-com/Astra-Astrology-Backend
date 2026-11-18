@@ -12,10 +12,14 @@ class RashiCalculateRequest(BaseModel):
     day: int = Field(ge=1, le=31, description="Day of birth (1-31)")
     month: int = Field(ge=1, le=12, description="Month of birth (1-12)")
     year: int = Field(ge=1800, le=2100, description="Year of birth (e.g. 2004)")
-    hour: int | None = Field(default=12, ge=0, le=23, description="Hour of birth (0-23 in 24hr or 1-12 with period)")
+    hour: int | None = Field(
+        default=12, ge=0, le=23, description="Hour of birth (0-23 in 24hr or 1-12 with period)"
+    )
     minute: int | None = Field(ge=0, le=59, default=0, description="Minute of birth (0-59)")
     second: int | None = Field(ge=0, le=59, default=0, description="Second of birth (0-59)")
-    period: Literal["AM", "PM", "24H"] | None = Field(default="PM", description="Period if 12-hour clock used")
+    period: Literal["AM", "PM", "24H"] | None = Field(
+        default="PM", description="Period if 12-hour clock used"
+    )
     place: str = Field(default="", description="Birth place name (e.g. Kolkata, West Bengal)")
     latitude: float | None = Field(
         default=None, ge=-90.0, le=90.0, description="Decimal latitude (-90 to +90)"
@@ -24,7 +28,9 @@ class RashiCalculateRequest(BaseModel):
         default=None, ge=-180.0, le=180.0, description="Decimal longitude (-180 to +180)"
     )
     timezone: float = Field(
-        default=5.5, ge=-12.0, le=14.0,
+        default=5.5,
+        ge=-12.0,
+        le=14.0,
         description="Timezone offset from UTC in hours (e.g. +5.5 for IST)",
     )
     timezone_name: str | None = Field(
@@ -53,7 +59,8 @@ class RashiCalculateRequest(BaseModel):
         default="north_indian", description="Visual chart display style"
     )
     language: Literal["en", "bn", "hi"] = Field(
-        default="en", description="Preferred language for output traits, cautions, and remedies (en, bn, hi)"
+        default="en",
+        description="Preferred language for output traits, cautions, and remedies (en, bn, hi)",
     )
 
 
@@ -298,10 +305,14 @@ class NakshatraCalculateRequest(BaseModel):
     day: int = Field(ge=1, le=31, description="Day of birth (1-31)")
     month: int = Field(ge=1, le=12, description="Month of birth (1-12)")
     year: int = Field(ge=1800, le=2100, description="Year of birth (e.g. 2004)")
-    hour: int | None = Field(default=12, ge=0, le=23, description="Hour of birth (0-23 in 24hr or 1-12 with period)")
+    hour: int | None = Field(
+        default=12, ge=0, le=23, description="Hour of birth (0-23 in 24hr or 1-12 with period)"
+    )
     minute: int | None = Field(ge=0, le=59, default=0, description="Minute of birth (0-59)")
     second: int | None = Field(ge=0, le=59, default=0, description="Second of birth (0-59)")
-    period: Literal["AM", "PM", "24H"] | None = Field(default="PM", description="Period if 12-hour clock used")
+    period: Literal["AM", "PM", "24H"] | None = Field(
+        default="PM", description="Period if 12-hour clock used"
+    )
     place: str = Field(default="", description="Birth place name (e.g. Kolkata, West Bengal)")
     latitude: float | None = Field(
         default=None, ge=-90.0, le=90.0, description="Decimal latitude (-90 to +90)"
@@ -310,7 +321,9 @@ class NakshatraCalculateRequest(BaseModel):
         default=None, ge=-180.0, le=180.0, description="Decimal longitude (-180 to +180)"
     )
     timezone: float = Field(
-        default=5.5, ge=-12.0, le=14.0,
+        default=5.5,
+        ge=-12.0,
+        le=14.0,
         description="Timezone offset from UTC in hours (e.g. +5.5 for IST)",
     )
     timezone_name: str | None = Field(
@@ -333,10 +346,9 @@ class NakshatraCalculateRequest(BaseModel):
         "true_mula",
     ] = Field(default="lahiri", description="Ayanamsa system to use for Sidereal calculation")
     language: Literal["en", "bn", "hi"] = Field(
-        default="en", description="Preferred language for output traits, cautions, and remedies (en, bn, hi)"
+        default="en",
+        description="Preferred language for output traits, cautions, and remedies (en, bn, hi)",
     )
-
-
 
 
 class NakshatraPadaDetail(BaseModel):
@@ -354,7 +366,9 @@ class NakshatraPadaDetail(BaseModel):
 
 
 class TarabalaItem(BaseModel):
-    tara_index: int  # 1 to 9 (Janma, Sampat, Vipat, Kshema, Pratyak, Sadhana, Naidhana, Mitra, Param Mitra)
+    tara_index: (
+        int  # 1 to 9 (Janma, Sampat, Vipat, Kshema, Pratyak, Sadhana, Naidhana, Mitra, Param Mitra)
+    )
     tara_name: str
     tara_name_bn: str
     tara_name_hi: str
@@ -636,10 +650,14 @@ class KPCalculateRequest(BaseModel):
     day: int = Field(ge=1, le=31, description="Day of birth (1-31)")
     month: int = Field(ge=1, le=12, description="Month of birth (1-12)")
     year: int = Field(ge=1800, le=2100, description="Year of birth (e.g. 2004)")
-    hour: int | None = Field(default=12, ge=0, le=23, description="Hour of birth (0-23 in 24hr or 1-12 with period)")
+    hour: int | None = Field(
+        default=12, ge=0, le=23, description="Hour of birth (0-23 in 24hr or 1-12 with period)"
+    )
     minute: int | None = Field(ge=0, le=59, default=0, description="Minute of birth (0-59)")
     second: int | None = Field(ge=0, le=59, default=0, description="Second of birth (0-59)")
-    period: Literal["AM", "PM", "24H"] | None = Field(default="PM", description="Period if 12-hour clock used")
+    period: Literal["AM", "PM", "24H"] | None = Field(
+        default="PM", description="Period if 12-hour clock used"
+    )
     place: str = Field(default="", description="Birth place name (e.g. Kolkata, West Bengal)")
     latitude: float | None = Field(
         default=None, ge=-90.0, le=90.0, description="Decimal latitude (-90 to +90)"
@@ -648,7 +666,9 @@ class KPCalculateRequest(BaseModel):
         default=None, ge=-180.0, le=180.0, description="Decimal longitude (-180 to +180)"
     )
     timezone: float = Field(
-        default=5.5, ge=-12.0, le=14.0,
+        default=5.5,
+        ge=-12.0,
+        le=14.0,
         description="Timezone offset from UTC in hours",
     )
     timezone_name: str | None = Field(
@@ -783,6 +803,7 @@ class KPDashaPeriod(BaseModel):
 # Advanced KP Models (Significators, CSL Life Events, Horary, Aspects, Badhaka)
 # -----------------------------------------------------------------------------
 
+
 class KPPlanetSignificator(BaseModel):
     planet: str
     level_a: list[int] = Field(default_factory=list)  # Houses occupied by star lord (strongest)
@@ -902,11 +923,15 @@ class DashaSandhiChidraInfo(BaseModel):
 class PersonalizedDashaPhalaItem(BaseModel):
     planet: str
     lagna: str
-    functional_nature: str  # "Yogakaraka", "Functional Benefic", "Functional Malefic", "Maraka", "Neutral"
+    functional_nature: (
+        str  # "Yogakaraka", "Functional Benefic", "Functional Malefic", "Maraka", "Neutral"
+    )
     houses_owned: list[int] = Field(default_factory=list)
     house_placed: int = 1
     sign_placed: str = ""
-    dignity: str = ""  # "Exalted", "Moolatrikona", "Own Sign", "Friendly", "Neutral", "Enemy", "Debilitated"
+    dignity: str = (
+        ""  # "Exalted", "Moolatrikona", "Own Sign", "Friendly", "Neutral", "Enemy", "Debilitated"
+    )
     is_retrograde: bool = False
     favorability_score: int = 50  # 0 to 100
     overall_impact: str = ""
@@ -1013,6 +1038,7 @@ class KPCalculateResponse(BaseModel):
 # =============================================================================
 # Kundli & Planetary Position Schemas
 # =============================================================================
+
 
 class KundliCalculateRequest(BaseModel):
     name: str = Field(default="Native", description="Name of native")
@@ -1178,7 +1204,9 @@ class KundliDashaCard(BaseModel):
 
 
 class KundliYogaItem(BaseModel):
-    name: str  # "Mangalik", "Kaal Sarp Dosh", "Budhaditya Yoga", "Gaja Kesari Yoga", "Kemadruma Yoga"
+    name: (
+        str  # "Mangalik", "Kaal Sarp Dosh", "Budhaditya Yoga", "Gaja Kesari Yoga", "Kemadruma Yoga"
+    )
     is_present: bool
     description: str
     auspicious: bool
@@ -1280,6 +1308,7 @@ class DoshaAnalysisItem(BaseModel):
 # =============================================================================
 # Ashtakavarga, Kaal Purusha & Nakshatra Deep Predictive Schemas
 # =============================================================================
+
 
 class AshtakavargaPlanetPoints(BaseModel):
     planet: str
@@ -1446,6 +1475,7 @@ class KundliCalculateResponse(BaseModel):
 # =============================================================================
 # Kundli Matching (Horoscope Compatibility / 36 Gun Milan) Schemas
 # =============================================================================
+
 
 class KundliMatchingPersonInput(BaseModel):
     name: str = Field(default="Native")
@@ -1692,23 +1722,53 @@ class KundliMatchingResponse(BaseModel):
     classical_recommendation: str = ""
 
 
-
 # -----------------------------------------------------------------------------
 # Daily Horoscope (100% In-House Swiss Ephemeris Moon Transit & Panchang Engine)
 # -----------------------------------------------------------------------------
 class DailyHoroscopeRequest(BaseModel):
-    date: str | None = Field(default=None, description="Target date in YYYY-MM-DD format (defaults to current date in IST)")
-    sign: str | None = Field(default=None, description="Optional sign filter (e.g. 'aries', 'taurus' or None for all 12 signs)")
-    language: Literal["en", "bn", "hi"] = Field(default="en", description="Output language (en, bn, hi)")
-    latitude: float = Field(default=22.5726, ge=-90.0, le=90.0, description="Observer latitude (default: Kolkata, 22.5726)")
-    longitude: float = Field(default=88.3639, ge=-180.0, le=180.0, description="Observer longitude (default: Kolkata, 88.3639)")
-    timezone: float = Field(default=5.5, ge=-12.0, le=14.0, description="Timezone offset from UTC (default: +5.5 for IST)")
+    date: str | None = Field(
+        default=None,
+        description="Target date in YYYY-MM-DD format (defaults to current date in IST)",
+    )
+    sign: str | None = Field(
+        default=None,
+        description="Optional sign filter (e.g. 'aries', 'taurus' or None for all 12 signs)",
+    )
+    language: Literal["en", "bn", "hi"] = Field(
+        default="en", description="Output language (en, bn, hi)"
+    )
+    latitude: float = Field(
+        default=22.5726,
+        ge=-90.0,
+        le=90.0,
+        description="Observer latitude (default: Kolkata, 22.5726)",
+    )
+    longitude: float = Field(
+        default=88.3639,
+        ge=-180.0,
+        le=180.0,
+        description="Observer longitude (default: Kolkata, 88.3639)",
+    )
+    timezone: float = Field(
+        default=5.5,
+        ge=-12.0,
+        le=14.0,
+        description="Timezone offset from UTC (default: +5.5 for IST)",
+    )
     # Personalization options
-    birth_nakshatra_index: int | None = Field(default=None, ge=0, le=26, description="Native's Janma Nakshatra index 0 to 26")
-    birth_date: str | None = Field(default=None, description="Native birth date YYYY-MM-DD for personalized transit chart")
+    birth_nakshatra_index: int | None = Field(
+        default=None, ge=0, le=26, description="Native's Janma Nakshatra index 0 to 26"
+    )
+    birth_date: str | None = Field(
+        default=None, description="Native birth date YYYY-MM-DD for personalized transit chart"
+    )
     birth_time: str | None = Field(default=None, description="Native birth time HH:MM")
-    birth_rashi_index: int | None = Field(default=None, ge=0, le=11, description="Native Janma Rashi index 0 to 11")
-    birth_lagna_index: int | None = Field(default=None, ge=0, le=11, description="Native Janma Lagna index 0 to 11")
+    birth_rashi_index: int | None = Field(
+        default=None, ge=0, le=11, description="Native Janma Rashi index 0 to 11"
+    )
+    birth_lagna_index: int | None = Field(
+        default=None, ge=0, le=11, description="Native Janma Lagna index 0 to 11"
+    )
 
 
 class HoraItem(BaseModel):
@@ -1939,7 +1999,9 @@ class AnnualHoroscopeRequest(BaseModel):
     client_name: str | None = None
     target_year: int | None = Field(default=None, ge=1900, le=2100)
     language: Literal["en", "bn", "hi"] = "en"
-    primary_focus: Literal["general", "career", "finance", "health", "love", "family", "debt"] = "general"
+    primary_focus: Literal["general", "career", "finance", "health", "love", "family", "debt"] = (
+        "general"
+    )
 
 
 class AnnualHoroscopeResponse(BaseModel):
@@ -1993,11 +2055,3 @@ class FestivalCalendarResponse(BaseModel):
     festivals: list[FestivalItem] = Field(default_factory=list)
     engine: str = "Swiss Ephemeris 2.10 (pyswisseph)"
     calculated_at: str
-
-
-
-
-
-
-
-

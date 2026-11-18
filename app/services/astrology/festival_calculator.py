@@ -45,28 +45,63 @@ DAY_NAMES = [
 ]
 
 MONTH_NAMES_EN = [
-    "", "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"
+    "",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
 ]
 
 BN_DIGITS = str.maketrans("0123456789", "০১২৩৪৫৬৭৮৯")
 HI_DIGITS = str.maketrans("0123456789", "०१२३४५६७८९")
 
 BN_MONTHS = [
-    "", "জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল", "মে", "জুন",
-    "জুলাই", "আগস্ট", "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর"
+    "",
+    "জানুয়ারি",
+    "ফেব্রুয়ারি",
+    "মার্চ",
+    "এপ্রিল",
+    "মে",
+    "জুন",
+    "জুলাই",
+    "আগস্ট",
+    "সেপ্টেম্বর",
+    "অক্টোবর",
+    "নভেম্বর",
+    "ডিসেম্বর",
 ]
 
 HI_MONTHS = [
-    "", "जनवरी", "फ़रवरी", "मार्च", "अप्रैल", "मई", "जून",
-    "जुलाई", "अगस्त", "सितंबर", "अक्टूबर", "नवंबर", "दिसंबर"
+    "",
+    "जनवरी",
+    "फ़रवरी",
+    "मार्च",
+    "अप्रैल",
+    "मई",
+    "जून",
+    "जुलाई",
+    "अगस्त",
+    "सितंबर",
+    "अक्टूबर",
+    "नवंबर",
+    "दिसंबर",
 ]
 
 
 def format_localized_date(d: date) -> dict[str, str]:
     en_str = f"{MONTH_NAMES_EN[d.month]} {d.day}, {d.year}"
     bn_str = f"{str(d.day).translate(BN_DIGITS)} {BN_MONTHS[d.month]}, {str(d.year).translate(BN_DIGITS)}"
-    hi_str = f"{str(d.day).translate(HI_DIGITS)} {HI_MONTHS[d.month]} {str(d.year).translate(HI_DIGITS)}"
+    hi_str = (
+        f"{str(d.day).translate(HI_DIGITS)} {HI_MONTHS[d.month]} {str(d.year).translate(HI_DIGITS)}"
+    )
     return {"en": en_str, "bn": bn_str, "hi": hi_str}
 
 
@@ -137,7 +172,7 @@ FESTIVAL_DEFINITIONS: list[dict[str, Any]] = [
         "category": "major",
         "calc_type": "lunar_tithi",
         "lunar_month": 10,  # Magha
-        "tithi_idx": 4,      # Shukla Panchami (tithi 5)
+        "tithi_idx": 4,  # Shukla Panchami (tithi 5)
         "tithi_desc": {
             "en": "Magha Shukla Panchami",
             "bn": "মাঘ শুক্ল পঞ্চমী",
@@ -187,7 +222,7 @@ FESTIVAL_DEFINITIONS: list[dict[str, Any]] = [
         "category": "vrat",
         "calc_type": "lunar_tithi",
         "lunar_month": 11,  # Phalguna (amanta) / Magha (purnimanta)
-        "tithi_idx": 28,     # Krishna Chaturdashi
+        "tithi_idx": 28,  # Krishna Chaturdashi
         "tithi_desc": {
             "en": "Phalguna Krishna Chaturdashi",
             "bn": "ফাল্গুন কৃষ্ণ চতুর্দশী",
@@ -237,7 +272,7 @@ FESTIVAL_DEFINITIONS: list[dict[str, Any]] = [
         "category": "major",
         "calc_type": "lunar_tithi",
         "lunar_month": 11,  # Phalguna
-        "tithi_idx": 14,     # Shukla Purnima (tithi 15)
+        "tithi_idx": 14,  # Shukla Purnima (tithi 15)
         "tithi_desc": {
             "en": "Phalguna Purnima",
             "bn": "ফাল্গুনী পূর্ণিমা",
@@ -286,8 +321,8 @@ FESTIVAL_DEFINITIONS: list[dict[str, Any]] = [
         },
         "category": "major",
         "calc_type": "lunar_tithi",
-        "lunar_month": 0,   # Chaitra
-        "tithi_idx": 0,      # Shukla Pratipada
+        "lunar_month": 0,  # Chaitra
+        "tithi_idx": 0,  # Shukla Pratipada
         "tithi_desc": {
             "en": "Chaitra Shukla Pratipada",
             "bn": "চৈত্র শুক্লা প্রতিপদ",
@@ -336,8 +371,8 @@ FESTIVAL_DEFINITIONS: list[dict[str, Any]] = [
         },
         "category": "jayanti",
         "calc_type": "lunar_tithi",
-        "lunar_month": 0,   # Chaitra
-        "tithi_idx": 8,      # Shukla Navami
+        "lunar_month": 0,  # Chaitra
+        "tithi_idx": 8,  # Shukla Navami
         "tithi_desc": {
             "en": "Chaitra Shukla Navami",
             "bn": "চৈত্র শুক্লা নবমী",
@@ -436,8 +471,8 @@ FESTIVAL_DEFINITIONS: list[dict[str, Any]] = [
         },
         "category": "major",
         "calc_type": "lunar_tithi",
-        "lunar_month": 1,   # Vaishakha
-        "tithi_idx": 2,      # Shukla Tritiya
+        "lunar_month": 1,  # Vaishakha
+        "tithi_idx": 2,  # Shukla Tritiya
         "tithi_desc": {
             "en": "Vaishakha Shukla Tritiya",
             "bn": "বৈশাখ শুক্লা তৃতীয়া",
@@ -486,8 +521,8 @@ FESTIVAL_DEFINITIONS: list[dict[str, Any]] = [
         },
         "category": "major",
         "calc_type": "lunar_tithi",
-        "lunar_month": 3,   # Ashadha
-        "tithi_idx": 1,      # Shukla Dwitiya
+        "lunar_month": 3,  # Ashadha
+        "tithi_idx": 1,  # Shukla Dwitiya
         "tithi_desc": {
             "en": "Ashadha Shukla Dwitiya",
             "bn": "আষাঢ় শুক্লা দ্বিতীয়া",
@@ -536,8 +571,8 @@ FESTIVAL_DEFINITIONS: list[dict[str, Any]] = [
         },
         "category": "vrat",
         "calc_type": "lunar_tithi",
-        "lunar_month": 3,   # Ashadha
-        "tithi_idx": 14,     # Shukla Purnima
+        "lunar_month": 3,  # Ashadha
+        "tithi_idx": 14,  # Shukla Purnima
         "tithi_desc": {
             "en": "Ashadha Purnima",
             "bn": "আষাঢ়ী পূর্ণিমা",
@@ -586,8 +621,8 @@ FESTIVAL_DEFINITIONS: list[dict[str, Any]] = [
         },
         "category": "major",
         "calc_type": "lunar_tithi",
-        "lunar_month": 4,   # Shravana
-        "tithi_idx": 14,     # Shukla Purnima
+        "lunar_month": 4,  # Shravana
+        "tithi_idx": 14,  # Shukla Purnima
         "tithi_desc": {
             "en": "Shravana Purnima",
             "bn": "শ্রাবণী পূর্ণিমা",
@@ -636,8 +671,8 @@ FESTIVAL_DEFINITIONS: list[dict[str, Any]] = [
         },
         "category": "major",
         "calc_type": "lunar_tithi",
-        "lunar_month": 4,   # Shravana (amanta) / Bhadrapada (purnimanta)
-        "tithi_idx": 22,     # Krishna Ashtami (tithi 8)
+        "lunar_month": 4,  # Shravana (amanta) / Bhadrapada (purnimanta)
+        "tithi_idx": 22,  # Krishna Ashtami (tithi 8)
         "tithi_desc": {
             "en": "Bhadrapada Krishna Ashtami",
             "bn": "ভাদ্রপদ কৃষ্ণাষ্টমী (রোহিণী নক্ষত্র)",
@@ -686,8 +721,8 @@ FESTIVAL_DEFINITIONS: list[dict[str, Any]] = [
         },
         "category": "major",
         "calc_type": "lunar_tithi",
-        "lunar_month": 5,   # Bhadrapada
-        "tithi_idx": 3,      # Shukla Chaturthi
+        "lunar_month": 5,  # Bhadrapada
+        "tithi_idx": 3,  # Shukla Chaturthi
         "tithi_desc": {
             "en": "Bhadrapada Shukla Chaturthi",
             "bn": "ভাদ্রপদ শুক্লা চতুর্থী",
@@ -736,8 +771,8 @@ FESTIVAL_DEFINITIONS: list[dict[str, Any]] = [
         },
         "category": "major",
         "calc_type": "lunar_tithi",
-        "lunar_month": 6,   # Ashvina
-        "tithi_idx": 6,      # Shukla Saptami to Dashami
+        "lunar_month": 6,  # Ashvina
+        "tithi_idx": 6,  # Shukla Saptami to Dashami
         "tithi_desc": {
             "en": "Ashvina Shukla Saptami to Dashami",
             "bn": "আশ্বিন শুক্লা সপ্তমী থেকে বিজয়া দশমী",
@@ -786,8 +821,8 @@ FESTIVAL_DEFINITIONS: list[dict[str, Any]] = [
         },
         "category": "major",
         "calc_type": "lunar_tithi",
-        "lunar_month": 7,   # Kartika
-        "tithi_idx": 29,     # Amavasya
+        "lunar_month": 7,  # Kartika
+        "tithi_idx": 29,  # Amavasya
         "tithi_desc": {
             "en": "Kartika Amavasya",
             "bn": "কার্তিকী অমাবস্যা",
@@ -836,8 +871,8 @@ FESTIVAL_DEFINITIONS: list[dict[str, Any]] = [
         },
         "category": "vrat",
         "calc_type": "lunar_tithi",
-        "lunar_month": 7,   # Kartika
-        "tithi_idx": 5,      # Shukla Shashthi
+        "lunar_month": 7,  # Kartika
+        "tithi_idx": 5,  # Shukla Shashthi
         "tithi_desc": {
             "en": "Kartika Shukla Shashthi",
             "bn": "কার্তিক শুক্লা ষষ্ঠী",
@@ -886,8 +921,8 @@ FESTIVAL_DEFINITIONS: list[dict[str, Any]] = [
         },
         "category": "vrat",
         "calc_type": "lunar_tithi",
-        "lunar_month": 7,   # Kartika
-        "tithi_idx": 10,     # Shukla Ekadashi
+        "lunar_month": 7,  # Kartika
+        "tithi_idx": 10,  # Shukla Ekadashi
         "tithi_desc": {
             "en": "Kartika Shukla Ekadashi",
             "bn": "কার্তিক শুক্লা একাদশী",
@@ -936,8 +971,8 @@ FESTIVAL_DEFINITIONS: list[dict[str, Any]] = [
         },
         "category": "jayanti",
         "calc_type": "lunar_tithi",
-        "lunar_month": 8,   # Margashirsha
-        "tithi_idx": 10,     # Shukla Ekadashi
+        "lunar_month": 8,  # Margashirsha
+        "tithi_idx": 10,  # Shukla Ekadashi
         "tithi_desc": {
             "en": "Margashirsha Shukla Ekadashi",
             "bn": "মার্গশীর্ষ শুক্লা একাদশী",
@@ -1040,7 +1075,9 @@ def _get_new_moons_for_year(year: int) -> list[date]:
     return amavasyas
 
 
-def _find_lunar_tithi_date(target_lunar_month: int, target_tithi_idx: int, year: int) -> date | None:
+def _find_lunar_tithi_date(
+    target_lunar_month: int, target_tithi_idx: int, year: int
+) -> date | None:
     """Finds exact date in the Gregorian year matching the lunar month and tithi."""
     _require_swisseph()
     swe.set_sid_mode(swe.SIDM_LAHIRI)
@@ -1053,7 +1090,9 @@ def _find_lunar_tithi_date(target_lunar_month: int, target_tithi_idx: int, year:
         m_end = new_moons[i + 1]
 
         # Calculate mid-month Sun sign to identify month index (0: Chaitra ... 11: Phalguna)
-        mid_jd = swe.julday(m_start.year, m_start.month, m_start.day, 0.5) + (m_end - m_start).days / 2.0
+        mid_jd = (
+            swe.julday(m_start.year, m_start.month, m_start.day, 0.5) + (m_end - m_start).days / 2.0
+        )
         sun_lon = swe.calc_ut(mid_jd, swe.SUN, swe.FLG_SIDEREAL)[0][0]
         sun_sign = int(sun_lon / 30.0)
         month_idx = (sun_sign + 1) % 12
@@ -1097,9 +1136,9 @@ def calculate_festivals_for_year(year: int, ref_date: date | None = None) -> lis
             continue
 
         days_remaining = (f_date - ref_date).days
-        is_today = (days_remaining == 0)
-        is_upcoming = (days_remaining >= 0)
-        is_past = (days_remaining < 0)
+        is_today = days_remaining == 0
+        is_upcoming = days_remaining >= 0
+        is_past = days_remaining < 0
 
         item = FestivalItem(
             id=defn["id"],
