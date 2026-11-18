@@ -12,6 +12,23 @@ from app.models.base import TimestampedDocument
 CMS_KEY_HOMEPAGE = "homepage"
 
 
+class HeroSlideConfig(BaseModel):
+    id: str = Field(default="slide-1", max_length=50)
+    title: str = Field(default="Enjoy your relationship", max_length=200)
+    subtitle: str = Field(default="don't stress over it", max_length=200)
+    description: str = Field(
+        default="Talk to India's top Vedic astrologers & tarot readers for instant relationship clarity.",
+        max_length=1000,
+    )
+    cta_text: str = Field(default="Consult for FREE", max_length=100)
+    cta_link: str = Field(default="/astrologers", max_length=300)
+    badge_text: str = Field(default="India's Best Astrology Platform", max_length=200)
+    badge_rating: str = Field(default="4.9/5", max_length=50)
+    image_url: str = Field(default="/images/hero-couple.jpg", max_length=1000)
+    bg_gradient: str = Field(default="from-[#fffbf0] via-[#fff8dc] to-[#fceeb5]", max_length=300)
+    border_color: str = Field(default="border-[#ebd881]", max_length=100)
+
+
 class HeroCardConfig(BaseModel):
     title: str = Field(default="Zodiac Signs", max_length=100)
     subtitle: str = Field(default="READ MORE", max_length=100)
@@ -22,6 +39,89 @@ class HeroCardConfig(BaseModel):
 class TrustStatConfig(BaseModel):
     value: str = Field(default="500+", max_length=50)
     label: str = Field(default="VERIFIED ASTROLOGERS", max_length=100)
+
+
+def default_hero_slides() -> list[HeroSlideConfig]:
+    return [
+        HeroSlideConfig(
+            id="slide-1",
+            title="Enjoy your relationship",
+            subtitle="don't stress over it",
+            description="Talk to India's top Vedic astrologers & tarot readers for instant relationship clarity.",
+            cta_text="Consult for FREE",
+            cta_link="/astrologers",
+            badge_text="India's Best Astrology Platform",
+            badge_rating="4.9/5",
+            image_url="/images/hero/hero-couple-exploring.png",
+            bg_gradient="from-[#fffbf0] via-[#fff8dc] to-[#fceeb5]",
+            border_color="border-[#ebd881]",
+        ),
+        HeroSlideConfig(
+            id="slide-2",
+            title="Know your destiny & future",
+            subtitle="with free Vedic Janam Kundli",
+            description="Accurate planetary calculations, dosha analysis, and personalized remedies by Vedic experts.",
+            cta_text="Generate Free Kundli",
+            cta_link="/kundli",
+            badge_text="100% Free & Accurate Kundli",
+            badge_rating="500k+ Created",
+            image_url="/images/hero/hero-parchment-kundli.png",
+            bg_gradient="from-[#fff9e6] via-[#fff3cc] to-[#fde5a3]",
+            border_color="border-[#e8ce6b]",
+        ),
+        HeroSlideConfig(
+            id="slide-3",
+            title="Check marriage compatibility",
+            subtitle="find your perfect soulmate",
+            description="Detailed 36-Gun Milan, Manglik Dosha report & life-long harmony analysis for bride & groom.",
+            cta_text="Match Kundli Now",
+            cta_link="/kundli-matching",
+            badge_text="Trusted Matchmaking",
+            badge_rating="36 Gunas Score",
+            image_url="/images/hero/hero-indian-wedding.png",
+            bg_gradient="from-[#fff6f0] via-[#ffeedd] to-[#ffdcb8]",
+            border_color="border-[#f2b992]",
+        ),
+        HeroSlideConfig(
+            id="slide-4",
+            title="Unlock secrets in your palm",
+            subtitle="with modern 3D AI biometrics",
+            description="Explore heart, head & life lines with interactive real-time 3D hand visualization.",
+            cta_text="Start Palm Reading",
+            cta_link="/palm-reading",
+            badge_text="Next-Gen 3D Biometrics",
+            badge_rating="99% Precision",
+            image_url="/images/hero/hero-mint-mandala.png",
+            bg_gradient="from-[#f3faf6] via-[#e2f5ec] to-[#c7eedb]",
+            border_color="border-[#93dab7]",
+        ),
+        HeroSlideConfig(
+            id="slide-5",
+            title="Discover your true potential",
+            subtitle="via 78 Arcana Tarot guidance",
+            description="Daily forecasts, love spreads & career clarity synchronized with planetary dasha cycles.",
+            cta_text="Get Tarot Reading",
+            cta_link="/tarot",
+            badge_text="Sacred Arcana Cards",
+            badge_rating="78 Cards",
+            image_url="/images/hero/hero-mystical-tarot.png",
+            bg_gradient="from-[#faf5ff] via-[#f3e8ff] to-[#e4ceff]",
+            border_color="border-[#cfa7f7]",
+        ),
+        HeroSlideConfig(
+            id="slide-6",
+            title="Harmonize your living space",
+            subtitle="attract wealth, peace & health",
+            description="Interactive 16-zone Vastu directional compass and elemental balance remedies for home & office.",
+            cta_text="Explore Vastu Guide",
+            cta_link="/vastu",
+            badge_text="Ancient Vedic Architecture",
+            badge_rating="16 Zones",
+            image_url="/images/hero/hero-golden-compass.png",
+            bg_gradient="from-[#fffdf0] via-[#fdf6cc] to-[#fce48b]",
+            border_color="border-[#ebd36a]",
+        ),
+    ]
 
 
 def default_hero_cards() -> list[HeroCardConfig]:
@@ -45,6 +145,9 @@ class HomePageCMS(TimestampedDocument):
     """Singleton document storing all customizable static texts & media on the homepage."""
 
     key: str = CMS_KEY_HOMEPAGE
+
+    # Hero Slides (carousel banners)
+    hero_slides: list[HeroSlideConfig] = Field(default_factory=default_hero_slides)
 
     # Hero Section
     hero_eyebrow: str = Field(default="Explore the Horoscope", max_length=150)
@@ -122,32 +225,127 @@ def default_shop_hero_banners() -> list[dict]:
     return [
         {
             "id": "banner-1",
-            "title": "Sacred Certified Nepali Rudraksha",
-            "subtitle": "Consecrated with Vedic Pran-Pratishtha by Vedic Pandits for spiritual protection & prosperity.",
-            "cta_text": "Explore Rudraksha",
-            "cta_link": "/shop?category=rudraksha",
-            "badge_text": "100% Authentic & Lab Certified",
-            "image_url": "https://images.unsplash.com/photo-1602751584552-8ba73aad10e1?auto=format&fit=crop&w=1200&q=80",
+            "title": "WEAR YOUR ZODIAC",
+            "subtitle": "Discover the new zodiac ring collection handcrafted in sterling silver and energized with Vedic rituals.",
+            "cta_text": "SHOP NOW",
+            "cta_link": "/shop?category=zodiac",
+            "badge_text": "NEW LAUNCH",
+            "image_url": "/images/banners/banner-zodiac.jpg",
             "is_active": True,
         },
         {
             "id": "banner-2",
-            "title": "Natural Astrological Gemstones",
-            "subtitle": "Unheated, untreated Vedic gems with government recognized laboratory certification.",
-            "cta_text": "Discover Gemstones",
-            "cta_link": "/shop?category=gemstone",
-            "badge_text": "Govt. Lab Certified",
-            "image_url": "https://images.unsplash.com/photo-1599707367072-cd6ada2bc375?auto=format&fit=crop&w=1200&q=80",
+            "title": "SACRED NEPALI RUDRAKSHA",
+            "subtitle": "1 to 14 Mukhi divine Rudraksha beads collected from the high Himalayas with government lab certification.",
+            "cta_text": "EXPLORE MALAS",
+            "cta_link": "/shop?category=karungali",
+            "badge_text": "100% PRANA-PRATISHTHIT",
+            "image_url": "/images/banners/banner-rudraksha.jpg",
             "is_active": True,
         },
         {
             "id": "banner-3",
-            "title": "Zodiac & Mulank Crystal Bracelets",
-            "subtitle": "Includes FREE Raw Selenite Plate worth ₹729 + 100% Wallet Cashback on all prepaid orders!",
-            "cta_text": "Shop Zodiac",
-            "cta_link": "/shop?purpose=zodiac",
-            "badge_text": "100% Wallet Cashback",
-            "image_url": "https://images.unsplash.com/photo-1611591475879-166258f33cf2?auto=format&fit=crop&w=1200&q=80",
+            "title": "SUPER DHAN YOG BAND",
+            "subtitle": "Activate Mahalakshmi and Kuber vibrations to attract financial breakthroughs, wealth retention, and business growth.",
+            "cta_text": "ORDER NOW",
+            "cta_link": "/shop?category=bracelets",
+            "badge_text": "BESTSELLER",
+            "image_url": "/images/banners/banner-dhanyog.jpg",
+            "is_active": True,
+        },
+        {
+            "id": "banner-4",
+            "title": "ORIGINAL KARUNGALI MALA",
+            "subtitle": "Pure black ebony wood beads for shielding against malefic Rahu, evil eye, negative entities and karmic blocks.",
+            "cta_text": "VIEW KARUNGALI",
+            "cta_link": "/shop?category=karungali",
+            "badge_text": "DIVINE SHIELD",
+            "image_url": "/images/banners/banner-karungali.jpg",
+            "is_active": True,
+        },
+        {
+            "id": "banner-5",
+            "title": "PRAN-PRATISHTHIT RATNA",
+            "subtitle": "Unheated, untreated natural gemstones tested and certified by government recognized gemological laboratories.",
+            "cta_text": "DISCOVER RATNA",
+            "cta_link": "/shop?category=zodiac",
+            "badge_text": "LAB CERTIFIED",
+            "image_url": "/images/banners/banner-gemstones.jpg",
+            "is_active": True,
+        },
+    ]
+
+
+def default_shop_reels() -> list[dict]:
+    return [
+        {
+            "id": "reel-1",
+            "user_handle": "@sneha_vats",
+            "user_name": "Sneha Vats",
+            "rating": 5,
+            "quote": "Wearing the 7-Mukhi Rudraksha cleared my Saturn Sade Sati career blocks in 3 weeks! 🌟",
+            "thumbnail_url": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80",
+            "video_url": "https://assets.mixkit.co/videos/preview/mixkit-hands-holding-a-sparkling-gemstone-41315-large.mp4",
+            "likes_count": "4.8k",
+            "tagged_product_title": "খাঁটি নেপালি ৭-মুখী রুদ্রাক্ষ",
+            "tagged_product_price": 1899,
+            "tagged_product_slug": "nepali-7-mukhi-rudraksha",
+            "is_active": True,
+        },
+        {
+            "id": "reel-2",
+            "user_handle": "@rohit_astroglow",
+            "user_name": "Rohit K.",
+            "rating": 5,
+            "quote": "Unboxing my Super Dhan Yog Band! The energy feel is absolutely authentic and energizing. 💰",
+            "thumbnail_url": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=600&q=80",
+            "video_url": "https://assets.mixkit.co/videos/preview/mixkit-woman-wearing-spiritual-beads-bracelet-43098-large.mp4",
+            "likes_count": "3.9k",
+            "tagged_product_title": "Super Dhan Yog Band",
+            "tagged_product_price": 1099,
+            "tagged_product_slug": "super-dhan-yog-band",
+            "is_active": True,
+        },
+        {
+            "id": "reel-3",
+            "user_handle": "@dr_kunal",
+            "user_name": "Dr. Kunal Mehta",
+            "rating": 5,
+            "quote": "Pyrite Stud Ring transformed my clinic consultation inquiries within a month! ✨",
+            "thumbnail_url": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=600&q=80",
+            "video_url": "https://assets.mixkit.co/videos/preview/mixkit-shiny-gemstones-and-crystals-on-display-42410-large.mp4",
+            "likes_count": "5.2k",
+            "tagged_product_title": "Pyrite Stud Ring",
+            "tagged_product_price": 799,
+            "tagged_product_slug": "pyrite-stud-ring",
+            "is_active": True,
+        },
+        {
+            "id": "reel-4",
+            "user_handle": "@ananya_sen",
+            "user_name": "Ananya Sen",
+            "rating": 5,
+            "quote": "Original Karungali Mala quality is incredible, heavy and pure ebony wood with silver caps. 🙏",
+            "thumbnail_url": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=600&q=80",
+            "video_url": "https://assets.mixkit.co/videos/preview/mixkit-close-up-of-hands-holding-rosary-beads-42998-large.mp4",
+            "likes_count": "4.1k",
+            "tagged_product_title": "Original Karungali Malai (108 Beads)",
+            "tagged_product_price": 1299,
+            "tagged_product_slug": "original-karungali-malai",
+            "is_active": True,
+        },
+        {
+            "id": "reel-5",
+            "user_handle": "@vikram_aditya",
+            "user_name": "Vikram Aditya",
+            "rating": 5,
+            "quote": "Mulank 4 Rahu bracelet brought immense mental focus and shielded me from burnout. 🔮",
+            "thumbnail_url": "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=600&q=80",
+            "video_url": "https://assets.mixkit.co/videos/preview/mixkit-person-meditating-with-crystals-in-front-42350-large.mp4",
+            "likes_count": "2.8k",
+            "tagged_product_title": "Mulank 4 Rahu Crystal Bracelet",
+            "tagged_product_price": 999,
+            "tagged_product_slug": "mulank-4-rahu-crystal-bracelet",
             "is_active": True,
         },
     ]
@@ -165,19 +363,20 @@ def default_shop_marquee_items() -> list[str]:
 
 
 class ShopCMS(TimestampedDocument):
-    """Singleton document storing customizable store hero banners and announcements."""
+    """Singleton document storing customizable store hero banners, announcements, and reels."""
 
     key: str = CMS_KEY_SHOP
 
     # Announcement & Marquee
     announcement_bar_text: str | None = Field(
-        default="⚡ 100% Cashback in Astra Wallet on All Prepaid Orders! Consecrated at Varanasi.",
+        default="🛍️ Discover Sacred Jewellery & Energised Remedies Based on Your Mulank & Kundli ✨",
         max_length=300,
     )
     announcement_bar_link: str | None = Field(default="/shop", max_length=300)
     announcement_bar_active: bool = True
     marquee_items: list[str] = Field(default_factory=default_shop_marquee_items)
     hero_banners: list[dict] = Field(default_factory=default_shop_hero_banners)
+    reels: list[dict] = Field(default_factory=default_shop_reels)
 
     # 100% Wallet Cashback Hook Controls (Admin Configurable)
     cashback_enabled: bool = True
@@ -195,9 +394,6 @@ class ShopCMS(TimestampedDocument):
     standard_shipping_fee: float = Field(default=70.0, ge=0, description="Standard courier shipping fee in ₹ below threshold")
     cod_enabled: bool = True
     cod_extra_charge: float = Field(default=0.0, ge=0, description="Extra fee for Cash on Delivery (0 for free COD)")
-
-    # Video Reels & Social Proof
-    reels: list[dict] = Field(default_factory=list)
 
     class Settings:
         name = "cms_shop"

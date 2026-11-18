@@ -16,7 +16,12 @@ from beanie.operators import In, RegEx
 from loguru import logger
 
 from app.core.exceptions import BadRequestError, NotFoundError
-from app.models.cms import CMS_KEY_SHOP, ShopCMS
+from app.models.cms import (
+    CMS_KEY_SHOP,
+    ShopCMS,
+    default_shop_hero_banners,
+    default_shop_reels,
+)
 from app.models.shop import Product, ProductCategory, ShopOrder
 from app.schemas.shop import (
     CloudinaryOrphanCleanupReport,
@@ -717,12 +722,17 @@ async def get_shop_banner_settings() -> ShopBannerSettingsOut:
         cms = ShopCMS(key=CMS_KEY_SHOP)
         await cms.insert()
 
+    banners = cms.hero_banners if cms.hero_banners else default_shop_hero_banners()
+    reels = getattr(cms, "reels", None)
+    if not reels:
+        reels = default_shop_reels()
+
     return ShopBannerSettingsOut(
         announcement_bar_text=cms.announcement_bar_text,
         announcement_bar_link=cms.announcement_bar_link,
         announcement_bar_active=cms.announcement_bar_active,
         marquee_items=getattr(cms, "marquee_items", []) or [],
-        hero_banners=cms.hero_banners or [],
+        hero_banners=banners,
         cashback_enabled=getattr(cms, "cashback_enabled", True),
         cashback_percent=getattr(cms, "cashback_percent", 100),
         cashback_max_cap_inr=getattr(cms, "cashback_max_cap_inr", None),
@@ -734,7 +744,7 @@ async def get_shop_banner_settings() -> ShopBannerSettingsOut:
         standard_shipping_fee=getattr(cms, "standard_shipping_fee", 70.0),
         cod_enabled=getattr(cms, "cod_enabled", True),
         cod_extra_charge=getattr(cms, "cod_extra_charge", 0.0),
-        reels=getattr(cms, "reels", []) or [],
+        reels=reels,
     )
 
 
@@ -760,7 +770,7 @@ async def update_shop_banner_settings(payload: ShopBannerSettingsUpdate) -> Shop
     cms.standard_shipping_fee = payload.standard_shipping_fee
     cms.cod_enabled = payload.cod_enabled
     cms.cod_extra_charge = payload.cod_extra_charge
-    cms.reels = payload.reels
+    cms.reels = [r.model_dump() for r in payload.reels]
 
     await cms.save()
     logger.info("Updated Shop CMS store settings (cashback_percent={}%, free_shipping_threshold={})", cms.cashback_percent, cms.free_shipping_threshold)
