@@ -418,6 +418,12 @@ class ShopOrder(TimestampedDocument):
     # Fulfillment & Delivery State
     order_status: ShopOrderStatus = ShopOrderStatus.PLACED
     status_history: list[OrderStatusLog] = Field(default_factory=list)
+    shipped_at: datetime | None = None
+    delivered_at: datetime | None = None
+
+    # Courier Return to Origin (RTO)
+    rto_at: datetime | None = None
+    rto_reason: str | None = None
 
     # Stock Reservation & Abandoned Checkout Safeguards
     stock_reserved_until: datetime | None = Field(
