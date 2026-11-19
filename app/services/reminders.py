@@ -11,6 +11,7 @@ from typing import Any
 
 from beanie import PydanticObjectId
 from loguru import logger
+from pymongo.errors import PyMongoError
 
 from app.core.config import settings
 from app.models.appointment import Appointment, AppointmentStatus
@@ -182,7 +183,7 @@ async def check_and_send_appointment_reminders() -> int:
 
     for candidate in candidates:
         # Atomic lock claim
-        claimed = await Appointment.get_motor_collection().find_one_and_update(
+        claimed = await Appointment.get_pymongo_collection().find_one_and_update(
             {
                 "_id": candidate.id,
                 "status": AppointmentStatus.BOOKED,
@@ -219,7 +220,7 @@ async def reconcile_orphaned_appointments() -> int:
 
     reconciled_count = 0
     for apt in orphaned:
-        claimed = await Appointment.get_motor_collection().find_one_and_update(
+        claimed = await Appointment.get_pymongo_collection().find_one_and_update(
             {
                 "_id": apt.id,
                 "status": AppointmentStatus.BOOKED,
@@ -281,7 +282,7 @@ async def reconcile_brahma_pause_timeouts() -> int:
 
     processed_count = 0
     for apt in timeouts:
-        claimed = await Appointment.get_motor_collection().find_one_and_update(
+        claimed = await Appointment.get_pymongo_collection().find_one_and_update(
             {
                 "_id": apt.id,
                 "status": AppointmentStatus.BOOKED,
@@ -360,6 +361,12 @@ async def appointment_reminder_worker_loop() -> None:
         except asyncio.CancelledError:
             logger.info("Appointment reminder background worker stopped gracefully.")
             break
+        except PyMongoError as db_err:
+            logger.warning(
+                "MongoDB temporarily unavailable in appointment reminder worker (will retry next tick): {}",
+                db_err,
+            )
+            await asyncio.sleep(15)
         except Exception as exc:
             logger.opt(exception=exc).error("Unexpected error in appointment reminder worker: {}", exc)
             await asyncio.sleep(15)
