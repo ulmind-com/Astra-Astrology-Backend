@@ -97,9 +97,9 @@ class PurohitOut(BaseModel):
     is_online: bool
     is_verified: bool
     pujas: list[PurohitPujaItemOut] = []
-    rating: float
-    total_pujas_performed: int
-    starting_price_inr: float = 100.0
+    rating: float = 0.0
+    total_pujas_performed: int = 0
+    starting_price_inr: float = 0.0
 
 
 class PurohitAdminOut(PurohitOut):
