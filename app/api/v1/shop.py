@@ -14,6 +14,11 @@ from app.api.dependencies import CurrentUser, OptionalUser
 from app.core.exceptions import BadRequestError
 from app.schemas.common import ApiResponse
 from app.schemas.shop import (
+    CartApplyCouponRequest,
+    CartItemIn,
+    CartOut,
+    CartSyncRequest,
+    CartUpdateItemRequest,
     InvoiceDataOut,
     PincodeCheckResponse,
     ProductCategoryOut,
@@ -38,7 +43,7 @@ from app.schemas.shop import (
     StockReservationRequest,
     StockReservationResponse,
 )
-from app.services import shop_admin, shop_invoice_service, shop_remedy_recommender, shop_review_service
+from app.services import shop_admin, shop_cart_service, shop_invoice_service, shop_remedy_recommender, shop_review_service
 from app.services.shop_order_service import ShopOrderService
 
 router = APIRouter(prefix="/shop", tags=["shop"])
@@ -550,6 +555,125 @@ async def get_order_invoice_html(
     )
     html_content = shop_invoice_service.generate_invoice_html(data, auto_print=auto_print)
     return HTMLResponse(content=html_content)
+
+
+# ===========================================================================
+# 10. Multi-Device Persistent Shopping Cart Endpoints
+# ===========================================================================
+
+
+@router.get(
+    "/cart",
+    response_model=ApiResponse[CartOut],
+    summary="Get authenticated user's persistent synchronized cart",
+)
+async def get_cart(
+    user: CurrentUser,
+) -> ApiResponse[CartOut]:
+    cart = await shop_cart_service.get_user_cart(user.id)
+    return ApiResponse.ok(data=cart)
+
+
+@router.post(
+    "/cart/sync",
+    response_model=ApiResponse[CartOut],
+    summary="Merge local/guest items into server cart on login or device mount",
+)
+async def sync_cart(
+    payload: CartSyncRequest,
+    user: CurrentUser,
+) -> ApiResponse[CartOut]:
+    cart = await shop_cart_service.sync_cart(
+        user_id=user.id,
+        local_items=payload.items,
+        coupon_code=payload.coupon_code,
+    )
+    return ApiResponse.ok(data=cart, message="Cart synchronized successfully.")
+
+
+@router.post(
+    "/cart/items",
+    response_model=ApiResponse[CartOut],
+    summary="Add an item or increment quantity in persistent cart",
+)
+async def add_item_to_cart(
+    payload: CartItemIn,
+    user: CurrentUser,
+) -> ApiResponse[CartOut]:
+    cart = await shop_cart_service.add_cart_item(
+        user_id=user.id,
+        product_id_str=payload.product_id,
+        quantity=payload.quantity,
+        sankalpa=payload.sankalpa,
+    )
+    return ApiResponse.ok(data=cart, message="Item added to cart.")
+
+
+@router.patch(
+    "/cart/items/{product_id}",
+    response_model=ApiResponse[CartOut],
+    summary="Update item quantity or Sankalpa details in persistent cart",
+)
+async def update_cart_item(
+    product_id: str,
+    payload: CartUpdateItemRequest,
+    user: CurrentUser,
+) -> ApiResponse[CartOut]:
+    cart = await shop_cart_service.update_cart_item(
+        user_id=user.id,
+        product_id_str=product_id,
+        quantity=payload.quantity,
+        sankalpa=payload.sankalpa,
+    )
+    return ApiResponse.ok(data=cart, message="Cart item updated.")
+
+
+@router.delete(
+    "/cart/items/{product_id}",
+    response_model=ApiResponse[CartOut],
+    summary="Remove a specific product from persistent cart",
+)
+async def remove_cart_item(
+    product_id: str,
+    user: CurrentUser,
+) -> ApiResponse[CartOut]:
+    cart = await shop_cart_service.remove_cart_item(
+        user_id=user.id,
+        product_id_str=product_id,
+    )
+    return ApiResponse.ok(data=cart, message="Item removed from cart.")
+
+
+@router.delete(
+    "/cart",
+    response_model=ApiResponse[CartOut],
+    summary="Clear all items from persistent cart",
+)
+async def clear_cart(
+    user: CurrentUser,
+) -> ApiResponse[CartOut]:
+    cart = await shop_cart_service.clear_cart(user.id)
+    return ApiResponse.ok(data=cart, message="Cart cleared successfully.")
+
+
+@router.post(
+    "/cart/coupon",
+    response_model=ApiResponse[CartOut],
+    summary="Apply or remove a promo coupon in persistent cart",
+)
+async def apply_cart_coupon(
+    payload: CartApplyCouponRequest,
+    user: CurrentUser,
+) -> ApiResponse[CartOut]:
+    cart = await shop_cart_service.apply_cart_coupon(
+        user_id=user.id,
+        code=payload.code,
+    )
+    return ApiResponse.ok(
+        data=cart,
+        message="Coupon applied successfully." if cart.is_coupon_valid else "Coupon removed or invalid.",
+    )
+
 
 
 

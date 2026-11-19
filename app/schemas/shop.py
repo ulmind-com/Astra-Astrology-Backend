@@ -920,6 +920,65 @@ class InvoiceDataOut(BaseModel):
     support_email: str = "support@divinlink.com"
 
 
+# ===========================================================================
+# 11. Shopping Cart Schemas (Multi-Device Sync)
+# ===========================================================================
+
+
+class CartItemIn(BaseModel):
+    product_id: str
+    quantity: int = Field(default=1, ge=1, le=50)
+    sankalpa: dict | None = None
+
+
+class CartSyncRequest(BaseModel):
+    items: list[CartItemIn] = Field(default_factory=list)
+    coupon_code: str | None = None
+
+
+class CartUpdateItemRequest(BaseModel):
+    quantity: int = Field(default=1, ge=0, le=50)
+    sankalpa: dict | None = None
+
+
+class CartApplyCouponRequest(BaseModel):
+    code: str | None = None
+
+
+class CartItemOut(BaseModel):
+    id: str  # Product ID string
+    slug: str
+    sku: str
+    title: str
+    price: float
+    mrp: float
+    image: str
+    quantity: int
+    stock_quantity: int
+    is_in_stock: bool
+    free_gift_title: str | None = None
+    free_gift_value: float | None = None
+    free_gift_badge: str | None = None
+    free_gift_image_url: str | None = None
+    cashback_percent: float = 100.0
+    sankalpa: dict | None = None
+    line_total: float
+
+
+class CartOut(BaseModel):
+    items: list[CartItemOut] = Field(default_factory=list)
+    item_count: int = 0
+    subtotal: float = 0.0
+    coupon_code: str | None = None
+    discount_amount: float = 0.0
+    coupon_title: str | None = None
+    is_coupon_valid: bool = False
+    cashback_coins: int = 0
+    free_gifts: list[dict] = Field(default_factory=list)
+    updated_at: datetime | None = None
+
+
+
 
 
 
