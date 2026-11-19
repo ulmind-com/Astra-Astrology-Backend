@@ -327,6 +327,20 @@ class ShopBannerSettingsUpdate(BaseModel):
     cod_max_rto_allowed: int = Field(default=2, ge=1, le=10)
     cod_blacklisted_phones: list[str] = Field(default_factory=list)
 
+    # Company Business & GST Profile for Invoices & Logistics
+    company_legal_name: str = "DivinLink Spiritual Technologies Pvt. Ltd."
+    company_trade_name: str = "DivinLink / Astra AstroStore"
+    company_address: str = "Kashi Vishwanath Temple Corridor, Dashashwamedh Ghat, Varanasi, Uttar Pradesh - 221001, India"
+    company_state: str = "Uttar Pradesh"
+    company_state_code: str = "09"
+    company_phone: str = "+91 91530 08182"
+    company_email: str = "support@divinlink.com"
+    company_website: str = "https://www.divinlink.com"
+    company_pan: str | None = None
+    company_gstin: str | None = None
+    invoice_prefix: str = "DIVIN-INV"
+    invoice_footer_notes: str = "Thank you for welcoming divine vibrations into your sacred home! May Lord Shiva and the Navagrahas bestow eternal peace, health, and prosperity."
+
 
 class ShopBannerSettingsOut(BaseModel):
     announcement_bar_text: str | None = None
@@ -361,6 +375,20 @@ class ShopBannerSettingsOut(BaseModel):
     checkout_reservation_minutes: int = 20
     cod_max_rto_allowed: int = 2
     cod_blacklisted_phones: list[str] = Field(default_factory=list)
+
+    # Company Business & GST Profile for Invoices & Logistics
+    company_legal_name: str = "DivinLink Spiritual Technologies Pvt. Ltd."
+    company_trade_name: str = "DivinLink / Astra AstroStore"
+    company_address: str = "Kashi Vishwanath Temple Corridor, Dashashwamedh Ghat, Varanasi, Uttar Pradesh - 221001, India"
+    company_state: str = "Uttar Pradesh"
+    company_state_code: str = "09"
+    company_phone: str = "+91 91530 08182"
+    company_email: str = "support@divinlink.com"
+    company_website: str = "https://www.divinlink.com"
+    company_pan: str | None = None
+    company_gstin: str | None = None
+    invoice_prefix: str = "DIVIN-INV"
+    invoice_footer_notes: str = "Thank you for welcoming divine vibrations into your sacred home! May Lord Shiva and the Navagrahas bestow eternal peace, health, and prosperity."
 
 
 # ===========================================================================
@@ -816,6 +844,81 @@ class AdminProductReviewListResponse(BaseModel):
     page: int
     limit: int
     pages: int
+
+
+# ===========================================================================
+# 12. GST & Printable Order Invoice Schemas
+# ===========================================================================
+
+
+class InvoiceSellerOut(BaseModel):
+    legal_name: str
+    trade_name: str
+    address: str
+    state: str
+    state_code: str
+    phone: str
+    email: str
+    website: str
+    pan: str | None = None
+    gstin: str | None = None
+
+
+class InvoiceBuyerOut(BaseModel):
+    name: str
+    phone: str
+    email: str
+    address_line1: str
+    address_line2: str | None = None
+    landmark: str | None = None
+    city: str
+    state: str
+    pincode: str
+    address_type: str = "home"
+    sankalpa_devotee_name: str | None = None
+    sankalpa_gotra: str | None = None
+
+
+class InvoiceItemOut(BaseModel):
+    title: str
+    sku: str | None = None
+    category_name: str | None = None
+    quantity: int = 1
+    unit_mrp: float = 0.0
+    unit_sale_price: float = 0.0
+    line_total: float = 0.0
+    free_gift_title: str | None = None
+
+
+class InvoiceDataOut(BaseModel):
+    invoice_number: str
+    invoice_date: datetime
+    order_number: str
+    order_date: datetime
+    is_tax_invoice: bool
+    invoice_type_label: str  # "TAX INVOICE" or "RETAIL INVOICE / BILL OF SUPPLY"
+    seller: InvoiceSellerOut
+    buyer: InvoiceBuyerOut
+    payment_method: str
+    payment_status: str
+    payment_transaction_id: str | None = None
+    paid_at: datetime | None = None
+    items: list[InvoiceItemOut]
+    free_gifts: list[dict] = Field(default_factory=list)
+    subtotal: float
+    coupon_code: str | None = None
+    discount_amount: float = 0.0
+    shipping_fee: float = 0.0
+    tax_amount: float = 0.0
+    tax_rate_percent: float = 0.0
+    cgst_amount: float = 0.0
+    sgst_amount: float = 0.0
+    igst_amount: float = 0.0
+    grand_total: float
+    footer_notes: str = "Thank you for welcoming divine vibrations into your home."
+    support_phone: str = "+91 98765 43210"
+    support_email: str = "support@divinlink.com"
+
 
 
 
