@@ -398,6 +398,12 @@ class ShopCMS(TimestampedDocument):
         le=168,
         description="Hours from placement within which customers can cancel before shipment",
     )
+    refund_sla_days: int = Field(
+        default=3,
+        ge=1,
+        le=14,
+        description="Business days within which cancelled prepaid orders are refunded to customer UPI",
+    )
 
     # High-Value Free Gift Defaults (Admin Configurable)
     free_gift_default_title: str = "Raw Selenite Charging Plate"

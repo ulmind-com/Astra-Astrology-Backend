@@ -24,6 +24,7 @@ from app.models.enums import (
     ShopOrderStatus,
     ShopPaymentMethod,
     ShopPaymentStatus,
+    ShopRefundStatus,
     TransactionDirection,
     TransactionReason,
 )
@@ -39,6 +40,7 @@ from app.models.shop import (
 from app.models.wallet import TransactionRef, Wallet
 from app.schemas.shop import (
     PincodeCheckResponse,
+    ShopAdminCompleteRefundPayload,
     ShopAdminOrderUpdate,
     ShopCheckoutRequest,
     ShopCheckoutResponse,
@@ -122,6 +124,16 @@ class ShopOrderService:
             is_stock_restored=order.is_stock_restored,
             rto_at=order.rto_at,
             rto_reason=order.rto_reason,
+            cancellation_reason=order.cancellation_reason,
+            refund_status=order.refund_status,
+            refund_amount=order.refund_amount,
+            refund_upi_id=order.refund_upi_id,
+            refund_qr_code_url=order.refund_qr_code_url,
+            refund_requested_at=order.refund_requested_at,
+            refund_sla_days=order.refund_sla_days,
+            refund_completed_at=order.refund_completed_at,
+            refund_transaction_id=order.refund_transaction_id,
+            refund_notes=order.refund_notes,
             status_history=history_out,
             created_at=order.created_at,
             updated_at=order.updated_at,
@@ -211,6 +223,12 @@ class ShopOrderService:
         standard_shipping_fee = getattr(cms, "standard_shipping_fee", 70.0) if cms else 70.0
         cod_enabled = getattr(cms, "cod_enabled", True) if cms else True
         cod_extra_charge = getattr(cms, "cod_extra_charge", 0.0) if cms else 0.0
+
+        if payload.payment_method == ShopPaymentMethod.WALLET:
+            raise BadRequestError(
+                "ই-কমার্স সামগ্রী ওয়ালেটের কয়েন দিয়ে ক্রয় করা সম্ভব নয়। অনুগ্রহ করে অনলাইন (Razorpay) বা ক্যাশ অন ডেলিভারি (COD)-এর মাধ্যমে পেমেন্ট সম্পন্ন করুন।",
+                error_code="wallet_payment_not_allowed",
+            )
 
         if payload.payment_method == ShopPaymentMethod.COD:
             if not cod_enabled:
@@ -461,43 +479,10 @@ class ShopOrderService:
                     order.razorpay_order_id = razorpay_order_id
 
             elif payload.payment_method == ShopPaymentMethod.WALLET:
-                # Pay directly using consultation wallet coins
-                required_coins = int(round(grand_total * coins_per_rupee))
-                user_wallet = await wallet_service.get_or_create_wallet(user_id)
-                if user_wallet.available_coins < required_coins:
-                    raise BadRequestError(
-                        f"Insufficient wallet balance. Required: {required_coins} coins, Available: {user_wallet.available_coins} coins."
-                    )
-
-                # Atomic debit
-                debit_key = f"shop_wallet_pay_{order_number}"
-                await wallet_service.debit(
-                    user_id=user_id,
-                    amount_coins=required_coins,
-                    reason=TransactionReason.SHOP_PURCHASE,
-                    idempotency_key=debit_key,
-                    ref=TransactionRef(shop_order_number=order_number),
-                    note=f"Payment for Sacred Remedy Order #{order_number}",
+                raise BadRequestError(
+                    "ই-কমার্স সামগ্রী ওয়ালেটের কয়েন দিয়ে ক্রয় করা সম্ভব নয়। অনুগ্রহ করে অনলাইন (Razorpay) বা ক্যাশ অন ডেলিভারি (COD)-এর মাধ্যমে পেমেন্ট সম্পন্ন করুন।",
+                    error_code="wallet_payment_not_allowed",
                 )
-
-                order.payment_status = ShopPaymentStatus.PAID
-                order.paid_at = datetime.now(UTC)
-                order.order_status = ShopOrderStatus.CONFIRMED
-
-                # Instantly credit 100% wallet cashback for prepaid wallet purchase!
-                if cashback_coins_eligible > 0:
-                    cb_key = f"shop_cashback_{order_number}"
-                    txn, _ = await wallet_service.credit(
-                        user_id=user_id,
-                        amount_coins=cashback_coins_eligible,
-                        reason=TransactionReason.SHOP_CASHBACK,
-                        idempotency_key=cb_key,
-                        ref=TransactionRef(shop_order_number=order_number),
-                        note=f"100% Cashback for Order #{order_number}",
-                    )
-                    order.cashback_coins_credited = cashback_coins_eligible
-                    order.cashback_credited_at = datetime.now(UTC)
-                    order.cashback_transaction_id = txn.id
 
             elif payload.payment_method == ShopPaymentMethod.COD:
                 order.payment_status = ShopPaymentStatus.PENDING
@@ -690,8 +675,11 @@ class ShopOrderService:
         order_id: str,
         user_id: PydanticObjectId | None = None,
         reason: str | None = None,
+        upi_id: str | None = None,
+        qr_code_url: str | None = None,
+        qr_code_public_id: str | None = None,
     ) -> ShopOrderOut:
-        """Cancels an un-shipped order, restores stock, and claws back credited cashback coins to prevent abuse."""
+        """Cancels an un-shipped order, restores stock, claws back credited cashback coins, and initiates UPI/QR refund request."""
         try:
             oid = PydanticObjectId(order_id)
         except Exception:
@@ -780,13 +768,117 @@ class ShopOrderService:
 
         order.order_status = ShopOrderStatus.CANCELLED
         order.cancellation_reason = reason or ("Cancelled by customer" if user_id else "Cancelled by administrator")
+
+        # 2. Refund Lifecycle Assignment
+        is_paid_order = order.payment_status == ShopPaymentStatus.PAID
+        refund_sla = getattr(cms, "refund_sla_days", 3) if cms else 3
+
+        if is_paid_order:
+            if user_id and not (upi_id or qr_code_url):
+                raise BadRequestError(
+                    "অনলাইন পেমেন্টকৃত অর্ডারের টাকা রিফান্ডের জন্য আপনার UPI ID অথবা QR কোড প্রদান করা আবশ্যক।",
+                    error_code="refund_upi_required",
+                )
+            order.refund_status = ShopRefundStatus.PENDING
+            order.refund_amount = order.grand_total
+            order.refund_upi_id = upi_id.strip() if upi_id else None
+            order.refund_qr_code_url = qr_code_url
+            order.refund_qr_code_public_id = qr_code_public_id
+            order.refund_requested_at = datetime.now(UTC)
+            order.refund_sla_days = refund_sla
+            log_notes = f"Order cancelled. Refund of ₹{order.grand_total} requested to UPI: {order.refund_upi_id or 'via QR Code'}. Promised SLA: {refund_sla} business days."
+        else:
+            order.refund_status = ShopRefundStatus.NOT_APPLICABLE
+            log_notes = f"Order cancelled. Reason: {order.cancellation_reason}."
+
         order.status_history.append(
             OrderStatusLog(
                 status=ShopOrderStatus.CANCELLED,
-                notes=f"Order cancelled. Reason: {order.cancellation_reason}",
+                notes=log_notes,
+                updated_by=user_id,
             )
         )
         await order.save()
+        return cls._order_to_out(order)
+
+    @classmethod
+    async def complete_refund_by_admin(
+        cls,
+        order_id: str,
+        admin_id: PydanticObjectId,
+        payload: ShopAdminCompleteRefundPayload,
+    ) -> ShopOrderOut:
+        """Admin completes refund payout to customer's UPI, deletes uploaded QR from Cloudinary, and notifies devotee."""
+        try:
+            oid = PydanticObjectId(order_id)
+        except Exception:
+            raise BadRequestError("Invalid order ID format.")
+
+        order = await ShopOrder.get(oid)
+        if not order:
+            raise NotFoundError("Order not found.")
+
+        if order.order_status != ShopOrderStatus.CANCELLED:
+            raise BadRequestError("কেবলমাত্র বাতিলকৃত (Cancelled) অর্ডারের রিফান্ড সম্পন্ন করা সম্ভব।")
+
+        if order.refund_status == ShopRefundStatus.COMPLETED:
+            return cls._order_to_out(order)
+
+        order.refund_status = ShopRefundStatus.COMPLETED
+        order.payment_status = ShopPaymentStatus.REFUNDED
+        order.refund_completed_at = datetime.now(UTC)
+        order.refund_transaction_id = payload.transaction_id.strip() if payload.transaction_id else None
+        order.refund_notes = payload.notes
+
+        order.status_history.append(
+            OrderStatusLog(
+                status=ShopOrderStatus.CANCELLED,
+                notes=f"Refund of ₹{order.refund_amount or order.grand_total} completed by admin via UPI {order.refund_upi_id or 'QR'}. UTR/Ref: {order.refund_transaction_id or 'N/A'}.",
+                updated_by=admin_id,
+            )
+        )
+
+        # -------------------------------------------------------------
+        # Clean up Cloudinary QR Code storage to prevent orphaned assets
+        # -------------------------------------------------------------
+        if order.refund_qr_code_public_id:
+            try:
+                from app.services.storage import delete_file
+                await delete_file(order.refund_qr_code_public_id, resource_type="image")
+                logger.info("Deleted refund QR code asset '{}' from Cloudinary for order {}", order.refund_qr_code_public_id, order.order_number)
+            except Exception as e:
+                logger.warning("Could not delete refund QR public_id {}: {}", order.refund_qr_code_public_id, e)
+        elif order.refund_qr_code_url:
+            try:
+                from app.services.storage import safe_delete_cloudinary_image
+                await safe_delete_cloudinary_image(order.refund_qr_code_url)
+                logger.info("Deleted refund QR code url from Cloudinary for order {}", order.order_number)
+            except Exception as e:
+                logger.warning("Could not delete refund QR url {}: {}", order.refund_qr_code_url, e)
+
+        # Clear asset references after deletion
+        order.refund_qr_code_url = None
+        order.refund_qr_code_public_id = None
+
+        await order.save()
+
+        # Send official confirmation email to customer
+        try:
+            from app.services.email import send_shop_order_refund_email
+            asyncio.create_task(
+                send_shop_order_refund_email(
+                    to=order.user_email,
+                    order_number=order.order_number,
+                    amount_inr=order.refund_amount or order.grand_total,
+                    upi_id=order.refund_upi_id,
+                    transaction_id=order.refund_transaction_id,
+                    items_count=len(order.items),
+                    recipient_name=order.shipping_address.recipient_name if order.shipping_address else None,
+                )
+            )
+        except Exception as mail_err:
+            logger.warning("Failed to dispatch refund email for order {}: {}", order.order_number, mail_err)
+
         return cls._order_to_out(order)
 
     @classmethod
@@ -949,6 +1041,7 @@ class ShopOrderService:
         cls,
         status: ShopOrderStatus | None = None,
         payment_status: ShopPaymentStatus | None = None,
+        refund_status: ShopRefundStatus | None = None,
         search: str | None = None,
         page: int = 1,
         limit: int = 20,
@@ -961,6 +1054,8 @@ class ShopOrderService:
             filters.append(ShopOrder.order_status == status)
         if payment_status:
             filters.append(ShopOrder.payment_status == payment_status)
+        if refund_status:
+            filters.append(ShopOrder.refund_status == refund_status)
         if search and search.strip():
             term = search.strip()
             filters.append({

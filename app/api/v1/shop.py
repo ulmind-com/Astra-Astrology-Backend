@@ -7,9 +7,10 @@ Endpoints:
 - GET /api/v1/shop/banners: Fetch promotional hero carousel banners and announcement bar.
 """
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Body, File, Query, UploadFile
 
 from app.api.dependencies import CurrentUser, OptionalUser
+from app.core.exceptions import BadRequestError
 from app.schemas.common import ApiResponse
 from app.schemas.shop import (
     PincodeCheckResponse,
@@ -17,6 +18,7 @@ from app.schemas.shop import (
     ProductListResponse,
     ProductOut,
     ShopBannerSettingsOut,
+    ShopCancelOrderPayload,
     ShopCheckoutRequest,
     ShopCheckoutResponse,
     ShopOrderListResponse,
@@ -279,18 +281,53 @@ async def get_shop_order_detail(
 
 
 @router.post(
+    "/upload-refund-qr",
+    response_model=ApiResponse[dict[str, str]],
+    summary="Upload customer UPI QR Code image to Cloudinary for order refund payout",
+)
+async def upload_refund_qr_code(
+    user: CurrentUser,
+    file: UploadFile = File(...),
+) -> ApiResponse[dict[str, str]]:
+    """Uploads customer's UPI payment QR screenshot to Cloudinary."""
+    from app.services.storage import ALLOWED_IMAGE_TYPES, upload_file
+
+    if file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise BadRequestError("Only JPEG, PNG, or WebP images are allowed.")
+
+    # Read and check size (max 5 MB)
+    contents = await file.read()
+    if len(contents) > 5 * 1024 * 1024:
+        raise BadRequestError("QR code image size must not exceed 5MB.")
+
+    result = await upload_file(
+        contents=contents,
+        filename=file.filename or "refund_qr.png",
+        folder="divinlink/shop/refund_qrs",
+    )
+    return ApiResponse.ok(
+        data={"url": result.secure_url, "public_id": result.public_id},
+        message="UPI QR Code uploaded successfully.",
+    )
+
+
+@router.post(
     "/orders/{order_key}/cancel",
     response_model=ApiResponse[ShopOrderOut],
-    summary="Cancel order before shipment with automatic cashback claw-back",
+    summary="Cancel order before shipment with automatic cashback claw-back and UPI refund request",
 )
 async def cancel_my_shop_order(
     order_key: str,
     user: CurrentUser,
+    payload: ShopCancelOrderPayload = Body(default_factory=ShopCancelOrderPayload),
 ) -> ApiResponse[ShopOrderOut]:
     order = await ShopOrderService.cancel_order(
         order_id=order_key,
         user_id=user.id,
-        reason="Cancelled by devotee from order tracking dashboard",
+        reason=payload.reason or "Cancelled by devotee from order tracking dashboard",
+        upi_id=payload.upi_id,
+        qr_code_url=payload.qr_code_url,
+        qr_code_public_id=payload.qr_code_public_id,
     )
     return ApiResponse.ok(data=order)
 

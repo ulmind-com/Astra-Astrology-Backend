@@ -239,6 +239,15 @@ class ShopPaymentStatus(StrEnum):
     EXPIRED = "expired"
 
 
+class ShopRefundStatus(StrEnum):
+    """Refund lifecycle for cancelled prepaid orders with manual UPI/QR payouts."""
+
+    NOT_APPLICABLE = "not_applicable"
+    PENDING = "pending"
+    COMPLETED = "completed"
+    REJECTED = "rejected"
+
+
 class AddressType(StrEnum):
     """Delivery address classification."""
 

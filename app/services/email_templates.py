@@ -1308,5 +1308,89 @@ def course_certificate_email_html(
     )
 
 
+def shop_order_refund_email_html(
+    order_number: str,
+    amount_inr: float,
+    upi_id: str | None = None,
+    transaction_id: str | None = None,
+    items_count: int = 1,
+    recipient_name: str | None = None,
+) -> str:
+    """Dispatched when admin completes refund payout to customer's UPI account."""
+    app_name = settings.APP_NAME or "DivinLink"
+    orders_url = "https://www.divinlink.com/account/orders"
+    formatted_amount = f"₹{amount_inr:,.2f}"
+    name_greeting = f"নমস্কার {recipient_name}!" if recipient_name else "নমস্কার শ্রদ্ধেয় ভক্ত!"
+
+    headline = f"অর্ডার #{order_number}-এর রিফান্ড সফলভাবে সম্পন্ন হয়েছে"
+    lead_text = (
+        f"{name_greeting} আপনার বাতিলকৃত অর্ডার <strong>#{order_number}</strong>-এর সম্পূর্ণ মূল্য "
+        f"সরাসরি আপনার দেওয়া UPI অ্যাকাউন্টে সফলভাবে রিফান্ড করে দেওয়া হয়েছে।"
+    )
+
+    content = f"""
+      <!-- Refund Receipt Box -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 24px;background:#F0FDF4;border:1.5px solid #BBF7D0;border-radius:18px;">
+        <tr>
+          <td style="padding:24px;text-align:left;">
+            <div style="display:flex;align-items:center;margin-bottom:14px;">
+              <span style="font-size:20px;margin-right:8px;">✅</span>
+              <span style="font-size:16px;font-weight:800;color:#166534;letter-spacing:-0.2px;">
+                রিফান্ড কনফার্মেশন রসিদ
+              </span>
+            </div>
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size:13px;color:#374151;line-height:1.8;">
+              <tr>
+                <td style="padding:4px 0;color:#6B7280;width:45%;">অর্ডার নম্বর:</td>
+                <td style="padding:4px 0;font-weight:700;color:#111827;">#{order_number}</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 0;color:#6B7280;">মোট রিফান্ড পরিমাণ:</td>
+                <td style="padding:4px 0;font-weight:800;font-size:18px;color:#15803D;">{formatted_amount}</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 0;color:#6B7280;">প্রেরিত UPI ID:</td>
+                <td style="padding:4px 0;font-weight:700;color:#111827;font-family:ui-monospace,monospace;">{upi_id or 'Provided UPI / QR Code'}</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 0;color:#6B7280;">ব্যাংক UTR / লেনদেন আইডি:</td>
+                <td style="padding:4px 0;font-weight:700;color:#1E3A8A;font-family:ui-monospace,monospace;">{transaction_id or 'Verified by Admin'}</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 0;color:#6B7280;">আইটেম সংখ্যা:</td>
+                <td style="padding:4px 0;font-weight:600;color:#111827;">{items_count} টি সামগ্রী</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <!-- CTA Button -->
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 20px;">
+        <tr>
+          <td align="center">
+            <a href="{orders_url}" target="_blank" class="cta-button" style="display:inline-block;background:linear-gradient(135deg,#15803D 0%,#166534 100%);color:#ffffff;font-size:15px;font-weight:700;padding:15px 42px;border-radius:9999px;text-decoration:none;text-align:center;box-shadow:0 6px 20px rgba(22,101,52,0.35);">
+              📦 আপনার অর্ডার স্ট্যাটাস দেখুন &rarr;
+            </a>
+          </td>
+        </tr>
+      </table>
+
+      <div style="text-align:center;font-size:12px;color:#6B7280;line-height:1.6;margin-top:16px;">
+        আপনার ব্যাংকের নিয়ম অনুযায়ী টাকা পৌঁছাতে কিছু সময় লাগতে পারে।<br/>
+        যেকোনো প্রয়োজনে আমাদের হেল্পলাইনে যোগাযোগ করুন: <a href="mailto:support@divinlink.com" style="color:#15803D;font-weight:600;">support@divinlink.com</a>
+      </div>
+    """
+
+    return render_email(
+        title=f"Refund Processed for Order #{order_number} — {app_name}",
+        content_html=content,
+        preheader=f"Your refund of {formatted_amount} for Order #{order_number} has been sent to your UPI.",
+        headline=headline,
+        lead_text=lead_text,
+    )
+
+
 
 
