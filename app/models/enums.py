@@ -47,6 +47,7 @@ class OtpPurpose(StrEnum):
     EMAIL_VERIFICATION = "email_verification"
     PASSWORD_RESET = "password_reset"
     PUROHIT_APPLICATION = "purohit_application"
+    ASTROLOGER_APPLICATION = "astrologer_application"
 
 
 class Skill(StrEnum):

@@ -12,6 +12,7 @@ from fastapi import APIRouter, Query, status
 from app.api.dependencies import AdminUser
 from app.core.exceptions import NotFoundError
 from app.models.astrologer import Astrologer
+from app.models.astrologer_application import AstrologerApplication
 from app.models.user import User
 from app.schemas.astrologer import (
     AstrologerAdminUpdate,
@@ -19,10 +20,53 @@ from app.schemas.astrologer import (
     AstrologerCreated,
     AstrologerProfile,
 )
+from app.schemas.astrologer_application import (
+    AstrologerApplicationApprovalResultOut,
+    AstrologerApplicationOut,
+    AstrologerApplicationRejectIn,
+)
 from app.schemas.common import ApiResponse, MessageResponse
 from app.services import astrologer as astrologer_service
+from app.services import astrologer_application_service
 
 router = APIRouter(prefix="/admin/astrologers", tags=["admin: astrologers"])
+
+
+def _app_to_out(app: AstrologerApplication) -> AstrologerApplicationOut:
+    return AstrologerApplicationOut(
+        id=str(app.id),
+        application_number=app.application_number,
+        full_name=app.full_name,
+        email=app.email,
+        phone=app.phone,
+        gender=app.gender,
+        age=app.age,
+        address=app.address,
+        city=app.city,
+        state=app.state,
+        pincode=app.pincode,
+        skills=app.skills,
+        specialisations=app.specialisations,
+        experience_years=app.experience_years,
+        languages=app.languages,
+        qualifications=app.qualifications,
+        bio=app.bio,
+        avatar_url=app.avatar_url,
+        identity_proof_url=app.identity_proof_url,
+        bank_account_number=app.bank_account_number,
+        bank_ifsc=app.bank_ifsc,
+        bank_account_holder=app.bank_account_holder,
+        bank_name=app.bank_name,
+        upi_id=app.upi_id,
+        pan_card=app.pan_card,
+        status=app.status,
+        rejection_reason=app.rejection_reason,
+        reviewed_at=app.reviewed_at,
+        approved_user_id=str(app.approved_user_id) if app.approved_user_id else None,
+        approved_astrologer_id=str(app.approved_astrologer_id) if app.approved_astrologer_id else None,
+        created_at=app.created_at,
+        updated_at=app.updated_at,
+    )
 
 
 async def _load(astrologer_id: PydanticObjectId) -> tuple[User, Astrologer]:
@@ -94,6 +138,97 @@ async def list_astrologers(
             items.append(astrologer_service.to_profile(user, profile))
 
     return ApiResponse(message=f"{total} astrologer(s).", data=items)
+
+
+# ======================================================== Astrologer Applications (Admin)
+@router.get(
+    "/applications",
+    response_model=ApiResponse[list[AstrologerApplicationOut]],
+    summary="List Astrologer onboarding applications with filtering",
+)
+async def list_astrologer_applications(
+    admin: AdminUser,
+    status: Annotated[str | None, Query(description="pending, approved, rejected, or all")] = None,
+    search: Annotated[str | None, Query(description="Search by name, email, phone, city, application_number")] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> ApiResponse[list[AstrologerApplicationOut]]:
+    items, total = await astrologer_application_service.list_applications(
+        status=status,
+        search=search,
+        limit=limit,
+        offset=offset,
+    )
+    return ApiResponse(
+        data=[_app_to_out(it) for it in items],
+        meta={"total": total, "limit": limit, "offset": offset},
+    )
+
+
+@router.get(
+    "/applications/{app_id}",
+    response_model=ApiResponse[AstrologerApplicationOut],
+    summary="Get detail of an Astrologer application",
+)
+async def get_astrologer_application_detail(
+    app_id: str,
+    admin: AdminUser,
+) -> ApiResponse[AstrologerApplicationOut]:
+    app = await astrologer_application_service.get_application(app_id)
+    return ApiResponse(data=_app_to_out(app))
+
+
+@router.post(
+    "/applications/{app_id}/approve",
+    response_model=ApiResponse[AstrologerApplicationApprovalResultOut],
+    summary="Approve Astrologer application, create account & profile, email credentials",
+)
+async def approve_astrologer_application(
+    app_id: str,
+    admin: AdminUser,
+) -> ApiResponse[AstrologerApplicationApprovalResultOut]:
+    user, profile, temp_pass, email_sent, dashboard_url = (
+        await astrologer_application_service.approve_application(
+            app_id=app_id,
+            admin_user=admin,
+        )
+    )
+    out = AstrologerApplicationApprovalResultOut(
+        application_id=app_id,
+        user_id=str(user.id),
+        astrologer_id=str(profile.id),
+        display_name=profile.display_name,
+        email=user.email,
+        temporary_password=temp_pass,
+        email_sent=email_sent,
+        dashboard_url=dashboard_url,
+        message=(
+            f"Astrologer {profile.display_name} approved successfully! Welcome email sent to {user.email}."
+            if email_sent
+            else f"Astrologer {profile.display_name} approved successfully! Temporary credentials generated."
+        ),
+    )
+    return ApiResponse(data=out, message=out.message)
+
+
+@router.post(
+    "/applications/{app_id}/reject",
+    response_model=ApiResponse[AstrologerApplicationOut],
+    summary="Reject Astrologer application with reason",
+)
+async def reject_astrologer_application(
+    app_id: str,
+    payload: AstrologerApplicationRejectIn,
+    admin: AdminUser,
+) -> ApiResponse[AstrologerApplicationOut]:
+    app = await astrologer_application_service.reject_application(
+        app_id=app_id,
+        reason=payload.reason,
+        admin_user=admin,
+    )
+    return ApiResponse(
+        data=_app_to_out(app), message="Astrologer application has been marked as rejected."
+    )
 
 
 @router.get(

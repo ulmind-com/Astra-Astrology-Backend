@@ -55,6 +55,7 @@ from app.models.course import (
 )
 from app.models.purohit import Purohit, PujaBooking
 from app.models.purohit_application import PurohitApplication
+from app.models.astrologer_application import AstrologerApplication
 
 DOCUMENT_MODELS: list[type[Document]] = [
     User,
@@ -114,6 +115,7 @@ DOCUMENT_MODELS: list[type[Document]] = [
     Purohit,
     PujaBooking,
     PurohitApplication,
+    AstrologerApplication,
 ]
 
 __all__ = [
@@ -172,4 +174,5 @@ __all__ = [
     "CourseOrder",
     "CourseQuestion",
     "PurohitApplication",
+    "AstrologerApplication",
 ]

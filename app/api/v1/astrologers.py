@@ -12,6 +12,7 @@ from fastapi import APIRouter, File, Header, Query, UploadFile, status
 from app.api.dependencies import AstrologerUser, CurrentAstrologer, CurrentUser, OptionalUser
 from app.core.exceptions import NotFoundError
 from app.models.astrologer import Astrologer
+from app.models.astrologer_application import AstrologerApplication
 from app.models.enums import ConsultationMode, Skill
 from app.models.user import User
 from app.schemas.astrologer import (
@@ -24,17 +25,129 @@ from app.schemas.astrologer import (
     FavoriteToggleResult,
     GalleryUploadResult,
 )
+from app.schemas.astrologer_application import (
+    AstrologerApplicationCreateIn,
+    AstrologerApplicationOut,
+    AstrologerApplicationSendOtpIn,
+    AstrologerApplicationVerifyOtpIn,
+)
 from app.schemas.common import ApiResponse, MessageResponse, Paginated
 from app.schemas.review import ReviewOut, ReviewPage, ReviewSummary
 from app.schemas.wallet import ConsultationQuote
 from app.services import astrologer as astrologer_service
+from app.services import astrologer_application_service
 from app.services import billing
 from app.services import favorite as favorite_service
 from app.services import reviews as review_service
 from app.services import settings as settings_service
 from app.services import wallet as wallet_service
+from app.services.storage import ALLOWED_DOC_TYPES, ALLOWED_IMAGE_TYPES, upload_file
 
 router = APIRouter(prefix="/astrologers", tags=["astrologers"])
+
+
+def _app_to_out(app: AstrologerApplication) -> AstrologerApplicationOut:
+    return AstrologerApplicationOut(
+        id=str(app.id),
+        application_number=app.application_number,
+        full_name=app.full_name,
+        email=app.email,
+        phone=app.phone,
+        gender=app.gender,
+        age=app.age,
+        address=app.address,
+        city=app.city,
+        state=app.state,
+        pincode=app.pincode,
+        skills=app.skills,
+        specialisations=app.specialisations,
+        experience_years=app.experience_years,
+        languages=app.languages,
+        qualifications=app.qualifications,
+        bio=app.bio,
+        avatar_url=app.avatar_url,
+        identity_proof_url=app.identity_proof_url,
+        bank_account_number=app.bank_account_number,
+        bank_ifsc=app.bank_ifsc,
+        bank_account_holder=app.bank_account_holder,
+        bank_name=app.bank_name,
+        upi_id=app.upi_id,
+        pan_card=app.pan_card,
+        status=app.status,
+        rejection_reason=app.rejection_reason,
+        reviewed_at=app.reviewed_at,
+        approved_user_id=str(app.approved_user_id) if app.approved_user_id else None,
+        approved_astrologer_id=str(app.approved_astrologer_id) if app.approved_astrologer_id else None,
+        created_at=app.created_at,
+        updated_at=app.updated_at,
+    )
+
+
+# ======================================================== Astrologer Self-Application (Public)
+@router.post(
+    "/applications/send-otp",
+    response_model=ApiResponse[dict[str, str]],
+    summary="Send an email OTP to verify applicant email before astrologer application submission",
+)
+async def send_application_otp(payload: AstrologerApplicationSendOtpIn) -> ApiResponse[dict[str, str]]:
+    await astrologer_application_service.send_application_otp(payload.email)
+    return ApiResponse.ok(
+        data={"email": payload.email},
+        message="A verification OTP has been sent to your email address.",
+    )
+
+
+@router.post(
+    "/applications/verify-otp",
+    response_model=ApiResponse[dict[str, bool]],
+    summary="Verify applicant email OTP",
+)
+async def verify_application_otp(payload: AstrologerApplicationVerifyOtpIn) -> ApiResponse[dict[str, bool]]:
+    await astrologer_application_service.verify_application_otp(payload.email, payload.code)
+    return ApiResponse.ok(
+        data={"verified": True},
+        message="Email OTP verified successfully.",
+    )
+
+
+@router.post(
+    "/applications/upload-document",
+    response_model=ApiResponse[dict[str, str]],
+    summary="Upload profile picture or certification/identity document for Astrologer application",
+)
+async def upload_application_document(
+    file: UploadFile = File(...),
+) -> ApiResponse[dict[str, str]]:
+    result = await upload_file(
+        file,
+        folder="astrologer_applications",
+        allowed_types=ALLOWED_IMAGE_TYPES | ALLOWED_DOC_TYPES,
+        image_format="webp",
+    )
+    return ApiResponse.ok(
+        data={
+            "url": result.secure_url,
+            "public_id": result.public_id,
+            "format": result.format or "file",
+        },
+        message="Document uploaded successfully.",
+    )
+
+
+@router.post(
+    "/applications/submit",
+    response_model=ApiResponse[AstrologerApplicationOut],
+    status_code=status.HTTP_201_CREATED,
+    summary="Submit a verified Astrologer self-application",
+)
+async def submit_astrologer_application(
+    payload: AstrologerApplicationCreateIn,
+) -> ApiResponse[AstrologerApplicationOut]:
+    app = await astrologer_application_service.submit_application(payload)
+    return ApiResponse(
+        data=_app_to_out(app),
+        message="Your Astrologer onboarding application has been submitted successfully for verification.",
+    )
 
 
 # ======================================================== the astrologer's own
