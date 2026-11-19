@@ -244,3 +244,26 @@ async def delete_address(user: User, address_id: str) -> None:
 
     await user.save()
     logger.info("Address removed for {}", user.email)
+
+
+async def register_device_token(user: User, token: str) -> None:
+    token = token.strip()
+    if not token:
+        return
+    if not hasattr(user, "device_tokens") or user.device_tokens is None:
+        user.device_tokens = []
+    if token not in user.device_tokens:
+        user.device_tokens.append(token)
+        await user.save()
+        logger.info("Device push token registered for {}", user.email)
+
+
+async def unregister_device_token(user: User, token: str) -> None:
+    token = token.strip()
+    if not token or not getattr(user, "device_tokens", None):
+        return
+    if token in user.device_tokens:
+        user.device_tokens.remove(token)
+        await user.save()
+        logger.info("Device push token unregistered for {}", user.email)
+

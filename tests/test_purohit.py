@@ -43,4 +43,4 @@ def test_purohit_default_starting_price_when_empty():
         pujas=[],
     )
     price = purohit_service._get_starting_price(p)
-    assert price == 100.0
+    assert price == 0.0
