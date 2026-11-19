@@ -54,6 +54,7 @@ from app.models.course import (
     CourseSection,
 )
 from app.models.purohit import Purohit, PujaBooking
+from app.models.purohit_application import PurohitApplication
 
 DOCUMENT_MODELS: list[type[Document]] = [
     User,
@@ -112,6 +113,7 @@ DOCUMENT_MODELS: list[type[Document]] = [
     CourseQuestion,
     Purohit,
     PujaBooking,
+    PurohitApplication,
 ]
 
 __all__ = [
@@ -169,4 +171,5 @@ __all__ = [
     "CourseLessonProgress",
     "CourseOrder",
     "CourseQuestion",
+    "PurohitApplication",
 ]

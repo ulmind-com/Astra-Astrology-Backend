@@ -8,6 +8,7 @@ from fastapi import APIRouter, File, Query, UploadFile, status
 from app.api.dependencies import CurrentUser
 from app.core.exceptions import ForbiddenError
 from app.models.enums import UserRole
+from app.models.purohit_application import PurohitApplication
 from app.models.user import User
 from app.schemas.common import ApiResponse, MessageResponse
 from app.schemas.purohit import (
@@ -19,10 +20,118 @@ from app.schemas.purohit import (
     PurohitPujaItemOut,
     PurohitPujaItemUpdate,
 )
-from app.services import purohit_service
-from app.services.storage import ALLOWED_IMAGE_TYPES, safe_delete_cloudinary_image, upload_file
+from app.schemas.purohit_application import (
+    PurohitApplicationCreateIn,
+    PurohitApplicationOut,
+    PurohitApplicationSendOtpIn,
+    PurohitApplicationVerifyOtpIn,
+)
+from app.services import purohit_application_service, purohit_service
+from app.services.storage import ALLOWED_DOC_TYPES, ALLOWED_IMAGE_TYPES, safe_delete_cloudinary_image, upload_file
 
 router = APIRouter(prefix="/purohits", tags=["purohits"])
+
+
+def _app_to_out(app: PurohitApplication) -> PurohitApplicationOut:
+    return PurohitApplicationOut(
+        id=str(app.id),
+        application_number=app.application_number,
+        full_name=app.full_name,
+        email=app.email,
+        phone=app.phone,
+        age=app.age,
+        address=app.address,
+        city=app.city,
+        state=app.state,
+        pincode=app.pincode,
+        vedic_shakha=app.vedic_shakha,
+        specializations=app.specializations,
+        experience_years=app.experience_years,
+        languages=app.languages,
+        bio=app.bio,
+        avatar_url=app.avatar_url,
+        identity_proof_url=app.identity_proof_url,
+        bank_account_number=app.bank_account_number,
+        bank_ifsc=app.bank_ifsc,
+        bank_account_holder=app.bank_account_holder,
+        upi_id=app.upi_id,
+        status=app.status,
+        rejection_reason=app.rejection_reason,
+        reviewed_at=app.reviewed_at,
+        approved_user_id=str(app.approved_user_id) if app.approved_user_id else None,
+        approved_purohit_id=str(app.approved_purohit_id) if app.approved_purohit_id else None,
+        created_at=app.created_at,
+        updated_at=app.updated_at,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Purohit Self-Application & Onboarding (Public)
+# ---------------------------------------------------------------------------
+@router.post(
+    "/applications/send-otp",
+    response_model=ApiResponse[dict[str, str]],
+    summary="Send an email OTP to verify applicant email before onboarding submission",
+)
+async def send_application_otp(payload: PurohitApplicationSendOtpIn) -> ApiResponse[dict[str, str]]:
+    await purohit_application_service.send_application_otp(payload.email)
+    return ApiResponse.ok(
+        data={"email": payload.email},
+        message="A verification OTP has been sent to your email address.",
+    )
+
+
+@router.post(
+    "/applications/verify-otp",
+    response_model=ApiResponse[dict[str, bool]],
+    summary="Verify applicant email OTP",
+)
+async def verify_application_otp(payload: PurohitApplicationVerifyOtpIn) -> ApiResponse[dict[str, bool]]:
+    await purohit_application_service.verify_application_otp(payload.email, payload.code)
+    return ApiResponse.ok(
+        data={"verified": True},
+        message="Email OTP verified successfully.",
+    )
+
+
+@router.post(
+    "/applications/upload-document",
+    response_model=ApiResponse[dict[str, str]],
+    summary="Upload avatar photo or verification document for Purohit application",
+)
+async def upload_application_document(
+    file: UploadFile = File(...),
+) -> ApiResponse[dict[str, str]]:
+    result = await upload_file(
+        file,
+        folder="purohit_applications",
+        allowed_types=ALLOWED_IMAGE_TYPES | ALLOWED_DOC_TYPES,
+        image_format="webp",
+    )
+    return ApiResponse.ok(
+        data={
+            "url": result.secure_url,
+            "public_id": result.public_id,
+            "format": result.format or "file",
+        },
+        message="Document uploaded successfully.",
+    )
+
+
+@router.post(
+    "/applications/submit",
+    response_model=ApiResponse[PurohitApplicationOut],
+    status_code=status.HTTP_201_CREATED,
+    summary="Submit a verified Purohit self-application",
+)
+async def submit_purohit_application(
+    payload: PurohitApplicationCreateIn,
+) -> ApiResponse[PurohitApplicationOut]:
+    app = await purohit_application_service.submit_application(payload)
+    return ApiResponse(
+        data=_app_to_out(app),
+        message="Your Purohit application has been submitted successfully for verification.",
+    )
 
 
 # ---------------------------------------------------------------------------
