@@ -9,6 +9,7 @@ from app.models.enums import (
     ShopOrderStatus,
     ShopPaymentMethod,
     ShopPaymentStatus,
+    ShopRefundStatus,
 )
 
 
@@ -308,6 +309,7 @@ class ShopBannerSettingsUpdate(BaseModel):
     # Customer Order Cancellation & Anti-Fraud Policy Controls
     allow_user_cancellation: bool = True
     cancellation_grace_hours: int = Field(default=24, ge=1, le=168)
+    refund_sla_days: int = Field(default=3, ge=1, le=14)
 
     # Free Gift Defaults
     free_gift_default_title: str = "Raw Selenite Charging Plate"
@@ -342,6 +344,7 @@ class ShopBannerSettingsOut(BaseModel):
     # Customer Order Cancellation & Anti-Fraud Policy Controls
     allow_user_cancellation: bool = True
     cancellation_grace_hours: int = 24
+    refund_sla_days: int = 3
 
     # Free Gift Defaults
     free_gift_default_title: str = "Raw Selenite Charging Plate"
@@ -564,9 +567,35 @@ class ShopOrderOut(BaseModel):
     is_stock_restored: bool = False
     rto_at: datetime | None = None
     rto_reason: str | None = None
+    cancellation_reason: str | None = None
+    refund_status: ShopRefundStatus | None = None
+    refund_amount: float | None = None
+    refund_upi_id: str | None = None
+    refund_qr_code_url: str | None = None
+    refund_requested_at: datetime | None = None
+    refund_sla_days: int | None = None
+    refund_completed_at: datetime | None = None
+    refund_transaction_id: str | None = None
+    refund_notes: str | None = None
     status_history: list[ShopOrderStatusLogOut] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
+
+
+class ShopCancelOrderPayload(BaseModel):
+    """Customer-initiated order cancellation payload with UPI/QR payout details."""
+
+    reason: str | None = Field(default=None, max_length=500, description="Reason for cancellation")
+    upi_id: str | None = Field(default=None, max_length=100, description="Customer UPI VPA ID (e.g. name@upi)")
+    qr_code_url: str | None = Field(default=None, description="Uploaded UPI QR Code image URL on Cloudinary")
+    qr_code_public_id: str | None = Field(default=None, description="Cloudinary public ID of uploaded QR Code")
+
+
+class ShopAdminCompleteRefundPayload(BaseModel):
+    """Admin completes refund payout and triggers customer notification."""
+
+    transaction_id: str | None = Field(default=None, max_length=100, description="Bank/UPI UTR or Reference Number")
+    notes: str | None = Field(default=None, max_length=500, description="Internal admin notes")
 
 
 class ShopOrderListResponse(BaseModel):

@@ -9,10 +9,10 @@ Covers:
 """
 
 from typing import Annotated, Any
-from fastapi import APIRouter, File, Query, UploadFile
+from fastapi import APIRouter, Body, File, Query, UploadFile
 
 from app.api.dependencies import AdminUser
-from app.models.enums import ShopOrderStatus, ShopPaymentStatus
+from app.models.enums import ShopOrderStatus, ShopPaymentStatus, ShopRefundStatus
 from app.schemas.common import ApiResponse
 from app.schemas.shop import (
     CloudinaryOrphanCleanupReport,
@@ -24,6 +24,7 @@ from app.schemas.shop import (
     ProductListResponse,
     ProductOut,
     ProductUpdate,
+    ShopAdminCompleteRefundPayload,
     ShopAdminOrderUpdate,
     ShopBannerSettingsOut,
     ShopBannerSettingsUpdate,
@@ -340,6 +341,7 @@ async def admin_list_shop_orders(
     admin: AdminUser = None,
     status: ShopOrderStatus | None = Query(default=None),
     payment_status: ShopPaymentStatus | None = Query(default=None),
+    refund_status: ShopRefundStatus | None = Query(default=None),
     search: str | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
@@ -347,6 +349,7 @@ async def admin_list_shop_orders(
     result = await ShopOrderService.list_admin_orders(
         status=status,
         payment_status=payment_status,
+        refund_status=refund_status,
         search=search,
         page=page,
         limit=limit,
@@ -401,6 +404,24 @@ async def admin_cancel_shop_order(
         reason=reason,
     )
     return ApiResponse.ok(data=order, message="Order cancelled successfully.")
+
+
+@router.post(
+    "/orders/{order_id}/complete-refund",
+    response_model=ApiResponse[ShopOrderOut],
+    summary="Admin marks manual UPI/QR refund as completed, purges QR asset from Cloudinary, and notifies devotee",
+)
+async def admin_complete_shop_order_refund(
+    order_id: str,
+    payload: ShopAdminCompleteRefundPayload = Body(default_factory=ShopAdminCompleteRefundPayload),
+    admin: AdminUser = None,
+) -> ApiResponse[ShopOrderOut]:
+    order = await ShopOrderService.complete_refund_by_admin(
+        order_id=order_id,
+        admin_id=admin.id,
+        payload=payload,
+    )
+    return ApiResponse.ok(data=order, message="Refund marked as completed and notification email sent to customer.")
 
 
 @router.post(

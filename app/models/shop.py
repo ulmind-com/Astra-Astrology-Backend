@@ -24,6 +24,7 @@ from app.models.enums import (
     ShopOrderStatus,
     ShopPaymentMethod,
     ShopPaymentStatus,
+    ShopRefundStatus,
 )
 
 
@@ -388,15 +389,23 @@ class ShopOrder(TimestampedDocument):
     )
     stock_restored_at: datetime | None = None
 
-    # Logistics & Courier Tracking
-    courier_partner: str | None = Field(default=None, description="e.g. BlueDart, Delhivery, IndiaPost, Shiprocket")
-    tracking_id: str | None = Field(default=None, description="Courier AWB or Consignment Number")
-    tracking_url: str | None = Field(default=None, description="Direct URL to courier tracking page")
-    estimated_delivery_date: datetime | None = None
-    delivered_at: datetime | None = None
+    # Customer Cancellation & Manual UPI/QR Refund Payouts
     cancellation_reason: str | None = None
-    rto_at: datetime | None = None
-    rto_reason: str | None = None
+    refund_status: ShopRefundStatus | None = Field(
+        default=None,
+        description="Refund lifecycle for cancelled prepaid orders: pending -> completed or not_applicable",
+    )
+    refund_amount: float | None = Field(default=None, ge=0, description="Refund amount in ₹")
+    refund_upi_id: str | None = Field(default=None, description="Customer-provided UPI VPA address for refund transfer")
+    refund_qr_code_url: str | None = Field(default=None, description="Cloudinary secure URL of customer's uploaded UPI QR code image")
+    refund_qr_code_public_id: str | None = Field(default=None, description="Cloudinary public ID for automatic deletion upon refund completion")
+    refund_requested_at: datetime | None = None
+    refund_sla_days: int | None = Field(default=3, description="Estimated business days for refund completion")
+    refund_completed_at: datetime | None = None
+    refund_transaction_id: str | None = Field(default=None, description="Bank/UPI UTR or Reference Number provided by admin upon transfer")
+    refund_notes: str | None = None
+
+    # Logistics & Courier Tracking
 
     # Consecration & Invoice
     invoice_number: str | None = None
@@ -413,6 +422,7 @@ class ShopOrder(TimestampedDocument):
             pymongo.IndexModel([("order_status", pymongo.ASCENDING)], name="order_status_idx"),
             pymongo.IndexModel([("user_phone", pymongo.ASCENDING), ("order_status", pymongo.ASCENDING)], name="order_phone_status_idx"),
             pymongo.IndexModel([("payment_status", pymongo.ASCENDING)], name="order_payment_status_idx"),
+            pymongo.IndexModel([("refund_status", pymongo.ASCENDING)], name="order_refund_status_idx"),
             pymongo.IndexModel(
                 [
                     ("payment_status", pymongo.ASCENDING),

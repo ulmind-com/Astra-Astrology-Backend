@@ -166,3 +166,39 @@ async def send_course_certificate_email(
         logger.opt(exception=exc).warning("Failed to deliver certificate email to {}", to)
         return False
 
+
+async def send_shop_order_refund_email(
+    to: str,
+    order_number: str,
+    amount_inr: float,
+    upi_id: str | None = None,
+    transaction_id: str | None = None,
+    items_count: int = 1,
+    recipient_name: str | None = None,
+) -> bool:
+    """Dispatches a professional refund confirmation receipt when admin completes customer's UPI payout."""
+    from app.services.email_templates import shop_order_refund_email_html
+
+    subject = f"✅ Refund Processed: ₹{amount_inr:,.2f} for Order #{order_number} — {settings.APP_NAME}"
+    html = shop_order_refund_email_html(
+        order_number=order_number,
+        amount_inr=amount_inr,
+        upi_id=upi_id,
+        transaction_id=transaction_id,
+        items_count=items_count,
+        recipient_name=recipient_name,
+    )
+    text = (
+        f"Refund Confirmation for Order #{order_number}\n\n"
+        f"Your refund of ₹{amount_inr:,.2f} has been processed successfully to your UPI account ({upi_id or 'Provided UPI/QR'}).\n"
+        f"Bank UTR / Reference: {transaction_id or 'N/A'}\n\n"
+        f"View your order status at: https://www.divinlink.com/account/orders\n\n"
+        f"{settings.APP_NAME} Team"
+    )
+    try:
+        sent = await send_email(to=to, subject=subject, html=html, text=text)
+        return sent is not None
+    except Exception as exc:
+        logger.opt(exception=exc).warning("Failed to send refund email for order #{}: {}", order_number, exc)
+        return False
+
