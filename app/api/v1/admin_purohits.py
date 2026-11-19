@@ -1,9 +1,10 @@
 """Admin management of Purohit (Vedic Priest) accounts."""
 
+import asyncio
 from typing import Annotated
 
 from beanie import PydanticObjectId
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, File, Form, Query, UploadFile, status
 
 from app.api.dependencies import AdminUser
 from app.core.exceptions import NotFoundError
@@ -12,8 +13,67 @@ from app.models.user import User
 from app.schemas.common import ApiResponse, MessageResponse
 from app.schemas.purohit import PurohitAdminOut, PurohitCreate, PurohitUpdate
 from app.services import purohit_service
+from app.services.storage import ALLOWED_IMAGE_TYPES, safe_delete_cloudinary_image, upload_file
 
 router = APIRouter(prefix="/admin/purohits", tags=["admin: purohits"])
+
+PUROHIT_AVATAR_TRANSFORMATION = [
+    {"width": 800, "height": 800, "crop": "fill", "gravity": "face"},
+    {"quality": "auto:good"},
+    {"fetch_format": "auto"},
+]
+
+
+@router.post(
+    "/upload-avatar",
+    response_model=ApiResponse[dict[str, str]],
+    summary="Upload a Purohit avatar image with auto WebP compression & Cloudinary storage",
+)
+async def upload_purohit_avatar(
+    file: UploadFile = File(...),
+    previous_avatar_url: Annotated[str | None, Form()] = None,
+    admin: AdminUser = None,
+) -> ApiResponse[dict[str, str]]:
+    """Uploads an avatar to Cloudinary in the 'purohits' folder.
+    If previous_avatar_url is provided, cleans up the old Cloudinary asset to optimize storage.
+    """
+    result = await upload_file(
+        file,
+        folder="purohits",
+        allowed_types=ALLOWED_IMAGE_TYPES,
+        transformation=PUROHIT_AVATAR_TRANSFORMATION,
+        image_format="webp",
+    )
+
+    # If the user is replacing an avatar previously uploaded in this session,
+    # safely clean up the replaced asset from Cloudinary
+    if previous_avatar_url and "cloudinary.com" in previous_avatar_url:
+        asyncio.create_task(safe_delete_cloudinary_image(previous_avatar_url))
+
+    return ApiResponse.ok(
+        data={
+            "url": result.secure_url,
+            "public_id": result.public_id,
+            "format": result.format or "webp",
+        },
+        message="Avatar uploaded and compressed successfully.",
+    )
+
+
+@router.post(
+    "/delete-avatar",
+    response_model=ApiResponse[dict[str, bool]],
+    summary="Remove a Purohit avatar from Cloudinary",
+)
+async def delete_purohit_avatar(
+    url: Annotated[str, Query(description="Cloudinary avatar URL to remove")],
+    admin: AdminUser = None,
+) -> ApiResponse[dict[str, bool]]:
+    deleted = await safe_delete_cloudinary_image(url)
+    return ApiResponse.ok(
+        data={"deleted": deleted},
+        message="Avatar removed from cloud storage.",
+    )
 
 
 class PurohitCreatedOut(PurohitAdminOut):
@@ -161,9 +221,24 @@ async def update_purohit(
     if profile is None:
         raise NotFoundError("Purohit not found.", error_code="purohit_not_found")
 
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    old_avatar = profile.avatar_url
+    update_data = payload.model_dump(exclude_unset=True)
+
+    for k, v in update_data.items():
         setattr(profile, k, v)
     await profile.save()
+
+    # If avatar was replaced or removed, purge the old Cloudinary asset
+    new_avatar = profile.avatar_url
+    if "avatar_url" in update_data and old_avatar and old_avatar != new_avatar:
+        asyncio.create_task(safe_delete_cloudinary_image(old_avatar))
+
+    # Also keep the linked User's avatar in sync
+    if "avatar_url" in update_data and profile.user_id:
+        user = await User.get(profile.user_id)
+        if user and user.avatar_url != new_avatar:
+            user.avatar_url = new_avatar
+            await user.save()
 
     out = PurohitAdminOut(
         id=str(profile.id),

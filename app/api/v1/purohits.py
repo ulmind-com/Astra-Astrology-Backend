@@ -1,12 +1,14 @@
 """Purohit endpoints: Public directory, Purohit self-management dashboard, and devotee puja booking."""
 
+import asyncio
 from typing import Annotated
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, File, Query, UploadFile, status
 
 from app.api.dependencies import CurrentUser
 from app.core.exceptions import ForbiddenError
 from app.models.enums import UserRole
+from app.models.user import User
 from app.schemas.common import ApiResponse, MessageResponse
 from app.schemas.purohit import (
     PujaBookingCreate,
@@ -18,6 +20,7 @@ from app.schemas.purohit import (
     PurohitPujaItemUpdate,
 )
 from app.services import purohit_service
+from app.services.storage import ALLOWED_IMAGE_TYPES, safe_delete_cloudinary_image, upload_file
 
 router = APIRouter(prefix="/purohits", tags=["purohits"])
 
@@ -72,6 +75,50 @@ async def get_my_purohit_profile(user: CurrentUser) -> ApiResponse[PurohitOut]:
     data["user_id"] = str(profile.user_id)
     data["starting_price_inr"] = purohit_service._get_starting_price(profile)
     return ApiResponse(data=PurohitOut(**data))
+
+
+@router.post(
+    "/me/avatar",
+    response_model=ApiResponse[PurohitOut],
+    summary="Upload or update current Purohit's avatar image",
+)
+async def upload_my_purohit_avatar(
+    file: UploadFile = File(...),
+    user: CurrentUser = None,
+) -> ApiResponse[PurohitOut]:
+    profile = await purohit_service.get_purohit_by_user_id(user.id)
+    old_avatar = profile.avatar_url
+
+    result = await upload_file(
+        file,
+        folder="purohits",
+        allowed_types=ALLOWED_IMAGE_TYPES,
+        transformation=[
+            {"width": 800, "height": 800, "crop": "fill", "gravity": "face"},
+            {"quality": "auto:good"},
+            {"fetch_format": "auto"},
+        ],
+        image_format="webp",
+    )
+
+    profile.avatar_url = result.secure_url
+    await profile.save()
+
+    # Sync User document
+    db_user = await User.get(user.id)
+    if db_user:
+        db_user.avatar_url = result.secure_url
+        await db_user.save()
+
+    # Clean up old Cloudinary asset
+    if old_avatar and old_avatar != result.secure_url and "cloudinary.com" in old_avatar:
+        asyncio.create_task(safe_delete_cloudinary_image(old_avatar))
+
+    data = profile.model_dump()
+    data["id"] = str(profile.id)
+    data["user_id"] = str(profile.user_id)
+    data["starting_price_inr"] = purohit_service._get_starting_price(profile)
+    return ApiResponse(message="প্রোফাইল ছবি সফলভাবে আপডেট করা হয়েছে।", data=PurohitOut(**data))
 
 
 @router.put(
