@@ -105,6 +105,7 @@ class PujaBooking(TimestampedDocument):
             pymongo.IndexModel([("booking_number", pymongo.ASCENDING)], unique=True, name="puja_booking_num_uniq"),
             pymongo.IndexModel([("user_id", pymongo.ASCENDING)], name="puja_user_idx"),
             pymongo.IndexModel([("purohit_id", pymongo.ASCENDING)], name="puja_purohit_idx"),
+            pymongo.IndexModel([("purohit_user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)], name="puja_purohit_user_created_idx"),
             pymongo.IndexModel([("status", pymongo.ASCENDING)], name="puja_status_idx"),
             pymongo.IndexModel([("room_id", pymongo.ASCENDING)], name="puja_room_idx"),
             pymongo.IndexModel([("created_at", pymongo.DESCENDING)], name="puja_created_idx"),
