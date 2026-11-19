@@ -17,6 +17,11 @@ from app.schemas.shop import (
     ProductCategoryOut,
     ProductListResponse,
     ProductOut,
+    ProductReviewCreate,
+    ProductReviewOut,
+    ProductReviewsResponse,
+    ProductReviewUpdate,
+    ReviewEligibilityResponse,
     ShopBannerSettingsOut,
     ShopCancelOrderPayload,
     ShopCheckoutRequest,
@@ -31,7 +36,7 @@ from app.schemas.shop import (
     StockReservationRequest,
     StockReservationResponse,
 )
-from app.services import shop_admin, shop_remedy_recommender
+from app.services import shop_admin, shop_remedy_recommender, shop_review_service
 from app.services.shop_order_service import ShopOrderService
 
 router = APIRouter(prefix="/shop", tags=["shop"])
@@ -371,6 +376,138 @@ async def get_shop_coupon_recommendations(
         user_id=user.id if user else None,
     )
     return ApiResponse.ok(data=result)
+
+
+# ===========================================================================
+# 8. Product Reviews & Verified Buyer Endpoints
+# ===========================================================================
+
+
+@router.get(
+    "/products/{slug}/reviews",
+    response_model=ApiResponse[ProductReviewsResponse],
+    summary="Get paginated verified devotee reviews and rating distribution for a product",
+)
+async def get_product_reviews(
+    slug: str,
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=10, ge=1, le=50),
+    rating: int | None = Query(default=None, ge=1, le=5),
+    sort: str = Query(default="recent", pattern="^(recent|highest|lowest|helpful)$"),
+    user: OptionalUser = None,
+) -> ApiResponse[ProductReviewsResponse]:
+    res = await shop_review_service.get_product_reviews(
+        product_slug_or_id=slug,
+        page=page,
+        limit=limit,
+        rating=rating,
+        sort=sort,
+        current_user_id=user.id if user else None,
+    )
+    return ApiResponse.ok(data=res)
+
+
+@router.get(
+    "/products/{slug}/reviews/eligibility",
+    response_model=ApiResponse[ReviewEligibilityResponse],
+    summary="Check if current user is eligible to review (has delivered order & hasn't reviewed yet)",
+)
+async def check_review_eligibility(
+    slug: str,
+    user: CurrentUser,
+) -> ApiResponse[ReviewEligibilityResponse]:
+    res = await shop_review_service.check_review_eligibility(
+        product_slug_or_id=slug,
+        user_id=user.id,
+    )
+    return ApiResponse.ok(data=res)
+
+
+@router.post(
+    "/products/{slug}/reviews",
+    response_model=ApiResponse[ProductReviewOut],
+    summary="Submit a verified buyer review with rating, testimony, and photos",
+)
+async def create_product_review(
+    slug: str,
+    payload: ProductReviewCreate,
+    user: CurrentUser,
+) -> ApiResponse[ProductReviewOut]:
+    res = await shop_review_service.create_product_review(
+        product_slug_or_id=slug,
+        payload=payload,
+        user=user,
+    )
+    return ApiResponse.ok(data=res, message="ধন্যবাদ! আপনার পবিত্র রিভিউ সফলভাবে প্রকাশিত হয়েছে।")
+
+
+@router.put(
+    "/products/{slug}/reviews/mine",
+    response_model=ApiResponse[ProductReviewOut],
+    summary="Update customer's existing review for a product",
+)
+@router.patch(
+    "/products/{slug}/reviews/mine",
+    response_model=ApiResponse[ProductReviewOut],
+    summary="Update customer's existing review for a product (PATCH alias)",
+)
+async def update_product_review(
+    slug: str,
+    payload: ProductReviewUpdate,
+    user: CurrentUser,
+) -> ApiResponse[ProductReviewOut]:
+    res = await shop_review_service.update_my_review(
+        product_slug_or_id=slug,
+        payload=payload,
+        user=user,
+    )
+    return ApiResponse.ok(data=res, message="রিভিউ সফলভাবে আপডেট করা হয়েছে।")
+
+
+@router.post(
+    "/reviews/{review_id}/helpful",
+    response_model=ApiResponse[dict],
+    summary="Upvote or toggle helpful feedback on a review",
+)
+async def toggle_review_helpful(
+    review_id: str,
+    user: CurrentUser,
+) -> ApiResponse[dict]:
+    res = await shop_review_service.toggle_review_helpful(
+        review_id=review_id,
+        user_id=user.id,
+    )
+    return ApiResponse.ok(data=res)
+
+
+@router.post(
+    "/reviews/upload-image",
+    response_model=ApiResponse[dict[str, str]],
+    summary="Upload devotee photo of consecrated parcel/item to Cloudinary",
+)
+async def upload_review_photo(
+    user: CurrentUser,
+    file: UploadFile = File(...),
+) -> ApiResponse[dict[str, str]]:
+    from app.services.storage import ALLOWED_IMAGE_TYPES, upload_file
+
+    if file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise BadRequestError("Only JPEG, PNG, or WebP images are allowed.")
+
+    contents = await file.read()
+    if len(contents) > 8 * 1024 * 1024:
+        raise BadRequestError("Review image size must not exceed 8MB.")
+
+    result = await upload_file(
+        contents=contents,
+        filename=file.filename or "devotee_review.jpg",
+        folder="divinlink/shop/reviews",
+    )
+    return ApiResponse.ok(
+        data={"url": result.secure_url, "public_id": result.public_id},
+        message="Image uploaded successfully.",
+    )
+
 
 
 
