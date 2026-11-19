@@ -50,7 +50,7 @@ class Purohit(TimestampedDocument):
     # Purohit's personal customizable puja & price catalog
     pujas: list[PurohitPujaItem] = Field(default_factory=list)
 
-    rating: float = Field(default=5.0, ge=1.0, le=5.0)
+    rating: float = Field(default=0.0, ge=0.0, le=5.0)
     total_pujas_performed: int = Field(default=0, ge=0)
 
     class Settings:

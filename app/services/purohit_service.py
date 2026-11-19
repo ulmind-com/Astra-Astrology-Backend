@@ -40,7 +40,7 @@ async def _unique_slug(display_name: str) -> str:
 
 def _get_starting_price(purohit: Purohit) -> float:
     active_prices = [p.price_inr for p in purohit.pujas if p.is_active]
-    return min(active_prices) if active_prices else 100.0
+    return min(active_prices) if active_prices else 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -97,28 +97,6 @@ async def create_purohit_by_admin(payload: PurohitCreate) -> tuple[User, Purohit
     )
     await user.insert()
 
-    # Seed 2 popular default Vedic pujas so Purohit catalog is immediately useful
-    default_pujas = [
-        PurohitPujaItem(
-            id=uuid.uuid4().hex[:12],
-            puja_name="লক্ষ্মী পূজা ও সৌভাগ্য শান্তি (Lakshmi Puja)",
-            description="শ্রী লক্ষ্মী মাতার আশীর্বাদে গৃহে ধন-ধান্য, শান্তি ও সমৃদ্ধি কামনায় বৈদিক অষ্টোত্তর শতনাম জপ ও হোম।",
-            duration_minutes=45,
-            price_inr=100.0,
-            samagri_notes="একটি পরিষ্কার আসন, প্রদীপ, ঘি, ধূপ, পান-সুপারি, ফুল ও মিষ্টি প্রসাদ প্রস্তুত রাখুন।",
-            is_active=True,
-        ),
-        PurohitPujaItem(
-            id=uuid.uuid4().hex[:12],
-            puja_name="শ্রী সত্যনারায়ণ কথা ও পুজো (Satyanarayan Katha)",
-            description="পারিবারিক শান্তি, গ্রহদোষ মোচন ও মনস্কামনা পূরণের জন্য সনাতন বৈদিক সত্যনারায়ণ ব্রত কথা ও আরতি।",
-            duration_minutes=60,
-            price_inr=501.0,
-            samagri_notes="সিন্নি প্রসাদ, পঞ্চামৃত, তুলসী পাতা, কলা গাছ বা পাতা ও গঙ্গাজল প্রস্তুত রাখুন।",
-            is_active=True,
-        ),
-    ]
-
     profile = Purohit(
         user_id=user.id,
         display_name=display_name,
@@ -136,8 +114,8 @@ async def create_purohit_by_admin(payload: PurohitCreate) -> tuple[User, Purohit
         languages=payload.languages or ["Bengali", "Sanskrit"],
         is_online=True,  # Initially online upon onboarding
         is_verified=True,
-        pujas=default_pujas,
-        rating=5.0,
+        pujas=[],
+        rating=0.0,
         total_pujas_performed=0,
     )
     await profile.insert()
