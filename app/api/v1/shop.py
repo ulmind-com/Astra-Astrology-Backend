@@ -8,11 +8,13 @@ Endpoints:
 """
 
 from fastapi import APIRouter, Body, File, Query, UploadFile
+from fastapi.responses import HTMLResponse
 
 from app.api.dependencies import CurrentUser, OptionalUser
 from app.core.exceptions import BadRequestError
 from app.schemas.common import ApiResponse
 from app.schemas.shop import (
+    InvoiceDataOut,
     PincodeCheckResponse,
     ProductCategoryOut,
     ProductListResponse,
@@ -36,7 +38,7 @@ from app.schemas.shop import (
     StockReservationRequest,
     StockReservationResponse,
 )
-from app.services import shop_admin, shop_remedy_recommender, shop_review_service
+from app.services import shop_admin, shop_invoice_service, shop_remedy_recommender, shop_review_service
 from app.services.shop_order_service import ShopOrderService
 
 router = APIRouter(prefix="/shop", tags=["shop"])
@@ -507,6 +509,48 @@ async def upload_review_photo(
         data={"url": result.secure_url, "public_id": result.public_id},
         message="Image uploaded successfully.",
     )
+
+
+# ===========================================================================
+# 9. Printable GST & Commercial Order Invoice Endpoints
+# ===========================================================================
+
+
+@router.get(
+    "/orders/{order_key}/invoice",
+    response_model=ApiResponse[InvoiceDataOut],
+    summary="Get structured JSON invoice data for an order (Tax Invoice or Bill of Supply)",
+)
+async def get_order_invoice(
+    order_key: str,
+    user: CurrentUser,
+) -> ApiResponse[InvoiceDataOut]:
+    data = await shop_invoice_service.get_or_create_invoice_data(
+        order_key=order_key,
+        user_id=user.id,
+        is_admin=False,
+    )
+    return ApiResponse.ok(data=data)
+
+
+@router.get(
+    "/orders/{order_key}/invoice/html",
+    response_class=HTMLResponse,
+    summary="Get standalone high-res luxury printable HTML invoice and packing slip",
+)
+async def get_order_invoice_html(
+    order_key: str,
+    auto_print: bool = Query(default=False, alias="print"),
+    user: OptionalUser = None,
+) -> HTMLResponse:
+    data = await shop_invoice_service.get_or_create_invoice_data(
+        order_key=order_key,
+        user_id=user.id if user else None,
+        is_admin=bool(user and getattr(user, "role", None) in ("admin", "super_admin")),
+    )
+    html_content = shop_invoice_service.generate_invoice_html(data, auto_print=auto_print)
+    return HTMLResponse(content=html_content)
+
 
 
 

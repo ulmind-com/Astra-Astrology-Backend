@@ -437,6 +437,26 @@ class ShopCMS(TimestampedDocument):
         description="List of phone numbers manually or automatically blacklisted from Cash on Delivery",
     )
 
+    # Company Business & GST Profile for Invoices & Logistics
+    company_legal_name: str = Field(default="DivinLink Spiritual Technologies Pvt. Ltd.", max_length=200)
+    company_trade_name: str = Field(default="DivinLink / Astra AstroStore", max_length=200)
+    company_address: str = Field(
+        default="Kashi Vishwanath Temple Corridor, Dashashwamedh Ghat, Varanasi, Uttar Pradesh - 221001, India",
+        max_length=500,
+    )
+    company_state: str = Field(default="Uttar Pradesh", max_length=100)
+    company_state_code: str = Field(default="09", max_length=10)
+    company_phone: str = Field(default="+91 91530 08182", max_length=30)
+    company_email: str = Field(default="support@divinlink.com", max_length=100)
+    company_website: str = Field(default="https://www.divinlink.com", max_length=100)
+    company_pan: str | None = Field(default=None, max_length=30)
+    company_gstin: str | None = Field(default=None, max_length=30, description="Optional GSTIN (Leave empty if un-registered/composite)")
+    invoice_prefix: str = Field(default="DIVIN-INV", max_length=20)
+    invoice_footer_notes: str = Field(
+        default="Thank you for welcoming divine vibrations into your sacred home! May Lord Shiva and the Navagrahas bestow eternal peace, health, and prosperity.",
+        max_length=500,
+    )
+
     class Settings:
         name = "cms_shop"
         indexes = [

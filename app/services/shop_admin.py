@@ -757,6 +757,18 @@ async def get_shop_banner_settings() -> ShopBannerSettingsOut:
         cod_max_rto_allowed=getattr(cms, "cod_max_rto_allowed", 2) or 2,
         cod_blacklisted_phones=getattr(cms, "cod_blacklisted_phones", []) or [],
         reels=reels,
+        company_legal_name=getattr(cms, "company_legal_name", "DivinLink Spiritual Technologies Pvt. Ltd."),
+        company_trade_name=getattr(cms, "company_trade_name", "DivinLink / Astra AstroStore"),
+        company_address=getattr(cms, "company_address", "Kashi Vishwanath Temple Corridor, Dashashwamedh Ghat, Varanasi, Uttar Pradesh - 221001, India"),
+        company_state=getattr(cms, "company_state", "Uttar Pradesh"),
+        company_state_code=getattr(cms, "company_state_code", "09"),
+        company_phone=getattr(cms, "company_phone", "+91 91530 08182"),
+        company_email=getattr(cms, "company_email", "support@divinlink.com"),
+        company_website=getattr(cms, "company_website", "https://www.divinlink.com"),
+        company_pan=getattr(cms, "company_pan", None),
+        company_gstin=getattr(cms, "company_gstin", None),
+        invoice_prefix=getattr(cms, "invoice_prefix", "DIVIN-INV"),
+        invoice_footer_notes=getattr(cms, "invoice_footer_notes", "Thank you for welcoming divine vibrations into your sacred home! May Lord Shiva and the Navagrahas bestow eternal peace, health, and prosperity."),
     )
 
 
@@ -790,6 +802,18 @@ async def update_shop_banner_settings(payload: ShopBannerSettingsUpdate) -> Shop
     cms.cod_max_rto_allowed = payload.cod_max_rto_allowed or 2
     cms.cod_blacklisted_phones = [p.strip() for p in payload.cod_blacklisted_phones if p.strip()]
     cms.reels = [r.model_dump() for r in payload.reels]
+    cms.company_legal_name = payload.company_legal_name
+    cms.company_trade_name = payload.company_trade_name
+    cms.company_address = payload.company_address
+    cms.company_state = payload.company_state
+    cms.company_state_code = payload.company_state_code
+    cms.company_phone = payload.company_phone
+    cms.company_email = payload.company_email
+    cms.company_website = payload.company_website
+    cms.company_pan = payload.company_pan.strip() if payload.company_pan else None
+    cms.company_gstin = payload.company_gstin.strip().upper() if payload.company_gstin else None
+    cms.invoice_prefix = payload.invoice_prefix.strip().upper() if payload.invoice_prefix else "DIVIN-INV"
+    cms.invoice_footer_notes = payload.invoice_footer_notes
 
     await cms.save()
     logger.info("Updated Shop CMS store settings (cashback_percent={}%, free_shipping_threshold={})", cms.cashback_percent, cms.free_shipping_threshold)

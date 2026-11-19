@@ -10,6 +10,7 @@ Covers:
 
 from typing import Annotated, Any
 from fastapi import APIRouter, Body, File, Query, UploadFile
+from fastapi.responses import HTMLResponse
 
 from app.api.dependencies import AdminUser
 from app.models.enums import ShopOrderStatus, ShopPaymentStatus, ShopRefundStatus
@@ -19,6 +20,7 @@ from app.schemas.shop import (
     AdminReviewModerationUpdate,
     CloudinaryOrphanCleanupReport,
     InventorySummaryResponse,
+    InvoiceDataOut,
     ProductCategoryCreate,
     ProductCategoryOut,
     ProductCategoryUpdate,
@@ -39,7 +41,7 @@ from app.schemas.shop import (
     ShopOrderOut,
     StockUpdatePayload,
 )
-from app.services import shop_admin, shop_review_service
+from app.services import shop_admin, shop_invoice_service, shop_review_service
 from app.services.shop_order_service import ShopOrderService
 from app.services.storage import upload_product_image
 
@@ -600,6 +602,46 @@ async def admin_delete_review(
 ) -> ApiResponse[dict]:
     await shop_review_service.admin_delete_review(review_id)
     return ApiResponse.ok(data={"deleted": True}, message="Review deleted successfully.")
+
+
+# ===========================================================================
+# 8. Order Invoices & Printable Packing Slips (Admin)
+# ===========================================================================
+
+
+@router.get(
+    "/orders/{order_id}/invoice",
+    response_model=ApiResponse[InvoiceDataOut],
+    summary="Admin get order invoice data (JSON)",
+)
+async def admin_get_order_invoice(
+    order_id: str,
+    admin: AdminUser = None,
+) -> ApiResponse[InvoiceDataOut]:
+    data = await shop_invoice_service.get_or_create_invoice_data(
+        order_key=order_id,
+        is_admin=True,
+    )
+    return ApiResponse.ok(data=data)
+
+
+@router.get(
+    "/orders/{order_id}/invoice/html",
+    response_class=HTMLResponse,
+    summary="Admin get standalone printable HTML invoice & packing slip",
+)
+async def admin_get_order_invoice_html(
+    order_id: str,
+    auto_print: bool = Query(default=False, alias="print"),
+    admin: AdminUser = None,
+) -> HTMLResponse:
+    data = await shop_invoice_service.get_or_create_invoice_data(
+        order_key=order_id,
+        is_admin=True,
+    )
+    html_content = shop_invoice_service.generate_invoice_html(data, auto_print=auto_print)
+    return HTMLResponse(content=html_content)
+
 
 
 
