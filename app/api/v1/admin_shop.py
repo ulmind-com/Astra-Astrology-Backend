@@ -28,6 +28,10 @@ from app.schemas.shop import (
     ShopAdminOrderUpdate,
     ShopBannerSettingsOut,
     ShopBannerSettingsUpdate,
+    ShopCouponCreate,
+    ShopCouponListResponse,
+    ShopCouponOut,
+    ShopCouponUpdate,
     ShopOrderListResponse,
     ShopOrderOut,
     StockUpdatePayload,
@@ -439,4 +443,98 @@ async def admin_sweep_abandoned_inventory(
         data={"restored_orders_count": restored_count},
         message=f"Swept abandoned checkouts: {restored_count} expired order(s) processed and stock safely restored.",
     )
+
+
+# ===========================================================================
+# Coupon Management Endpoints
+# ===========================================================================
+
+
+@router.get(
+    "/coupons",
+    response_model=ApiResponse[ShopCouponListResponse],
+    summary="List all promotional discount coupons with search and active filtering",
+)
+async def admin_list_coupons(
+    admin: AdminUser = None,
+    search: str | None = Query(default=None),
+    is_active: bool | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+) -> ApiResponse[ShopCouponListResponse]:
+    result = await shop_admin.list_coupons(
+        search=search,
+        is_active=is_active,
+        page=page,
+        limit=limit,
+    )
+    return ApiResponse.ok(data=result)
+
+
+@router.post(
+    "/coupons",
+    response_model=ApiResponse[ShopCouponOut],
+    summary="Create a new promotional discount coupon",
+)
+async def admin_create_coupon(
+    payload: ShopCouponCreate,
+    admin: AdminUser = None,
+) -> ApiResponse[ShopCouponOut]:
+    coupon = await shop_admin.create_coupon(payload)
+    return ApiResponse.ok(data=coupon, message=f"Coupon '{coupon.code}' created successfully.")
+
+
+@router.get(
+    "/coupons/{coupon_id}",
+    response_model=ApiResponse[ShopCouponOut],
+    summary="Get single coupon details",
+)
+async def admin_get_coupon(
+    coupon_id: str,
+    admin: AdminUser = None,
+) -> ApiResponse[ShopCouponOut]:
+    coupon = await shop_admin.get_coupon(coupon_id)
+    return ApiResponse.ok(data=coupon)
+
+
+@router.put(
+    "/coupons/{coupon_id}",
+    response_model=ApiResponse[ShopCouponOut],
+    summary="Update an existing discount coupon",
+)
+async def admin_update_coupon(
+    coupon_id: str,
+    payload: ShopCouponUpdate,
+    admin: AdminUser = None,
+) -> ApiResponse[ShopCouponOut]:
+    coupon = await shop_admin.update_coupon(coupon_id, payload)
+    return ApiResponse.ok(data=coupon, message=f"Coupon '{coupon.code}' updated successfully.")
+
+
+@router.delete(
+    "/coupons/{coupon_id}",
+    response_model=ApiResponse[dict],
+    summary="Delete a discount coupon",
+)
+async def admin_delete_coupon(
+    coupon_id: str,
+    admin: AdminUser = None,
+) -> ApiResponse[dict]:
+    await shop_admin.delete_coupon(coupon_id)
+    return ApiResponse.ok(data={"deleted": True}, message="Coupon deleted successfully.")
+
+
+@router.patch(
+    "/coupons/{coupon_id}/toggle-active",
+    response_model=ApiResponse[ShopCouponOut],
+    summary="Quick 1-click active/inactive toggle for a coupon",
+)
+async def admin_toggle_coupon_active(
+    coupon_id: str,
+    admin: AdminUser = None,
+) -> ApiResponse[ShopCouponOut]:
+    coupon = await shop_admin.toggle_coupon_active(coupon_id)
+    state = "activated" if coupon.is_active else "deactivated"
+    return ApiResponse.ok(data=coupon, message=f"Coupon '{coupon.code}' {state} successfully.")
+
 
