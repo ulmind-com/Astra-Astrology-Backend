@@ -6,6 +6,10 @@ from typing import Any
 from beanie import Document, Insert, Replace, SaveChanges, Update, before_event
 from pydantic import Field
 
+# Backward compatibility: ensures any Beanie Document can safely respond to get_motor_collection
+if not hasattr(Document, "get_motor_collection"):
+    setattr(Document, "get_motor_collection", classmethod(lambda cls: cls.get_pymongo_collection()))
+
 
 def utcnow() -> datetime:
     return datetime.now(UTC)

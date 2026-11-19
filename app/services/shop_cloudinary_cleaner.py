@@ -7,6 +7,7 @@ older than 2 hours to avoid accumulating storage quota waste.
 
 import asyncio
 from loguru import logger
+from pymongo.errors import PyMongoError
 
 from app.services.shop_admin import purge_unreferenced_cloudinary_shop_images
 
@@ -43,6 +44,11 @@ async def periodic_cloudinary_orphan_cleaner_loop(interval_seconds: int = 86400)
         except asyncio.CancelledError:
             logger.info("Cloudinary orphan cleaner loop stopped gracefully.")
             break
+        except PyMongoError as db_err:
+            logger.warning(
+                "MongoDB temporarily unavailable in Cloudinary orphan cleaner sweep (will retry): {}",
+                db_err,
+            )
         except Exception as exc:
             logger.error("Error in automated Cloudinary orphan cleaner sweep: {}", exc)
 

@@ -8,6 +8,7 @@ product stock back into active store inventory.
 import asyncio
 from datetime import UTC, datetime, timedelta
 from loguru import logger
+from pymongo.errors import PyMongoError
 
 from app.models.cms import CMS_KEY_SHOP, ShopCMS
 from app.models.enums import ShopOrderStatus, ShopPaymentMethod, ShopPaymentStatus
@@ -138,6 +139,11 @@ async def periodic_shop_inventory_cleanup_loop(interval_seconds: int = 300) -> N
         except asyncio.CancelledError:
             logger.info("Shop inventory TTL cleaner received cancellation signal. Stopping.")
             break
+        except PyMongoError as db_err:
+            logger.warning(
+                "MongoDB temporarily unavailable in shop inventory cleaner loop (will retry next cycle): {}",
+                db_err,
+            )
         except Exception as exc:
             logger.opt(exception=exc).error("Unexpected error in shop inventory cleaner loop: {}", exc)
 

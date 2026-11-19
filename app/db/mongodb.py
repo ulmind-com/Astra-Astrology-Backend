@@ -75,8 +75,12 @@ async def connect_to_mongo() -> bool:
             settings.MONGODB_URI,
             maxPoolSize=settings.MONGODB_MAX_POOL_SIZE,
             minPoolSize=settings.MONGODB_MIN_POOL_SIZE,
-            serverSelectionTimeoutMS=settings.MONGODB_CONNECT_TIMEOUT_MS,
+            maxIdleTimeMS=settings.MONGODB_MAX_IDLE_TIME_MS,
+            socketTimeoutMS=settings.MONGODB_SOCKET_TIMEOUT_MS,
+            serverSelectionTimeoutMS=settings.MONGODB_SERVER_SELECTION_TIMEOUT_MS,
             connectTimeoutMS=settings.MONGODB_CONNECT_TIMEOUT_MS,
+            retryWrites=True,
+            retryReads=True,
             tz_aware=True,
             uuidRepresentation="standard",
         )
