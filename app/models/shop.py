@@ -447,6 +447,10 @@ class ShopOrder(TimestampedDocument):
     refund_notes: str | None = None
 
     # Logistics & Courier Tracking
+    courier_partner: str | None = None
+    tracking_id: str | None = None
+    tracking_url: str | None = None
+    estimated_delivery_date: datetime | None = None
 
     # Consecration & Invoice
     invoice_number: str | None = None
