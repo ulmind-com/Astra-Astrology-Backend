@@ -5,6 +5,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.models.enums import (
+    CouponDiscountType,
     ProductCategoryType,
     ShopOrderStatus,
     ShopPaymentMethod,
@@ -626,6 +627,112 @@ class PincodeCheckResponse(BaseModel):
     cod_disabled_reason: str | None = None
     estimated_delivery_days: int = 4
     estimated_delivery_date: str
+
+
+# ===========================================================================
+# Coupon & Promotional Discount Schemas
+# ===========================================================================
+
+
+class ShopCouponCreate(BaseModel):
+    code: str = Field(min_length=2, max_length=30)
+    title: str = Field(min_length=2, max_length=120)
+    description: str | None = None
+    discount_type: CouponDiscountType = CouponDiscountType.PERCENTAGE
+    discount_value: float = Field(gt=0, description="Percentage (e.g. 10 for 10%) or Flat amount in ₹")
+    min_order_amount: float = Field(default=0.0, ge=0)
+    max_discount_amount: float | None = None
+    usage_limit: int | None = None
+    per_user_limit: int = Field(default=1, ge=1)
+    first_order_only: bool = False
+    is_highlighted: bool = False
+    start_date: datetime | None = None
+    expiry_date: datetime | None = None
+    is_active: bool = True
+
+
+class ShopCouponUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    discount_type: CouponDiscountType | None = None
+    discount_value: float | None = Field(default=None, gt=0)
+    min_order_amount: float | None = Field(default=None, ge=0)
+    max_discount_amount: float | None = None
+    usage_limit: int | None = None
+    per_user_limit: int | None = Field(default=None, ge=1)
+    first_order_only: bool | None = None
+    is_highlighted: bool | None = None
+    start_date: datetime | None = None
+    expiry_date: datetime | None = None
+    is_active: bool | None = None
+
+
+class ShopCouponOut(BaseModel):
+    id: str
+    code: str
+    title: str
+    description: str | None = None
+    discount_type: CouponDiscountType
+    discount_value: float
+    min_order_amount: float
+    max_discount_amount: float | None = None
+    usage_limit: int | None = None
+    usage_count: int = 0
+    per_user_limit: int = 1
+    first_order_only: bool = False
+    is_highlighted: bool = False
+    start_date: datetime | None = None
+    expiry_date: datetime | None = None
+    is_active: bool
+    is_valid_now: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class ShopCouponListResponse(BaseModel):
+    items: list[ShopCouponOut]
+    total: int
+    page: int
+    limit: int
+    pages: int
+
+
+class ShopCouponValidateRequest(BaseModel):
+    code: str
+    subtotal: float = Field(ge=0)
+
+
+class ShopCouponValidateResponse(BaseModel):
+    is_valid: bool
+    code: str
+    discount_amount: float
+    new_subtotal: float
+    message: str
+    coupon: ShopCouponOut | None = None
+
+
+class ShopCouponRecommendationOut(BaseModel):
+    code: str
+    title: str
+    description: str | None = None
+    discount_type: str
+    discount_value: float
+    min_order_amount: float
+    max_discount_amount: float | None = None
+    discount_amount: float
+    is_applicable: bool
+    reason_if_inapplicable: str | None = None
+    is_best_offer: bool = False
+    is_first_order_deal: bool = False
+    expiry_date: datetime | None = None
+
+
+class ShopCouponRecommendationsResponse(BaseModel):
+    items: list[ShopCouponRecommendationOut]
+    best_coupon_code: str | None = None
+    max_savings: float = 0.0
+    user_orders_count: int = 0
+
 
 
 

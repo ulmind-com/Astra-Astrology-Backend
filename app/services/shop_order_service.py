@@ -44,6 +44,10 @@ from app.schemas.shop import (
     ShopAdminOrderUpdate,
     ShopCheckoutRequest,
     ShopCheckoutResponse,
+    ShopCouponOut,
+    ShopCouponRecommendationOut,
+    ShopCouponRecommendationsResponse,
+    ShopCouponValidateResponse,
     ShopOrderItemOut,
     ShopOrderListResponse,
     ShopOrderOut,
@@ -305,21 +309,42 @@ class ShopOrderService:
                 )
             )
 
-        # 3. Coupons & Discounts
+        # 3. Coupons & Discounts (Strict Enforcement)
         discount_amount = 0.0
         applied_coupon = None
+        coupon_to_increment: ShopCoupon | None = None
         if payload.coupon_code and payload.coupon_code.strip():
             code = payload.coupon_code.strip().upper()
             coupon = await ShopCoupon.find_one(ShopCoupon.code == code)
-            if coupon and coupon.is_valid_now and subtotal >= coupon.min_order_amount:
-                if coupon.discount_type == "percentage":
-                    calc_disc = subtotal * (coupon.discount_value / 100.0)
-                    if coupon.max_discount_amount:
-                        calc_disc = min(calc_disc, coupon.max_discount_amount)
-                    discount_amount = round(calc_disc, 2)
-                else:
-                    discount_amount = round(min(coupon.discount_value, subtotal), 2)
-                applied_coupon = code
+            if not coupon:
+                raise BadRequestError(
+                    f"কুপন কোড '{code}' সঠিক নয়।",
+                    error_code="coupon_invalid",
+                )
+
+            user_orders_count = 0
+            user_coupon_usage = 0
+            if user_id:
+                user_orders_count = await ShopOrder.find(
+                    ShopOrder.user_id == user_id,
+                    ShopOrder.order_status != ShopOrderStatus.CANCELLED,
+                ).count()
+                user_coupon_usage = await ShopOrder.find(
+                    ShopOrder.user_id == user_id,
+                    ShopOrder.coupon_code == code,
+                    ShopOrder.order_status != ShopOrderStatus.CANCELLED,
+                ).count()
+
+            is_app, reason = coupon.check_applicability(subtotal, user_orders_count, user_coupon_usage)
+            if not is_app:
+                raise BadRequestError(
+                    reason or f"কুপন '{code}' এই অর্ডারে প্রযোজ্য নয়।",
+                    error_code="coupon_not_applicable",
+                )
+
+            discount_amount = coupon.calculate_discount(subtotal)
+            applied_coupon = code
+            coupon_to_increment = coupon
 
         # 4. Shipping Calculation
         net_order_value = max(0.0, subtotal - discount_amount)
@@ -489,6 +514,11 @@ class ShopOrderService:
                 order.order_status = ShopOrderStatus.PLACED
 
             await order.insert()
+            if coupon_to_increment:
+                await ShopCoupon.get_pymongo_collection().update_one(
+                    {"_id": coupon_to_increment.id},
+                    {"$inc": {"usage_count": 1}},
+                )
             logger.info(
                 "Created Shop Order '{}' (grand_total=₹{}, payment_method={}, cashback_coins={})",
                 order.order_number,
@@ -768,6 +798,13 @@ class ShopOrderService:
 
         order.order_status = ShopOrderStatus.CANCELLED
         order.cancellation_reason = reason or ("Cancelled by customer" if user_id else "Cancelled by administrator")
+
+        # Restore coupon usage count if applied
+        if order.coupon_code:
+            await ShopCoupon.get_pymongo_collection().update_one(
+                {"code": order.coupon_code, "usage_count": {"$gt": 0}},
+                {"$inc": {"usage_count": -1}},
+            )
 
         # 2. Refund Lifecycle Assignment
         is_paid_order = order.payment_status == ShopPaymentStatus.PAID
@@ -1161,3 +1198,149 @@ class ShopOrderService:
             estimated_delivery_days=est_days,
             estimated_delivery_date=del_date,
         )
+
+    @classmethod
+    async def validate_coupon(
+        cls,
+        code: str,
+        subtotal: float,
+        user_id: PydanticObjectId | None = None,
+    ) -> ShopCouponValidateResponse:
+        """Validates a coupon code against current cart subtotal and user eligibility."""
+        clean_code = code.strip().upper()
+        if not clean_code:
+            return ShopCouponValidateResponse(
+                is_valid=False,
+                code="",
+                discount_amount=0.0,
+                new_subtotal=subtotal,
+                message="অনুগ্রহ করে একটি কুপন কোড প্রদান করুন।",
+            )
+
+        coupon = await ShopCoupon.find_one(ShopCoupon.code == clean_code)
+        if not coupon:
+            return ShopCouponValidateResponse(
+                is_valid=False,
+                code=clean_code,
+                discount_amount=0.0,
+                new_subtotal=subtotal,
+                message=f"কুপন কোড '{clean_code}' পাওয়া যায়নি বা সঠিক নয়।",
+            )
+
+        user_orders_count = 0
+        user_coupon_usage = 0
+        if user_id:
+            user_orders_count = await ShopOrder.find(
+                ShopOrder.user_id == user_id,
+                ShopOrder.order_status != ShopOrderStatus.CANCELLED,
+            ).count()
+            user_coupon_usage = await ShopOrder.find(
+                ShopOrder.user_id == user_id,
+                ShopOrder.coupon_code == clean_code,
+                ShopOrder.order_status != ShopOrderStatus.CANCELLED,
+            ).count()
+
+        is_app, reason = coupon.check_applicability(subtotal, user_orders_count, user_coupon_usage)
+        if not is_app:
+            return ShopCouponValidateResponse(
+                is_valid=False,
+                code=clean_code,
+                discount_amount=0.0,
+                new_subtotal=subtotal,
+                message=reason or "এই কুপনটি আপনার বর্তমান কার্টে প্রযোজ্য নয়।",
+            )
+
+        discount = coupon.calculate_discount(subtotal)
+        new_subtotal = max(0.0, round(subtotal - discount, 2))
+
+        from app.services.shop_admin import _coupon_to_out
+        return ShopCouponValidateResponse(
+            is_valid=True,
+            code=clean_code,
+            discount_amount=discount,
+            new_subtotal=new_subtotal,
+            message=f"কুপন '{clean_code}' সফলভাবে প্রয়োগ হয়েছে! আপনার ₹{discount:,.2f} সাশ্রয় হয়েছে।",
+            coupon=_coupon_to_out(coupon),
+        )
+
+    @classmethod
+    async def get_coupon_recommendations(
+        cls,
+        subtotal: float,
+        user_id: PydanticObjectId | None = None,
+    ) -> ShopCouponRecommendationsResponse:
+        """Evaluates all active store coupons, calculates exact savings, and highlights the best offer."""
+        from collections import Counter
+        from datetime import UTC, datetime
+
+        now = datetime.now(UTC)
+        coupons = await ShopCoupon.find(ShopCoupon.is_active == True).to_list()
+
+        user_orders_count = 0
+        user_coupon_counts: dict[str, int] = {}
+        if user_id:
+            user_orders = await ShopOrder.find(
+                ShopOrder.user_id == user_id,
+                ShopOrder.order_status != ShopOrderStatus.CANCELLED,
+            ).to_list()
+            user_orders_count = len(user_orders)
+            user_coupon_counts = Counter(o.coupon_code for o in user_orders if o.coupon_code)
+
+        candidates: list[ShopCouponRecommendationOut] = []
+        for c in coupons:
+            # Skip if out of temporal validity
+            if c.expiry_date and now > c.expiry_date:
+                continue
+            if c.start_date and now < c.start_date:
+                continue
+            if c.usage_limit is not None and c.usage_count >= c.usage_limit:
+                continue
+
+            user_usage = user_coupon_counts.get(c.code, 0)
+            is_app, reason = c.check_applicability(subtotal, user_orders_count, user_usage)
+            discount = c.calculate_discount(subtotal) if is_app else 0.0
+
+            candidates.append(
+                ShopCouponRecommendationOut(
+                    code=c.code,
+                    title=c.title or c.code,
+                    description=c.description,
+                    discount_type=c.discount_type.value,
+                    discount_value=c.discount_value,
+                    min_order_amount=c.min_order_amount,
+                    max_discount_amount=c.max_discount_amount,
+                    discount_amount=discount,
+                    is_applicable=is_app,
+                    reason_if_inapplicable=reason,
+                    is_best_offer=False,
+                    is_first_order_deal=c.first_order_only,
+                    expiry_date=c.expiry_date,
+                )
+            )
+
+        # Smart Recommendation ranking:
+        # 1. Applicable coupons sorted by discount_amount DESC
+        # 2. Inapplicable coupons sorted by min_order_amount ASC
+        applicable = [c for c in candidates if c.is_applicable and c.discount_amount > 0]
+        inapplicable = [c for c in candidates if not c.is_applicable or c.discount_amount == 0]
+
+        applicable.sort(key=lambda x: x.discount_amount, reverse=True)
+        inapplicable.sort(key=lambda x: x.min_order_amount)
+
+        best_coupon_code = None
+        max_savings = 0.0
+
+        if applicable:
+            applicable[0].is_best_offer = True
+            best_coupon_code = applicable[0].code
+            max_savings = applicable[0].discount_amount
+
+        all_items = applicable + inapplicable
+
+        return ShopCouponRecommendationsResponse(
+            items=all_items,
+            best_coupon_code=best_coupon_code,
+            max_savings=max_savings,
+            user_orders_count=user_orders_count,
+        )
+

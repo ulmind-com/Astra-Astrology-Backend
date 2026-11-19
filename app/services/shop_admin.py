@@ -16,13 +16,14 @@ from beanie.operators import In, RegEx
 from loguru import logger
 
 from app.core.exceptions import BadRequestError, NotFoundError
+from app.models.enums import CouponDiscountType
 from app.models.cms import (
     CMS_KEY_SHOP,
     ShopCMS,
     default_shop_hero_banners,
     default_shop_reels,
 )
-from app.models.shop import Product, ProductCategory, ShopOrder
+from app.models.shop import Product, ProductCategory, ShopCoupon, ShopOrder
 from app.schemas.shop import (
     CloudinaryOrphanCleanupReport,
     InventorySummaryResponse,
@@ -35,6 +36,10 @@ from app.schemas.shop import (
     ProductUpdate,
     ShopBannerSettingsOut,
     ShopBannerSettingsUpdate,
+    ShopCouponCreate,
+    ShopCouponListResponse,
+    ShopCouponOut,
+    ShopCouponUpdate,
     StockUpdatePayload,
 )
 from app.services.storage import extract_public_id_from_url, safe_delete_cloudinary_image
@@ -908,4 +913,209 @@ async def purge_unreferenced_cloudinary_shop_images(dry_run: bool = False) -> Cl
         dry_run=dry_run,
         purged_public_ids=purged_list,
     )
+
+
+# ===========================================================================
+# Coupon & Promotional Offer Management (CRUD)
+# ===========================================================================
+
+
+def _coupon_to_out(coupon: ShopCoupon) -> ShopCouponOut:
+    return ShopCouponOut(
+        id=str(coupon.id),
+        code=coupon.code,
+        title=coupon.title or coupon.code,
+        description=coupon.description,
+        discount_type=coupon.discount_type,
+        discount_value=coupon.discount_value,
+        min_order_amount=coupon.min_order_amount,
+        max_discount_amount=coupon.max_discount_amount,
+        usage_limit=coupon.usage_limit,
+        usage_count=coupon.usage_count,
+        per_user_limit=coupon.per_user_limit,
+        first_order_only=coupon.first_order_only,
+        is_highlighted=coupon.is_highlighted,
+        start_date=coupon.start_date,
+        expiry_date=coupon.expiry_date,
+        is_active=coupon.is_active,
+        is_valid_now=coupon.is_valid_now,
+        created_at=coupon.created_at,
+        updated_at=coupon.updated_at,
+    )
+
+
+async def create_coupon(payload: ShopCouponCreate) -> ShopCouponOut:
+    """Creates a new promotional discount coupon code."""
+    code = payload.code.strip().upper()
+    if not code:
+        raise BadRequestError("Coupon code cannot be empty.")
+
+    existing = await ShopCoupon.find_one(ShopCoupon.code == code)
+    if existing:
+        raise BadRequestError(
+            f"A coupon with code '{code}' already exists.",
+            error_code="coupon_already_exists",
+        )
+
+    if payload.start_date and payload.expiry_date and payload.start_date > payload.expiry_date:
+        raise BadRequestError("Start date cannot be after expiry date.")
+
+    if payload.discount_type == CouponDiscountType.PERCENTAGE and payload.discount_value > 100:
+        raise BadRequestError("Percentage discount cannot exceed 100%.")
+
+    coupon = ShopCoupon(
+        code=code,
+        title=payload.title.strip(),
+        description=payload.description.strip() if payload.description else None,
+        discount_type=payload.discount_type,
+        discount_value=payload.discount_value,
+        min_order_amount=payload.min_order_amount,
+        max_discount_amount=payload.max_discount_amount,
+        usage_limit=payload.usage_limit,
+        usage_count=0,
+        per_user_limit=payload.per_user_limit,
+        first_order_only=payload.first_order_only,
+        is_highlighted=payload.is_highlighted,
+        start_date=payload.start_date,
+        expiry_date=payload.expiry_date,
+        is_active=payload.is_active,
+    )
+    await coupon.save()
+    logger.info("Admin created new coupon code: {} (Type: {}, Value: {})", code, payload.discount_type, payload.discount_value)
+    return _coupon_to_out(coupon)
+
+
+async def list_coupons(
+    search: str | None = None,
+    is_active: bool | None = None,
+    page: int = 1,
+    limit: int = 20,
+) -> ShopCouponListResponse:
+    """Lists store coupons with search and active filtering."""
+    skip = (page - 1) * limit
+    filters: list[Any] = []
+
+    if is_active is not None:
+        filters.append(ShopCoupon.is_active == is_active)
+
+    if search and search.strip():
+        term = search.strip()
+        filters.append({
+            "$or": [
+                {"code": {"$regex": term, "$options": "i"}},
+                {"title": {"$regex": term, "$options": "i"}},
+                {"description": {"$regex": term, "$options": "i"}},
+            ]
+        })
+
+    query = ShopCoupon.find(*filters) if filters else ShopCoupon.find_all()
+    total = await query.count()
+    coupons = await query.sort("-created_at").skip(skip).limit(limit).to_list()
+    pages = (total + limit - 1) // limit if total > 0 else 1
+
+    return ShopCouponListResponse(
+        items=[_coupon_to_out(c) for c in coupons],
+        total=total,
+        page=page,
+        limit=limit,
+        pages=pages,
+    )
+
+
+async def get_coupon(coupon_id: str) -> ShopCouponOut:
+    """Retrieves single coupon by ObjectId or Code."""
+    coupon = None
+    try:
+        coupon = await ShopCoupon.get(PydanticObjectId(coupon_id))
+    except Exception:
+        pass
+
+    if not coupon:
+        coupon = await ShopCoupon.find_one(ShopCoupon.code == coupon_id.strip().upper())
+
+    if not coupon:
+        raise NotFoundError("Coupon not found.")
+
+    return _coupon_to_out(coupon)
+
+
+async def update_coupon(coupon_id: str, payload: ShopCouponUpdate) -> ShopCouponOut:
+    """Updates an existing discount coupon."""
+    try:
+        coupon = await ShopCoupon.get(PydanticObjectId(coupon_id))
+    except Exception:
+        coupon = None
+
+    if not coupon:
+        raise NotFoundError("Coupon not found.")
+
+    if payload.title is not None:
+        coupon.title = payload.title.strip()
+    if payload.description is not None:
+        coupon.description = payload.description.strip() if payload.description else None
+    if payload.discount_type is not None:
+        coupon.discount_type = payload.discount_type
+    if payload.discount_value is not None:
+        if (payload.discount_type or coupon.discount_type) == CouponDiscountType.PERCENTAGE and payload.discount_value > 100:
+            raise BadRequestError("Percentage discount cannot exceed 100%.")
+        coupon.discount_value = payload.discount_value
+    if payload.min_order_amount is not None:
+        coupon.min_order_amount = payload.min_order_amount
+    if payload.max_discount_amount is not None:
+        coupon.max_discount_amount = payload.max_discount_amount
+    if payload.usage_limit is not None:
+        coupon.usage_limit = payload.usage_limit
+    if payload.per_user_limit is not None:
+        coupon.per_user_limit = payload.per_user_limit
+    if payload.first_order_only is not None:
+        coupon.first_order_only = payload.first_order_only
+    if payload.is_highlighted is not None:
+        coupon.is_highlighted = payload.is_highlighted
+    if payload.start_date is not None:
+        coupon.start_date = payload.start_date
+    if payload.expiry_date is not None:
+        coupon.expiry_date = payload.expiry_date
+    if payload.is_active is not None:
+        coupon.is_active = payload.is_active
+
+    if coupon.start_date and coupon.expiry_date and coupon.start_date > coupon.expiry_date:
+        raise BadRequestError("Start date cannot be after expiry date.")
+
+    coupon.updated_at = datetime.now(UTC)
+    await coupon.save()
+    logger.info("Admin updated coupon: {} ({})", coupon.code, coupon.id)
+    return _coupon_to_out(coupon)
+
+
+async def delete_coupon(coupon_id: str) -> bool:
+    """Deletes a promotional coupon."""
+    try:
+        coupon = await ShopCoupon.get(PydanticObjectId(coupon_id))
+    except Exception:
+        coupon = None
+
+    if not coupon:
+        raise NotFoundError("Coupon not found.")
+
+    await coupon.delete()
+    logger.info("Admin deleted coupon: {} ({})", coupon.code, coupon_id)
+    return True
+
+
+async def toggle_coupon_active(coupon_id: str) -> ShopCouponOut:
+    """Toggles coupon active/inactive state in 1 click."""
+    try:
+        coupon = await ShopCoupon.get(PydanticObjectId(coupon_id))
+    except Exception:
+        coupon = None
+
+    if not coupon:
+        raise NotFoundError("Coupon not found.")
+
+    coupon.is_active = not coupon.is_active
+    coupon.updated_at = datetime.now(UTC)
+    await coupon.save()
+    logger.info("Admin toggled coupon {} active state to: {}", coupon.code, coupon.is_active)
+    return _coupon_to_out(coupon)
+
 

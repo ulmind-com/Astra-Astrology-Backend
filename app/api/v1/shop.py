@@ -21,6 +21,9 @@ from app.schemas.shop import (
     ShopCancelOrderPayload,
     ShopCheckoutRequest,
     ShopCheckoutResponse,
+    ShopCouponRecommendationsResponse,
+    ShopCouponValidateRequest,
+    ShopCouponValidateResponse,
     ShopOrderListResponse,
     ShopOrderOut,
     ShopPaymentVerifyRequest,
@@ -330,6 +333,45 @@ async def cancel_my_shop_order(
         qr_code_public_id=payload.qr_code_public_id,
     )
     return ApiResponse.ok(data=order)
+
+
+# ===========================================================================
+# Coupon Validation & Smart Recommendation Endpoints
+# ===========================================================================
+
+
+@router.post(
+    "/coupons/validate",
+    response_model=ApiResponse[ShopCouponValidateResponse],
+    summary="Validate coupon code against cart subtotal and user eligibility",
+)
+async def validate_shop_coupon(
+    payload: ShopCouponValidateRequest,
+    user: OptionalUser = None,
+) -> ApiResponse[ShopCouponValidateResponse]:
+    result = await ShopOrderService.validate_coupon(
+        code=payload.code,
+        subtotal=payload.subtotal,
+        user_id=user.id if user else None,
+    )
+    return ApiResponse.ok(data=result)
+
+
+@router.post(
+    "/coupons/recommendations",
+    response_model=ApiResponse[ShopCouponRecommendationsResponse],
+    summary="Get personalized coupon recommendations ranked by highest savings",
+)
+async def get_shop_coupon_recommendations(
+    subtotal: float = Query(default=0.0, ge=0),
+    user: OptionalUser = None,
+) -> ApiResponse[ShopCouponRecommendationsResponse]:
+    result = await ShopOrderService.get_coupon_recommendations(
+        subtotal=subtotal,
+        user_id=user.id if user else None,
+    )
+    return ApiResponse.ok(data=result)
+
 
 
 

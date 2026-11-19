@@ -238,7 +238,8 @@ class Cart(TimestampedDocument):
 class ShopCoupon(TimestampedDocument):
     """Voucher discount coupons for Astra AstroStore marketing campaigns."""
 
-    code: str = Field(min_length=3, max_length=30)
+    code: str = Field(min_length=2, max_length=30)
+    title: str = Field(default="", max_length=120, description="Short human-readable offer title")
     description: str | None = None
     discount_type: CouponDiscountType = CouponDiscountType.PERCENTAGE
     discount_value: float = Field(gt=0, description="Percentage (e.g. 10 for 10%) or Flat amount in ₹")
@@ -246,6 +247,9 @@ class ShopCoupon(TimestampedDocument):
     max_discount_amount: float | None = Field(default=None, description="Cap on percentage discounts in ₹")
     usage_limit: int | None = Field(default=None, description="Max total redemptions across all users")
     usage_count: int = Field(default=0, ge=0)
+    per_user_limit: int = Field(default=1, ge=1, description="Max times a single customer can use this coupon")
+    first_order_only: bool = Field(default=False, description="Whether this is exclusive to first-time buyers")
+    is_highlighted: bool = Field(default=False, description="Promote on cart / offers drawer")
     start_date: datetime | None = None
     expiry_date: datetime | None = None
     is_active: bool = True
@@ -262,6 +266,42 @@ class ShopCoupon(TimestampedDocument):
         if self.usage_limit is not None and self.usage_count >= self.usage_limit:
             return False
         return True
+
+    def calculate_discount(self, subtotal: float) -> float:
+        """Calculates discount amount in INR based on subtotal."""
+        if subtotal < self.min_order_amount:
+            return 0.0
+        if self.discount_type == CouponDiscountType.PERCENTAGE:
+            disc = subtotal * (self.discount_value / 100.0)
+            if self.max_discount_amount is not None:
+                disc = min(disc, self.max_discount_amount)
+            return round(disc, 2)
+        else:
+            return round(min(self.discount_value, subtotal), 2)
+
+    def check_applicability(
+        self,
+        subtotal: float,
+        user_orders_count: int = 0,
+        user_coupon_usage_count: int = 0,
+    ) -> tuple[bool, str | None]:
+        """Returns (is_applicable, rejection_reason_if_any)."""
+        if not self.is_active:
+            return False, "This coupon is inactive."
+        now = utcnow()
+        if self.start_date and now < self.start_date:
+            return False, "This coupon is not active yet."
+        if self.expiry_date and now > self.expiry_date:
+            return False, "This coupon has expired."
+        if self.usage_limit is not None and self.usage_count >= self.usage_limit:
+            return False, "Coupon total usage limit has been reached."
+        if subtotal < self.min_order_amount:
+            return False, f"Minimum order subtotal of ₹{int(self.min_order_amount)} required."
+        if self.first_order_only and user_orders_count > 0:
+            return False, "Valid only for first-time remedy purchases."
+        if user_coupon_usage_count >= self.per_user_limit:
+            return False, f"You have already reached the limit of {self.per_user_limit} use(s) for this coupon."
+        return True, None
 
     class Settings:
         name = "shop_coupons"
