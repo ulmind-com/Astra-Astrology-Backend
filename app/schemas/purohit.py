@@ -142,7 +142,7 @@ class PujaBookingOut(BaseModel):
     sankalpa_gotra: str
     sankalpa_wish: str | None = None
     room_id: str
-    zego_app_id: int = Field(default_factory=lambda: settings.ZEGOCLOUD_APP_ID)
+    zego_app_id: int = Field(default_factory=lambda: settings.ZEGO_APP_ID)
     zego_token: str | None = None
     status: PujaBookingStatus
     payment_status: PujaPaymentStatus

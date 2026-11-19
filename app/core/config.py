@@ -240,6 +240,10 @@ class Settings(BaseSettings):
         return bool(self.ZEGO_APP_ID and len(self.ZEGO_SERVER_SECRET) == 32)
 
     @property
+    def ZEGOCLOUD_APP_ID(self) -> int:
+        return self.ZEGO_APP_ID
+
+    @property
     def firebase_configured(self) -> bool:
         return bool(self.FIREBASE_CREDENTIALS_PATH or self.FIREBASE_CREDENTIALS_JSON)
 
