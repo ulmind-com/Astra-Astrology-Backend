@@ -474,3 +474,72 @@ class ShopOrder(TimestampedDocument):
             pymongo.IndexModel([("created_at", pymongo.DESCENDING)], name="order_created_recent"),
         ]
 
+
+# ===========================================================================
+# 6. Product Review & Verified Buyer Rating Model
+# ===========================================================================
+
+
+class ProductReview(TimestampedDocument):
+    """Verified buyer review and testimonial for consecrated physical remedies.
+
+    Guarantees:
+    - Only devotees with a successfully DELIVERED order can submit.
+    - Strict unique compound index on (product_id, user_id) enforces exactly 1 review per product per lifetime.
+    - Supports 1-5 star ratings, headline, testimony, and devotee parcel/remedy photos.
+    - Helpful community voting with deduplication.
+    - Admin moderation flags (is_approved, is_hidden).
+    """
+
+    product_id: PydanticObjectId = Field(index=True)
+    product_slug: str = Field(index=True)
+    user_id: PydanticObjectId = Field(index=True)
+    order_id: PydanticObjectId = Field(index=True, description="Delivered order confirming verified purchase")
+
+    # Rating & Testimonial
+    rating: int = Field(ge=1, le=5, description="Devotee rating from 1 to 5 stars")
+    title: str | None = Field(default=None, max_length=150, description="Short review headline")
+    comment: str = Field(min_length=5, max_length=3000, description="Devotee experience and feedback")
+    images: list[str] = Field(default_factory=list, max_length=5, description="Devotee photos of holy item/consecration")
+
+    # Attribution & Badging
+    is_verified_buyer: bool = Field(default=True, description="Strictly verified via delivered order")
+    author_name: str = Field(max_length=120, description="Customer display name snapshot at review time")
+    author_avatar: str | None = Field(default=None, description="Customer avatar image URL")
+
+    # Community Endorsements
+    helpful_count: int = Field(default=0, ge=0)
+    helpful_user_ids: list[PydanticObjectId] = Field(default_factory=list)
+
+    # Moderation & Visibility
+    is_approved: bool = Field(default=True)
+    is_hidden: bool = Field(default=False)
+    hidden_reason: str | None = Field(default=None, max_length=300)
+    hidden_at: datetime | None = None
+
+    class Settings:
+        name = "product_reviews"
+        indexes = [
+            pymongo.IndexModel(
+                [("product_id", pymongo.ASCENDING), ("user_id", pymongo.ASCENDING)],
+                name="review_product_user_unique",
+                unique=True,
+            ),
+            pymongo.IndexModel(
+                [("product_id", pymongo.ASCENDING), ("is_hidden", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+                name="review_product_visible_recent",
+            ),
+            pymongo.IndexModel(
+                [("product_id", pymongo.ASCENDING), ("rating", pymongo.DESCENDING)],
+                name="review_product_rating_idx",
+            ),
+            pymongo.IndexModel(
+                [("user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+                name="review_user_recent",
+            ),
+            pymongo.IndexModel(
+                [("order_id", pymongo.ASCENDING)],
+                name="review_order_idx",
+            ),
+        ]
+

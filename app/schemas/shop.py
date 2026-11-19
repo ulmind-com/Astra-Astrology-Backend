@@ -734,5 +734,90 @@ class ShopCouponRecommendationsResponse(BaseModel):
     user_orders_count: int = 0
 
 
+# ===========================================================================
+# 11. Product Review & Verified Buyer Rating Schemas
+# ===========================================================================
+
+
+class ProductReviewCreate(BaseModel):
+    rating: int = Field(ge=1, le=5, description="Devotee rating from 1 to 5 stars")
+    title: str | None = Field(default=None, max_length=150, description="Short headline")
+    comment: str = Field(min_length=5, max_length=3000, description="Detailed review text")
+    images: list[str] = Field(default_factory=list, max_length=5, description="Image URLs of delivered remedy/prasadi")
+
+
+class ProductReviewUpdate(BaseModel):
+    rating: int | None = Field(default=None, ge=1, le=5)
+    title: str | None = Field(default=None, max_length=150)
+    comment: str | None = Field(default=None, min_length=5, max_length=3000)
+    images: list[str] | None = Field(default=None, max_length=5)
+
+
+class ProductReviewOut(BaseModel):
+    id: str
+    product_id: str
+    product_slug: str
+    user_id: str
+    order_id: str
+    rating: int
+    title: str | None = None
+    comment: str
+    images: list[str] = Field(default_factory=list)
+    is_verified_buyer: bool = True
+    author_name: str
+    author_avatar: str | None = None
+    helpful_count: int = 0
+    is_helpful_by_me: bool = False
+    is_hidden: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProductRatingBreakdown(BaseModel):
+    stars_5: int = 0
+    stars_4: int = 0
+    stars_3: int = 0
+    stars_2: int = 0
+    stars_1: int = 0
+    stars_5_pct: int = 0
+    stars_4_pct: int = 0
+    stars_3_pct: int = 0
+    stars_2_pct: int = 0
+    stars_1_pct: int = 0
+
+
+class ProductReviewsResponse(BaseModel):
+    items: list[ProductReviewOut]
+    total: int
+    average_rating: float
+    breakdown: ProductRatingBreakdown
+    page: int
+    limit: int
+    pages: int
+
+
+class ReviewEligibilityResponse(BaseModel):
+    can_review: bool
+    already_reviewed: bool
+    is_delivered_buyer: bool
+    reason: str | None = None
+    existing_review: ProductReviewOut | None = None
+    order_id: str | None = None
+
+
+class AdminReviewModerationUpdate(BaseModel):
+    is_hidden: bool
+    hidden_reason: str | None = None
+
+
+class AdminProductReviewListResponse(BaseModel):
+    items: list[ProductReviewOut]
+    total: int
+    page: int
+    limit: int
+    pages: int
+
+
+
 
 

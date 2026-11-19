@@ -15,6 +15,8 @@ from app.api.dependencies import AdminUser
 from app.models.enums import ShopOrderStatus, ShopPaymentStatus, ShopRefundStatus
 from app.schemas.common import ApiResponse
 from app.schemas.shop import (
+    AdminProductReviewListResponse,
+    AdminReviewModerationUpdate,
     CloudinaryOrphanCleanupReport,
     InventorySummaryResponse,
     ProductCategoryCreate,
@@ -23,6 +25,7 @@ from app.schemas.shop import (
     ProductCreate,
     ProductListResponse,
     ProductOut,
+    ProductReviewOut,
     ProductUpdate,
     ShopAdminCompleteRefundPayload,
     ShopAdminOrderUpdate,
@@ -36,7 +39,7 @@ from app.schemas.shop import (
     ShopOrderOut,
     StockUpdatePayload,
 )
-from app.services import shop_admin
+from app.services import shop_admin, shop_review_service
 from app.services.shop_order_service import ShopOrderService
 from app.services.storage import upload_product_image
 
@@ -536,5 +539,67 @@ async def admin_toggle_coupon_active(
     coupon = await shop_admin.toggle_coupon_active(coupon_id)
     state = "activated" if coupon.is_active else "deactivated"
     return ApiResponse.ok(data=coupon, message=f"Coupon '{coupon.code}' {state} successfully.")
+
+
+# ===========================================================================
+# 7. Devotee Product Reviews & Moderation
+# ===========================================================================
+
+
+@router.get(
+    "/reviews",
+    response_model=ApiResponse[AdminProductReviewListResponse],
+    summary="Admin list of customer product reviews with filtering and pagination",
+)
+async def admin_list_reviews(
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    rating: int | None = Query(default=None, ge=1, le=5),
+    is_hidden: bool | None = Query(default=None),
+    product_id: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+    admin: AdminUser = None,
+) -> ApiResponse[AdminProductReviewListResponse]:
+    res = await shop_review_service.admin_list_reviews(
+        page=page,
+        limit=limit,
+        rating=rating,
+        is_hidden=is_hidden,
+        product_id=product_id,
+        search=search,
+    )
+    return ApiResponse.ok(data=res)
+
+
+@router.patch(
+    "/reviews/{review_id}/moderate",
+    response_model=ApiResponse[ProductReviewOut],
+    summary="Admin hide or unhide a product review",
+)
+async def admin_moderate_review(
+    review_id: str,
+    payload: AdminReviewModerationUpdate,
+    admin: AdminUser = None,
+) -> ApiResponse[ProductReviewOut]:
+    res = await shop_review_service.admin_moderate_review(
+        review_id=review_id,
+        payload=payload,
+    )
+    action = "hidden" if payload.is_hidden else "restored"
+    return ApiResponse.ok(data=res, message=f"Review successfully {action}.")
+
+
+@router.delete(
+    "/reviews/{review_id}",
+    response_model=ApiResponse[dict],
+    summary="Admin permanently delete a product review and recalculate ratings",
+)
+async def admin_delete_review(
+    review_id: str,
+    admin: AdminUser = None,
+) -> ApiResponse[dict]:
+    await shop_review_service.admin_delete_review(review_id)
+    return ApiResponse.ok(data={"deleted": True}, message="Review deleted successfully.")
+
 
 
