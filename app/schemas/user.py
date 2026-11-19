@@ -47,6 +47,11 @@ def _clean(value: str | None) -> str | None:
     return cleaned or None
 
 
+class DeviceTokenInput(BaseModel):
+    token: str = Field(min_length=5, max_length=500, description="FCM / APNs device push token")
+    platform: str | None = Field(default="mobile", max_length=50)
+
+
 # --------------------------------------------------------------------- input
 class BirthDetailsInput(BaseModel):
     """Every field optional — a PATCH merges into whatever is already stored."""

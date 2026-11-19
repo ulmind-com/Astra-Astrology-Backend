@@ -65,6 +65,7 @@ class User(TimestampedDocument):
     # ------------------------------------------------------------ platform
     notifications: NotificationPreferences = Field(default_factory=NotificationPreferences)
     addresses: list[Address] = Field(default_factory=list)
+    device_tokens: list[str] = Field(default_factory=list)
 
     # ------------------------------------------------------------ activity
     last_login_at: datetime | None = None

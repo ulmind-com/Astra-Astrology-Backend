@@ -431,3 +431,24 @@ async def test_avatar_is_compressed_and_replaces_the_previous_one(
     assert removed.status_code == 200
     assert removed.json()["data"]["avatar_url"] is None
     assert deleted == ["avatars/pic-1", "avatars/pic-2"]
+
+
+async def test_register_and_unregister_device_token(client: AsyncClient) -> None:
+    auth = await signed_in(client, email="push_user@test.dev")
+    reg = await client.post(
+        f"{P}/users/me/device-token",
+        headers=auth,
+        json={"token": "fcm_sample_device_token_123", "platform": "android"},
+    )
+    assert reg.status_code == 200, reg.text
+    assert reg.json()["message"] == "Device token registered."
+
+    unreg = await client.request(
+        "DELETE",
+        f"{P}/users/me/device-token",
+        headers=auth,
+        json={"token": "fcm_sample_device_token_123"},
+    )
+    assert unreg.status_code == 200, unreg.text
+    assert unreg.json()["message"] == "Device token unregistered."
+

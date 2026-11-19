@@ -5,7 +5,7 @@ from fastapi import APIRouter, File, UploadFile, status
 from app.api.dependencies import CurrentUser
 from app.models.profile import Address
 from app.schemas.common import ApiResponse, MessageResponse
-from app.schemas.user import AddressInput, AddressUpdate, ProfileUpdate, UserProfile
+from app.schemas.user import AddressInput, AddressUpdate, DeviceTokenInput, ProfileUpdate, UserProfile
 from app.services import profile as profile_service
 
 router = APIRouter(prefix="/users", tags=["profile"])
@@ -91,3 +91,25 @@ async def update_address(
 async def delete_address(address_id: str, user: CurrentUser) -> MessageResponse:
     await profile_service.delete_address(user, address_id)
     return MessageResponse(message="Address deleted.")
+
+
+# ------------------------------------------------------------- device tokens
+@router.post(
+    "/me/device-token",
+    response_model=MessageResponse,
+    summary="Register FCM/APNs device push token for background notifications",
+)
+async def register_device_token(payload: DeviceTokenInput, user: CurrentUser) -> MessageResponse:
+    await profile_service.register_device_token(user, payload.token)
+    return MessageResponse(message="Device token registered.")
+
+
+@router.delete(
+    "/me/device-token",
+    response_model=MessageResponse,
+    summary="Unregister device push token upon logout",
+)
+async def unregister_device_token(payload: DeviceTokenInput, user: CurrentUser) -> MessageResponse:
+    await profile_service.unregister_device_token(user, payload.token)
+    return MessageResponse(message="Device token unregistered.")
+
