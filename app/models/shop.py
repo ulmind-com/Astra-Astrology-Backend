@@ -212,6 +212,7 @@ class CartItem(BaseModel):
     product_id: PydanticObjectId
     quantity: int = Field(default=1, ge=1, le=50)
     added_at: datetime = Field(default_factory=utcnow)
+    sankalpa: dict | None = None
 
 
 class Cart(TimestampedDocument):

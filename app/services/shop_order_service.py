@@ -519,6 +519,13 @@ class ShopOrderService:
                     {"_id": coupon_to_increment.id},
                     {"$inc": {"usage_count": 1}},
                 )
+
+            # Clear persistent server-side cart for user upon successful order placement
+            try:
+                from app.services import shop_cart_service
+                await shop_cart_service.clear_cart(user_id)
+            except Exception as cart_err:
+                logger.warning("Non-blocking: Failed to auto-clear server cart for user {}: {}", user_id, cart_err)
             logger.info(
                 "Created Shop Order '{}' (grand_total=₹{}, payment_method={}, cashback_coins={})",
                 order.order_number,
