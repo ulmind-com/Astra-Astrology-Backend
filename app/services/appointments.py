@@ -2940,7 +2940,7 @@ async def handle_session_extension_action(
     )
     await appointment.save()
 
-    # 5. Update CallSession if connected
+    # 5. Update CallSession / ChatSession if connected
     if getattr(appointment, "call_session_id", None):
         try:
             call_session = await CallSession.get(appointment.call_session_id)
@@ -2949,6 +2949,17 @@ async def handle_session_extension_action(
                 await call_session.save()
         except Exception as exc:
             logger.error("Failed to update call_session duration on extension: {}", exc)
+
+    if getattr(appointment, "chat_session_id", None):
+        try:
+            from app.models.chat import ChatSession
+            from app.models.enums import ChatStatus
+            chat_session = await ChatSession.get(appointment.chat_session_id)
+            if chat_session and chat_session.status == ChatStatus.ACTIVE:
+                chat_session.requested_minutes += extra_minutes
+                await chat_session.save()
+        except Exception as exc:
+            logger.error("Failed to update chat_session duration on extension: {}", exc)
 
     # 6. Publish realtime update
     try:

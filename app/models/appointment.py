@@ -163,6 +163,7 @@ class Appointment(TimestampedDocument):
 
     # Dedicated CallSession ID for video chamber
     call_session_id: PydanticObjectId | None = None
+    chat_session_id: PydanticObjectId | None = None
 
     # Brahma Pause Seeker Auto-Rescue Engine
     brahma_pause_affected: bool = False

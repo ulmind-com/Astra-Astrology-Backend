@@ -38,6 +38,8 @@ class ChatSession(TimestampedDocument):
     # before messages moved into MongoDB still resolve.
     conversation_id: str
 
+    appointment_id: PydanticObjectId | None = None
+
     status: ChatStatus = ChatStatus.REQUESTED
 
     # When the astrologer accepted. Nobody is charged for waiting.

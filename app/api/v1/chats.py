@@ -72,6 +72,25 @@ async def _billing_of(session: ChatSession) -> SessionBilling:
 
 
 async def to_chat(session: ChatSession, viewer: User | None = None) -> ChatOut:
+    extension_offer = None
+    if getattr(session, "appointment_id", None):
+        from app.models.appointment import Appointment
+        from app.schemas.call import ExtensionOfferInfo
+
+        apt = await Appointment.get(session.appointment_id)
+        if apt and (
+            getattr(apt, "extension_offered", False)
+            or getattr(apt, "extension_status", None) in ("pending", "accepted", "declined")
+        ):
+            extension_offer = ExtensionOfferInfo(
+                offered=bool(apt.extension_offered),
+                status=apt.extension_status,
+                extra_minutes=apt.extension_offered_minutes,
+                cost_paise=apt.extension_cost_paise,
+                cost_coins=apt.extension_cost_coins,
+                offered_at=apt.extension_offered_at,
+            )
+
     return ChatOut(
         id=str(session.id),
         conversation_id=session.conversation_id,
@@ -88,6 +107,8 @@ async def to_chat(session: ChatSession, viewer: User | None = None) -> ChatOut:
         end_reason=session.end_reason,
         created_at=session.created_at,
         billing=await _billing_of(session),
+        appointment_id=str(session.appointment_id) if getattr(session, "appointment_id", None) else None,
+        extension_offer=extension_offer,
     )
 
 

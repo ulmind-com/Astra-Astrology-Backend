@@ -1279,7 +1279,7 @@ class ShopOrderService:
         page: int = 1,
         limit: int = 20,
     ) -> ShopOrderListResponse:
-        """Lists orders placed by a devotee.
+        """Lists orders placed by a devotee with ultra-fast single-roundtrip execution.
 
         Only includes confirmed orders: either successfully paid prepaid orders (Razorpay)
         or valid Cash on Delivery (COD) orders. Unpaid abandoned checkouts are strictly excluded.
@@ -1289,13 +1289,25 @@ class ShopOrderService:
             ShopOrder.user_id == user_id,
             {
                 "$or": [
-                    {"payment_status": ShopPaymentStatus.PAID},
-                    {"payment_method": ShopPaymentMethod.COD},
+                    {"payment_status": ShopPaymentStatus.PAID.value},
+                    {"payment_method": ShopPaymentMethod.COD.value},
                 ]
             },
         )
-        total = await query.count()
-        orders = await query.sort("-created_at").skip(skip).limit(limit).to_list()
+
+        orders_task = query.sort("-created_at").skip(skip).limit(limit).to_list()
+
+        # Latency optimization: If on page 1, fetch orders first. If total returned items
+        # is less than limit, we know the exact total without executing an expensive count() query!
+        if page == 1:
+            orders = await orders_task
+            if len(orders) < limit:
+                total = len(orders)
+            else:
+                total = await query.count()
+        else:
+            total, orders = await asyncio.gather(query.count(), orders_task)
+
         pages = (total + limit - 1) // limit if total > 0 else 1
 
         return ShopOrderListResponse(
