@@ -105,32 +105,59 @@ async def get_public_product_detail(id_or_slug: str) -> ApiResponse[ProductOut]:
     summary="Get active store hero banners, announcements and reels",
 )
 async def get_public_banners() -> ApiResponse[ShopBannerSettingsOut]:
-    settings = await shop_admin.get_shop_banner_settings()
-    active_banners = [b for b in settings.hero_banners if b.is_active]
-    active_reels = [r for r in settings.reels if r.is_active]
-    return ApiResponse.ok(
-        data=ShopBannerSettingsOut(
-            announcement_bar_text=settings.announcement_bar_text if settings.announcement_bar_active else None,
-            announcement_bar_link=settings.announcement_bar_link if settings.announcement_bar_active else None,
-            announcement_bar_active=settings.announcement_bar_active,
-            hero_banners=active_banners,
-            reels=active_reels,
-            cashback_enabled=settings.cashback_enabled,
-            cashback_percent=settings.cashback_percent,
-            cashback_credit_timing=settings.cashback_credit_timing,
-            allow_user_cancellation=settings.allow_user_cancellation,
-            cancellation_grace_hours=settings.cancellation_grace_hours,
-            cod_enabled=settings.cod_enabled,
-            free_shipping_threshold=settings.free_shipping_threshold,
-            standard_shipping_fee=settings.standard_shipping_fee,
-            free_gift_enabled=settings.free_gift_enabled,
-            free_gift_min_cart_value=settings.free_gift_min_cart_value,
-            free_gift_default_title=settings.free_gift_default_title,
-            free_gift_default_value=settings.free_gift_default_value,
-            free_gift_default_badge=settings.free_gift_default_badge,
-            free_gift_default_image_url=settings.free_gift_default_image_url,
+    try:
+        settings = await shop_admin.get_shop_banner_settings()
+        active_banners = [b for b in settings.hero_banners if b.is_active]
+        active_reels = [r for r in settings.reels if r.is_active]
+        return ApiResponse.ok(
+            data=ShopBannerSettingsOut(
+                announcement_bar_text=settings.announcement_bar_text if settings.announcement_bar_active else None,
+                announcement_bar_link=settings.announcement_bar_link if settings.announcement_bar_active else None,
+                announcement_bar_active=settings.announcement_bar_active,
+                hero_banners=active_banners,
+                reels=active_reels,
+                cashback_enabled=settings.cashback_enabled,
+                cashback_percent=settings.cashback_percent,
+                cashback_credit_timing=settings.cashback_credit_timing,
+                allow_user_cancellation=settings.allow_user_cancellation,
+                cancellation_grace_hours=settings.cancellation_grace_hours,
+                cod_enabled=settings.cod_enabled,
+                free_shipping_threshold=settings.free_shipping_threshold,
+                standard_shipping_fee=settings.standard_shipping_fee,
+                free_gift_enabled=getattr(settings, "free_gift_enabled", True),
+                free_gift_min_cart_value=getattr(settings, "free_gift_min_cart_value", 0.0),
+                free_gift_default_title=getattr(settings, "free_gift_default_title", "Raw Selenite Charging Plate"),
+                free_gift_default_value=getattr(settings, "free_gift_default_value", 729.0),
+                free_gift_default_badge=getattr(settings, "free_gift_default_badge", "FREE Raw Selenite Plate worth ₹729"),
+                free_gift_default_image_url=getattr(settings, "free_gift_default_image_url", None),
+            )
         )
-    )
+    except Exception as exc:
+        logger.warning("MongoDB read failed for banners ({}); serving default fallback banners.", exc)
+        return ApiResponse.ok(
+            data=ShopBannerSettingsOut(
+                announcement_bar_text=None,
+                announcement_bar_link=None,
+                announcement_bar_active=False,
+                hero_banners=shop_admin.default_shop_hero_banners(),
+                reels=shop_admin.default_shop_reels(),
+                cashback_enabled=True,
+                cashback_percent=100,
+                cashback_credit_timing="on_delivery",
+                allow_user_cancellation=True,
+                cancellation_grace_hours=24,
+                cod_enabled=True,
+                free_shipping_threshold=499.0,
+                standard_shipping_fee=70.0,
+                free_gift_enabled=True,
+                free_gift_min_cart_value=0.0,
+                free_gift_default_title="Raw Selenite Charging Plate",
+                free_gift_default_value=729.0,
+                free_gift_default_badge="FREE Raw Selenite Plate worth ₹729",
+                free_gift_default_image_url=None,
+            )
+        )
+        )
 
 
 @router.get(

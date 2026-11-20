@@ -134,6 +134,20 @@ def register_exception_handlers(app: FastAPI) -> None:
             headers=_cors_headers(request),
         )
 
+    from pymongo.errors import PyMongoError
+
+    @app.exception_handler(PyMongoError)
+    async def _mongo_error_handler(request: Request, exc: PyMongoError) -> JSONResponse:
+        logger.error("Database error on {} {}: {}", request.method, request.url.path, exc)
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content=_error_body(
+                "Database temporarily unavailable. Please retry in a few seconds.",
+                "database_unavailable",
+            ),
+            headers=_cors_headers(request),
+        )
+
     @app.exception_handler(Exception)
     async def _unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:
         logger.opt(exception=exc).error(

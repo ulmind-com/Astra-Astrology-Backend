@@ -722,10 +722,18 @@ async def get_inventory_summary() -> InventorySummaryResponse:
 
 async def get_shop_banner_settings() -> ShopBannerSettingsOut:
     """Returns store announcement bar, marquee, cashback, free gift, and hero carousel configurations."""
-    cms = await ShopCMS.find_one(ShopCMS.key == CMS_KEY_SHOP)
+    cms = None
+    try:
+        cms = await ShopCMS.find_one({"$or": [{"key": CMS_KEY_SHOP}, {"key": "shop_cms"}]})
+    except Exception as exc:
+        logger.warning("Could not read ShopCMS from DB: {}", exc)
+
     if not cms:
         cms = ShopCMS(key=CMS_KEY_SHOP)
-        await cms.insert()
+        try:
+            await cms.insert()
+        except Exception:
+            pass
 
     banners = cms.hero_banners if cms.hero_banners else default_shop_hero_banners()
     reels = getattr(cms, "reels", None)

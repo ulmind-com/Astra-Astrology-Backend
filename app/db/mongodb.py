@@ -73,6 +73,7 @@ async def connect_to_mongo() -> bool:
     try:
         _client = AsyncMongoClient(
             settings.MONGODB_URI,
+            readPreference="primaryPreferred",
             maxPoolSize=settings.MONGODB_MAX_POOL_SIZE,
             minPoolSize=settings.MONGODB_MIN_POOL_SIZE,
             maxIdleTimeMS=settings.MONGODB_MAX_IDLE_TIME_MS,
@@ -112,7 +113,12 @@ async def close_mongo_connection() -> None:
 async def ping(timeout: float | None = None) -> bool:
     """Bounded liveness check. Never raises, so a health check can't hang."""
     if _client is None:
-        return False
+        try:
+            await connect_to_mongo()
+        except Exception:
+            return False
+        if _client is None:
+            return False
 
     budget = timeout if timeout is not None else settings.HEALTH_DB_TIMEOUT_SECONDS
     try:
