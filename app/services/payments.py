@@ -410,9 +410,23 @@ async def _dispatch(event: str, body: dict[str, Any]) -> str:
 
         order = await PaymentOrder.find_one(PaymentOrder.razorpay_order_id == order_id)
         if order is None:
-            # Not a wallet recharge. It may be a course purchase, which has
-            # its own orders — and which the webhook is the only reliable way
-            # to settle, since the browser may never come back from checkout.
+            # 1. Check if it is a shop order
+            from app.models.shop import ShopOrder
+            shop_order = await ShopOrder.find_one(ShopOrder.razorpay_order_id == order_id)
+            if shop_order is not None:
+                if payment.get("status") != "captured":
+                    return "awaiting_capture"
+                payment_id = payment.get("id") or f"webhook_{order_id}"
+                from app.services.shop_order_service import ShopOrderService
+                result = await ShopOrderService.confirm_order_from_webhook(
+                    order=shop_order,
+                    payment_id=payment_id,
+                    payment=payment,
+                )
+                logger.info("Shop order {} processed from webhook with result: {}", shop_order.order_number, result)
+                return f"shop_order_{result}"
+
+            # 2. Check if it is a course purchase
             from app.services.course_service import CourseService
 
             if payment.get("status") != "captured":
@@ -440,8 +454,18 @@ async def _dispatch(event: str, body: dict[str, Any]) -> str:
             else None
         )
         if order is None and order_id:
-            # A course purchase that failed. Recording it is what lets support
-            # answer "I tried to pay and nothing happened".
+            # 1. Check shop order failure
+            from app.models.shop import ShopOrder
+            shop_order = await ShopOrder.find_one(ShopOrder.razorpay_order_id == order_id)
+            if shop_order is not None:
+                from app.services.shop_order_service import ShopOrderService
+                await ShopOrderService.handle_payment_failure_from_webhook(
+                    order=shop_order,
+                    payment=payment,
+                )
+                return "shop_order_marked_failed"
+
+            # 2. A course purchase that failed
             from app.services.course_service import CourseService
 
             return await CourseService.fail_course_order(

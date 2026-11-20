@@ -520,12 +520,14 @@ class ShopOrderService:
                     {"$inc": {"usage_count": 1}},
                 )
 
-            # Clear persistent server-side cart for user upon successful order placement
-            try:
-                from app.services import shop_cart_service
-                await shop_cart_service.clear_cart(user_id)
-            except Exception as cart_err:
-                logger.warning("Non-blocking: Failed to auto-clear server cart for user {}: {}", user_id, cart_err)
+            # Clear persistent server-side cart for user upon successful order placement (COD only)
+            # For prepaid (Razorpay), the cart is safely retained until payment is confirmed to prevent empty cart errors
+            if payload.payment_method == ShopPaymentMethod.COD:
+                try:
+                    from app.services import shop_cart_service
+                    await shop_cart_service.clear_cart(user_id)
+                except Exception as cart_err:
+                    logger.warning("Non-blocking: Failed to auto-clear server cart for user {}: {}", user_id, cart_err)
             logger.info(
                 "Created Shop Order '{}' (grand_total=₹{}, payment_method={}, cashback_coins={})",
                 order.order_number,
@@ -573,8 +575,10 @@ class ShopOrderService:
         payload: ShopPaymentVerifyRequest,
     ) -> ShopOrderOut:
         """Verifies Razorpay HMAC signature, marks order paid, and executes 100% Wallet Cashback."""
-        order = await ShopOrder.find_one(ShopOrder.razorpay_order_id == payload.razorpay_order_id)
-        if not order:
+        order = None
+        if payload.razorpay_order_id:
+            order = await ShopOrder.find_one(ShopOrder.razorpay_order_id == payload.razorpay_order_id)
+        if not order and payload.order_id:
             try:
                 order = await ShopOrder.get(PydanticObjectId(payload.order_id))
             except Exception:
@@ -586,11 +590,20 @@ class ShopOrderService:
         if order.user_id != user_id:
             raise ForbiddenError("You are not authorized to verify this order.")
 
+        # Idempotency check: if order was already confirmed/paid (e.g. by webhook)
+        if order.payment_status == ShopPaymentStatus.PAID:
+            logger.info("Shop order '{}' already verified/paid. Returning idempotent output.", order.order_number)
+            return cls._order_to_out(order)
+
         # Signature check
         if settings.razorpay_configured:
+            rzp_order_id = payload.razorpay_order_id or order.razorpay_order_id
+            if not rzp_order_id:
+                raise BadRequestError("Razorpay order ID is missing for verification.")
+
             expected = hmac.new(
                 settings.RAZORPAY_KEY_SECRET.encode(),
-                f"{payload.razorpay_order_id}|{payload.razorpay_payment_id}".encode(),
+                f"{rzp_order_id}|{payload.razorpay_payment_id}".encode(),
                 hashlib.sha256,
             ).hexdigest()
             if not hmac.compare_digest(expected, payload.razorpay_signature):
@@ -704,7 +717,141 @@ class ShopOrderService:
             )
 
         await order.save()
+
+        # Clear persistent server-side cart for user upon confirmed payment
+        try:
+            from app.services import shop_cart_service
+            await shop_cart_service.clear_cart(order.user_id)
+        except Exception as cart_err:
+            logger.warning("Non-blocking: Failed to auto-clear server cart for user {}: {}", order.user_id, cart_err)
+
         return cls._order_to_out(order)
+
+    @classmethod
+    async def confirm_order_from_webhook(
+        cls,
+        order: ShopOrder,
+        payment_id: str,
+        payment: dict[str, Any],
+    ) -> str:
+        """Called by Razorpay webhook when payment is captured for a ShopOrder."""
+        if order.payment_status == ShopPaymentStatus.PAID:
+            return "already_paid"
+
+        # Check late payment/expiration
+        if order.order_status == ShopOrderStatus.EXPIRED or order.is_stock_restored:
+            reclaimed_items: list[tuple[PydanticObjectId, int]] = []
+            can_reclaim_all = True
+            for it in order.items:
+                res = await Product.get_pymongo_collection().update_one(
+                    {"_id": it.product_id, "stock_quantity": {"$gte": it.quantity}, "is_active": True},
+                    {"$inc": {"stock_quantity": -it.quantity}},
+                )
+                if res.modified_count == 0:
+                    can_reclaim_all = False
+                    break
+                reclaimed_items.append((it.product_id, it.quantity))
+
+            if can_reclaim_all:
+                order.is_stock_restored = False
+                order.stock_restored_at = None
+                order.stock_reserved_until = None
+                order.order_status = ShopOrderStatus.CONFIRMED
+            else:
+                for r_id, r_qty in reclaimed_items:
+                    await Product.get_pymongo_collection().update_one(
+                        {"_id": r_id},
+                        {"$inc": {"stock_quantity": r_qty}},
+                    )
+                order.payment_status = ShopPaymentStatus.PAID
+                order.paid_at = datetime.now(UTC)
+                order.razorpay_payment_id = payment_id
+                order.order_status = ShopOrderStatus.CANCELLED
+                order.cancellation_reason = "Payment captured after checkout timeout, but stock is now exhausted. Auto-refund required."
+                order.status_history.append(
+                    OrderStatusLog(
+                        status=ShopOrderStatus.CANCELLED,
+                        notes=order.cancellation_reason,
+                    )
+                )
+                await order.save()
+                return "stock_exhausted_cancelled"
+
+        order.stock_reserved_until = None
+        order.payment_status = ShopPaymentStatus.PAID
+        order.paid_at = datetime.now(UTC)
+        order.razorpay_payment_id = payment_id
+        order.order_status = ShopOrderStatus.CONFIRMED
+        order.status_history.append(
+            OrderStatusLog(
+                status=ShopOrderStatus.CONFIRMED,
+                notes=f"Payment captured via webhook (ID: {payment_id}). Queued for Varanasi consecration.",
+            )
+        )
+
+        cms = await ShopCMS.find_one({"$or": [{"key": CMS_KEY_SHOP}, {"key": "shop_cms"}]})
+        cashback_timing = getattr(cms, "cashback_credit_timing", "on_delivery") if cms else "on_delivery"
+
+        if cashback_timing == "on_payment":
+            if order.cashback_coins_eligible > 0 and order.cashback_coins_credited == 0:
+                cb_idempotency = f"shop_cashback_{order.order_number}"
+                try:
+                    txn, was_created = await wallet_service.credit(
+                        user_id=order.user_id,
+                        amount_coins=order.cashback_coins_eligible,
+                        reason=TransactionReason.SHOP_CASHBACK,
+                        idempotency_key=cb_idempotency,
+                        ref=TransactionRef(
+                            razorpay_payment_id=payment_id,
+                            shop_order_id=order.id,
+                            shop_order_number=order.order_number,
+                        ),
+                        note=f"100% Cashback for Sacred Remedy Order #{order.order_number}",
+                    )
+                    order.cashback_coins_credited = order.cashback_coins_eligible
+                    order.cashback_credited_at = datetime.now(UTC)
+                    order.cashback_transaction_id = txn.id
+                except Exception as e:
+                    logger.error("Failed to credit cashback for order {}: {}", order.order_number, e)
+        else:
+            order.status_history.append(
+                OrderStatusLog(
+                    status=ShopOrderStatus.CONFIRMED,
+                    notes=f"100% Cashback benefit of {order.cashback_coins_eligible} coins reserved. Coins will be credited to wallet upon safe doorstep delivery.",
+                )
+            )
+
+        await order.save()
+
+        # Clear server cart
+        try:
+            from app.services import shop_cart_service
+            await shop_cart_service.clear_cart(order.user_id)
+        except Exception:
+            pass
+
+        return "confirmed"
+
+    @classmethod
+    async def handle_payment_failure_from_webhook(
+        cls,
+        order: ShopOrder,
+        payment: dict[str, Any],
+    ) -> str:
+        """Called by Razorpay webhook when payment.failed is received for a ShopOrder."""
+        if order.payment_status == ShopPaymentStatus.PAID:
+            return "already_paid_ignore_failure"
+
+        order.payment_status = ShopPaymentStatus.FAILED
+        failure_msg = payment.get("error_description") or payment.get("error_reason") or "Payment failed on payment gateway"
+        order.status_history.append(
+            OrderStatusLog(
+                status=order.order_status,
+                notes=f"Payment failed: {failure_msg}",
+            )
+        )
+        await order.save()
+        return "marked_failed"
 
     @classmethod
     async def cancel_order(
