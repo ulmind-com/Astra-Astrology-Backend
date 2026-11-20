@@ -292,7 +292,7 @@ class UpdateBTRRequest(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     timezone_offset: float | None = None
-    notes: str | None = Field(default=None, max_length=500)
+    notes: str | None = Field(default=None, max_length=2000)
 
 
 class BlacklistedClientOut(BaseModel):

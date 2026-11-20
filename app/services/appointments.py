@@ -2609,21 +2609,42 @@ async def update_birth_time_rectification(
     if appointment is None:
         raise NotFoundError("Appointment not found.", error_code="appointment_not_found")
 
-    if by.id != appointment.user_id and getattr(by, "role", None) != "admin":
+    if (
+        by.id != appointment.user_id
+        and by.id != appointment.astrologer_user_id
+        and getattr(by, "role", None) not in ("admin", "super_admin")
+    ):
         raise ForbiddenError("Not authorized to update birth details for this appointment.")
 
     if appointment.status != AppointmentStatus.BOOKED:
         raise BadRequestError("Birth details can only be updated for active bookings.", error_code="appointment_not_booked")
 
     existing_details = appointment.birth_details or {}
+
+    lat = latitude if latitude is not None else existing_details.get("latitude")
+    lon = longitude if longitude is not None else existing_details.get("longitude")
+    tz_off = timezone_offset if timezone_offset is not None else existing_details.get("timezone_offset")
+
+    if (lat is None or lon is None) and birth_place:
+        try:
+            from app.services.astrology.geocoder import geocode_place
+
+            results = await geocode_place(birth_place)
+            if results and len(results) > 0:
+                lat = float(results[0]["latitude"])
+                lon = float(results[0]["longitude"])
+                tz_off = float(results[0].get("timezone") or 5.5)
+        except Exception as exc:
+            logger.warning("Auto-geocoding for BTR birth place '{}' failed: {}", birth_place, exc)
+
     updated_details = {
         **existing_details,
         "date_of_birth": birth_date,
         "time_of_birth": birth_time,
         "place_of_birth": birth_place,
-        "latitude": latitude if latitude is not None else existing_details.get("latitude"),
-        "longitude": longitude if longitude is not None else existing_details.get("longitude"),
-        "timezone_offset": timezone_offset if timezone_offset is not None else existing_details.get("timezone_offset"),
+        "latitude": lat,
+        "longitude": lon,
+        "timezone_offset": tz_off,
         "rectified_by_client": True,
         "rectified_at": utcnow().isoformat(),
         "client_btr_notes": notes,
@@ -2634,6 +2655,33 @@ async def update_birth_time_rectification(
     appointment.btr_updated_at = utcnow()
     appointment.preflight_dossier = None
     await appointment.save()
+
+    # Synchronize to client's saved profile if available
+    try:
+        client_user = await User.get(appointment.user_id)
+        if client_user:
+            dob_parsed = None
+            for fmt in ("%Y-%m-%d", "%d-%m-%Y"):
+                try:
+                    dob_parsed = datetime.strptime(birth_date.strip(), fmt).date()
+                    break
+                except ValueError:
+                    pass
+            if dob_parsed:
+                from app.models.profile import BirthDetails
+
+                client_user.birth = BirthDetails(
+                    date_of_birth=dob_parsed,
+                    time_of_birth=birth_time,
+                    is_time_known=True,
+                    place=birth_place,
+                    latitude=lat,
+                    longitude=lon,
+                    timezone_offset=tz_off,
+                )
+                await client_user.save()
+    except Exception as exc:
+        logger.warning("Could not sync rectified BTR birth details to user profile: {}", exc)
 
     # Notify astrologer via email
     try:
