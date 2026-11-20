@@ -36,10 +36,11 @@ class Settings(BaseSettings):
     MONGODB_DB_NAME: str = "astra_astrology"
     MONGODB_MAX_POOL_SIZE: int = 100
     MONGODB_MIN_POOL_SIZE: int = 0
-    MONGODB_CONNECT_TIMEOUT_MS: int = 10_000
-    MONGODB_SERVER_SELECTION_TIMEOUT_MS: int = 8_000
-    MONGODB_SOCKET_TIMEOUT_MS: int = 15_000
-    MONGODB_MAX_IDLE_TIME_MS: int = 40_000
+    MONGODB_CONNECT_TIMEOUT_MS: int = 5_000
+    MONGODB_SERVER_SELECTION_TIMEOUT_MS: int = 5_000
+    MONGODB_SOCKET_TIMEOUT_MS: int = 10_000
+    MONGODB_MAX_IDLE_TIME_MS: int = 10_000
+    MONGODB_HEARTBEAT_FREQUENCY_MS: int = 10_000
 
     # ------------------------------------------------------------- health
     # Keep the health check fast so uptime monitors never time out on it.

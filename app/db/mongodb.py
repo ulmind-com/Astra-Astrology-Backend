@@ -71,6 +71,8 @@ async def connect_to_mongo() -> bool:
     # Building the client is inside the try as well: a malformed URI raises here,
     # not on the first query, and that must not take the whole app down.
     try:
+        from pymongo import ReadPreference
+
         _client = AsyncMongoClient(
             settings.MONGODB_URI,
             readPreference="primaryPreferred",
@@ -80,12 +82,16 @@ async def connect_to_mongo() -> bool:
             socketTimeoutMS=settings.MONGODB_SOCKET_TIMEOUT_MS,
             serverSelectionTimeoutMS=settings.MONGODB_SERVER_SELECTION_TIMEOUT_MS,
             connectTimeoutMS=settings.MONGODB_CONNECT_TIMEOUT_MS,
+            heartbeatFrequencyMS=getattr(settings, "MONGODB_HEARTBEAT_FREQUENCY_MS", 10_000),
             retryWrites=True,
             retryReads=True,
             tz_aware=True,
             uuidRepresentation="standard",
         )
-        _database = _client[settings.MONGODB_DB_NAME]
+        _database = _client.get_database(
+            settings.MONGODB_DB_NAME,
+            read_preference=ReadPreference.PRIMARY_PREFERRED,
+        )
 
         await _client.admin.command("ping")
         await _init_models()

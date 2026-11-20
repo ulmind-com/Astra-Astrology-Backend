@@ -134,11 +134,27 @@ def register_exception_handlers(app: FastAPI) -> None:
             headers=_cors_headers(request),
         )
 
-    from pymongo.errors import PyMongoError
+    from pymongo.errors import PyMongoError, ServerSelectionTimeoutError, NetworkTimeout, AutoReconnect
 
     @app.exception_handler(PyMongoError)
     async def _mongo_error_handler(request: Request, exc: PyMongoError) -> JSONResponse:
-        logger.error("Database error on {} {}: {}", request.method, request.url.path, exc)
+        # Check if this is a transient replica set election / network reconnect
+        is_transient = isinstance(exc, (ServerSelectionTimeoutError, NetworkTimeout, AutoReconnect))
+        if is_transient:
+            logger.warning(
+                "Transient database failover/reconnect on {} {}: {} (initiating self-healing ping)",
+                request.method,
+                request.url.path,
+                exc,
+            )
+            try:
+                from app.db.mongodb import ping
+                asyncio.create_task(ping(timeout=3.0))
+            except Exception:
+                pass
+        else:
+            logger.error("Database error on {} {}: {}", request.method, request.url.path, exc)
+
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content=_error_body(
