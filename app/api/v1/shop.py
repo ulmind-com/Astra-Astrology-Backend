@@ -246,6 +246,19 @@ async def shop_checkout(
 
 
 @router.post(
+    "/checkout/{order_id}/abort",
+    response_model=ApiResponse[dict[str, bool]],
+    summary="Abort unpaid checkout attempt and immediately release reserved inventory stock",
+)
+async def abort_shop_checkout(
+    order_id: str,
+    user: CurrentUser,
+) -> ApiResponse[dict[str, bool]]:
+    success = await ShopOrderService.abort_checkout(order_id=order_id, user_id=user.id)
+    return ApiResponse.ok(data={"success": success, "aborted": True})
+
+
+@router.post(
     "/verify-payment",
     response_model=ApiResponse[ShopOrderOut],
     summary="Verify Razorpay payment signature and execute instant 100% wallet cashback credit",

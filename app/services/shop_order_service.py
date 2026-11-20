@@ -842,16 +842,113 @@ class ShopOrderService:
         if order.payment_status == ShopPaymentStatus.PAID:
             return "already_paid_ignore_failure"
 
+        # Restore reserved stock immediately if not yet restored
+        if not order.is_stock_restored:
+            for it in order.items:
+                await Product.get_pymongo_collection().update_one(
+                    {"_id": it.product_id},
+                    {"$inc": {"stock_quantity": it.quantity}},
+                )
+            order.is_stock_restored = True
+            order.stock_restored_at = datetime.now(UTC)
+
+        order.stock_reserved_until = None
         order.payment_status = ShopPaymentStatus.FAILED
+        order.order_status = ShopOrderStatus.CANCELLED
         failure_msg = payment.get("error_description") or payment.get("error_reason") or "Payment failed on payment gateway"
+        order.cancellation_reason = f"Payment failed on gateway: {failure_msg}"
         order.status_history.append(
             OrderStatusLog(
-                status=order.order_status,
-                notes=f"Payment failed: {failure_msg}",
+                status=ShopOrderStatus.CANCELLED,
+                notes=f"Payment failed: {failure_msg}. Reserved inventory released back to catalog.",
             )
         )
+        if order.coupon_code:
+            await ShopCoupon.get_pymongo_collection().update_one(
+                {"code": order.coupon_code, "usage_count": {"$gt": 0}},
+                {"$inc": {"usage_count": -1}},
+            )
         await order.save()
         return "marked_failed"
+
+    @classmethod
+    async def abort_checkout(
+        cls,
+        order_id: str,
+        user_id: PydanticObjectId,
+    ) -> bool:
+        """Atomically aborts an unpaid Razorpay checkout attempt when devotee closes the payment modal,
+
+        immediately releases the reserved inventory stock, cancels the draft order, and keeps
+        devotee cart intact for retry or COD.
+        """
+        order = None
+        try:
+            oid = PydanticObjectId(order_id)
+            order = await ShopOrder.get(oid)
+        except Exception:
+            pass
+
+        if not order:
+            order = await ShopOrder.find_one(ShopOrder.order_number == order_id)
+
+        if not order:
+            logger.warning("Abort checkout: order '{}' not found", order_id)
+            return False
+
+        if order.user_id != user_id:
+            raise ForbiddenError("Not authorized to abort this checkout.")
+
+        # If already paid, do not abort
+        if order.payment_status == ShopPaymentStatus.PAID:
+            logger.info("Cannot abort already paid order '{}'", order.order_number)
+            return False
+
+        # If already cancelled or expired, ensure stock is restored and return
+        if order.order_status in (ShopOrderStatus.CANCELLED, ShopOrderStatus.EXPIRED):
+            if not order.is_stock_restored:
+                for it in order.items:
+                    await Product.get_pymongo_collection().update_one(
+                        {"_id": it.product_id},
+                        {"$inc": {"stock_quantity": it.quantity}},
+                    )
+                order.is_stock_restored = True
+                order.stock_restored_at = datetime.now(UTC)
+                await order.save()
+            return True
+
+        # Atomically restore inventory stock to active warehouse catalog
+        if not order.is_stock_restored:
+            for it in order.items:
+                await Product.get_pymongo_collection().update_one(
+                    {"_id": it.product_id},
+                    {"$inc": {"stock_quantity": it.quantity}},
+                )
+            order.is_stock_restored = True
+            order.stock_restored_at = datetime.now(UTC)
+
+        order.stock_reserved_until = None
+        order.order_status = ShopOrderStatus.CANCELLED
+        order.payment_status = ShopPaymentStatus.FAILED
+        order.cancellation_reason = "Devotee cancelled payment at checkout modal."
+        order.status_history.append(
+            OrderStatusLog(
+                status=ShopOrderStatus.CANCELLED,
+                notes="Devotee closed Razorpay payment modal without completing transaction. Reserved stock released back to inventory.",
+                updated_by=user_id,
+            )
+        )
+
+        # Revert coupon usage count if applied
+        if order.coupon_code:
+            await ShopCoupon.get_pymongo_collection().update_one(
+                {"code": order.coupon_code, "usage_count": {"$gt": 0}},
+                {"$inc": {"usage_count": -1}},
+            )
+
+        await order.save()
+        logger.info("Successfully aborted unpaid checkout for order '{}', stock restored.", order.order_number)
+        return True
 
     @classmethod
     async def cancel_order(
@@ -1190,9 +1287,21 @@ class ShopOrderService:
         page: int = 1,
         limit: int = 20,
     ) -> ShopOrderListResponse:
-        """Lists orders placed by a devotee."""
+        """Lists orders placed by a devotee.
+
+        Only includes confirmed orders: either successfully paid prepaid orders (Razorpay)
+        or valid Cash on Delivery (COD) orders. Unpaid abandoned checkouts are strictly excluded.
+        """
         skip = (page - 1) * limit
-        query = ShopOrder.find(ShopOrder.user_id == user_id)
+        query = ShopOrder.find(
+            ShopOrder.user_id == user_id,
+            {
+                "$or": [
+                    {"payment_status": ShopPaymentStatus.PAID},
+                    {"payment_method": ShopPaymentMethod.COD},
+                ]
+            },
+        )
         total = await query.count()
         orders = await query.sort("-created_at").skip(skip).limit(limit).to_list()
         pages = (total + limit - 1) // limit if total > 0 else 1
@@ -1230,7 +1339,7 @@ class ShopOrderService:
     @classmethod
     async def list_admin_orders(
         cls,
-        status: ShopOrderStatus | None = None,
+        status: str | None = None,
         payment_status: ShopPaymentStatus | None = None,
         refund_status: ShopRefundStatus | None = None,
         search: str | None = None,
@@ -1241,8 +1350,36 @@ class ShopOrderService:
         skip = (page - 1) * limit
         filters: list[Any] = []
 
-        if status:
+        if status == "abandoned":
+            # Specific view for abandoned or cancelled unpaid Razorpay checkouts
+            filters.append(ShopOrder.payment_method == ShopPaymentMethod.RAZORPAY)
+            filters.append(ShopOrder.payment_status != ShopPaymentStatus.PAID)
+            filters.append({
+                "$or": [
+                    {"order_status": {"$in": [ShopOrderStatus.CANCELLED, ShopOrderStatus.EXPIRED, ShopOrderStatus.PLACED]}},
+                    {"payment_status": {"$in": [ShopPaymentStatus.PENDING, ShopPaymentStatus.FAILED, ShopPaymentStatus.EXPIRED]}},
+                ]
+            })
+        elif status == ShopOrderStatus.PLACED or status == "placed":
+            # Real placed orders only: either confirmed COD, or paid
+            filters.append(ShopOrder.order_status == ShopOrderStatus.PLACED)
+            filters.append({
+                "$or": [
+                    {"payment_status": ShopPaymentStatus.PAID},
+                    {"payment_method": ShopPaymentMethod.COD},
+                ]
+            })
+        elif status:
             filters.append(ShopOrder.order_status == status)
+        else:
+            # Default "all" tab: show legitimate orders (PAID or COD), exclude phantom unpaid checkouts
+            filters.append({
+                "$or": [
+                    {"payment_status": ShopPaymentStatus.PAID},
+                    {"payment_method": ShopPaymentMethod.COD},
+                ]
+            })
+
         if payment_status:
             filters.append(ShopOrder.payment_status == payment_status)
         if refund_status:

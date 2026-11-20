@@ -348,7 +348,7 @@ async def update_store_banner_settings(
 )
 async def admin_list_shop_orders(
     admin: AdminUser = None,
-    status: ShopOrderStatus | None = Query(default=None),
+    status: str | None = Query(default=None),
     payment_status: ShopPaymentStatus | None = Query(default=None),
     refund_status: ShopRefundStatus | None = Query(default=None),
     search: str | None = Query(default=None),
