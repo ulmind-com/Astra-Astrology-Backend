@@ -51,7 +51,7 @@ def default_hero_slides() -> list[HeroSlideConfig]:
             cta_text="Consult for FREE",
             cta_link="/astrologers",
             badge_text="India's Best Astrology Platform",
-            badge_rating="4.9/5",
+            badge_rating="Certified",
             image_url="/images/hero/hero-couple-exploring.png",
             bg_gradient="from-[#fffbf0] via-[#fff8dc] to-[#fceeb5]",
             border_color="border-[#ebd881]",
@@ -64,7 +64,7 @@ def default_hero_slides() -> list[HeroSlideConfig]:
             cta_text="Generate Free Kundli",
             cta_link="/kundli",
             badge_text="100% Free & Accurate Kundli",
-            badge_rating="500k+ Created",
+            badge_rating="Swiss Ephemeris",
             image_url="/images/hero/hero-parchment-kundli.png",
             bg_gradient="from-[#fff9e6] via-[#fff3cc] to-[#fde5a3]",
             border_color="border-[#e8ce6b]",
@@ -135,9 +135,9 @@ def default_hero_cards() -> list[HeroCardConfig]:
 
 def default_trust_stats() -> list[TrustStatConfig]:
     return [
-        TrustStatConfig(value="500+", label="VERIFIED ASTROLOGERS"),
-        TrustStatConfig(value="50K+", label="HAPPY CONSULTATIONS"),
-        TrustStatConfig(value="4.8★", label="AVERAGE CLIENT RATING"),
+        TrustStatConfig(value="100%", label="VERIFIED JYOTISHIS"),
+        TrustStatConfig(value="SWISS", label="EPHEMERIS PRECISION"),
+        TrustStatConfig(value="24×7", label="PRIVATE & ENCRYPTED"),
     ]
 
 
