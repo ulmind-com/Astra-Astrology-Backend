@@ -294,20 +294,8 @@ class ShopOrderService:
                 )
             )
 
-        # Threshold-based complimentary gift (admin-configurable in Store CMS):
-        # a single order-level gift is granted when the gift offer is enabled and
-        # the cart subtotal reaches the configured minimum. No hardcoded promo.
-        gift_enabled = getattr(cms, "free_gift_enabled", True) if cms else False
-        gift_min_value = getattr(cms, "free_gift_min_cart_value", 499.0) if cms else 499.0
-        gift_title = getattr(cms, "free_gift_default_title", None) if cms else None
-        if gift_enabled and gift_title and subtotal >= gift_min_value:
-            bundled_gifts.append({
-                "title": gift_title,
-                "value": getattr(cms, "free_gift_default_value", 0.0),
-                "badge": getattr(cms, "free_gift_default_badge", None),
-                "image_url": getattr(cms, "free_gift_default_image_url", None),
-                "reason": f"Complimentary gift for orders above ₹{int(gift_min_value)}",
-            })
+        # Free gifts are disabled per business policy (no free gifts bundled on orders)
+        # bundled_gifts remains empty
 
         # 3. Coupons & Discounts (Strict Enforcement)
         discount_amount = 0.0

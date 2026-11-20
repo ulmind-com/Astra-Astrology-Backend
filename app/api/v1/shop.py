@@ -124,11 +124,11 @@ async def get_public_banners() -> ApiResponse[ShopBannerSettingsOut]:
                 cod_enabled=settings.cod_enabled,
                 free_shipping_threshold=settings.free_shipping_threshold,
                 standard_shipping_fee=settings.standard_shipping_fee,
-                free_gift_enabled=getattr(settings, "free_gift_enabled", True),
+                free_gift_enabled=getattr(settings, "free_gift_enabled", False),
                 free_gift_min_cart_value=getattr(settings, "free_gift_min_cart_value", 0.0),
-                free_gift_default_title=getattr(settings, "free_gift_default_title", "Raw Selenite Charging Plate"),
-                free_gift_default_value=getattr(settings, "free_gift_default_value", 729.0),
-                free_gift_default_badge=getattr(settings, "free_gift_default_badge", "FREE Raw Selenite Plate worth ₹729"),
+                free_gift_default_title=getattr(settings, "free_gift_default_title", None),
+                free_gift_default_value=getattr(settings, "free_gift_default_value", 0.0),
+                free_gift_default_badge=getattr(settings, "free_gift_default_badge", None),
                 free_gift_default_image_url=getattr(settings, "free_gift_default_image_url", None),
             )
         )
@@ -149,14 +149,13 @@ async def get_public_banners() -> ApiResponse[ShopBannerSettingsOut]:
                 cod_enabled=True,
                 free_shipping_threshold=499.0,
                 standard_shipping_fee=70.0,
-                free_gift_enabled=True,
+                free_gift_enabled=False,
                 free_gift_min_cart_value=0.0,
-                free_gift_default_title="Raw Selenite Charging Plate",
-                free_gift_default_value=729.0,
-                free_gift_default_badge="FREE Raw Selenite Plate worth ₹729",
+                free_gift_default_title=None,
+                free_gift_default_value=0.0,
+                free_gift_default_badge=None,
                 free_gift_default_image_url=None,
             )
-        )
         )
 
 

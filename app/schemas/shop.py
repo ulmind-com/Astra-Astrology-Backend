@@ -313,11 +313,11 @@ class ShopBannerSettingsUpdate(BaseModel):
     refund_sla_days: int = Field(default=3, ge=1, le=14)
 
     # Free Gift (threshold-based, admin configurable)
-    free_gift_enabled: bool = True
-    free_gift_min_cart_value: float = 499.0
-    free_gift_default_title: str = "Raw Selenite Charging Plate"
-    free_gift_default_value: float = 729.0
-    free_gift_default_badge: str = "FREE Raw Selenite Plate worth ₹729"
+    free_gift_enabled: bool = False
+    free_gift_min_cart_value: float = 0.0
+    free_gift_default_title: str | None = None
+    free_gift_default_value: float = 0.0
+    free_gift_default_badge: str | None = None
     free_gift_default_image_url: str | None = None
 
     # Logistics
@@ -364,11 +364,11 @@ class ShopBannerSettingsOut(BaseModel):
     refund_sla_days: int = 3
 
     # Free Gift (threshold-based, admin configurable)
-    free_gift_enabled: bool = True
-    free_gift_min_cart_value: float = 499.0
-    free_gift_default_title: str = "Raw Selenite Charging Plate"
-    free_gift_default_value: float = 729.0
-    free_gift_default_badge: str = "FREE Raw Selenite Plate worth ₹729"
+    free_gift_enabled: bool = False
+    free_gift_min_cart_value: float = 0.0
+    free_gift_default_title: str | None = None
+    free_gift_default_value: float = 0.0
+    free_gift_default_badge: str | None = None
     free_gift_default_image_url: str | None = None
 
     # Logistics & Anti-Abuse

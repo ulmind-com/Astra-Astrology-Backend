@@ -405,13 +405,13 @@ class ShopCMS(TimestampedDocument):
         description="Business days within which cancelled prepaid orders are refunded to customer UPI",
     )
 
-    # High-Value Free Gift (Admin Configurable, threshold-based)
-    free_gift_enabled: bool = Field(default=True, description="Master switch for the complimentary gift offer")
+    # High-Value Free Gift (Disabled by default)
+    free_gift_enabled: bool = Field(default=False, description="Master switch for the complimentary gift offer")
     free_gift_min_cart_value: float = Field(default=499.0, ge=0, description="Min cart subtotal in ₹ to unlock the free gift")
-    free_gift_default_title: str = "Raw Selenite Charging Plate"
-    free_gift_default_value: float = 729.0
-    free_gift_default_badge: str = "FREE Raw Selenite Plate worth ₹729"
-    free_gift_default_image_url: str | None = "https://images.unsplash.com/photo-1611591475879-166258f33cf2?w=600&auto=format&fit=crop&q=80"
+    free_gift_default_title: str | None = None
+    free_gift_default_value: float = 0.0
+    free_gift_default_badge: str | None = None
+    free_gift_default_image_url: str | None = None
 
     # Shipping & Logistics Controls
     free_shipping_threshold: float = Field(default=499.0, ge=0, description="Order subtotal threshold in ₹ for free shipping")
