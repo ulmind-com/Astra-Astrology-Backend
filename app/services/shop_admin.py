@@ -745,6 +745,8 @@ async def get_shop_banner_settings() -> ShopBannerSettingsOut:
         allow_user_cancellation=getattr(cms, "allow_user_cancellation", True),
         cancellation_grace_hours=getattr(cms, "cancellation_grace_hours", 24),
         refund_sla_days=getattr(cms, "refund_sla_days", 3),
+        free_gift_enabled=getattr(cms, "free_gift_enabled", True),
+        free_gift_min_cart_value=getattr(cms, "free_gift_min_cart_value", 499.0),
         free_gift_default_title=getattr(cms, "free_gift_default_title", "Raw Selenite Charging Plate"),
         free_gift_default_value=getattr(cms, "free_gift_default_value", 729.0),
         free_gift_default_badge=getattr(cms, "free_gift_default_badge", "FREE Raw Selenite Plate worth ₹729"),
@@ -790,6 +792,8 @@ async def update_shop_banner_settings(payload: ShopBannerSettingsUpdate) -> Shop
     cms.allow_user_cancellation = payload.allow_user_cancellation
     cms.cancellation_grace_hours = payload.cancellation_grace_hours
     cms.refund_sla_days = payload.refund_sla_days
+    cms.free_gift_enabled = payload.free_gift_enabled
+    cms.free_gift_min_cart_value = payload.free_gift_min_cart_value
     cms.free_gift_default_title = payload.free_gift_default_title
     cms.free_gift_default_value = payload.free_gift_default_value
     cms.free_gift_default_badge = payload.free_gift_default_badge

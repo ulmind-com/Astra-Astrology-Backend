@@ -312,7 +312,9 @@ class ShopBannerSettingsUpdate(BaseModel):
     cancellation_grace_hours: int = Field(default=24, ge=1, le=168)
     refund_sla_days: int = Field(default=3, ge=1, le=14)
 
-    # Free Gift Defaults
+    # Free Gift (threshold-based, admin configurable)
+    free_gift_enabled: bool = True
+    free_gift_min_cart_value: float = 499.0
     free_gift_default_title: str = "Raw Selenite Charging Plate"
     free_gift_default_value: float = 729.0
     free_gift_default_badge: str = "FREE Raw Selenite Plate worth ₹729"
@@ -361,7 +363,9 @@ class ShopBannerSettingsOut(BaseModel):
     cancellation_grace_hours: int = 24
     refund_sla_days: int = 3
 
-    # Free Gift Defaults
+    # Free Gift (threshold-based, admin configurable)
+    free_gift_enabled: bool = True
+    free_gift_min_cart_value: float = 499.0
     free_gift_default_title: str = "Raw Selenite Charging Plate"
     free_gift_default_value: float = 729.0
     free_gift_default_badge: str = "FREE Raw Selenite Plate worth ₹729"

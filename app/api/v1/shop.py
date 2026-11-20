@@ -123,6 +123,12 @@ async def get_public_banners() -> ApiResponse[ShopBannerSettingsOut]:
             cod_enabled=settings.cod_enabled,
             free_shipping_threshold=settings.free_shipping_threshold,
             standard_shipping_fee=settings.standard_shipping_fee,
+            free_gift_enabled=settings.free_gift_enabled,
+            free_gift_min_cart_value=settings.free_gift_min_cart_value,
+            free_gift_default_title=settings.free_gift_default_title,
+            free_gift_default_value=settings.free_gift_default_value,
+            free_gift_default_badge=settings.free_gift_default_badge,
+            free_gift_default_image_url=settings.free_gift_default_image_url,
         )
     )
 

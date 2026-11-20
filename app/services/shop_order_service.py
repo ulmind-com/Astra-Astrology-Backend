@@ -274,21 +274,6 @@ class ShopOrderService:
             line_total = round(product.sale_price * line.quantity, 2)
             subtotal += line_total
 
-            # Product-specific bundled free gift or default
-            gift_title = product.free_gift_title or (getattr(cms, "free_gift_default_title", "Raw Selenite Plate") if cms else "Raw Selenite Plate")
-            gift_val = product.free_gift_value or (getattr(cms, "free_gift_default_value", 729.0) if cms else 729.0)
-            gift_badge = product.free_gift_badge or (getattr(cms, "free_gift_default_badge", "FREE Raw Selenite Plate worth ₹729") if cms else "FREE Raw Selenite Plate worth ₹729")
-
-            # Attach free gift record
-            if gift_title and not any(g.get("title") == gift_title for g in bundled_gifts):
-                bundled_gifts.append({
-                    "title": gift_title,
-                    "value": gift_val,
-                    "badge": gift_badge,
-                    "image_url": getattr(product, "free_gift_image_url", None) or (getattr(cms, "free_gift_default_image_url", None) if cms else None),
-                    "reason": f"Complimentary gift with {product.title}",
-                })
-
             item_snapshots.append(
                 OrderItemSnapshot(
                     product_id=product.id,
@@ -302,12 +287,27 @@ class ShopOrderService:
                     quantity=line.quantity,
                     line_total=line_total,
                     weight_grams=getattr(product, "weight_grams", 100.0) or 100.0,
-                    free_gift_title=gift_title,
-                    free_gift_value=gift_val,
+                    free_gift_title=product.free_gift_title,
+                    free_gift_value=product.free_gift_value,
                     lab_certified=getattr(product, "lab_certified", True),
                     lab_certificate_number=getattr(product, "lab_certificate_number", None),
                 )
             )
+
+        # Threshold-based complimentary gift (admin-configurable in Store CMS):
+        # a single order-level gift is granted when the gift offer is enabled and
+        # the cart subtotal reaches the configured minimum. No hardcoded promo.
+        gift_enabled = getattr(cms, "free_gift_enabled", True) if cms else False
+        gift_min_value = getattr(cms, "free_gift_min_cart_value", 499.0) if cms else 499.0
+        gift_title = getattr(cms, "free_gift_default_title", None) if cms else None
+        if gift_enabled and gift_title and subtotal >= gift_min_value:
+            bundled_gifts.append({
+                "title": gift_title,
+                "value": getattr(cms, "free_gift_default_value", 0.0),
+                "badge": getattr(cms, "free_gift_default_badge", None),
+                "image_url": getattr(cms, "free_gift_default_image_url", None),
+                "reason": f"Complimentary gift for orders above ₹{int(gift_min_value)}",
+            })
 
         # 3. Coupons & Discounts (Strict Enforcement)
         discount_amount = 0.0
