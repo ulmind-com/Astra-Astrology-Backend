@@ -533,7 +533,7 @@ class ShopCheckoutResponse(BaseModel):
 
 class ShopPaymentVerifyRequest(BaseModel):
     order_id: str
-    razorpay_order_id: str
+    razorpay_order_id: str | None = None
     razorpay_payment_id: str
     razorpay_signature: str
 
