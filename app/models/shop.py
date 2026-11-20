@@ -468,6 +468,15 @@ class ShopOrder(TimestampedDocument):
         indexes = [
             pymongo.IndexModel([("order_number", pymongo.ASCENDING)], name="order_number_unique", unique=True),
             pymongo.IndexModel([("user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)], name="order_user_recent"),
+            pymongo.IndexModel(
+                [
+                    ("user_id", pymongo.ASCENDING),
+                    ("payment_status", pymongo.ASCENDING),
+                    ("payment_method", pymongo.ASCENDING),
+                    ("created_at", pymongo.DESCENDING),
+                ],
+                name="order_user_filter_idx",
+            ),
             pymongo.IndexModel([("razorpay_order_id", pymongo.ASCENDING)], name="order_rzp_order_idx"),
             pymongo.IndexModel([("razorpay_payment_id", pymongo.ASCENDING)], name="order_rzp_payment_idx"),
             pymongo.IndexModel([("order_status", pymongo.ASCENDING)], name="order_status_idx"),

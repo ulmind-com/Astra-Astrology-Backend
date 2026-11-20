@@ -583,6 +583,10 @@ class ShopOrderService:
                 order = await ShopOrder.get(PydanticObjectId(payload.order_id))
             except Exception:
                 pass
+        if not order and payload.order_id:
+            order = await ShopOrder.find_one(ShopOrder.order_number == payload.order_id)
+        if not order and payload.order_id:
+            order = await ShopOrder.find_one(ShopOrder.razorpay_order_id == payload.order_id)
 
         if not order:
             raise NotFoundError("Order not found for verification.")
@@ -610,8 +614,8 @@ class ShopOrderService:
                 logger.warning("Invalid Razorpay signature for shop order '{}'", order.order_number)
                 raise BadRequestError("Payment verification failed: invalid signature.")
 
-        # Handle late payment if order was swept by TTL background cleaner
-        if order.order_status == ShopOrderStatus.EXPIRED or order.is_stock_restored:
+        # Handle late payment if order was swept by TTL background cleaner or cancelled in UI
+        if order.order_status in (ShopOrderStatus.EXPIRED, ShopOrderStatus.CANCELLED) or order.is_stock_restored:
             reclaimed_items: list[tuple[PydanticObjectId, int]] = []
             can_reclaim_all = True
             for it in order.items:
