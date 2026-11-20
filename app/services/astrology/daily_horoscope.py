@@ -1603,6 +1603,9 @@ def _calculate_tara_bala(transit_nak_idx: int, birth_nak_idx: int) -> TaraBalaSu
     )
 
 
+_DAILY_HOROSCOPE_CACHE: dict[str, DailyHoroscopeResponse] = {}
+
+
 def calculate_daily_horoscope(payload: DailyHoroscopeRequest) -> DailyHoroscopeResponse:
     """Computes complete 100% in-house Daily Horoscope with Vedic Horas, Gochar Vedha, & Personalization."""
     _require_swisseph()
@@ -1618,6 +1621,11 @@ def calculate_daily_horoscope(payload: DailyHoroscopeRequest) -> DailyHoroscopeR
             target_date = datetime.now(timezone(timedelta(hours=tz_offset)))
     else:
         target_date = datetime.now(timezone(timedelta(hours=tz_offset)))
+
+    target_date_str = target_date.strftime("%Y-%m-%d")
+    cache_key = f"{target_date_str}:{lang}:{round(payload.latitude or 22.5726, 2)}:{round(payload.longitude or 88.3639, 2)}:{payload.birth_date}:{payload.birth_rashi_index}:{payload.birth_lagna_index}"
+    if cache_key in _DAILY_HOROSCOPE_CACHE:
+        return _DAILY_HOROSCOPE_CACHE[cache_key]
 
     # Midday in local time corresponds to hour in UTC:
     local_midday = 12.0
@@ -1995,7 +2003,7 @@ def calculate_daily_horoscope(payload: DailyHoroscopeRequest) -> DailyHoroscopeR
         m_house = (moon_sign_idx - (payload.birth_rashi_index if payload.birth_rashi_index is not None else moon_sign_idx)) % 12 + 1
         dual_insight = _calculate_dual_transit(m_house, lagna_transit_house, moon_sign_meta["en"], lang)
 
-    return DailyHoroscopeResponse(
+    response = DailyHoroscopeResponse(
         date=target_date.strftime("%Y-%m-%d"),
         day_of_week=vara_data.get(lang, vara_data["en"]),
         vara_lord=vara_data["lord"],
@@ -2017,3 +2025,9 @@ def calculate_daily_horoscope(payload: DailyHoroscopeRequest) -> DailyHoroscopeR
             "observer_coordinates": f"{payload.latitude}°N, {payload.longitude}°E",
         },
     )
+
+    if len(_DAILY_HOROSCOPE_CACHE) > 500:
+        _DAILY_HOROSCOPE_CACHE.clear()
+    _DAILY_HOROSCOPE_CACHE[cache_key] = response
+
+    return response
