@@ -774,7 +774,7 @@ class ShopCouponRecommendationsResponse(BaseModel):
 class ProductReviewCreate(BaseModel):
     rating: int = Field(ge=1, le=5, description="Devotee rating from 1 to 5 stars")
     title: str | None = Field(default=None, max_length=150, description="Short headline")
-    comment: str = Field(min_length=5, max_length=3000, description="Detailed review text")
+    comment: str = Field(default="", max_length=3000, description="Optional detailed review text")
     images: list[str] = Field(default_factory=list, max_length=5, description="Image URLs of delivered remedy/prasadi")
 
 
