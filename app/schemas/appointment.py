@@ -254,7 +254,7 @@ class NoShowRequest(BaseModel):
 
 
 class BrahmaPauseRequest(BaseModel):
-    duration_hours: int = Field(default=3, ge=1, le=48)
+    duration_hours: float = Field(default=3.0, ge=0.5, le=48.0)
     reason: str | None = Field(default=None, max_length=200)
 
 

@@ -2047,7 +2047,7 @@ async def mark_no_show(
 async def activate_brahma_pause(
     *,
     astrologer: Astrologer,
-    duration_hours: int,
+    duration_hours: float | int,
     reason: str | None = None,
 ) -> dict:
     """Activates Brahma Pause (emergency break), takes astrologer offline,
