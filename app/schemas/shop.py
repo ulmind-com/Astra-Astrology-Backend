@@ -781,7 +781,7 @@ class ProductReviewCreate(BaseModel):
 class ProductReviewUpdate(BaseModel):
     rating: int | None = Field(default=None, ge=1, le=5)
     title: str | None = Field(default=None, max_length=150)
-    comment: str | None = Field(default=None, min_length=5, max_length=3000)
+    comment: str | None = Field(default=None, max_length=3000)
     images: list[str] | None = Field(default=None, max_length=5)
 
 
