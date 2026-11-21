@@ -1,6 +1,6 @@
 """Admin Endpoints for Astra Gurukul Courses, Modules & Video Lessons."""
 
-from typing import Annotated
+from typing import Annotated, Any
 import asyncio
 from datetime import datetime, timezone
 
@@ -821,5 +821,18 @@ async def admin_delete_lesson(
         await course.save()
 
     return ApiResponse(data={"message": "Lesson deleted successfully"})
+
+
+@router.post("/reconcile-certificates", response_model=ApiResponse[dict[str, Any]])
+async def admin_reconcile_certificates(
+    _: AdminUser,
+) -> ApiResponse[dict[str, Any]]:
+    """Scans and synchronizes all completed course certificates with latest DivinLink cryptographic signatures and URLs."""
+    result = await CourseService.reconcile_all_completed_certificates()
+    return ApiResponse(
+        message=f"Reconciled {result['certificates_reconciled_and_updated']} certificates out of {result['completed_enrollments']} completed enrollments.",
+        data=result,
+    )
+
 
 

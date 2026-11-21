@@ -96,18 +96,12 @@ class CourseService:
 
     @staticmethod
     def mint_certificate_id() -> str:
-        """A fresh, unguessable credential number.
+        """A fresh, unguessable credential number for DivinLink Gurukul.
 
-        These used to be built from the ids they belonged to —
-        `ASTRA-CERT-{user_id[-6:]}-{course_id[-4:]}` — which made them both
-        guessable from a student's id and able to collide: two students whose
-        ObjectIds happen to end the same way, on the same course, were issued
-        the same certificate number.
-
-        Existing numbers are left alone, so every certificate already in
-        circulation keeps verifying.
+        Existing numbers (including legacy ASTRA-CERT-*) are left alone, so every
+        certificate already in circulation keeps verifying seamlessly.
         """
-        return f"ASTRA-CERT-{secrets.token_hex(8).upper()}"
+        return f"DIVINLINK-CERT-{secrets.token_hex(8).upper()}"
 
     @staticmethod
     def format_certificate_issued_iso(dt: datetime | None) -> str:
@@ -1972,29 +1966,44 @@ class CourseService:
             course = await Course.find_one(Course.id == e.course_id)
             if course:
                 web_url = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app")
-                if e.progress_percent >= 100:
+                
+                # Check if student completed all published lessons even if progress_percent is lagging
+                if e.progress_percent < 100.0:
+                    total_published = await CourseLesson.find(
+                        CourseLesson.course_id == e.course_id,
+                        {"is_published": {"$ne": False}},
+                    ).count()
+                    if total_published > 0 and len(e.completed_lesson_ids or []) >= total_published:
+                        e.progress_percent = 100.0
+
+                if e.progress_percent >= 100.0 or bool(e.certificate_issued):
                     e.certificate_issued = True
                     if not e.certificate_id:
                         e.certificate_id = CourseService.mint_certificate_id()
                     if not e.certificate_issued_at:
                         e.certificate_issued_at = datetime.now(timezone.utc).replace(microsecond=0)
 
-                    # Ensure certificate signature and signed verification URL are always present
-                    if not e.certificate_signature or not e.certificate_url or "?sig=" not in e.certificate_url:
-                        student_name = getattr(user, "full_name", None) or "DivinLink Gurukul Scholar"
-                        issued_iso = CourseService.format_certificate_issued_iso(e.certificate_issued_at)
-                        c_hash, c_sig = CourseService.compute_certificate_crypto(
-                            cert_id=e.certificate_id,
-                            user_id=str(user.id),
-                            student_name=student_name,
-                            course_id=str(course.id),
-                            course_title=course.title,
-                            issued_iso=issued_iso,
-                        )
+                    # Ensure certificate signature and signed verification URL are always fresh and valid
+                    student_name = getattr(user, "full_name", None) or "DivinLink Gurukul Scholar"
+                    issued_iso = CourseService.format_certificate_issued_iso(e.certificate_issued_at)
+                    c_hash, c_sig = CourseService.compute_certificate_crypto(
+                        cert_id=e.certificate_id,
+                        user_id=str(user.id),
+                        student_name=student_name,
+                        course_id=str(course.id),
+                        course_title=course.title,
+                        issued_iso=issued_iso,
+                    )
+                    expected_url = f"{web_url}/verify/certificate/{e.certificate_id}?sig={c_sig[:32]}"
+                    if (
+                        e.certificate_signature != c_sig
+                        or e.certificate_canonical_hash != c_hash
+                        or e.certificate_url != expected_url
+                    ):
                         e.certificate_canonical_hash = c_hash
                         e.certificate_signature = c_sig
-                        e.certificate_url = f"{web_url}/verify/certificate/{e.certificate_id}?sig={c_sig[:32]}"
-                    await e.save()
+                        e.certificate_url = expected_url
+                        await e.save()
 
                 result.append(
                     {
@@ -3296,15 +3305,20 @@ class CourseService:
         enrollment.certificate_issued = True
 
         cert_data = CourseService.generate_course_certificate_data(enrollment, course, user)
-        if not enrollment.certificate_signature or not enrollment.certificate_canonical_hash:
-            enrollment.certificate_signature = cert_data.get("cryptographic_signature")
-            enrollment.certificate_canonical_hash = cert_data.get("canonical_hash")
-
         expected_cert_url = cert_data.get("verification_url")
-        if not enrollment.certificate_url or "?sig=" not in enrollment.certificate_url:
-            enrollment.certificate_url = expected_cert_url
+        crypto_sig = cert_data.get("cryptographic_signature")
+        c_hash = cert_data.get("canonical_hash")
 
-        await enrollment.save()
+        if (
+            enrollment.certificate_signature != crypto_sig
+            or enrollment.certificate_canonical_hash != c_hash
+            or enrollment.certificate_url != expected_cert_url
+        ):
+            enrollment.certificate_signature = crypto_sig
+            enrollment.certificate_canonical_hash = c_hash
+            enrollment.certificate_url = expected_cert_url
+            await enrollment.save()
+
         return cert_data
 
     @staticmethod
@@ -3315,6 +3329,14 @@ class CourseService:
         """Publicly verifies an issued Astra Gurukul Certificate ID with tamper detection."""
         clean_id = certificate_id.strip().upper()
         enrollment = await CourseEnrollment.find_one(CourseEnrollment.certificate_id == clean_id)
+        if not enrollment:
+            # Cross-compatibility between ASTRA-CERT- and DIVINLINK-CERT-
+            if clean_id.startswith("ASTRA-CERT-"):
+                divinlink_id = clean_id.replace("ASTRA-CERT-", "DIVINLINK-CERT-")
+                enrollment = await CourseEnrollment.find_one(CourseEnrollment.certificate_id == divinlink_id)
+            elif clean_id.startswith("DIVINLINK-CERT-"):
+                astra_id = clean_id.replace("DIVINLINK-CERT-", "ASTRA-CERT-")
+                enrollment = await CourseEnrollment.find_one(CourseEnrollment.certificate_id == astra_id)
         if not enrollment:
             # Fallback by enrollment ObjectId if someone passed enrollment id
             if len(clean_id) == 24 and PydanticObjectId.is_valid(clean_id):
@@ -3342,4 +3364,122 @@ class CourseService:
             signature_token=signature_token,
             is_public_verification=True,
         )
+
+    @staticmethod
+    async def reconcile_all_completed_certificates() -> dict[str, Any]:
+        """Scans all course enrollments across the entire system.
+
+        For every student who completed 100% of a course (or completed all published lessons):
+        1. Ensures progress_percent is 100.0 and certificate_issued is True.
+        2. Mints a certificate_id if not present.
+        3. Updates certificate_issued_at if not present.
+        4. Recomputes deterministic canonical hash and HMAC-SHA256 signature with latest DivinLink authority.
+        5. Updates certificate_signature, certificate_canonical_hash, and certificate_url.
+        6. Saves updated enrollment back to database.
+        Returns a summary of total enrollments checked, completed, and updated.
+        """
+        web_url = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app")
+        all_enrollments = await CourseEnrollment.find_all().to_list()
+        courses_cache: dict[str, Course] = {}
+        users_cache: dict[str, User] = {}
+
+        total_checked = len(all_enrollments)
+        completed_found = 0
+        updated_count = 0
+
+        for enrollment in all_enrollments:
+            course_id_str = str(enrollment.course_id)
+            if course_id_str not in courses_cache:
+                c = await Course.find_one(Course.id == enrollment.course_id)
+                if c:
+                    courses_cache[course_id_str] = c
+            course = courses_cache.get(course_id_str)
+            if not course:
+                continue
+
+            user_id_str = str(enrollment.user_id)
+            if user_id_str not in users_cache:
+                u = await User.find_one(User.id == enrollment.user_id)
+                if u:
+                    users_cache[user_id_str] = u
+            user = users_cache.get(user_id_str)
+            if not user:
+                continue
+
+            # Determine completion
+            total_published = await CourseLesson.find(
+                CourseLesson.course_id == enrollment.course_id,
+                {"is_published": {"$ne": False}},
+            ).count()
+
+            is_completed = (
+                enrollment.progress_percent >= 100.0
+                or (total_published > 0 and len(enrollment.completed_lesson_ids or []) >= total_published)
+                or enrollment.certificate_issued
+            )
+
+            if not is_completed:
+                continue
+
+            completed_found += 1
+            changed = False
+
+            if enrollment.progress_percent < 100.0:
+                enrollment.progress_percent = 100.0
+                changed = True
+
+            if not enrollment.certificate_issued:
+                enrollment.certificate_issued = True
+                changed = True
+
+            if not enrollment.certificate_id:
+                enrollment.certificate_id = CourseService.mint_certificate_id()
+                changed = True
+
+            if not enrollment.certificate_issued_at:
+                enrollment.certificate_issued_at = datetime.now(timezone.utc).replace(microsecond=0)
+                changed = True
+
+            student_name = getattr(user, "full_name", None) or "DivinLink Gurukul Scholar"
+            issued_iso = CourseService.format_certificate_issued_iso(enrollment.certificate_issued_at)
+
+            canonical_hash, signature = CourseService.compute_certificate_crypto(
+                cert_id=enrollment.certificate_id,
+                user_id=str(user.id),
+                student_name=student_name,
+                course_id=str(course.id),
+                course_title=course.title,
+                issued_iso=issued_iso,
+            )
+
+            expected_url = f"{web_url}/verify/certificate/{enrollment.certificate_id}?sig={signature[:32]}"
+
+            if enrollment.certificate_canonical_hash != canonical_hash:
+                enrollment.certificate_canonical_hash = canonical_hash
+                changed = True
+
+            if enrollment.certificate_signature != signature:
+                enrollment.certificate_signature = signature
+                changed = True
+
+            if enrollment.certificate_url != expected_url:
+                enrollment.certificate_url = expected_url
+                changed = True
+
+            if changed:
+                await enrollment.save()
+                updated_count += 1
+                logger.info(
+                    "Reconciled certificate for user {} ({}) on course {}: cert_id={}",
+                    user.id,
+                    student_name,
+                    course.title,
+                    enrollment.certificate_id,
+                )
+
+        return {
+            "total_enrollments_checked": total_checked,
+            "completed_enrollments": completed_found,
+            "certificates_reconciled_and_updated": updated_count,
+        }
 

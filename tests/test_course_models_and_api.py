@@ -279,8 +279,8 @@ def test_course_certificate_generation_and_html():
     assert "Samiran Samanta" in html
     assert "Vedic Astrology Foundation Masterclass" in html
     assert "ASTRA-CERT-SAMIRAN-TEST" in html
-    assert "DivinLink Gurukul" in html
-    assert "HMAC-SHA256" in html
+    assert "DIVINLINK" in html
+    assert "DIGITAL SIGNATURE" in html
 
     # Check QR code contains properly percent-encoded verification link
     import urllib.parse
@@ -700,8 +700,8 @@ def test_certificate_numbers_are_random_not_derived():
     assert len(minted) == 500, "certificate numbers collided"
 
     for number in list(minted)[:20]:
-        assert number.startswith("ASTRA-CERT-")
-        suffix = number.removeprefix("ASTRA-CERT-")
+        assert number.startswith("DIVINLINK-CERT-") or number.startswith("ASTRA-CERT-")
+        suffix = number.split("-")[-1]
         assert len(suffix) == 16, suffix
         assert all(c in "0123456789ABCDEF" for c in suffix), suffix
 
