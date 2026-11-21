@@ -142,12 +142,30 @@ async def get_purohit_by_user_id(user_id: PydanticObjectId) -> Purohit:
     return profile
 
 
-async def update_purohit_availability(purohit: Purohit, is_online: bool) -> Purohit:
-    """Toggle online/offline presence for live puja availability."""
+async def update_purohit_availability(
+    purohit: Purohit,
+    is_online: bool,
+    available_days: list[str] | None = None,
+    available_slots: list[str] | None = None,
+    weekly_schedule: dict[str, list[str]] | None = None,
+) -> Purohit:
+    """Toggle online/offline presence and configure weekly auspicious slots for live puja availability."""
     purohit.is_online = is_online
+    if available_days is not None:
+        purohit.available_days = available_days
+    if available_slots is not None:
+        purohit.available_slots = available_slots
+    if weekly_schedule is not None:
+        purohit.weekly_schedule = weekly_schedule
     purohit.updated_at = datetime.now(UTC)
     await purohit.save()
-    logger.info("Purohit {} availability updated: is_online={}", purohit.display_name, is_online)
+    logger.info(
+        "Purohit {} availability updated: is_online={}, days={}, slots={}",
+        purohit.display_name,
+        is_online,
+        len(purohit.available_days or []),
+        len(purohit.available_slots or []),
+    )
     return purohit
 
 

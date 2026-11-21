@@ -47,6 +47,15 @@ class Purohit(TimestampedDocument):
     is_online: bool = False
     is_verified: bool = True
 
+    # Weekly auspicious days and time slot configurations for Live Puja
+    available_days: list[str] = Field(
+        default_factory=lambda: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    )
+    available_slots: list[str] = Field(
+        default_factory=lambda: ["brahma_muhurat", "morning", "afternoon", "evening"]
+    )
+    weekly_schedule: dict[str, list[str]] = Field(default_factory=dict)
+
     # Purohit's personal customizable puja & price catalog
     pujas: list[PurohitPujaItem] = Field(default_factory=list)
 

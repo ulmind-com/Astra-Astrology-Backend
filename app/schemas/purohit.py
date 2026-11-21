@@ -73,9 +73,12 @@ class PurohitUpdate(BaseModel):
 
 
 class PurohitAvailabilityUpdate(BaseModel):
-    """Purohit dashboard toggle to switch online/offline availability for live pujas."""
+    """Purohit dashboard toggle to switch online/offline availability and configure weekly auspicious slots for live pujas."""
 
     is_online: bool
+    available_days: list[str] | None = None
+    available_slots: list[str] | None = None
+    weekly_schedule: dict[str, list[str]] | None = None
 
 
 class PurohitOut(BaseModel):
@@ -96,6 +99,9 @@ class PurohitOut(BaseModel):
     languages: list[str]
     is_online: bool
     is_verified: bool
+    available_days: list[str] = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    available_slots: list[str] = ["brahma_muhurat", "morning", "afternoon", "evening"]
+    weekly_schedule: dict[str, list[str]] = {}
     pujas: list[PurohitPujaItemOut] = []
     rating: float = 0.0
     total_pujas_performed: int = 0

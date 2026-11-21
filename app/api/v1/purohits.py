@@ -233,13 +233,19 @@ async def upload_my_purohit_avatar(
 @router.put(
     "/me/availability",
     response_model=ApiResponse[PurohitOut],
-    summary="Toggle online/offline presence for live puja calls",
+    summary="Toggle online/offline presence and configure weekly auspicious slots for live puja calls",
 )
 async def update_my_availability(
     payload: PurohitAvailabilityUpdate, user: CurrentUser
 ) -> ApiResponse[PurohitOut]:
     profile = await purohit_service.get_purohit_by_user_id(user.id)
-    updated = await purohit_service.update_purohit_availability(profile, payload.is_online)
+    updated = await purohit_service.update_purohit_availability(
+        profile,
+        is_online=payload.is_online,
+        available_days=payload.available_days,
+        available_slots=payload.available_slots,
+        weekly_schedule=payload.weekly_schedule,
+    )
     data = updated.model_dump()
     data["id"] = str(updated.id)
     data["user_id"] = str(updated.user_id)
@@ -247,6 +253,20 @@ async def update_my_availability(
 
     status_str = "অনলাইন (পূজার জন্য উপলব্ধ)" if payload.is_online else "অফলাইন"
     return ApiResponse(message=f"আপনার উপস্থিতি স্ট্যাটাস সফলভাবে {status_str} করা হয়েছে।", data=PurohitOut(**data))
+
+
+@router.get(
+    "/me/availability",
+    response_model=ApiResponse[PurohitOut],
+    summary="Get current Purohit availability status & weekly auspicious slot schedule",
+)
+async def get_my_availability(user: CurrentUser) -> ApiResponse[PurohitOut]:
+    profile = await purohit_service.get_purohit_by_user_id(user.id)
+    data = profile.model_dump()
+    data["id"] = str(profile.id)
+    data["user_id"] = str(profile.user_id)
+    data["starting_price_inr"] = purohit_service._get_starting_price(profile)
+    return ApiResponse(data=PurohitOut(**data))
 
 
 @router.post(
