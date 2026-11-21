@@ -8,6 +8,7 @@ import pymongo
 from beanie import PydanticObjectId
 from pydantic import BaseModel, Field
 
+from app.models.astrologer import BankDetails
 from app.models.base import TimestampedDocument
 from app.models.enums import PujaBookingStatus, PujaPaymentStatus
 
@@ -61,6 +62,7 @@ class Purohit(TimestampedDocument):
 
     rating: float = Field(default=0.0, ge=0.0, le=5.0)
     total_pujas_performed: int = Field(default=0, ge=0)
+    bank: BankDetails = Field(default_factory=BankDetails)
 
     class Settings:
         name = "purohits"

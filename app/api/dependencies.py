@@ -116,6 +116,8 @@ SignedInOrAnonymous = Annotated[User | None, Depends(get_user_if_signed_in)]
 AdminUser = Annotated[User, Depends(require_roles(UserRole.ADMIN, UserRole.SUPER_ADMIN))]
 SuperAdminUser = Annotated[User, Depends(require_roles(UserRole.SUPER_ADMIN))]
 AstrologerUser = Annotated[User, Depends(require_roles(UserRole.ASTROLOGER))]
+PurohitUser = Annotated[User, Depends(require_roles(UserRole.PUROHIT))]
+ProfessionalUser = Annotated[User, Depends(require_roles(UserRole.ASTROLOGER, UserRole.PUROHIT))]
 
 
 async def get_current_astrologer(user: AstrologerUser) -> Astrologer:

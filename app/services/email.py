@@ -202,3 +202,74 @@ async def send_shop_order_refund_email(
         logger.opt(exception=exc).warning("Failed to send refund email for order #{}: {}", order_number, exc)
         return False
 
+
+async def send_payout_settlement_email(
+    to: str,
+    beneficiary_name: str,
+    amount_inr: float,
+    utr_number: str,
+    payment_method: str = "bank_transfer",
+    beneficiary_type: str = "astrologer",
+) -> bool:
+    """Sends a transactional email to the Astrologer or Pandit Ji when their payout is settled."""
+    subject = f"💰 Payout Disbursed: ₹{amount_inr:,.2f} Settled to Your Account (UTR: {utr_number})"
+    method_display = "Bank Account" if payment_method == "bank_transfer" else "UPI / VPA"
+    role_display = "Vedic Astrologer" if beneficiary_type == "astrologer" else "Vedic Purohit (Pandit Ji)"
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"></head>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0c0a09; color: #f5f5f4; margin: 0; padding: 24px;">
+      <div style="max-width: 580px; margin: 0 auto; background: #1c1917; border: 1px solid #292524; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.6);">
+        <div style="background: linear-gradient(135deg, #d97706, #b45309); padding: 24px; text-align: center;">
+          <h1 style="margin: 0; font-size: 22px; color: #ffffff; letter-spacing: 0.5px; font-weight: 700;">DivinLink Gurukul & Astrology</h1>
+          <p style="margin: 6px 0 0; color: #fef3c7; font-size: 13px;">Official Payout Disbursement Advisory</p>
+        </div>
+        <div style="padding: 28px 24px;">
+          <p style="font-size: 15px; color: #e7e5e4; margin-top: 0;">Pranam <strong>{beneficiary_name}</strong> ({role_display}),</p>
+          <p style="color: #a8a29e; font-size: 14px; line-height: 1.6;">
+            We are pleased to inform you that your withdrawal request has been verified and settled directly to your <strong>{method_display}</strong>.
+          </p>
+          <div style="background: #292524; border: 1px solid #44403c; border-radius: 12px; padding: 20px; margin: 20px 0;">
+            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #44403c; padding-bottom: 10px; margin-bottom: 10px;">
+              <span style="color: #a8a29e; font-size: 13px;">Disbursed Amount:</span>
+              <strong style="color: #10b981; font-size: 18px;">₹{amount_inr:,.2f}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #44403c; padding-bottom: 10px; margin-bottom: 10px;">
+              <span style="color: #a8a29e; font-size: 13px;">Bank Reference / UTR:</span>
+              <strong style="color: #fbbf24; font-family: monospace; font-size: 14px;">{utr_number}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: #a8a29e; font-size: 13px;">Payment Channel:</span>
+              <span style="color: #f5f5f4; font-size: 13px; font-weight: 600;">{method_display}</span>
+            </div>
+          </div>
+          <div style="background: rgba(16, 185, 129, 0.1); border-left: 4px solid #10b981; padding: 12px 14px; border-radius: 6px; margin-bottom: 20px;">
+            <p style="margin: 0; color: #6ee7b7; font-size: 13px; font-weight: 500;">
+              ✓ Please inspect your bank account or UPI application balance. If you do not see the credited amount within a few hours, use UTR <strong>{utr_number}</strong> with your bank branch or customer support.
+            </p>
+          </div>
+          <p style="color: #78716c; font-size: 12px; text-align: center; margin-bottom: 0;">
+            DivinLink Gurukul • Spiritual & Astrological Ecosystem<br>
+            Secure Automated Payout Processing Desk
+          </p>
+        </div>
+      </div>
+    </body>
+    </html>
+    """
+    text = (
+        f"Pranam {beneficiary_name},\n\n"
+        f"Your payout of ₹{amount_inr:,.2f} has been settled via {method_display}.\n"
+        f"UTR Number: {utr_number}\n\n"
+        f"Please check your bank account or UPI balance.\n\n"
+        f"DivinLink Gurukul Team"
+    )
+    try:
+        sent = await send_email(to=to, subject=subject, html=html, text=text)
+        return sent is not None
+    except Exception as exc:
+        logger.opt(exception=exc).warning("Failed to send payout settlement email to {}: {}", to, exc)
+        return False
+

@@ -28,7 +28,10 @@ class PayoutMethod(StrEnum):
 
 
 class AstrologerPayout(TimestampedDocument):
-    astrologer_id: PydanticObjectId
+    beneficiary_type: str = "astrologer"  # "astrologer" | "purohit"
+    astrologer_id: PydanticObjectId | None = None
+    purohit_id: PydanticObjectId | None = None
+    beneficiary_name: str | None = None
     astrologer_user_id: PydanticObjectId
 
     amount_paise: int = Field(gt=0)
@@ -43,6 +46,7 @@ class AstrologerPayout(TimestampedDocument):
     account_number_masked: str | None = None
     ifsc: str | None = None
     upi_id: str | None = None
+    upi_qr_url: str | None = None
 
     status: PayoutStatus = PayoutStatus.PENDING
     utr_number: str | None = None
@@ -66,6 +70,10 @@ class AstrologerPayout(TimestampedDocument):
             pymongo.IndexModel(
                 [("status", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
                 name="payout_status_recent",
+            ),
+            pymongo.IndexModel(
+                [("beneficiary_type", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+                name="payout_beneficiary_recent",
             ),
         ]
 

@@ -112,6 +112,8 @@ class BankDetails(BaseModel):
     ifsc: str | None = Field(default=None, max_length=20)
     bank_name: str | None = Field(default=None, max_length=120)
     upi_id: str | None = Field(default=None, max_length=120)
+    upi_qr_url: str | None = None
+    upi_qr_public_id: str | None = None
     pan_card: str | None = Field(default=None, max_length=20)
 
 
