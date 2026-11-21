@@ -273,3 +273,71 @@ async def send_payout_settlement_email(
         logger.opt(exception=exc).warning("Failed to send payout settlement email to {}: {}", to, exc)
         return False
 
+
+async def send_course_purchase_invoice_email(
+    to: str,
+    user_name: str,
+    course_title: str,
+    invoice_number: str,
+    order_id: str,
+    payment_id: str,
+    amount_inr: float,
+    payment_method: str = "Online / Razorpay",
+    purchase_date: str = "",
+    course_url: str = "",
+    invoice_url: str = "",
+    instructor_name: str = "Pt. Acharya Rahul Sharma",
+    access_type: str = "Lifetime Access",
+) -> bool:
+    """Dispatches the official Tax Invoice & Consecrated Enrollment Bill to the student upon successful payment."""
+    from app.services.email_templates import course_purchase_invoice_email_html
+
+    formatted_amount = f"₹{amount_inr:,.2f}".replace(".00", "")
+    subject = f"🧾 Tax Invoice & Enrollment Bill: {course_title} (Invoice #{invoice_number})"
+
+    html = course_purchase_invoice_email_html(
+        user_name=user_name,
+        user_email=to,
+        course_title=course_title,
+        invoice_number=invoice_number,
+        order_id=order_id,
+        payment_id=payment_id,
+        amount_inr=amount_inr,
+        payment_method=payment_method,
+        purchase_date=purchase_date,
+        course_url=course_url,
+        invoice_url=invoice_url,
+        instructor_name=instructor_name,
+        access_type=access_type,
+    )
+
+    text = (
+        f"Dear {user_name},\n\n"
+        f"Thank you for enrolling in {course_title} at DivinLink Gurukul!\n\n"
+        f"TAX INVOICE / ENROLLMENT BILL DETAILS:\n"
+        f"-----------------------------------------\n"
+        f"Invoice Number: #{invoice_number}\n"
+        f"Course: {course_title}\n"
+        f"Faculty / Acharya: {instructor_name}\n"
+        f"Access: {access_type}\n"
+        f"Date of Purchase: {purchase_date}\n"
+        f"Razorpay Payment ID: {payment_id}\n"
+        f"Order Reference: {order_id}\n"
+        f"Payment Mode: {payment_method}\n"
+        f"Status: PAID & CAPTURED\n"
+        f"Total Amount Paid: {formatted_amount}\n"
+        f"-----------------------------------------\n\n"
+        f"Access your course anytime here:\n{course_url}\n\n"
+        f"View and print your official invoice (PDF / HTML):\n{invoice_url}\n\n"
+        f"DivinLink Gurukul • Council of Vedic Astrological Sciences\n"
+        f"Support: support@divinlink.com | +91 91530 08182"
+    )
+
+    try:
+        sent = await send_email(to=to, subject=subject, html=html, text=text)
+        return sent is not None
+    except Exception as exc:
+        logger.opt(exception=exc).warning("Failed to dispatch course purchase invoice email to {}: {}", to, exc)
+        return False
+
+

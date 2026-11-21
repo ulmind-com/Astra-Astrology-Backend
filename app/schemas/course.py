@@ -101,6 +101,8 @@ class CourseEnrollmentOut(BaseModel):
     certificate_issued: bool
     certificate_id: str | None = None
     certificate_url: str | None = None
+    invoice_number: str | None = None
+    invoice_url: str | None = None
 
 
 class LessonStreamResponse(BaseModel):
@@ -498,6 +500,8 @@ class AdminCourseOrderOut(BaseModel):
     failure_reason: str | None = None
     verified_via: str | None = None
     paid_at: datetime | None = None
+    invoice_number: str | None = None
+    invoice_email_sent: bool = False
     created_at: datetime
 
 
@@ -534,6 +538,7 @@ class AdminCourseEnrollmentOut(BaseModel):
     certificate_id: str | None = None
     certificate_url: str | None = None
     certificate_issued_at: datetime | None = None
+    invoice_number: str | None = None
     total_watched_seconds: int = 0
     enrolled_at: datetime
     expires_at: datetime | None = None
@@ -628,5 +633,69 @@ class AdminCourseLearnersResponse(BaseModel):
     page: int = 1
     limit: int = 25
     pages: int = 1
+
+
+# =========================================================================
+# Official Course Invoice & Bill of Supply Schemas
+# =========================================================================
+
+class CourseInvoiceItemOut(BaseModel):
+    course_id: str
+    title: str
+    slug: str
+    instructor_name: str
+    level: str = "All Levels / Vedic Masterclass"
+    sac_code: str = "999293"  # Commercial training, coaching & online educational services
+    access_type: str = "Lifetime Access"
+    quantity: int = 1
+    rate_inr: float
+    discount_inr: float = 0.0
+    taxable_amount_inr: float
+    total_inr: float
+
+
+class CourseInvoiceSellerOut(BaseModel):
+    legal_name: str
+    trade_name: str
+    address: str
+    state: str = "Uttar Pradesh"
+    state_code: str = "09"
+    phone: str
+    email: str
+    website: str
+    pan: str | None = None
+    gstin: str | None = None
+
+
+class CourseInvoiceBuyerOut(BaseModel):
+    name: str
+    email: str
+    phone: str | None = None
+    state: str | None = None
+
+
+class CourseInvoiceDataOut(BaseModel):
+    invoice_number: str
+    invoice_date: datetime
+    order_id: str
+    payment_id: str | None = None
+    payment_method: str = "Online / Razorpay"
+    payment_status: str = "PAID"
+    currency: str = "INR"
+    seller: CourseInvoiceSellerOut
+    buyer: CourseInvoiceBuyerOut
+    item: CourseInvoiceItemOut
+    subtotal: float
+    discount_amount: float = 0.0
+    tax_amount: float = 0.0
+    is_tax_invoice: bool = False
+    cgst_amount: float = 0.0
+    sgst_amount: float = 0.0
+    igst_amount: float = 0.0
+    grand_total: float
+    course_url: str
+    invoice_url: str
+    verification_qr_url: str | None = None
+
 
 

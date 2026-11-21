@@ -15,6 +15,7 @@ from app.schemas.course import (
     CourseCertificateOut,
     CourseDetailOut,
     CourseEnrollmentOut,
+    CourseInvoiceDataOut,
     CourseListItemOut,
     CourseOrderCreateResponse,
     CoursePaymentSyncRequest,
@@ -152,6 +153,64 @@ async def get_course_certificate_html_endpoint(
     """Returns standalone printable HTML certificate for a completed course."""
     cert = await CourseService.get_course_certificate(user=user, course_id=course_id)
     html_content = CourseService.generate_course_certificate_html(cert)
+    return HTMLResponse(content=html_content, status_code=status.HTTP_200_OK)
+
+
+@router.get("/{course_id}/invoice", response_model=ApiResponse[CourseInvoiceDataOut])
+async def get_course_invoice_data_endpoint(
+    course_id: PydanticObjectId,
+    user: Annotated[User, Depends(get_current_user)],
+) -> ApiResponse[CourseInvoiceDataOut]:
+    """Retrieves structured Tax Invoice / Bill of Supply JSON data for a purchased course."""
+    from app.services.course_invoice_service import get_or_create_course_invoice_data
+
+    invoice_data = await get_or_create_course_invoice_data(
+        identifier=str(course_id),
+        user_id=user.id,
+        is_admin=user.role in ("admin", "super_admin"),
+    )
+    return ApiResponse(data=invoice_data)
+
+
+@router.get("/{course_id}/invoice/html", response_class=HTMLResponse)
+async def get_course_invoice_html_endpoint(
+    course_id: PydanticObjectId,
+    user: Annotated[User, Depends(get_current_user)],
+    print_now: Annotated[bool, Query(description="Auto trigger window.print")] = False,
+) -> HTMLResponse:
+    """Returns official, luxury print-ready A4 Tax Invoice / Bill of Supply HTML for a purchased course."""
+    from app.services.course_invoice_service import (
+        generate_course_invoice_html,
+        get_or_create_course_invoice_data,
+    )
+
+    invoice_data = await get_or_create_course_invoice_data(
+        identifier=str(course_id),
+        user_id=user.id,
+        is_admin=user.role in ("admin", "super_admin"),
+    )
+    html_content = generate_course_invoice_html(invoice_data, auto_print=print_now)
+    return HTMLResponse(content=html_content, status_code=status.HTTP_200_OK)
+
+
+@router.get("/orders/{order_id}/invoice/html", response_class=HTMLResponse)
+async def get_course_order_invoice_html_endpoint(
+    order_id: str,
+    user: Annotated[User, Depends(get_current_user)],
+    print_now: Annotated[bool, Query(description="Auto trigger window.print")] = False,
+) -> HTMLResponse:
+    """Returns official Tax Invoice / Bill of Supply HTML by CourseOrder ID or Razorpay Order ID."""
+    from app.services.course_invoice_service import (
+        generate_course_invoice_html,
+        get_or_create_course_invoice_data,
+    )
+
+    invoice_data = await get_or_create_course_invoice_data(
+        identifier=order_id,
+        user_id=user.id,
+        is_admin=user.role in ("admin", "super_admin"),
+    )
+    html_content = generate_course_invoice_html(invoice_data, auto_print=print_now)
     return HTMLResponse(content=html_content, status_code=status.HTTP_200_OK)
 
 

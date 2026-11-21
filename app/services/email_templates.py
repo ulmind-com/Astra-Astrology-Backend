@@ -1392,5 +1392,156 @@ def shop_order_refund_email_html(
     )
 
 
+def course_purchase_invoice_email_html(
+    user_name: str,
+    user_email: str,
+    course_title: str,
+    invoice_number: str,
+    order_id: str,
+    payment_id: str,
+    amount_inr: float,
+    payment_method: str = "Online / Razorpay",
+    purchase_date: str = "",
+    course_url: str = "",
+    invoice_url: str = "",
+    instructor_name: str = "Pt. Acharya Rahul Sharma",
+    access_type: str = "Lifetime Access",
+) -> str:
+    """Official, luxury Tax Invoice & Enrollment Receipt email template for Gurukul course purchases."""
+    app_name = "DivinLink Gurukul"
+    headline = "🧾 Tax Invoice & Gurukul Enrollment Receipt"
+    formatted_amount = f"₹{amount_inr:,.2f}".replace(".00", "")
+
+    lead_text = (
+        f"Dear <strong>{user_name}</strong>, thank you for embarking on your sacred learning journey. "
+        f"Your payment of <strong>{formatted_amount}</strong> for <strong>{course_title}</strong> has been "
+        f"successfully verified and your complete student curriculum is now officially consecrated and unlocked."
+    )
+
+    frontend_base = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app").rstrip("/")
+    if not course_url:
+        course_url = f"{frontend_base}/account/courses"
+    if not invoice_url:
+        invoice_url = f"{frontend_base}/account/courses"
+
+    content = f"""
+      <!-- Official Invoice Card -->
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 24px;background:#FFFFFF;border:2px solid #C89B3C;border-radius:18px;overflow:hidden;box-shadow:0 6px 24px rgba(200,155,60,0.15);">
+        <!-- Top Golden Header Banner -->
+        <tr>
+          <td style="background:linear-gradient(135deg,#FFFDF7 0%,#FDF6E2 100%);padding:24px 20px;text-align:center;border-bottom:1px solid #E5D5A5;">
+            <div style="font-size:30px;line-height:1;margin-bottom:6px;color:#8B6508;">ॐ</div>
+            <div style="font-size:11px;font-weight:800;letter-spacing:2px;color:#8B6508;text-transform:uppercase;margin-bottom:4px;">
+              DivinLink Gurukul • বিশ্ব জ্যোতিষ বিদ্যাপীঠ
+            </div>
+            <div style="font-size:17px;font-family:Georgia,serif;font-weight:700;color:#1F2937;">
+              Official Tax Invoice &amp; Consecrated Enrollment Bill
+            </div>
+          </td>
+        </tr>
+
+        <!-- Invoice & Payment Metadata Grid -->
+        <tr>
+          <td style="padding:22px 24px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="font-size:13px;border-bottom:1px solid #F1F5F9;padding-bottom:16px;">
+              <tr>
+                <td style="padding:5px 0;color:#64748B;font-weight:600;width:40%;">Invoice Number:</td>
+                <td style="padding:5px 0;color:#0F172A;font-family:monospace;font-weight:700;">#{invoice_number}</td>
+              </tr>
+              <tr>
+                <td style="padding:5px 0;color:#64748B;font-weight:600;">Date of Issuance:</td>
+                <td style="padding:5px 0;color:#0F172A;">{purchase_date}</td>
+              </tr>
+              <tr>
+                <td style="padding:5px 0;color:#64748B;font-weight:600;">Razorpay Payment ID:</td>
+                <td style="padding:5px 0;color:#0F172A;font-family:monospace;font-weight:600;">{payment_id}</td>
+              </tr>
+              <tr>
+                <td style="padding:5px 0;color:#64748B;font-weight:600;">Order Reference:</td>
+                <td style="padding:5px 0;color:#0F172A;font-family:monospace;">{order_id}</td>
+              </tr>
+              <tr>
+                <td style="padding:5px 0;color:#64748B;font-weight:600;">Payment Mode:</td>
+                <td style="padding:5px 0;color:#0F172A;font-weight:600;">{payment_method}</td>
+              </tr>
+              <tr>
+                <td style="padding:5px 0;color:#64748B;font-weight:600;">Payment Status:</td>
+                <td style="padding:5px 0;">
+                  <span style="display:inline-block;padding:2px 8px;background:#ECFDF5;color:#059669;border-radius:9999px;font-size:11px;font-weight:700;border:1px solid #A7F3D0;">
+                    ✓ PAID &amp; CAPTURED
+                  </span>
+                </td>
+              </tr>
+            </table>
+
+            <!-- Course Line Item Box -->
+            <div style="margin:18px 0;padding:16px;background:#FAF8F5;border:1px solid #E2E8F0;border-radius:12px;">
+              <div style="font-size:11px;font-weight:800;color:#8B6508;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">
+                ENROLLED GURUKUL MASTERCLASS
+              </div>
+              <div style="font-size:16px;font-family:Georgia,serif;font-weight:700;color:#0F172A;line-height:1.4;margin-bottom:6px;">
+                {course_title}
+              </div>
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="font-size:12px;color:#475569;margin-top:6px;">
+                <tr>
+                  <td style="padding:3px 0;">• Faculty / Master:</td>
+                  <td style="padding:3px 0;text-align:right;font-weight:600;color:#1F2937;">{instructor_name}</td>
+                </tr>
+                <tr>
+                  <td style="padding:3px 0;">• Course Access:</td>
+                  <td style="padding:3px 0;text-align:right;font-weight:600;color:#059669;">{access_type}</td>
+                </tr>
+                <tr>
+                  <td style="padding:3px 0;">• Service Classification (SAC):</td>
+                  <td style="padding:3px 0;text-align:right;font-family:monospace;">999293 (Coaching/Training)</td>
+                </tr>
+                <tr>
+                  <td style="padding:3px 0;">• Certification:</td>
+                  <td style="padding:3px 0;text-align:right;font-weight:600;color:#D97706;">Official Gurukul Certificate Included</td>
+                </tr>
+              </table>
+            </div>
+
+            <!-- Grand Total Box -->
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:12px;padding:12px 14px;background:#F8FAFC;border-radius:10px;">
+              <tr>
+                <td style="font-size:14px;font-weight:700;color:#0F172A;">Total Net Amount Paid:</td>
+                <td style="font-size:18px;font-weight:800;color:#B45309;text-align:right;">{formatted_amount}</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Two Action Buttons (CTA) -->
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 auto 16px;">
+        <tr>
+          <td align="center" style="padding:4px 0;">
+            <a href="{course_url}" target="_blank" class="cta-button" style="display:inline-block;background:linear-gradient(135deg,#D97706 0%,#B45309 100%);color:#ffffff;font-size:15px;font-weight:700;padding:15px 36px;border-radius:9999px;text-decoration:none;text-align:center;box-shadow:0 6px 18px rgba(217,119,6,0.35);margin:4px 6px;">
+              🚀 Start Learning Course Now
+            </a>
+            <a href="{invoice_url}" target="_blank" style="display:inline-block;background:#F1F5F9;color:#334155;font-size:13px;font-weight:700;padding:14px 24px;border-radius:9999px;text-decoration:none;text-align:center;border:1px solid #CBD5E1;margin:4px 6px;">
+              🧾 View &amp; Print Official Invoice
+            </a>
+          </td>
+        </tr>
+      </table>
+
+      <div style="text-align:center;font-size:12px;color:#64748B;line-height:1.6;margin-top:20px;">
+        This is a computer-generated tax invoice &amp; enrollment bill issued under the Central Goods &amp; Services Tax Act, 2017.<br>
+        For curriculum queries or support, email <a href="mailto:support@divinlink.com" style="color:#B45309;font-weight:600;">support@divinlink.com</a> or WhatsApp +91 91530 08182.
+      </div>
+    """
+
+    return render_email(
+        title=f"Tax Invoice & Enrollment Receipt — {course_title}",
+        content_html=content,
+        preheader=f"Your official invoice #{invoice_number} and access for {course_title} are confirmed.",
+        headline=headline,
+        lead_text=lead_text,
+    )
+
+
+
 
 

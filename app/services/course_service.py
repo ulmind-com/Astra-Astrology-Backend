@@ -1152,6 +1152,19 @@ class CourseService:
                 expires_at,
             )
 
+        # Ensure persistent legal invoice number is generated
+        if not order.invoice_number:
+            prefix = "DIVIN-CRS-INV"
+            year = now.year
+            raw_key = order.razorpay_order_id or str(order.id)
+            clean_key = raw_key.replace("order_", "").replace("crs_", "").replace("-", "")
+            suffix = clean_key[-6:].upper() if len(clean_key) >= 6 else str(order.user_id)[-6:].upper()
+            order.invoice_number = f"{prefix}-{year}-{suffix}"
+
+        if not getattr(enrollment, "invoice_number", None):
+            enrollment.invoice_number = order.invoice_number
+            await enrollment.save()
+
         if order.status is not PaymentOrderStatus.PAID:
             order.status = PaymentOrderStatus.PAID
             order.razorpay_payment_id = payment_id
@@ -1159,6 +1172,61 @@ class CourseService:
             order.verified_via = via
             order.paid_at = datetime.now(timezone.utc)
             await order.save()
+
+        # Dispatch official Tax Invoice & Consecrated Enrollment Bill to student's email
+        if not getattr(order, "invoice_email_sent", False):
+            order.invoice_email_sent = True
+            order.invoice_sent_at = datetime.now(timezone.utc)
+            await order.save()
+
+            async def _dispatch_course_invoice_email_task() -> None:
+                try:
+                    from app.services.email import send_course_purchase_invoice_email
+
+                    student_user = await User.get(order.user_id)
+                    if not student_user or not student_user.email:
+                        logger.warning("No valid email address for student {} to send course invoice.", order.user_id)
+                        return
+
+                    student_name = (
+                        getattr(student_user, "full_name", None)
+                        or getattr(student_user, "name", None)
+                        or "Valued Scholar"
+                    )
+                    frontend_base = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app").rstrip("/")
+                    course_url = f"{frontend_base}/courses/{course.slug or str(course.id)}"
+                    invoice_url = f"{frontend_base}/account/courses"
+
+                    access_type = "Lifetime Access"
+                    if course.access_duration_days and course.access_duration_days > 0:
+                        access_type = f"{course.access_duration_days} Days Access"
+
+                    formatted_date = (order.paid_at or datetime.now(timezone.utc)).strftime("%d %B %Y, %I:%M %p IST")
+                    method_display = (payment.get("method") or "Online / Razorpay").upper()
+                    inv_num = order.invoice_number or f"DIVIN-CRS-{str(order.id)[-6:].upper()}"
+
+                    await send_course_purchase_invoice_email(
+                        to=student_user.email,
+                        user_name=student_name,
+                        course_title=course.title,
+                        invoice_number=inv_num,
+                        order_id=order.razorpay_order_id,
+                        payment_id=payment_id,
+                        amount_inr=float(amount_paise / 100.0),
+                        payment_method=method_display,
+                        purchase_date=formatted_date,
+                        course_url=course_url,
+                        invoice_url=invoice_url,
+                        instructor_name=course.instructor_name or "Pt. Acharya Rahul Sharma",
+                        access_type=access_type,
+                    )
+                    logger.info("Official Course Purchase Invoice successfully dispatched to {} for course {}", student_user.email, course.title)
+                except Exception as exc:
+                    logger.opt(exception=exc).warning(
+                        "Failed to dispatch course purchase invoice email for order {}: {}", order.id, exc
+                    )
+
+            asyncio.create_task(_dispatch_course_invoice_email_task())
 
         return enrollment
 
@@ -1348,6 +1416,8 @@ class CourseService:
             "failure_reason": order.failure_reason,
             "verified_via": order.verified_via,
             "paid_at": order.paid_at,
+            "invoice_number": getattr(order, "invoice_number", None),
+            "invoice_email_sent": getattr(order, "invoice_email_sent", False),
             "created_at": order.created_at,
         }
 
@@ -1500,6 +1570,7 @@ class CourseService:
                     "certificate_id": e.certificate_id,
                     "certificate_url": e.certificate_url,
                     "certificate_issued_at": e.certificate_issued_at,
+                    "invoice_number": getattr(e, "invoice_number", None),
                     "enrolled_at": e.enrolled_at,
                     "expires_at": e.expires_at,
                     "is_expired": bool(
@@ -2025,6 +2096,8 @@ class CourseService:
                         "certificate_issued": e.certificate_issued,
                         "certificate_id": e.certificate_id,
                         "certificate_url": e.certificate_url,
+                        "invoice_number": getattr(e, "invoice_number", None),
+                        "invoice_url": f"/api/v1/courses/{course.id}/invoice/html",
                     }
                 )
         return result
