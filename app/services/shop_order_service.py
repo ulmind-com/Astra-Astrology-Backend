@@ -1445,7 +1445,7 @@ class ShopOrderService:
             except Exception:
                 pass
         elif not store_cod_enabled:
-            cod_disabled_reason = "ক্যাশ অন ডেলিভারি (COD) বর্তমানে পুরো স্টোরে বন্ধ রয়েছে।"
+            cod_disabled_reason = "Cash on Delivery (COD) is temporarily disabled across the store. / ক্যাশ অন ডেলিভারি (COD) বর্তমানে পুরো স্টোরে বন্ধ রয়েছে।"
 
         prefix = clean[:2]
         state_map = {
