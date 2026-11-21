@@ -2995,11 +2995,12 @@ async def issue_follow_up_pass(
     *,
     appointment: Appointment,
     by: User,
-    window_days: int = 7,
-    max_messages: int = 3,
+    window_days: int = 1,
+    window_hours: int | None = None,
+    max_messages: int = 2,
     notes: str | None = None,
 ) -> Appointment:
-    """Astrologer issues or updates the 7-day (or custom days) remedy clarification pass."""
+    """Astrologer issues or updates the 24h (or custom) remedy clarification pass."""
     if by.id != appointment.astrologer_user_id and getattr(by, "role", None) != "admin":
         raise ForbiddenError("Only the consulting astrologer can issue a follow-up pass.")
 
@@ -3008,10 +3009,15 @@ async def issue_follow_up_pass(
 
     now = utcnow()
     appointment.follow_up_pass_enabled = True
-    appointment.follow_up_window_days = window_days
-    appointment.follow_up_expires_at = now + timedelta(days=window_days)
+    if window_hours:
+        appointment.follow_up_expires_at = now + timedelta(hours=window_hours)
+        appointment.follow_up_window_days = max(1, round(window_hours / 24))
+    else:
+        appointment.follow_up_window_days = window_days
+        appointment.follow_up_expires_at = now + timedelta(days=window_days)
     appointment.follow_up_max_messages = max_messages
     appointment.follow_up_granted_at = now
+    appointment.follow_up_pass_active = True
     if notes:
         appointment.follow_up_notes = notes
 
@@ -3026,7 +3032,8 @@ async def issue_follow_up_pass(
             {
                 "id": str(appointment.id),
                 "follow_up_pass_enabled": True,
-                "follow_up_window_days": window_days,
+                "follow_up_pass_active": True,
+                "follow_up_window_days": appointment.follow_up_window_days,
                 "follow_up_expires_at": appointment.follow_up_expires_at.isoformat(),
                 "follow_up_max_messages": max_messages,
                 "follow_up_messages_used": appointment.follow_up_messages_used,
@@ -3035,7 +3042,7 @@ async def issue_follow_up_pass(
     except Exception as exc:
         logger.debug("Failed to publish follow-up pass event: {}", exc)
 
-    logger.info("Follow-up pass of {} days issued for appointment {} by {}", window_days, appointment.id, by.email)
+    logger.info("Follow-up pass issued for appointment {} by {}", appointment.id, by.email)
     return appointment
 
 

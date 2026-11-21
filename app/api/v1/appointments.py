@@ -145,6 +145,16 @@ async def _out(
     coins_rate = appointment.coins_per_rupee or 1
     balance_due_coins = service.coins_for_paise(appointment.balance_due_paise, coins_rate)
 
+    follow_up_enabled = getattr(appointment, "follow_up_pass_enabled", False)
+    follow_up_exp = getattr(appointment, "follow_up_expires_at", None)
+    follow_up_used = getattr(appointment, "follow_up_messages_used", 0) or 0
+    follow_up_max = getattr(appointment, "follow_up_max_messages", 3) or 3
+    follow_up_active = bool(
+        follow_up_enabled
+        and (follow_up_exp is None or follow_up_exp > now)
+        and (follow_up_used < follow_up_max)
+    )
+
     return AppointmentOut(
         id=str(appointment.id),
         status=appointment.status,
@@ -200,7 +210,8 @@ async def _out(
         extension_offered_at=getattr(appointment, "extension_offered_at", None),
         extension_status=getattr(appointment, "extension_status", "none"),
         extension_total_extended_minutes=getattr(appointment, "extension_total_extended_minutes", 0),
-        follow_up_pass_enabled=getattr(appointment, "follow_up_pass_enabled", False),
+        follow_up_pass_enabled=follow_up_enabled,
+        follow_up_pass_active=follow_up_active,
         follow_up_window_days=getattr(appointment, "follow_up_window_days", 7),
         follow_up_expires_at=getattr(appointment, "follow_up_expires_at", None),
         follow_up_max_messages=getattr(appointment, "follow_up_max_messages", 3),
@@ -1410,6 +1421,7 @@ async def issue_appointment_follow_up_pass(
         appointment=appointment,
         by=user,
         window_days=payload.window_days,
+        window_hours=payload.window_hours,
         max_messages=payload.max_messages,
         notes=payload.notes,
     )

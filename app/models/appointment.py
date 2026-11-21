@@ -195,6 +195,7 @@ class Appointment(TimestampedDocument):
 
     # Complimentary Follow-up / Remedy Clarification Pass
     follow_up_pass_enabled: bool = False
+    follow_up_pass_active: bool = False
     follow_up_window_days: int = 7
     follow_up_expires_at: datetime | None = None
     follow_up_max_messages: int = 3
