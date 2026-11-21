@@ -24,6 +24,9 @@ from app.core.exceptions import (
 )
 from pymongo.errors import DuplicateKeyError
 
+from app.assets.certificate_template_b64 import CERTIFICATE_TEMPLATE_B64
+from app.assets.signature_b64 import SIGNATURE_B64
+
 from app.models.course import (
     Course,
     CourseEnrollment,
@@ -2862,752 +2865,391 @@ class CourseService:
 
     @staticmethod
     def generate_course_certificate_html(cert: dict[str, Any]) -> str:
-        """Generates an ultra-luxurious, production-level printable A4 Landscape graduation certificate."""
+        """Generates an exact-match printable A4 Landscape certificate matching the client Vedic Vision specification."""
         canonical_hash = cert.get("canonical_hash") or cert.get("digital_seal", {}).get("verification_hash", "")
         crypto_sig = cert.get("cryptographic_signature", "")
-        instructor = cert.get("instructor_name", "Pt. Acharya Rahul Sharma")
-        instructor_title = cert.get("instructor_title", "Senior Vedic Jyotishacharya")
-        issued_date = cert.get("issued_at_formatted", "")
-        distinction = cert.get("distinction", "Vidya Parangata (Summa Cum Laude)")
-        total_lessons = cert.get("total_lessons_completed", 0)
+        student_name = cert.get("student_name", "Scholar")
+        course_title = cert.get("course_title", "Bhrigunandi Naadi Jyotish")
+        instructor = cert.get("instructor_name", "Rahul Sharma")
+        if "Rahul" in instructor:
+            instructor_display = "RAHUL SHARMA"
+            instructor_clean = "Rahul Sharma"
+        else:
+            instructor_display = instructor.upper()
+            instructor_clean = instructor
+
+        issued_dt = cert.get("issued_at")
+        if isinstance(issued_dt, datetime):
+            month_name = issued_dt.strftime("%B")
+            year_val = issued_dt.strftime("%Y")
+        elif isinstance(issued_dt, str) and len(issued_dt) >= 7:
+            try:
+                dt_obj = datetime.fromisoformat(issued_dt.replace("Z", "+00:00"))
+                month_name = dt_obj.strftime("%B")
+                year_val = dt_obj.strftime("%Y")
+            except Exception:
+                month_name = "June"
+                year_val = "2026"
+        else:
+            month_name = "June"
+            year_val = "2026"
+
+        held_line = f"that held in {month_name} year of {year_val}"
         web_url = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app")
         encoded_verify_url = urllib.parse.quote(cert.get("verification_url", ""), safe="")
         qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={encoded_verify_url}"
+        cert_id = cert.get("certificate_id", "ASTRA-CERT-VERIFIED")
+        sig_short = crypto_sig[:24] + "..." if crypto_sig else "HMAC-SHA256"
+
+        is_rahul = "rahul" in instructor.lower()
+        if is_rahul:
+            sig_element = f'<img src="{SIGNATURE_B64}" alt="Rahul Sharma Signature" class="sig-img" />'
+        else:
+            sig_element = f'<div class="sig-cursive">{instructor_clean}</div>'
+
+        main_title = f"PARTICIPATION OF {course_title.upper()}"
+        subtitle = "BASIC AND ADVANCE LEVEL ONLINE COURSE ON ZOOM"
 
         return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DivinLink Gurukul Certificate — {cert['student_name']} — {cert['course_title']}</title>
+  <meta name="viewport" content="width=1000, initial-scale=1.0" />
+  <title>Participation Certificate — {student_name} — {course_title}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Alex+Brush&family=Cinzel:wght@600;700;800;900&family=Playfair+Display:ital,wght@0,600;0,700;0,900;1,400;1,600&family=Marcellus&family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Alex+Brush&family=Cinzel:wght@600;700;800;900&family=Playfair+Display:ital,wght@0,600;0,700;0,800;0,900;1,400;1,600&family=Marcellus&family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
-    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    @page {{
+      size: landscape;
+      margin: 0;
+    }}
+    * {{
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }}
     body {{
-      background: #14110E;
+      background: #0B121E;
       color: #1A1816;
-      font-family: 'Marcellus', 'Georgia', serif;
+      font-family: 'Cinzel', 'Playfair Display', Georgia, serif;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 30px 15px;
+      padding: 24px 12px;
     }}
     .actions-bar {{
-      width: 100%;
-      max-width: 1060px;
+      width: 1000px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 20px;
+      margin-bottom: 16px;
     }}
     .action-btn {{
-      background: linear-gradient(135deg, #D4AF37 0%, #AA771C 100%);
-      color: #000;
+      background: linear-gradient(135deg, #DEBA70 0%, #A57B2F 100%);
+      color: #0B1B36;
       border: none;
-      padding: 12px 24px;
+      padding: 10px 22px;
       border-radius: 9999px;
       font-weight: 700;
-      font-size: 14px;
+      font-size: 13px;
       cursor: pointer;
-      box-shadow: 0 4px 18px rgba(212, 175, 55, 0.4);
+      box-shadow: 0 4px 18px rgba(197, 155, 78, 0.4);
       transition: all 0.2s ease;
       text-decoration: none;
       display: inline-flex;
       align-items: center;
       gap: 8px;
+      font-family: 'Montserrat', sans-serif;
     }}
     .action-btn:hover {{
       transform: translateY(-2px);
-      box-shadow: 0 6px 22px rgba(212, 175, 55, 0.6);
+      box-shadow: 0 6px 22px rgba(197, 155, 78, 0.6);
     }}
     .back-btn {{
       background: rgba(255, 255, 255, 0.08);
       color: #E5E7EB;
       border: 1px solid rgba(255, 255, 255, 0.15);
-      padding: 10px 20px;
+      padding: 9px 18px;
       border-radius: 9999px;
-      font-size: 13px;
+      font-size: 12.5px;
       font-weight: 600;
       cursor: pointer;
       text-decoration: none;
+      font-family: 'Montserrat', sans-serif;
     }}
-
-    .cert-container {{
-      width: 1060px;
-      height: 680px;
-      background: #FAF8F3;
+    .cert-outer {{
+      width: 1000px;
+      height: 523px;
+      min-width: 1000px;
+      max-width: 1000px;
+      min-height: 523px;
+      max-height: 523px;
       position: relative;
       overflow: hidden;
-      border-radius: 12px;
-      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7);
+      border-radius: 8px;
+      background-color: #FAF8F5;
+      background-image: url('{CERTIFICATE_TEMPLATE_B64}');
+      background-repeat: no-repeat;
+      background-position: center center;
+      background-size: 100% 100%;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.75);
+      user-select: none;
+    }}
+    .cert-content {{
+      position: absolute;
+      inset: 0;
       display: flex;
-      border: 1px solid rgba(209, 178, 111, 0.4);
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      z-index: 5;
     }}
-
-    .guilloche-bg {{
+    .cert-main-title {{
       position: absolute;
-      top: 50%;
-      left: 33%;
-      transform: translate(-50%, -50%);
-      width: 580px;
-      height: 580px;
-      pointer-events: none;
-      opacity: 0.038;
-      z-index: 1;
+      top: 136px;
+      left: 140px;
+      right: 140px;
+      font-family: 'Cinzel', serif;
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: 0.10em;
+      color: #0E2042;
+      text-transform: uppercase;
+      line-height: 1.2;
     }}
-
-    .microtext-band {{
+    .cert-sub-title {{
       position: absolute;
+      top: 166px;
+      left: 140px;
+      right: 140px;
+      font-family: 'Cinzel', 'Montserrat', serif;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      color: #9E7730;
+      text-transform: uppercase;
+    }}
+    .cert-divider {{
+      position: absolute;
+      top: 188px;
+      left: 0;
+      right: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      color: #B88E3E;
+      letter-spacing: 4px;
+    }}
+    .cert-certify-line {{
+      position: absolute;
+      top: 212px;
+      left: 0;
+      right: 0;
+      font-family: 'Playfair Display', Georgia, serif;
+      font-style: italic;
+      font-size: 15.5px;
+      color: #374151;
+      letter-spacing: 0.02em;
+    }}
+    .cert-student-name {{
+      position: absolute;
+      top: 236px;
+      left: 140px;
+      right: 140px;
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 38px;
+      font-weight: 800;
+      color: #0B1B36;
+      line-height: 1.1;
+      letter-spacing: 0.02em;
+    }}
+    .cert-body-line-1 {{
+      position: absolute;
+      top: 294px;
+      left: 140px;
+      right: 140px;
+      font-family: 'Marcellus', Georgia, serif;
+      font-size: 14px;
+      color: #1F2937;
+    }}
+    .cert-body-line-2 {{
+      position: absolute;
+      top: 314px;
+      left: 140px;
+      right: 140px;
+      font-family: 'Marcellus', Georgia, serif;
+      font-size: 14px;
+      color: #1F2937;
+    }}
+    .cert-signatory-wrap {{
+      position: absolute;
+      top: 356px;
+      left: 210px;
+      right: 210px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }}
+    .sig-top-name {{
+      font-family: 'Montserrat', sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      color: #0B1B36;
+      text-transform: uppercase;
+    }}
+    .sig-wishes {{
+      font-family: 'Playfair Display', Georgia, serif;
+      font-style: italic;
+      font-size: 12.5px;
+      color: #4B5563;
+      margin-top: 1px;
+    }}
+    .sig-img {{
+      height: 38px;
+      object-fit: contain;
+      margin: 1px 0;
+    }}
+    .sig-cursive {{
+      font-family: 'Alex Brush', cursive;
+      font-size: 34px;
+      color: #1A2538;
+      line-height: 1;
+      margin: 2px 0;
+    }}
+    .sig-line {{
+      width: 200px;
+      height: 1px;
+      background: #CBD5E1;
+      margin: 2px auto 4px auto;
+    }}
+    .sig-bottom-name {{
+      font-family: 'Cinzel', 'Montserrat', sans-serif;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.10em;
+      color: #0B1B36;
+      text-transform: uppercase;
+    }}
+    .sig-bottom-org {{
+      font-family: 'Cinzel', 'Montserrat', sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.16em;
+      color: #64748B;
+      text-transform: uppercase;
+      margin-top: 1px;
+    }}
+    .cert-qr-container {{
+      position: absolute;
+      bottom: 24px;
+      right: 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-decoration: none;
+      z-index: 10;
+      opacity: 0.9;
+      transition: opacity 0.2s;
+    }}
+    .cert-qr-container:hover {{
+      opacity: 1;
+    }}
+    .cert-qr-img {{
+      width: 44px;
+      height: 44px;
+      border-radius: 4px;
+      border: 1px solid rgba(197, 155, 78, 0.4);
+      background: #FFFFFF;
+      padding: 2px;
+    }}
+    .cert-qr-label {{
+      font-family: 'Montserrat', sans-serif;
+      font-size: 6.5px;
+      font-weight: 700;
+      color: #9E7730;
+      letter-spacing: 0.5px;
+      margin-top: 2px;
+      text-transform: uppercase;
+    }}
+    .cert-security-bar {{
+      position: absolute;
+      bottom: 6px;
       left: 20px;
       right: 20px;
       display: flex;
+      align-items: center;
       justify-content: space-between;
       font-family: monospace;
-      font-size: 6px;
-      letter-spacing: 1.5px;
-      color: rgba(140, 122, 98, 0.5);
-      text-transform: uppercase;
-      pointer-events: none;
-      z-index: 25;
-    }}
-    .micro-top {{ top: 6px; }}
-    .micro-bot {{ bottom: 6px; }}
-
-    .cert-left {{
-      width: 66%;
-      height: 100%;
-      padding: 40px 24px 32px 48px;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      position: relative;
-      z-index: 10;
-    }}
-
-    .brand-header {{
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }}
-    .brand-logo-frame {{
-      width: 50px;
-      height: 50px;
-      border-radius: 50%;
-      border: 2px solid #C59B27;
-      background: #FFFFFF;
-      padding: 3px;
-      box-shadow: 0 2px 8px rgba(197, 155, 39, 0.2);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-    }}
-    .brand-logo-img {{
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-    }}
-    .brand-title-wrap {{
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }}
-    .brand-name {{
-      font-family: 'Cinzel', serif;
-      font-size: 16px;
-      font-weight: 900;
-      letter-spacing: 2.5px;
-      color: #1A1816;
-      line-height: 1.1;
-      text-transform: uppercase;
-    }}
-    .brand-estd {{
-      background: rgba(197, 155, 39, 0.15);
-      border: 1px solid rgba(197, 155, 39, 0.35);
-      color: #8C6514;
-      font-size: 8px;
-      font-weight: 700;
-      padding: 2px 6px;
-      border-radius: 4px;
-      letter-spacing: 1px;
-    }}
-    .brand-sub {{
-      font-family: 'Montserrat', sans-serif;
-      font-size: 8.5px;
-      font-weight: 700;
-      letter-spacing: 2px;
-      color: #7A6C58;
-      text-transform: uppercase;
-      margin-top: 3px;
-    }}
-
-    .title-block {{
-      margin-top: 10px;
-    }}
-    .cert-main-title {{
-      font-family: 'Playfair Display', Georgia, serif;
-      font-size: 52px;
-      font-weight: 900;
-      color: #1A1816;
-      line-height: 1;
-      letter-spacing: 0.5px;
-    }}
-    .cert-sub-banner {{
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-top: 5px;
-      max-width: 360px;
-    }}
-    .sub-line {{
-      flex: 1;
-      height: 1px;
-      background: #8C7A62;
-    }}
-    .sub-text {{
-      font-family: 'Montserrat', sans-serif;
-      font-size: 9.5px;
-      font-weight: 700;
-      letter-spacing: 2.5px;
-      color: #6E604E;
-      text-transform: uppercase;
-      white-space: nowrap;
-    }}
-
-    .consecration-label {{
-      font-family: 'Montserrat', sans-serif;
-      font-size: 9px;
-      font-weight: 700;
-      letter-spacing: 2px;
-      color: #7A6C58;
-      text-transform: uppercase;
-      margin-top: 12px;
-    }}
-
-    .recipient-name {{
-      font-family: 'Alex Brush', cursive;
-      font-size: 48px;
-      color: #1A1816;
-      line-height: 1.1;
-      padding-left: 4px;
-      margin-top: 2px;
-    }}
-    .recipient-underline-wrap {{
-      position: relative;
-      width: 100%;
-      height: 1.5px;
-      background: linear-gradient(90deg, transparent 0%, #8C7A62 20%, #8C7A62 80%, transparent 100%);
-      margin-top: 2px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }}
-    .underline-diamond {{
-      background: #FAF8F3;
-      padding: 0 6px;
-      color: #C59B27;
-      font-size: 11px;
-      line-height: 1;
-    }}
-
-    .distinction-pill {{
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 3px 14px;
-      border-radius: 9999px;
-      background: linear-gradient(90deg, rgba(197, 155, 39, 0.12) 0%, rgba(255, 235, 160, 0.3) 50%, rgba(197, 155, 39, 0.12) 100%);
-      border: 1px solid rgba(197, 155, 39, 0.4);
-      font-size: 9.5px;
-      font-weight: 700;
-      color: #78350F;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      margin-top: 8px;
-      width: fit-content;
-    }}
-
-    .citation-block {{
-      margin-top: 8px;
-      max-width: 500px;
-    }}
-    .citation-paragraph {{
-      font-family: 'Marcellus', 'Georgia', serif;
-      font-size: 11.5px;
-      line-height: 1.55;
-      color: #4A4237;
-    }}
-    .course-plaque {{
-      margin-top: 6px;
-      padding: 6px 14px;
-      background: #FFFDF7;
-      border: 1px solid rgba(197, 155, 39, 0.35);
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }}
-    .course-title {{
-      font-family: 'Playfair Display', Georgia, serif;
-      font-size: 14px;
-      font-weight: 700;
-      color: #1A1816;
-    }}
-    .course-meta {{
-      font-family: 'Montserrat', sans-serif;
-      font-size: 8px;
-      color: #7A6C58;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      margin-top: 2px;
-    }}
-    .course-badge {{
-      background: #D1FAE5;
-      color: #065F46;
-      border: 1px solid #A7F3D0;
-      font-size: 8.5px;
-      font-weight: 700;
-      padding: 2px 8px;
-      border-radius: 4px;
-      letter-spacing: 0.5px;
-    }}
-
-    .citation-shloka {{
-      font-family: 'Playfair Display', serif;
-      font-style: italic;
-      font-size: 10px;
-      color: #7A5D28;
-      margin-top: 5px;
-    }}
-
-    .footer-row {{
-      display: flex;
-      align-items: flex-end;
-      justify-content: space-between;
-      margin-top: 14px;
-      padding-right: 18px;
-    }}
-    .date-col, .sig-col {{
-      width: 140px;
-      text-align: center;
-    }}
-    .col-val {{
-      font-family: 'Playfair Display', serif;
-      font-size: 12px;
-      font-weight: 600;
-      color: #1A1816;
-      margin-bottom: 5px;
-      min-height: 22px;
-      display: flex;
-      align-items: flex-end;
-      justify-content: center;
-    }}
-    .sig-script {{
-      font-family: 'Alex Brush', cursive;
-      font-size: 22px;
-      color: #1A1816;
-    }}
-    .col-line {{
-      width: 100%;
-      height: 1px;
-      background: #8C7A62;
-      margin-bottom: 4px;
-    }}
-    .col-label {{
-      font-family: 'Montserrat', sans-serif;
-      font-size: 8.5px;
-      font-weight: 600;
-      letter-spacing: 1px;
-      color: #7A6C58;
-      text-transform: uppercase;
-    }}
-    .col-sublabel {{
-      font-family: 'Montserrat', sans-serif;
-      font-size: 7px;
+      font-size: 6.5px;
       color: #8C7A62;
-      letter-spacing: 0.5px;
+      opacity: 0.65;
+      letter-spacing: 1px;
       text-transform: uppercase;
-    }}
-
-    .qr-col {{
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-align: center;
-    }}
-    .qr-frame {{
-      width: 48px;
-      height: 48px;
-      background: #FFF;
-      border: 1.5px solid #C59B27;
-      border-radius: 6px;
-      padding: 3px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
-    }}
-    .qr-img {{
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-    }}
-    .qr-label {{
-      font-family: 'Montserrat', sans-serif;
-      font-size: 7px;
-      font-weight: 700;
-      color: #7A6C58;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-      margin-top: 3px;
-    }}
-
-    /* Right Side Art-Deco Lattice */
-    .cert-right {{
-      position: absolute;
-      right: 0;
-      top: 0;
-      bottom: 0;
-      width: 34%;
-      overflow: hidden;
       pointer-events: none;
     }}
-    .cert-right svg {{
-      width: 100%;
-      height: 100%;
-      display: block;
-    }}
-
-    /* Gold Ribbon Medal Badge with DIVINLINK GURUKUL */
-    .seal-wrapper {{
-      position: absolute;
-      right: 28%;
-      top: 12%;
-      z-index: 20;
-      pointer-events: none;
-      filter: drop-shadow(0 8px 16px rgba(0,0,0,0.35));
-    }}
-
     @media print {{
-      @page {{
-        size: A4 landscape;
-        margin: 0 !important;
-      }}
-      *, *::before, *::after {{
-        box-sizing: border-box !important;
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-      }}
-      html, body {{
-        width: 297mm !important;
-        height: 210mm !important;
-        max-height: 210mm !important;
-        margin: 0 !important;
+      body {{
+        background: transparent !important;
         padding: 0 !important;
-        background: #ffffff !important;
-        color: #000000 !important;
-        overflow: hidden !important;
       }}
-      .actions-bar {{ display: none !important; }}
-      body * {{
-        visibility: hidden !important;
+      .actions-bar {{
+        display: none !important;
       }}
-      .cert-container, .cert-container * {{
-        visibility: visible !important;
-      }}
-      .cert-container {{
-        position: fixed !important;
-        left: 0 !important;
-        top: 0 !important;
-        width: 297mm !important;
-        height: 210mm !important;
-        max-height: 210mm !important;
-        border: none !important;
-        border-radius: 0 !important;
+      .cert-outer {{
         box-shadow: none !important;
-        overflow: hidden !important;
-        page-break-after: avoid !important;
+        border-radius: 0 !important;
+        width: 100% !important;
+        height: 100vh !important;
         page-break-inside: avoid !important;
         break-inside: avoid !important;
-        break-after: avoid !important;
-      }}
-      .cert-left {{
-        width: 66% !important;
-        height: 210mm !important;
-        max-height: 210mm !important;
-        padding: 10mm 8mm 8mm 14mm !important;
-        box-sizing: border-box !important;
-      }}
-      .cert-right {{
-        width: 34% !important;
-        height: 210mm !important;
-      }}
-      .seal-wrapper {{
-        right: 27% !important;
-        top: 10% !important;
-        transform: scale(0.9) !important;
-      }}
-      .cert-main-title {{
-        font-size: 38px !important;
-      }}
-      .recipient-name {{
-        font-size: 36px !important;
       }}
     }}
   </style>
 </head>
 <body>
   <div class="actions-bar">
-    <a href="{cert['verification_url']}" class="back-btn">← Back to Portal</a>
-    <button class="action-btn" onclick="window.print()">
-      <span>🖨️</span> Print & Save Official PDF
-    </button>
+    <a href="{web_url}/account/courses" class="back-btn">← Back to My Courses</a>
+    <button onclick="window.print()" class="action-btn">🖨️ Print / Save PDF</button>
   </div>
 
-  <div class="cert-container">
-    <!-- Guilloche Background Rosette Watermark -->
-    <div class="guilloche-bg">
-      <svg viewBox="0 0 600 600" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="300" cy="300" r="270" fill="none" stroke="#C59B27" stroke-width="1.5" stroke-dasharray="5,5"/>
-        <circle cx="300" cy="300" r="230" fill="none" stroke="#C59B27" stroke-width="1"/>
-        <circle cx="300" cy="300" r="180" fill="none" stroke="#C59B27" stroke-width="1.2" stroke-dasharray="3,3"/>
-        <circle cx="300" cy="300" r="130" fill="none" stroke="#C59B27" stroke-width="0.8"/>
-        <g stroke="#C59B27" stroke-width="0.75" fill="none">
-          <ellipse cx="300" cy="300" rx="260" ry="50" transform="rotate(0 300 300)"/>
-          <ellipse cx="300" cy="300" rx="260" ry="50" transform="rotate(20 300 300)"/>
-          <ellipse cx="300" cy="300" rx="260" ry="50" transform="rotate(40 300 300)"/>
-          <ellipse cx="300" cy="300" rx="260" ry="50" transform="rotate(60 300 300)"/>
-          <ellipse cx="300" cy="300" rx="260" ry="50" transform="rotate(80 300 300)"/>
-          <ellipse cx="300" cy="300" rx="260" ry="50" transform="rotate(100 300 300)"/>
-          <ellipse cx="300" cy="300" rx="260" ry="50" transform="rotate(120 300 300)"/>
-          <ellipse cx="300" cy="300" rx="260" ry="50" transform="rotate(140 300 300)"/>
-          <ellipse cx="300" cy="300" rx="260" ry="50" transform="rotate(160 300 300)"/>
-        </g>
-        <text x="300" y="325" fill="#C59B27" font-size="80" font-family="'Playfair Display', serif" font-weight="bold" text-anchor="middle" opacity="0.35">ॐ</text>
-      </svg>
-    </div>
+  <div class="cert-outer">
+    <div class="cert-content">
+      <div class="cert-main-title">{main_title}</div>
+      <div class="cert-sub-title">{subtitle}</div>
+      <div class="cert-divider">———— ◆ ————</div>
+      <div class="cert-certify-line">This is to certify that</div>
+      <div class="cert-student-name">{student_name}</div>
+      <div class="cert-body-line-1">Has successfully completed online course of {course_title}</div>
+      <div class="cert-body-line-2">{held_line}</div>
 
-    <!-- Micro-Text Security Perimeter Bands -->
-    <div class="microtext-band micro-top">
-      <span>DIVINLINK GURUKUL CELESTIAL CREDENTIALS • OFFICIALLY CONSECRATED • CANONICAL HASH VERIFIED</span>
-      <span>HMAC-SHA256 DIGITAL SECURITY SEAL • MATHEMATICALLY TAMPER-PROOF • VERIFIABLE AT ASTRAGURUKUL.COM</span>
-    </div>
-    <div class="microtext-band micro-bot">
-      <span>ID: {cert['certificate_id']} • LEDGER RECORD CONSECRATED</span>
-      <span>SIG: {crypto_sig[:24]}... (HMAC-SHA256)</span>
-    </div>
-
-    <div class="cert-left">
-      <!-- Brand Header with Official Logo -->
-      <div class="brand-header">
-        <div class="brand-logo-frame">
-          <img src="{web_url}/logo.png" alt="DivinLink Gurukul" class="brand-logo-img" onerror="this.src='/logo.png'"/>
-        </div>
-        <div>
-          <div class="brand-title-wrap">
-            <span class="brand-name">DivinLink Gurukul</span>
-            <span class="brand-estd">ESTD. 2026</span>
-          </div>
-          <div class="brand-sub">Council of Vedic Astrological Sciences & Celestial Arts</div>
-        </div>
-      </div>
-
-      <!-- Title Block -->
-      <div class="title-block">
-        <h1 class="cert-main-title">Certificate</h1>
-        <div class="cert-sub-banner">
-          <div class="sub-line"></div>
-          <span class="sub-text">✦ OF SCHOLARLY ACHIEVEMENT ✦</span>
-          <div class="sub-line"></div>
-        </div>
-      </div>
-
-      <!-- Consecration Label -->
-      <div class="consecration-label">
-        This is to solemnly certify & consecrate that
-      </div>
-
-      <!-- Recipient Scholar Name -->
-      <div>
-        <div class="recipient-name">{cert['student_name']}</div>
-        <div class="recipient-underline-wrap">
-          <span class="underline-diamond">✦</span>
-        </div>
-      </div>
-
-      <!-- Distinction Ribbon -->
-      <div class="distinction-pill">
-        ★ {distinction} ★
-      </div>
-
-      <!-- Citation Body & Course Plaque -->
-      <div class="citation-block">
-        <div class="citation-paragraph">
-          has thoroughly mastered the sacred principles, astronomical calculations, predictive methodologies, and remedial canon prescribed in the curriculum of
-        </div>
-        <div class="course-plaque">
-          <div>
-            <div class="course-title">{cert['course_title']}</div>
-            <div class="course-meta">Completed 100% Curriculum ({total_lessons} Lessons & Practicums)</div>
-          </div>
-          <span class="course-badge">PASSED</span>
-        </div>
-        <div class="citation-shloka">
-          « विद्या ददाति विनयं विनयाद्याति पात्रताम् • True knowledge bestows humility, worthiness, and supreme fulfillment »
-        </div>
-      </div>
-
-      <!-- Footer Row: Date, Live QR Code, Dual Signatures -->
-      <div class="footer-row">
-        <div class="date-col">
-          <div class="col-val">{issued_date}</div>
-          <div class="col-line"></div>
-          <div class="col-label">Date Consecrated</div>
-        </div>
-
-        <div class="qr-col">
-          <div class="qr-frame">
-            <img src="{qr_url}" alt="Verification QR Code" class="qr-img"/>
-          </div>
-          <div class="qr-label">Scan to Verify</div>
-        </div>
-
-        <div class="sig-col">
-          <div class="col-val sig-script">{instructor}</div>
-          <div class="col-line"></div>
-          <div class="col-label">{instructor_title}</div>
-          <div class="col-sublabel">Council Registrar</div>
-        </div>
+      <div class="cert-signatory-wrap">
+        <div class="sig-top-name">{instructor_display}</div>
+        <div class="sig-wishes">wishes him/her all the best for future</div>
+        {sig_element}
+        <div class="sig-line"></div>
+        <div class="sig-bottom-name">{instructor_display}</div>
+        <div class="sig-bottom-org">VEDIC VISION</div>
       </div>
     </div>
 
-    <!-- Gold Ribbon Medal Badge with DIVINLINK GURUKUL -->
-    <div class="seal-wrapper">
-      <svg viewBox="0 0 160 200" width="134" height="168" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="ribbonL" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#D8B467"/>
-            <stop offset="50%" stop-color="#AA8237"/>
-            <stop offset="100%" stop-color="#6C4F18"/>
-          </linearGradient>
-          <linearGradient id="ribbonR" x1="100%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stop-color="#E8CA83"/>
-            <stop offset="50%" stop-color="#BA9245"/>
-            <stop offset="100%" stop-color="#78581F"/>
-          </linearGradient>
-          <radialGradient id="goldPlate" cx="40%" cy="35%" r="65%">
-            <stop offset="0%" stop-color="#FFF0B8"/>
-            <stop offset="40%" stop-color="#D4AF37"/>
-            <stop offset="80%" stop-color="#9A7424"/>
-            <stop offset="100%" stop-color="#64470C"/>
-          </radialGradient>
-          <radialGradient id="darkDisc" cx="50%" cy="45%" r="50%">
-            <stop offset="0%" stop-color="#2C2114"/>
-            <stop offset="80%" stop-color="#151009"/>
-            <stop offset="100%" stop-color="#0C0905"/>
-          </radialGradient>
-        </defs>
+    <!-- Official Tamper-Proof Cryptographic Verification QR Code -->
+    <a href="{cert.get('verification_url', '')}" target="_blank" rel="noopener noreferrer" class="cert-qr-container" title="Verify authenticity online">
+      <img src="{qr_url}" alt="Certificate QR" class="cert-qr-img" />
+      <span class="cert-qr-label">Verify Credential</span>
+    </a>
 
-        <path d="M 66,105 L 56,175 L 68,162 L 80,175 L 75,105 Z" fill="url(#ribbonL)"/>
-        <path d="M 66,105 L 68,162 L 56,175 Z" fill="rgba(0,0,0,0.18)"/>
-
-        <path d="M 85,105 L 80,175 L 92,162 L 104,175 L 94,105 Z" fill="url(#ribbonR)"/>
-        <path d="M 94,105 L 92,162 L 104,175 Z" fill="rgba(0,0,0,0.12)"/>
-
-        <polygon
-          points="123.63,80.00 120.35,85.25 120.91,91.43 116.14,95.42 114.99,101.51 109.11,103.54 106.37,109.11 99.85,108.97 95.86,113.74 89.28,111.45 84.49,114.99 78.40,110.51 73.15,112.54 67.97,106.37 63.18,106.77 59.19,99.28 55.44,97.94 53.03,89.51 51.00,86.77 50.44,78.28 50.21,74.29 51.68,66.07 53.24,61.03 56.65,53.63 60.15,49.89 65.40,43.63 70.58,41.22 77.00,36.37 83.00,35.51 90.00,32.26 96.37,33.00 103.23,31.45 109.11,33.54 114.99,35.51 119.85,40.11 123.63,44.75 126.97,51.03 128.91,57.28 130.44,64.29 128.68,71.07 127.24,76.03"
-          fill="url(#goldPlate)"
-          stroke="#8B6508"
-          stroke-width="0.8"
-        />
-
-        <circle cx="80" cy="80" r="38" fill="none" stroke="#FFEBA0" stroke-width="1.2"/>
-        <circle cx="80" cy="80" r="35" fill="none" stroke="#8B6508" stroke-width="0.8"/>
-        <circle cx="80" cy="80" r="32.5" fill="none" stroke="#FFEBA0" stroke-width="0.7" stroke-dasharray="1.5,1.5"/>
-        <circle cx="80" cy="80" r="30" fill="none" stroke="#64470C" stroke-width="1.2"/>
-
-        <circle cx="80" cy="80" r="28.5" fill="url(#darkDisc)"/>
-        <circle cx="80" cy="80" r="27" fill="none" stroke="#D4AF37" stroke-width="0.6"/>
-
-        <text x="80" y="65" fill="#FFE89E" font-family="sans-serif" font-size="5" font-weight="bold" text-anchor="middle" letter-spacing="1.5">★ ★ ★</text>
-        <text x="80" y="74" fill="#FFF3CA" font-family="'Cinzel', serif" font-size="7" font-weight="900" text-anchor="middle" letter-spacing="1">DIVINLINK</text>
-        <text x="80" y="81" fill="#E5C370" font-family="'Cinzel', serif" font-size="6" font-weight="800" text-anchor="middle" letter-spacing="1.2">GURUKUL</text>
-        <path d="M 59,84 L 64,84 M 96,84 L 101,84" stroke="#D4AF37" stroke-width="0.5"/>
-        <text x="80" y="87" fill="#E5C370" font-family="sans-serif" font-size="4.5" font-weight="800" text-anchor="middle" letter-spacing="1.2">EXCELLENCE</text>
-        <text x="80" y="95" fill="#FFF3CA" font-family="'Cinzel', serif" font-size="7" font-weight="700" text-anchor="middle" letter-spacing="1">2026</text>
-      </svg>
-    </div>
-
-    <!-- Right Column: Geometric Art-Deco Gold Lattice Pattern -->
-    <div class="cert-right">
-      <svg viewBox="0 0 320 640" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="patGoldMetal" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#D1B26F"/>
-            <stop offset="30%" stop-color="#A68444"/>
-            <stop offset="70%" stop-color="#DDC385"/>
-            <stop offset="100%" stop-color="#8E6C2E"/>
-          </linearGradient>
-          <linearGradient id="patGoldLight" x1="0%" y1="100%" x2="100%" y2="0%">
-            <stop offset="0%" stop-color="#A68444"/>
-            <stop offset="50%" stop-color="#F0DCA0"/>
-            <stop offset="100%" stop-color="#BD9C59"/>
-          </linearGradient>
-
-          <g id="patDiamondCross">
-            <path d="M-160,-160 L160,160 M160,-160 L-160,160" stroke="url(#patGoldMetal)" stroke-width="16" fill="none"/>
-            
-            <polygon points="0,-110 110,0 0,110 -110,0" fill="none" stroke="url(#patGoldMetal)" stroke-width="14"/>
-            <polygon points="0,-96 96,0 0,96 -96,0" fill="none" stroke="#FAF8F3" stroke-width="4"/>
-            <polygon points="0,-90 90,0 0,90 -90,0" fill="none" stroke="url(#patGoldLight)" stroke-width="3"/>
-
-            <path d="M-28,-28 L-28,-80 L0,-100 L28,-80 L28,-28 Z" fill="url(#patGoldMetal)"/>
-            <path d="M-20,-28 L-20,-75 L0,-90 L20,-75 L20,-28 Z" fill="#FAF8F3"/>
-            <path d="M-12,-28 L-12,-70 L0,-80 L12,-70 L12,-28 Z" fill="url(#patGoldLight)"/>
-
-            <path d="M-28,28 L-28,80 L0,100 L28,80 L28,28 Z" fill="url(#patGoldMetal)"/>
-            <path d="M-20,28 L-20,75 L0,90 L20,75 L20,28 Z" fill="#FAF8F3"/>
-            <path d="M-12,28 L-12,70 L0,80 L12,70 L12,28 Z" fill="url(#patGoldLight)"/>
-
-            <path d="M-28,-28 L-80,-28 L-100,0 L-80,28 L-28,28 Z" fill="url(#patGoldMetal)"/>
-            <path d="M-28,-20 L-75,-20 L-90,0 L-75,20 L-28,20 Z" fill="#FAF8F3"/>
-            <path d="M-28,-12 L-70,-12 L-80,0 L-70,12 L-28,12 Z" fill="url(#patGoldLight)"/>
-
-            <path d="M28,-28 L80,-28 L100,0 L80,28 L28,28 Z" fill="url(#patGoldMetal)"/>
-            <path d="M28,-20 L75,-20 L90,0 L75,20 L28,20 Z" fill="#FAF8F3"/>
-            <path d="M28,-12 L70,-12 L80,0 L70,12 L28,12 Z" fill="url(#patGoldLight)"/>
-
-            <polygon points="0,-28 28,0 0,28 -28,0" fill="url(#patGoldMetal)"/>
-            <polygon points="0,-20 20,0 0,20 -20,0" fill="#FAF8F3"/>
-            <polygon points="0,-12 12,0 0,12 -12,0" fill="url(#patGoldLight)"/>
-            <polygon points="0,-5 5,0 0,5 -5,0" fill="url(#patGoldMetal)"/>
-
-            <path d="M38,-38 L55,-55 M46,-38 L63,-55 M54,-38 L71,-55" stroke="url(#patGoldMetal)" stroke-width="3" fill="none"/>
-            <path d="M38,38 L55,55 M46,38 L63,55 M54,38 L71,55" stroke="url(#patGoldMetal)" stroke-width="3" fill="none"/>
-            <path d="M-38,38 L-55,55 M-46,38 L-63,55 M-54,38 L-71,55" stroke="url(#patGoldMetal)" stroke-width="3" fill="none"/>
-            <path d="M-38,-38 L-55,-55 M-46,-38 L-63,-55 M-54,-38 L-71,-55" stroke="url(#patGoldMetal)" stroke-width="3" fill="none"/>
-          </g>
-        </defs>
-
-        <rect width="320" height="640" fill="#FAF8F3"/>
-
-        <g transform="translate(160, -30)"><use href="#patDiamondCross"/></g>
-        <g transform="translate(160, 210)"><use href="#patDiamondCross"/></g>
-        <g transform="translate(160, 450)"><use href="#patDiamondCross"/></g>
-        <g transform="translate(160, 690)"><use href="#patDiamondCross"/></g>
-
-        <g transform="translate(0, 90)"><use href="#patDiamondCross"/></g>
-        <g transform="translate(0, 330)"><use href="#patDiamondCross"/></g>
-        <g transform="translate(0, 570)"><use href="#patDiamondCross"/></g>
-
-        <g transform="translate(320, 90)"><use href="#patDiamondCross"/></g>
-        <g transform="translate(320, 330)"><use href="#patDiamondCross"/></g>
-        <g transform="translate(320, 570)"><use href="#patDiamondCross"/></g>
-      </svg>
+    <!-- Anti-Fraud Security Bar -->
+    <div class="cert-security-bar">
+      <span>ID: {cert_id} • CANONICAL HASH: {canonical_hash[:20]}...</span>
+      <span>DIGITAL SIGNATURE: {sig_short} • OFFICIALLY CONSECRATED</span>
     </div>
   </div>
 </body>
