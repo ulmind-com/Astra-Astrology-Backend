@@ -2865,7 +2865,7 @@ class CourseService:
 
     @staticmethod
     def generate_course_certificate_html(cert: dict[str, Any]) -> str:
-        """Generates an exact-match printable A4 Landscape certificate matching the client Vedic Vision specification."""
+        """Generates an exact-match printable A4 Landscape certificate matching the client DivinLink specification."""
         canonical_hash = cert.get("canonical_hash") or cert.get("digital_seal", {}).get("verification_hash", "")
         crypto_sig = cert.get("cryptographic_signature", "")
         student_name = cert.get("student_name", "Scholar")
@@ -3236,7 +3236,7 @@ class CourseService:
         {sig_element}
         <div class="sig-line"></div>
         <div class="sig-bottom-name">{instructor_display}</div>
-        <div class="sig-bottom-org">VEDIC VISION</div>
+        <div class="sig-bottom-org">DIVINLINK</div>
       </div>
     </div>
 
