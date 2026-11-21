@@ -7,11 +7,13 @@ next successful `ping()` finishes the Beanie setup.
 """
 
 import asyncio
+from typing import Any, Callable, Coroutine, TypeVar
 
 from beanie import init_beanie
 from loguru import logger
 from pymongo import AsyncMongoClient
 from pymongo.asynchronous.database import AsyncDatabase
+from pymongo.errors import AutoReconnect, ConnectionFailure, NetworkTimeout, ServerSelectionTimeoutError
 
 from app.core.config import settings
 from app.models import DOCUMENT_MODELS
@@ -19,6 +21,44 @@ from app.models import DOCUMENT_MODELS
 _client: AsyncMongoClient | None = None
 _database: AsyncDatabase | None = None
 _beanie_ready = False
+
+T = TypeVar("T")
+
+
+def heal_connection() -> None:
+    """Forces PyMongo SDAM to probe all replica set nodes immediately and unpause pool."""
+    global _client
+    if _client is not None:
+        try:
+            topology = getattr(_client, "_topology", None)
+            if topology is not None and hasattr(topology, "_request_check_all"):
+                topology._request_check_all()
+        except Exception:
+            pass
+
+
+async def with_mongo_retry(
+    coro_fn: Callable[[], Coroutine[Any, Any, T]],
+    max_retries: int = 1,
+    delay: float = 0.35,
+) -> T:
+    """Executes an async DB operation with automatic 1-shot retry on transient connection failures."""
+    for attempt in range(max_retries + 1):
+        try:
+            return await coro_fn()
+        except (ConnectionFailure, AutoReconnect, ServerSelectionTimeoutError, NetworkTimeout) as exc:
+            heal_connection()
+            if attempt < max_retries:
+                logger.warning(
+                    "Transient MongoDB disconnect on attempt {}/{}, retrying in {:.2f}s: {}",
+                    attempt + 1,
+                    max_retries + 1,
+                    delay,
+                    exc,
+                )
+                await asyncio.sleep(delay)
+            else:
+                raise
 
 
 def get_client() -> AsyncMongoClient:
@@ -73,16 +113,25 @@ async def connect_to_mongo() -> bool:
     try:
         from pymongo import ReadPreference
 
+        connect_timeout = min(int(getattr(settings, "MONGODB_CONNECT_TIMEOUT_MS", 3_000)), 4_000)
+        server_sel_timeout = min(int(getattr(settings, "MONGODB_SERVER_SELECTION_TIMEOUT_MS", 3_500)), 4_000)
+        socket_timeout = min(int(getattr(settings, "MONGODB_SOCKET_TIMEOUT_MS", 4_000)), 5_000)
+        max_idle_time = min(int(getattr(settings, "MONGODB_MAX_IDLE_TIME_MS", 45_000)), 45_000)
+        heartbeat_freq = min(int(getattr(settings, "MONGODB_HEARTBEAT_FREQUENCY_MS", 5_000)), 5_000)
+        wait_queue_timeout = min(int(getattr(settings, "MONGODB_WAIT_QUEUE_TIMEOUT_MS", 3_000)), 4_000)
+        min_pool_size = max(int(getattr(settings, "MONGODB_MIN_POOL_SIZE", 2)), 2)
+
         _client = AsyncMongoClient(
             settings.MONGODB_URI,
             readPreference="primaryPreferred",
             maxPoolSize=settings.MONGODB_MAX_POOL_SIZE,
-            minPoolSize=settings.MONGODB_MIN_POOL_SIZE,
-            maxIdleTimeMS=settings.MONGODB_MAX_IDLE_TIME_MS,
-            socketTimeoutMS=settings.MONGODB_SOCKET_TIMEOUT_MS,
-            serverSelectionTimeoutMS=settings.MONGODB_SERVER_SELECTION_TIMEOUT_MS,
-            connectTimeoutMS=settings.MONGODB_CONNECT_TIMEOUT_MS,
-            heartbeatFrequencyMS=getattr(settings, "MONGODB_HEARTBEAT_FREQUENCY_MS", 10_000),
+            minPoolSize=min_pool_size,
+            maxIdleTimeMS=max_idle_time,
+            socketTimeoutMS=socket_timeout,
+            serverSelectionTimeoutMS=server_sel_timeout,
+            connectTimeoutMS=connect_timeout,
+            waitQueueTimeoutMS=wait_queue_timeout,
+            heartbeatFrequencyMS=heartbeat_freq,
             retryWrites=True,
             retryReads=True,
             tz_aware=True,
@@ -131,9 +180,11 @@ async def ping(timeout: float | None = None) -> bool:
         await asyncio.wait_for(_client.admin.command("ping"), timeout=budget)
     except TimeoutError:
         logger.warning("MongoDB ping timed out after {}s.", budget)
+        heal_connection()
         return False
     except Exception as exc:  # noqa: BLE001 - health checks must never raise
         logger.warning("MongoDB ping failed: {}", exc)
+        heal_connection()
         return False
 
     # Recover from a startup where the database wasn't up yet.

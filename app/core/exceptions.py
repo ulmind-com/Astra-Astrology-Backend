@@ -138,6 +138,12 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(PyMongoError)
     async def _mongo_error_handler(request: Request, exc: PyMongoError) -> JSONResponse:
+        try:
+            from app.db.mongodb import heal_connection
+            heal_connection()
+        except Exception:
+            pass
+
         # Check if this is a transient replica set election / network reconnect
         is_transient = isinstance(exc, (ServerSelectionTimeoutError, NetworkTimeout, AutoReconnect))
         if is_transient:
@@ -155,13 +161,16 @@ def register_exception_handlers(app: FastAPI) -> None:
         else:
             logger.error("Database error on {} {}: {}", request.method, request.url.path, exc)
 
+        headers = _cors_headers(request)
+        headers["Retry-After"] = "2"
+
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content=_error_body(
                 "Database temporarily unavailable. Please retry in a few seconds.",
                 "database_unavailable",
             ),
-            headers=_cors_headers(request),
+            headers=headers,
         )
 
     @app.exception_handler(Exception)

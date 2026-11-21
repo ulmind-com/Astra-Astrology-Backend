@@ -8,6 +8,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.core.exceptions import ForbiddenError, NotFoundError, UnauthorizedError
 from app.core.security import decode_token
+from app.db.mongodb import with_mongo_retry
 from app.models.astrologer import Astrologer
 from app.models.enums import UserRole
 from app.models.user import User
@@ -26,7 +27,7 @@ async def get_current_user(
     if not subject or not PydanticObjectId.is_valid(subject):
         raise UnauthorizedError("Malformed token subject.", error_code="invalid_token")
 
-    user = await User.get(PydanticObjectId(subject))
+    user = await with_mongo_retry(lambda: User.get(PydanticObjectId(subject)))
     if user is None:
         raise UnauthorizedError("This account no longer exists.", error_code="user_not_found")
     if not user.is_active:
@@ -65,7 +66,7 @@ async def get_optional_user(
         subject = payload.get("sub")
         if not subject or not PydanticObjectId.is_valid(subject):
             return None
-        user = await User.get(PydanticObjectId(subject))
+        user = await with_mongo_retry(lambda: User.get(PydanticObjectId(subject)))
         if user is None or not user.is_active:
             return None
         return user
@@ -97,7 +98,7 @@ async def get_user_if_signed_in(
     if not subject or not PydanticObjectId.is_valid(subject):
         raise UnauthorizedError("Malformed token subject.", error_code="invalid_token")
 
-    user = await User.get(PydanticObjectId(subject))
+    user = await with_mongo_retry(lambda: User.get(PydanticObjectId(subject)))
     if user is None:
         raise UnauthorizedError(
             "This account no longer exists.", error_code="user_not_found"
@@ -119,7 +120,7 @@ AstrologerUser = Annotated[User, Depends(require_roles(UserRole.ASTROLOGER))]
 
 async def get_current_astrologer(user: AstrologerUser) -> Astrologer:
     """The astrologer profile belonging to the signed-in astrologer."""
-    profile = await Astrologer.find_one(Astrologer.user_id == user.id)
+    profile = await with_mongo_retry(lambda: Astrologer.find_one(Astrologer.user_id == user.id))
     if profile is None:
         # Should not happen: the profile is created with the account.
         raise NotFoundError(

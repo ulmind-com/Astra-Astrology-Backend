@@ -28,6 +28,13 @@ async def sweep_abandoned_shop_checkouts() -> int:
         cms = await ShopCMS.find_one({"$or": [{"key": CMS_KEY_SHOP}, {"key": "shop_cms"}]})
         if cms:
             default_reservation_mins = getattr(cms, "checkout_reservation_minutes", 20) or 20
+    except PyMongoError as db_err:
+        try:
+            from app.db.mongodb import heal_connection
+            heal_connection()
+        except Exception:
+            pass
+        logger.debug("Could not read ShopCMS reservation config due to transient DB error: {}", db_err)
     except Exception as e:
         logger.debug("Could not read ShopCMS reservation config, using fallback {}m: {}", default_reservation_mins, e)
 
@@ -56,6 +63,11 @@ async def sweep_abandoned_shop_checkouts() -> int:
     try:
         expired_orders = await ShopOrder.find(query).to_list()
     except PyMongoError as db_err:
+        try:
+            from app.db.mongodb import heal_connection
+            heal_connection()
+        except Exception:
+            pass
         logger.warning(
             "Shop inventory sweep skipped (MongoDB replica set failover or transient timeout): {}",
             db_err,
