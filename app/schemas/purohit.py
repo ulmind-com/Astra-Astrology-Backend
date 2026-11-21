@@ -125,6 +125,7 @@ class PujaBookingCreate(BaseModel):
     puja_item_id: str
     sankalpa_name: str = Field(..., min_length=2, max_length=100, description="Name for Vedic Sankalpa")
     sankalpa_gotra: str = Field(default="Kashyapa", min_length=2, max_length=50)
+    sankalpa_nakshatra: str | None = Field(default=None, max_length=50, description="Birth Nakshatra for Vedic Sankalpa")
     sankalpa_wish: str | None = Field(default=None, max_length=500, description="Special prayer wish or reason for puja")
 
 
@@ -146,6 +147,7 @@ class PujaBookingOut(BaseModel):
     amount_inr: float
     sankalpa_name: str
     sankalpa_gotra: str
+    sankalpa_nakshatra: str | None = None
     sankalpa_wish: str | None = None
     room_id: str
     zego_app_id: int = Field(default_factory=lambda: settings.ZEGO_APP_ID)

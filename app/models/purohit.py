@@ -93,6 +93,7 @@ class PujaBooking(TimestampedDocument):
     # Vedic Sankalpa
     sankalpa_name: str
     sankalpa_gotra: str = "Kashyapa"
+    sankalpa_nakshatra: str | None = None
     sankalpa_wish: str | None = None
 
     # ZEGOCLOUD Video Room ID

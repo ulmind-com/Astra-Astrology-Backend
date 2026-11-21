@@ -328,6 +328,7 @@ async def book_puja(user: User, payload: PujaBookingCreate) -> tuple[PujaBooking
         amount_inr=target_puja.price_inr,
         sankalpa_name=payload.sankalpa_name.strip(),
         sankalpa_gotra=payload.sankalpa_gotra.strip() or "Kashyapa",
+        sankalpa_nakshatra=payload.sankalpa_nakshatra.strip() if payload.sankalpa_nakshatra else None,
         sankalpa_wish=payload.sankalpa_wish.strip() if payload.sankalpa_wish else None,
         room_id=room_id,
         status=PujaBookingStatus.CONFIRMED,
