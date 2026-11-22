@@ -21,13 +21,21 @@ from app.models import DOCUMENT_MODELS
 _client: AsyncMongoClient | None = None
 _database: AsyncDatabase | None = None
 _beanie_ready = False
+_last_heal_time: float = 0.0
 
 T = TypeVar("T")
 
 
 def heal_connection() -> None:
-    """Forces PyMongo SDAM to probe all replica set nodes immediately and unpause pool."""
-    global _client
+    """Forces PyMongo SDAM to probe all replica set nodes immediately and unpause pool (debounced)."""
+    global _client, _last_heal_time
+    import time
+
+    now = time.monotonic()
+    if now - _last_heal_time < 10.0:
+        return
+    _last_heal_time = now
+
     if _client is not None:
         try:
             topology = getattr(_client, "_topology", None)
@@ -39,14 +47,22 @@ def heal_connection() -> None:
 
 async def with_mongo_retry(
     coro_fn: Callable[[], Coroutine[Any, Any, T]],
-    max_retries: int = 1,
-    delay: float = 0.35,
+    max_retries: int = 2,
+    delay: float = 0.5,
 ) -> T:
-    """Executes an async DB operation with automatic 1-shot retry on transient connection failures."""
+    """Executes an async DB operation with automatic retry on transient connection failures."""
+    transient_errors = (
+        ConnectionFailure,
+        AutoReconnect,
+        ServerSelectionTimeoutError,
+        NetworkTimeout,
+        TimeoutError,
+        OSError,
+    )
     for attempt in range(max_retries + 1):
         try:
             return await coro_fn()
-        except (ConnectionFailure, AutoReconnect, ServerSelectionTimeoutError, NetworkTimeout) as exc:
+        except transient_errors as exc:
             heal_connection()
             if attempt < max_retries:
                 logger.warning(
@@ -113,13 +129,13 @@ async def connect_to_mongo() -> bool:
     try:
         from pymongo import ReadPreference
 
-        connect_timeout = min(int(getattr(settings, "MONGODB_CONNECT_TIMEOUT_MS", 3_000)), 4_000)
-        server_sel_timeout = min(int(getattr(settings, "MONGODB_SERVER_SELECTION_TIMEOUT_MS", 3_500)), 4_000)
-        socket_timeout = min(int(getattr(settings, "MONGODB_SOCKET_TIMEOUT_MS", 4_000)), 5_000)
-        max_idle_time = min(int(getattr(settings, "MONGODB_MAX_IDLE_TIME_MS", 45_000)), 45_000)
-        heartbeat_freq = min(int(getattr(settings, "MONGODB_HEARTBEAT_FREQUENCY_MS", 5_000)), 5_000)
-        wait_queue_timeout = min(int(getattr(settings, "MONGODB_WAIT_QUEUE_TIMEOUT_MS", 3_000)), 4_000)
-        min_pool_size = max(int(getattr(settings, "MONGODB_MIN_POOL_SIZE", 2)), 2)
+        connect_timeout = int(getattr(settings, "MONGODB_CONNECT_TIMEOUT_MS", 15_000))
+        server_sel_timeout = int(getattr(settings, "MONGODB_SERVER_SELECTION_TIMEOUT_MS", 15_000))
+        socket_timeout = int(getattr(settings, "MONGODB_SOCKET_TIMEOUT_MS", 45_000))
+        max_idle_time = int(getattr(settings, "MONGODB_MAX_IDLE_TIME_MS", 180_000))
+        heartbeat_freq = int(getattr(settings, "MONGODB_HEARTBEAT_FREQUENCY_MS", 10_000))
+        wait_queue_timeout = int(getattr(settings, "MONGODB_WAIT_QUEUE_TIMEOUT_MS", 10_000))
+        min_pool_size = int(getattr(settings, "MONGODB_MIN_POOL_SIZE", 0))
 
         _client = AsyncMongoClient(
             settings.MONGODB_URI,

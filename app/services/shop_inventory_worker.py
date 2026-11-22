@@ -169,7 +169,12 @@ async def periodic_shop_inventory_cleanup_loop(interval_seconds: int = 300) -> N
         except asyncio.CancelledError:
             logger.info("Shop inventory TTL cleaner received cancellation signal. Stopping.")
             break
-        except PyMongoError as db_err:
+        except (PyMongoError, TimeoutError, OSError) as db_err:
+            try:
+                from app.db.mongodb import heal_connection
+                heal_connection()
+            except Exception:
+                pass
             logger.warning(
                 "MongoDB temporarily unavailable in shop inventory cleaner loop (will retry next cycle): {}",
                 db_err,
