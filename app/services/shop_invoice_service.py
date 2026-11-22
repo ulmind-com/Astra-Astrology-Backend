@@ -36,10 +36,26 @@ def _format_inr(amount: float) -> str:
     return f"₹{amount:,.2f}".replace(".00", "")
 
 
+async def ensure_order_invoice_number(order: ShopOrder) -> str:
+    """Guarantees the order has a persisted unique official invoice number."""
+    if order.invoice_number:
+        return order.invoice_number
+
+    cms = await ShopCMS.find_one(ShopCMS.key == CMS_KEY_SHOP)
+    prefix = getattr(cms, "invoice_prefix", "DIVIN-INV") or "DIVIN-INV"
+    year = order.created_at.year
+    clean_num = order.order_number.replace("ASTRA-ORD-", "").replace("DIVIN-ORD-", "")
+    suffix = clean_num[-6:] if len(clean_num) >= 6 else str(order.id)[-6:]
+    order.invoice_number = f"{prefix}-{year}-{suffix.upper()}"
+    await order.save()
+    return order.invoice_number
+
+
 async def get_or_create_invoice_data(
     order_key: str,
     user_id: PydanticObjectId | None = None,
     is_admin: bool = False,
+    access_token: str | None = None,
 ) -> InvoiceDataOut:
     """Fetches order and constructs complete invoice data snapshot.
     Generates and persists invoice_number if not already created.
@@ -52,10 +68,19 @@ async def get_or_create_invoice_data(
     if not order:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
 
-    # Access control: only the order owner or admin can view the invoice
+    # Access control: only the order owner, admin, or valid access token holder can view the invoice
     if not is_admin:
-        if not user_id or order.user_id != user_id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this invoice")
+        token_valid = False
+        if access_token and (
+            access_token == str(order.id)
+            or (order.razorpay_payment_id and access_token == order.razorpay_payment_id)
+            or access_token == order.order_number
+        ):
+            token_valid = True
+
+        if not token_valid:
+            if not user_id or order.user_id != user_id:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this invoice")
 
     # Fetch store CMS business & GST profile
     cms = await ShopCMS.find_one(ShopCMS.key == CMS_KEY_SHOP)
@@ -64,12 +89,7 @@ async def get_or_create_invoice_data(
 
     # Generate official invoice number if missing
     if not order.invoice_number:
-        prefix = getattr(cms, "invoice_prefix", "DIVIN-INV") or "DIVIN-INV"
-        year = order.created_at.year
-        clean_num = order.order_number.replace("ASTRA-ORD-", "").replace("DIVIN-ORD-", "")
-        suffix = clean_num[-6:] if len(clean_num) >= 6 else str(order.id)[-6:]
-        order.invoice_number = f"{prefix}-{year}-{suffix.upper()}"
-        await order.save()
+        await ensure_order_invoice_number(order)
 
     # Determine GST Status
     company_gstin = getattr(cms, "company_gstin", None)

@@ -341,3 +341,94 @@ async def send_course_purchase_invoice_email(
         return False
 
 
+async def send_shop_order_invoice_email(
+    to: str,
+    user_name: str,
+    order_number: str,
+    invoice_number: str,
+    payment_id: str,
+    amount_inr: float,
+    payment_method: str = "Online / Razorpay",
+    purchase_date: str = "",
+    items: list[dict] | None = None,
+    free_gifts: list[dict] | None = None,
+    subtotal: float = 0.0,
+    discount_amount: float = 0.0,
+    coupon_code: str | None = None,
+    shipping_fee: float = 0.0,
+    tax_amount: float = 0.0,
+    is_tax_invoice: bool = False,
+    shipping_address: dict | None = None,
+    sankalpa: dict | None = None,
+    cashback_coins: int = 0,
+    order_url: str = "",
+    invoice_url: str = "",
+    support_phone: str = "+91 91530 08182",
+    support_email: str = "support@divinlink.com",
+) -> bool:
+    """Dispatches the official Tax Invoice & Order Bill to the customer upon successful payment."""
+    from app.services.email_templates import shop_order_invoice_email_html
+
+    formatted_amount = f"₹{amount_inr:,.2f}".replace(".00", "")
+    subject = f"🧾 Tax Invoice & Order Bill: #{order_number} (Invoice #{invoice_number})"
+
+    html = shop_order_invoice_email_html(
+        user_name=user_name,
+        user_email=to,
+        order_number=order_number,
+        invoice_number=invoice_number,
+        payment_id=payment_id,
+        amount_inr=amount_inr,
+        payment_method=payment_method,
+        purchase_date=purchase_date,
+        items=items,
+        free_gifts=free_gifts,
+        subtotal=subtotal,
+        discount_amount=discount_amount,
+        coupon_code=coupon_code,
+        shipping_fee=shipping_fee,
+        tax_amount=tax_amount,
+        is_tax_invoice=is_tax_invoice,
+        shipping_address=shipping_address,
+        sankalpa=sankalpa,
+        cashback_coins=cashback_coins,
+        order_url=order_url,
+        invoice_url=invoice_url,
+        support_phone=support_phone,
+        support_email=support_email,
+    )
+
+    items_text = "\n".join(
+        f"- {it.get('title')} (Qty: {it.get('quantity')}, ₹{it.get('line_total')})"
+        for it in (items or [])
+    )
+
+    text = (
+        f"Dear {user_name},\n\n"
+        f"Thank you for ordering consecrated remedies from DivinLink AstroStore!\n\n"
+        f"TAX INVOICE & ORDER BILL DETAILS:\n"
+        f"-----------------------------------------\n"
+        f"Invoice Number: #{invoice_number}\n"
+        f"Order Reference: #{order_number}\n"
+        f"Date of Issuance: {purchase_date}\n"
+        f"Razorpay Payment ID: {payment_id}\n"
+        f"Payment Mode: {payment_method}\n"
+        f"Status: PAID & CAPTURED\n"
+        f"Total Amount Paid: {formatted_amount}\n"
+        f"-----------------------------------------\n\n"
+        f"Items Ordered:\n{items_text}\n\n"
+        f"Track your order here:\n{order_url}\n\n"
+        f"View and print your official invoice (PDF / HTML):\n{invoice_url}\n\n"
+        f"DivinLink AstroStore • Sacred Consecration in Varanasi\n"
+        f"Support: {support_email} | {support_phone}"
+    )
+
+    try:
+        sent = await send_email(to=to, subject=subject, html=html, text=text)
+        return sent is not None
+    except Exception as exc:
+        logger.opt(exception=exc).warning("Failed to dispatch shop order invoice email to {}: {}", to, exc)
+        return False
+
+
+

@@ -9,11 +9,14 @@ Covers:
 """
 
 from typing import Annotated, Any
-from fastapi import APIRouter, Body, File, Query, UploadFile
+from datetime import UTC, datetime
+from beanie import PydanticObjectId
+from fastapi import APIRouter, Body, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import HTMLResponse
 
 from app.api.dependencies import AdminUser
-from app.models.enums import ShopOrderStatus, ShopPaymentStatus, ShopRefundStatus
+from app.models.enums import ShopOrderStatus, ShopPaymentMethod, ShopPaymentStatus, ShopRefundStatus
+from app.models.shop import ShopOrder
 from app.schemas.common import ApiResponse
 from app.schemas.shop import (
     AdminProductReviewListResponse,
@@ -641,6 +644,58 @@ async def admin_get_order_invoice_html(
     )
     html_content = shop_invoice_service.generate_invoice_html(data, auto_print=auto_print)
     return HTMLResponse(content=html_content)
+
+
+@router.post(
+    "/orders/{order_id}/resend-invoice-email",
+    response_model=ApiResponse[dict],
+    summary="Admin resend tax invoice email to customer",
+)
+async def admin_resend_order_invoice_email(
+    order_id: str,
+    admin: AdminUser = None,
+) -> ApiResponse[dict]:
+    order = None
+    if PydanticObjectId.is_valid(order_id):
+        order = await ShopOrder.get(PydanticObjectId(order_id))
+    if not order:
+        order = await ShopOrder.find_one(ShopOrder.order_number == order_id)
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+
+    payment_disp = (
+        "Razorpay Online Payment (UPI / Cards / NetBanking)"
+        if order.payment_method == ShopPaymentMethod.RAZORPAY
+        else "Cash on Delivery (COD)"
+        if order.payment_method == ShopPaymentMethod.COD
+        else "Astra Wallet"
+    )
+
+    success = await ShopOrderService.dispatch_order_invoice_email(
+        order=order,
+        payment_id=order.razorpay_payment_id or "PAID-VERIFIED",
+        payment_method_display=payment_disp,
+    )
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to dispatch invoice email. Please verify customer email address and SMTP configuration.",
+        )
+
+    order.invoice_email_sent = True
+    order.invoice_sent_at = datetime.now(UTC)
+    await order.save()
+
+    return ApiResponse.ok(
+        data={
+            "success": True,
+            "message": f"Official Tax Invoice email successfully sent to {order.user_email}",
+            "order_number": order.order_number,
+            "invoice_number": order.invoice_number,
+            "recipient_email": order.user_email,
+        }
+    )
+
 
 
 
