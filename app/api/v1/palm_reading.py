@@ -410,6 +410,32 @@ async def dual_match(
     left_dict = {"measurements": payload.left_hand_measurements or {}}
     right_dict = {"measurements": payload.right_hand_measurements or {}}
 
+    if payload.left_hand_image and not payload.left_hand_measurements:
+        try:
+            val = payload.left_hand_image
+            if "," in val:
+                val = val.split(",", 1)[1]
+            left_bytes = base64.b64decode(val)
+            from app.services.palm_cv import execute_scan
+            left_scan = execute_scan(left_bytes)
+            if left_scan and getattr(left_scan, "status", None) == "ok" and getattr(left_scan, "measurements", None):
+                left_dict["measurements"] = left_scan.measurements
+        except Exception as e:
+            logger.debug(f"Left hand image scan fallback in dual-match: {e}")
+
+    if payload.right_hand_image and not payload.right_hand_measurements:
+        try:
+            val = payload.right_hand_image
+            if "," in val:
+                val = val.split(",", 1)[1]
+            right_bytes = base64.b64decode(val)
+            from app.services.palm_cv import execute_scan
+            right_scan = execute_scan(right_bytes)
+            if right_scan and getattr(right_scan, "status", None) == "ok" and getattr(right_scan, "measurements", None):
+                right_dict["measurements"] = right_scan.measurements
+        except Exception as e:
+            logger.debug(f"Right hand image scan fallback in dual-match: {e}")
+
     res = calculate_dual_hand_synastry(
         left_hand_data=left_dict,
         right_hand_data=right_dict,
