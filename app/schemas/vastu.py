@@ -75,27 +75,69 @@ class VastuAuditResponse(BaseModel):
 
 
 class AyadiCalculationRequest(BaseModel):
-    length: float = Field(..., gt=0.0, description="Length of plot or building in feet")
-    width: float = Field(..., gt=0.0, description="Width of plot or building in feet")
-    unit: str = Field(default="feet", description="Measurement unit ('feet' or 'meter')")
+    length: float = Field(..., gt=0.0, description="Length of plot or building")
+    width: float = Field(..., gt=0.0, description="Width of plot or building")
+    unit: str = Field(default="feet", description="Measurement unit ('feet', 'meter', or 'hasta')")
 
 
 class AyadiCalculationResponse(BaseModel):
     length: float
     width: float
+    unit: str = "feet"
     area_sqft: float
+    area_hasta: float = 0.0
+    perimeter_ft: float = 0.0
+    perimeter_hasta: float = 0.0
+
+    # 1. Aaya (আয়)
     aaya_number: int  # 1 to 8
     aaya_name: str
     aaya_name_bn: str
     is_auspicious: bool
     aaya_significance_bn: str
+
+    # 2. Dhana & Vyaya / Rina (ধন ও ব্যয়/ঋণ)
     dhana_score: int
     rina_score: int
+    vyaya_score: int = 0
     is_dhana_dominant: bool
-    structure_longevity_years: int
+
+    # 3. Yoni (যোনি / দিকগত শক্তি)
+    yoni_number: int = 1
+    yoni_name: str = "Dhwaja"
+    yoni_name_bn: str = "ধ্বজ যোনি (পূর্ব)"
+    yoni_direction: str = "East"
+    yoni_significance_bn: str = ""
+
+    # 4. Varna (বর্ণ)
+    varna_name: str = "Brahmin"
+    varna_name_bn: str = "ব্রাহ্মণ বর্ণ"
+    varna_significance_bn: str = ""
+
+    # 5. Nakshatra / Tara (নক্ষত্র)
     building_nakshatra_number: int
     building_nakshatra_name: str
+    building_nakshatra_name_bn: str = ""
+
+    # 6. Tithi (তিথি)
+    tithi_number: int = 1
+    tithi_name: str = "Shukla Pratipada"
+    tithi_name_bn: str = "শুক্ল প্রতিপদ"
+
+    # 7. Vara (বার)
+    vara_name: str = "Sunday"
+    vara_name_bn: str = "রবিবার (সূর্য)"
+
+    # 8. Paramayu / Longevity (পরমায়ু)
+    structure_longevity_years: int
+    longevity_verdict_bn: str = ""
+
+    # Overall summary and guidance
+    shadvarga_score: int = 85
+    shadvarga_grade: str = "A"
+    shadvarga_verdict_bn: str = ""
     best_facing_directions_bn: list[str]
+    rectification_suggestions_bn: list[str] = Field(default_factory=list)
 
 
 class MedicalVastuItem(BaseModel):
