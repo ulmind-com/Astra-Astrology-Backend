@@ -100,6 +100,7 @@ async def list_courses(
                 rating_count=c.rating_count,
                 is_featured=c.is_featured,
                 certificate_enabled=c.certificate_enabled,
+                access_duration_days=c.access_duration_days,
                 is_enrolled=is_enrolled,
                 user_progress_percent=user_progress_percent,
             )

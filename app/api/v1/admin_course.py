@@ -24,6 +24,7 @@ from app.services.storage import safe_delete_cloudinary_image, upload_file
 from app.schemas.course import (
     AdminCourseEnrollmentListResponse,
     AdminCourseEnrollmentOut,
+    AdminCourseEnrollmentValidityUpdateRequest,
     AdminCourseLearnerDetailOut,
     AdminCourseLearnersResponse,
     AdminCourseOrderListResponse,
@@ -90,6 +91,7 @@ async def admin_list_courses(
             rating_count=c.rating_count,
             is_featured=c.is_featured,
             certificate_enabled=c.certificate_enabled,
+            access_duration_days=c.access_duration_days,
         )
         for c in courses
     ]
@@ -366,6 +368,23 @@ async def admin_list_course_enrollments(
     return ApiResponse(data=AdminCourseEnrollmentListResponse(**data))
 
 
+@router.patch("/enrollments/{enrollment_id}/validity", response_model=ApiResponse[AdminCourseEnrollmentOut])
+async def admin_update_enrollment_validity_global(
+    enrollment_id: PydanticObjectId,
+    payload: AdminCourseEnrollmentValidityUpdateRequest,
+    _: AdminUser,
+) -> ApiResponse[AdminCourseEnrollmentOut]:
+    """Updates or extends the access validity duration for a student enrollment."""
+    res = await CourseService.admin_update_enrollment_validity(
+        enrollment_id=enrollment_id,
+        mode=payload.mode,
+        days=payload.days,
+        expires_at=payload.expires_at,
+        note=payload.note,
+    )
+    return ApiResponse(message="Student course validity updated successfully.", data=AdminCourseEnrollmentOut(**res))
+
+
 @router.post("/{course_id}/enrollments", response_model=ApiResponse[AdminCourseEnrollmentOut], status_code=status.HTTP_201_CREATED)
 async def admin_grant_course_enrollment(
     course_id: PydanticObjectId,
@@ -403,6 +422,25 @@ async def admin_revoke_course_enrollment(
         enrollment_id=enrollment_id,
     )
     return ApiResponse(data={"message": "Enrollment revoked successfully."})
+
+
+@router.patch("/{course_id}/enrollments/{enrollment_id}/validity", response_model=ApiResponse[AdminCourseEnrollmentOut])
+async def admin_update_course_enrollment_validity(
+    course_id: PydanticObjectId,
+    enrollment_id: PydanticObjectId,
+    payload: AdminCourseEnrollmentValidityUpdateRequest,
+    _: AdminUser,
+) -> ApiResponse[AdminCourseEnrollmentOut]:
+    """Updates or extends the access validity duration for a student enrolled in a specific course."""
+    res = await CourseService.admin_update_enrollment_validity(
+        enrollment_id=enrollment_id,
+        course_id=course_id,
+        mode=payload.mode,
+        days=payload.days,
+        expires_at=payload.expires_at,
+        note=payload.note,
+    )
+    return ApiResponse(message="Student course validity updated successfully.", data=AdminCourseEnrollmentOut(**res))
 
 
 @router.get("/{course_id}/learners", response_model=ApiResponse[AdminCourseLearnersResponse])
@@ -503,6 +541,7 @@ async def admin_get_course_detail(
         rating_count=course.rating_count,
         is_featured=course.is_featured,
         certificate_enabled=course.certificate_enabled,
+        access_duration_days=course.access_duration_days,
         description=course.description,
         promo_video_url=course.promo_video_url,
         promo_video_provider=course.promo_video_provider,

@@ -2041,6 +2041,89 @@ class CourseService:
         ).update({"$inc": {"total_students": -1}})
 
     @staticmethod
+    async def admin_update_enrollment_validity(
+        *,
+        enrollment_id: PydanticObjectId,
+        course_id: PydanticObjectId | None = None,
+        mode: str = "set_days",
+        days: int | None = None,
+        expires_at: datetime | None = None,
+        note: str | None = None,
+    ) -> dict[str, Any]:
+        """Updates or extends the access validity duration for an enrolled student."""
+        query = [CourseEnrollment.id == enrollment_id]
+        if course_id:
+            query.append(CourseEnrollment.course_id == course_id)
+
+        enrollment = await CourseEnrollment.find_one(*query)
+        if enrollment is None:
+            raise NotFoundError("Enrollment not found.")
+
+        course = await Course.find_one(Course.id == enrollment.course_id)
+        student = await User.find_one(User.id == enrollment.user_id)
+        now = datetime.now(timezone.utc)
+
+        target_expires_at: datetime | None = None
+
+        if mode == "lifetime":
+            target_expires_at = None
+        elif mode == "set_days":
+            if not days or days <= 0:
+                raise BadRequestError("Number of days must be at least 1.")
+            target_expires_at = now + timedelta(days=days)
+        elif mode == "extend_days":
+            if not days or days <= 0:
+                raise BadRequestError("Number of days to extend must be at least 1.")
+            base_time = now
+            if enrollment.expires_at:
+                aware_exp = _aware_utc(enrollment.expires_at)
+                if aware_exp > now:
+                    base_time = aware_exp
+            target_expires_at = base_time + timedelta(days=days)
+        elif mode == "set_date":
+            if not expires_at:
+                raise BadRequestError("An expiration date must be provided.")
+            target_expires_at = _aware_utc(expires_at)
+            if target_expires_at <= now:
+                raise BadRequestError("Expiration date must be in the future.")
+        else:
+            raise BadRequestError(f"Unsupported validity mode: {mode}")
+
+        enrollment.expires_at = target_expires_at
+        await enrollment.save()
+
+        logger.info(
+            f"Admin updated validity for enrollment {enrollment_id} (Student: {student.email if student else enrollment.user_id}) "
+            f"mode '{mode}', new expires_at: {target_expires_at}. Note: {note}"
+        )
+
+        return {
+            "id": str(enrollment.id),
+            "user_id": str(enrollment.user_id),
+            "student_name": getattr(student, "full_name", None) if student else None,
+            "student_email": getattr(student, "email", None) if student else None,
+            "student_phone": (
+                (getattr(student, "phone", None) or getattr(student, "mobile_number", None)) if student else None
+            ),
+            "course_id": str(enrollment.course_id),
+            "course_title": course.title if course else None,
+            "course_slug": course.slug if course else None,
+            "payment_id": enrollment.payment_id,
+            "order_id": enrollment.order_id,
+            "amount_paid": enrollment.amount_paid,
+            "currency": enrollment.currency,
+            "progress_percent": enrollment.progress_percent,
+            "certificate_issued": enrollment.certificate_issued,
+            "enrolled_at": enrollment.enrolled_at,
+            "expires_at": enrollment.expires_at,
+            "is_expired": bool(
+                enrollment.expires_at
+                and datetime.now(timezone.utc) >= _aware_utc(enrollment.expires_at)
+            ),
+            "last_accessed_at": enrollment.last_accessed_at,
+        }
+
+    @staticmethod
     async def get_user_enrollments_with_details(user: User) -> list[dict[str, Any]]:
         """Returns all purchased courses enriched with course metadata."""
         enrollments = (

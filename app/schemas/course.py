@@ -564,6 +564,18 @@ class AdminManualEnrollRequest(BaseModel):
     expires_at: datetime | None = None
 
 
+class AdminCourseEnrollmentValidityUpdateRequest(BaseModel):
+    """Schema for admin updating or extending learner course validity."""
+
+    mode: str = Field(
+        default="set_days",
+        description="lifetime, set_days, extend_days, or set_date",
+    )
+    days: int | None = Field(default=None, ge=1)
+    expires_at: datetime | None = None
+    note: str | None = Field(default=None, max_length=250)
+
+
 class AdminCourseLearnerProgressLesson(BaseModel):
     lesson_id: str
     title: str
