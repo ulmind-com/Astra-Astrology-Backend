@@ -149,6 +149,7 @@ async def admin_create_course(
         tags=payload.tags,
     )
     await course.insert()
+    CourseService.invalidate_courses_cache()
     return ApiResponse(data={"id": str(course.id), "slug": course.slug, "message": "Course created successfully"})
 
 
@@ -574,6 +575,7 @@ async def admin_update_course(
 
     course.updated_at = datetime.now(timezone.utc)
     await course.save()
+    CourseService.invalidate_courses_cache()
     return ApiResponse(data={"id": str(course.id), "message": "Course updated successfully"})
 
 
@@ -632,6 +634,7 @@ async def admin_delete_course(
     course.slug = f"{course.slug}-deleted-{secrets.token_hex(4)}"
     course.updated_at = datetime.now(timezone.utc)
     await course.save()
+    CourseService.invalidate_courses_cache()
     return ApiResponse(data={"message": "Course deleted successfully", "active_enrollments": active_enrollments})
 
 
