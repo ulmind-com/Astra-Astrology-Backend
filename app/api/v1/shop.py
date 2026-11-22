@@ -591,12 +591,14 @@ async def get_order_invoice(
 async def get_order_invoice_html(
     order_key: str,
     auto_print: bool = Query(default=False, alias="print"),
+    token: str | None = Query(default=None),
     user: OptionalUser = None,
 ) -> HTMLResponse:
     data = await shop_invoice_service.get_or_create_invoice_data(
         order_key=order_key,
         user_id=user.id if user else None,
         is_admin=bool(user and getattr(user, "role", None) in ("admin", "super_admin")),
+        access_token=token,
     )
     html_content = shop_invoice_service.generate_invoice_html(data, auto_print=auto_print)
     return HTMLResponse(content=html_content)

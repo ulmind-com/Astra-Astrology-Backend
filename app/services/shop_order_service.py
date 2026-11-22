@@ -139,6 +139,9 @@ class ShopOrderService:
             refund_transaction_id=order.refund_transaction_id,
             refund_notes=order.refund_notes,
             status_history=history_out,
+            invoice_number=getattr(order, "invoice_number", None),
+            invoice_sent_at=getattr(order, "invoice_sent_at", None),
+            invoice_email_sent=getattr(order, "invoice_email_sent", False),
             created_at=order.created_at,
             updated_at=order.updated_at,
         )
@@ -710,6 +713,22 @@ class ShopOrderService:
 
         await order.save()
 
+        # Dispatch official Tax Invoice & Order Bill email to customer (idempotent)
+        if order.payment_status == ShopPaymentStatus.PAID and not getattr(order, "invoice_email_sent", False):
+            from app.services.shop_invoice_service import ensure_order_invoice_number
+            await ensure_order_invoice_number(order)
+            order.invoice_email_sent = True
+            order.invoice_sent_at = datetime.now(UTC)
+            await order.save()
+
+            asyncio.create_task(
+                cls.dispatch_order_invoice_email(
+                    order=order,
+                    payment_id=payload.razorpay_payment_id,
+                    payment_method_display="Razorpay Online (UPI / Cards / NetBanking)",
+                )
+            )
+
         # Clear persistent server-side cart for user upon confirmed payment
         try:
             from app.services import shop_cart_service
@@ -815,6 +834,23 @@ class ShopOrderService:
 
         await order.save()
 
+        # Dispatch official Tax Invoice & Order Bill email to customer (idempotent)
+        if order.payment_status == ShopPaymentStatus.PAID and not getattr(order, "invoice_email_sent", False):
+            from app.services.shop_invoice_service import ensure_order_invoice_number
+            await ensure_order_invoice_number(order)
+            order.invoice_email_sent = True
+            order.invoice_sent_at = datetime.now(UTC)
+            await order.save()
+
+            method_display = (payment.get("method") or "Online / Razorpay").upper()
+            asyncio.create_task(
+                cls.dispatch_order_invoice_email(
+                    order=order,
+                    payment_id=payment_id,
+                    payment_method_display=f"Razorpay ({method_display})",
+                )
+            )
+
         # Clear server cart
         try:
             from app.services import shop_cart_service
@@ -823,6 +859,135 @@ class ShopOrderService:
             pass
 
         return "confirmed"
+
+    @classmethod
+    async def dispatch_order_invoice_email(
+        cls,
+        order: ShopOrder,
+        payment_id: str | None = None,
+        payment_method_display: str = "Online / Razorpay",
+    ) -> bool:
+        """Asynchronously dispatches the official tax invoice & bill email to the customer."""
+        try:
+            from app.models.cms import CMS_KEY_SHOP, ShopCMS
+            from app.models.user import User
+            from app.services.email import send_shop_order_invoice_email
+            from app.services.shop_invoice_service import ensure_order_invoice_number
+
+            inv_number = await ensure_order_invoice_number(order)
+
+            # Determine recipient email and name
+            recipient_email = order.user_email
+            recipient_name = (
+                order.shipping_address.recipient_name
+                if order.shipping_address and order.shipping_address.recipient_name
+                else None
+            )
+
+            if not recipient_email or not recipient_name:
+                user = await User.get(order.user_id)
+                if user:
+                    if not recipient_email:
+                        recipient_email = getattr(user, "email", None)
+                    if not recipient_name:
+                        recipient_name = (
+                            getattr(user, "full_name", None)
+                            or getattr(user, "name", None)
+                            or "Valued Devotee"
+                        )
+
+            if not recipient_email:
+                logger.warning(
+                    "No email address found for user {} on order {}. Invoice email skipped.",
+                    order.user_id,
+                    order.order_number,
+                )
+                return False
+
+            if not recipient_name:
+                recipient_name = "Valued Devotee"
+
+            cms = await ShopCMS.find_one({"$or": [{"key": CMS_KEY_SHOP}, {"key": "shop_cms"}]})
+            is_tax_invoice = bool(cms and getattr(cms, "company_gstin", None) and cms.company_gstin.strip())
+
+            frontend_base = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app").rstrip("/")
+            backend_base = getattr(settings, "BACKEND_URL", "https://api.divinlink.com").rstrip("/")
+
+            order_url = f"{frontend_base}/account/orders"
+            # Direct printable link with token protection
+            token_param = order.razorpay_payment_id or str(order.id)
+            invoice_url = f"{backend_base}/api/v1/shop/orders/{order.order_number}/invoice/html?token={token_param}&print=true"
+
+            formatted_date = (order.paid_at or order.created_at).strftime("%d %B %Y, %I:%M %p IST")
+            pay_id = payment_id or order.razorpay_payment_id or "PAID-VERIFIED"
+
+            items_list = [
+                {
+                    "title": it.title,
+                    "sku": it.sku,
+                    "category_name": it.category_name,
+                    "quantity": it.quantity,
+                    "unit_sale_price": it.unit_sale_price,
+                    "line_total": it.line_total,
+                    "free_gift_title": it.free_gift_title,
+                }
+                for it in order.items
+            ]
+
+            shipping_dict = (
+                order.shipping_address.model_dump()
+                if order.shipping_address
+                else {}
+            )
+            sankalpa_dict = (
+                order.sankalpa.model_dump()
+                if order.sankalpa
+                else None
+            )
+
+            support_phone = getattr(cms, "company_phone", "+91 91530 08182") if cms else "+91 91530 08182"
+            support_email = getattr(cms, "company_email", "support@divinlink.com") if cms else "support@divinlink.com"
+
+            success = await send_shop_order_invoice_email(
+                to=recipient_email,
+                user_name=recipient_name,
+                order_number=order.order_number,
+                invoice_number=inv_number,
+                payment_id=pay_id,
+                amount_inr=order.grand_total,
+                payment_method=payment_method_display,
+                purchase_date=formatted_date,
+                items=items_list,
+                free_gifts=order.free_gifts or [],
+                subtotal=order.subtotal,
+                discount_amount=order.discount_amount,
+                coupon_code=order.coupon_code,
+                shipping_fee=order.shipping_fee,
+                tax_amount=order.tax_amount,
+                is_tax_invoice=is_tax_invoice,
+                shipping_address=shipping_dict,
+                sankalpa=sankalpa_dict,
+                cashback_coins=order.cashback_coins_eligible,
+                order_url=order_url,
+                invoice_url=invoice_url,
+                support_phone=support_phone,
+                support_email=support_email,
+            )
+
+            if success:
+                logger.info(
+                    "Official Tax Invoice email successfully sent to {} for order {}",
+                    recipient_email,
+                    order.order_number,
+                )
+            return success
+        except Exception as exc:
+            logger.opt(exception=exc).warning(
+                "Failed to dispatch shop order invoice email for {}: {}",
+                order.order_number,
+                exc,
+            )
+            return False
 
     @classmethod
     async def handle_payment_failure_from_webhook(

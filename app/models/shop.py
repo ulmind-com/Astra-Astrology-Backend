@@ -460,6 +460,8 @@ class ShopOrder(TimestampedDocument):
 
     # Consecration & Invoice
     invoice_number: str | None = None
+    invoice_sent_at: datetime | None = None
+    invoice_email_sent: bool = Field(default=False)
     consecration_certificate_id: str | None = None
     consecration_certificate_url: str | None = None
 

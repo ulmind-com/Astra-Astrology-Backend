@@ -596,6 +596,9 @@ class ShopOrderOut(BaseModel):
     estimated_delivery_date: datetime | None = None
     delivered_at: datetime | None = None
     consecration_certificate_url: str | None = None
+    invoice_number: str | None = None
+    invoice_sent_at: datetime | None = None
+    invoice_email_sent: bool = False
     stock_reserved_until: datetime | None = None
     is_stock_restored: bool = False
     rto_at: datetime | None = None
