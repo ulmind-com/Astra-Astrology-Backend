@@ -31,7 +31,7 @@ def to_homepage_out(doc: HomePageCMS) -> HomePageCMSOut:
                 cta_text=s.cta_text,
                 cta_link=s.cta_link,
                 badge_text=s.badge_text,
-                badge_rating=s.badge_rating,
+                badge_rating="Swiss Ephemeris" if s.badge_rating == "500k+ Created" else "Certified" if s.badge_rating == "4.9/5" else "3D Palmistry" if s.badge_rating == "99% Precision" else s.badge_rating,
                 image_url=s.image_url,
                 bg_gradient=s.bg_gradient,
                 border_color=s.border_color,
@@ -61,10 +61,10 @@ def to_homepage_out(doc: HomePageCMS) -> HomePageCMSOut:
         ],
         trust_stats=[
             TrustStatItem(
-                value=s.value,
-                label=s.label,
+                value="100%" if s.value in ("500+", "50K+") else s.value,
+                label="VERIFIED JYOTISHIS" if "500+" in s.value or "50K+" in s.value else s.label,
             )
-            for s in doc.trust_stats
+            for s in (doc.trust_stats or default_trust_stats())
         ],
         services_eyebrow=doc.services_eyebrow,
         services_title=doc.services_title,
