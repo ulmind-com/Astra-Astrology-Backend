@@ -371,32 +371,36 @@ async def submit_ai_feedback(payload: AIFeedbackRequest) -> ApiResponse[dict]:
     return ApiResponse(data={"feedback_id": str(feedback.id), "status": "recorded"})
 
 
-@router.post("/ai-chat/voice-transcribe", response_model=ApiResponse[dict])
-async def transcribe_voice_message(file: UploadFile = File(...)) -> ApiResponse[dict]:
+@router.post(
+    "/ai-chat/voice-transcribe",
+    response_model=ApiResponse[dict],
+    summary="Turn user speech into text (Groq Whisper Large v3 Turbo)",
+)
+@router.post(
+    "/ai-astrologer/transcribe",
+    response_model=ApiResponse[dict],
+    summary="Turn a spoken question into text",
+)
+async def transcribe_voice_message(
+    file: Annotated[UploadFile, File(description="A short audio clip")],
+    user: Annotated[User | None, Depends(get_optional_user)] = None,
+) -> ApiResponse[dict]:
     """Transcribes user speech (Bengali / English / Hindi) to text using Groq Whisper Large v3 Turbo."""
-    if not settings.GROQ_API_KEY:
-        raise ValueError("GROQ_API_KEY not configured")
+    from app.services.ai import speech
 
     contents = await file.read()
-    files = {"file": (file.filename or "audio.webm", contents, file.content_type or "audio/webm")}
-    data = {
-        "model": "whisper-large-v3-turbo",
-        "temperature": "0.0",
-        "response_format": "json",
-    }
-    headers = {"Authorization": f"Bearer {settings.GROQ_API_KEY}"}
-
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(
-            "https://api.groq.com/openai/v1/audio/transcriptions",
-            headers=headers,
-            files=files,
-            data=data,
+    if len(contents) > speech.MAX_BYTES:
+        raise BadRequestError(
+            "That recording is too long. Please keep it under two minutes.",
+            error_code="audio_too_large",
         )
-        resp.raise_for_status()
-        res_data = resp.json()
 
-    return ApiResponse(data={"text": res_data.get("text", "").strip()})
+    try:
+        text = await speech.transcribe(contents, file.filename or "audio.webm")
+    except speech.SpeechError as exc:
+        raise BadRequestError(str(exc), error_code="transcription_failed") from exc
+
+    return ApiResponse(message="Transcribed.", data={"text": text})
 
 
 # -----------------------------------------------------------------------------
@@ -580,61 +584,49 @@ async def approve_and_learn_feedback(
     return ApiResponse(data={"rule_id": str(rule.id), "status": "learned"})
 
 
-@router.post(
-    "/ai-astrologer/transcribe",
-    response_model=ApiResponse[dict],
-    summary="Turn a spoken question into text",
-)
-async def transcribe_audio(
-    file: Annotated[UploadFile, File(description="A short audio clip")],
-    user: Annotated[User | None, Depends(get_optional_user)] = None,
-) -> ApiResponse[dict]:
-    """Transcribe a recording so it can be sent as a chat message.
-
-    Separate from the chat endpoint on purpose: the browser holds the audio and
-    the text, the user gets to see what was heard before it is sent, and a
-    mis-heard word can be corrected rather than silently answered.
-
-    Open to signed-out visitors, like the chat itself. Whisper is metered in
-    audio-seconds on its own budget, so this costs nothing that the readings
-    compete for.
-    """
-    from app.services.ai import speech
-
-    audio = await file.read()
-    if len(audio) > speech.MAX_BYTES:
-        raise BadRequestError(
-            "That recording is too long. Please keep it under two minutes.",
-            error_code="audio_too_large",
-        )
-
-    try:
-        text = await speech.transcribe(audio, file.filename or "audio.webm")
-    except speech.SpeechError as exc:
-        raise BadRequestError(str(exc), error_code="transcription_failed") from exc
-
-    return ApiResponse(message="Transcribed.", data={"text": text})
-
-
 @router.delete(
     "/ai-astrologer/memory",
     response_model=ApiResponse[dict],
-    summary="Forget everything the assistant remembers about me",
+    summary="Purge cosmic memory and past conversation history",
+)
+@router.delete(
+    "/ai-chat/memory",
+    response_model=ApiResponse[dict],
+    summary="Purge cosmic memory and past conversation history (alias)",
 )
 async def forget_memory(
+    session_id: str | None = Query(None, description="Optional session ID to purge"),
     user: Annotated[User | None, Depends(get_optional_user)] = None,
 ) -> ApiResponse[dict]:
-    """Erase this user's remembered facts.
+    """Permanently erase remembered cosmic facts and chat sessions.
 
-    Exists because people are entitled to ask, and because an assistant that
-    cannot forget is one they stop telling things to.
+    Guarantees privacy: wipes both AIUserMemory (learned personal astrological context)
+    and AIChatSession records from the database.
     """
     from app.services.ai import memory as ai_memory
 
-    if user is None:
-        raise UnauthorizedError("Sign in to manage what is remembered about you.")
-    cleared = await ai_memory.forget(user.id)
+    cleared = False
+    deleted_sessions = 0
+
+    if user:
+        cleared = await ai_memory.forget(user.id)
+        # Purge all sessions belonging to the user
+        user_sessions = await AIChatSession.find(AIChatSession.user_id == user.id).to_list()
+        for s in user_sessions:
+            await s.delete()
+            deleted_sessions += 1
+    elif session_id:
+        cleared = True
+    else:
+        raise UnauthorizedError("Sign in or provide a session ID to purge AI memory.")
+
+    if session_id:
+        curr_session = await AIChatSession.find_one(AIChatSession.session_id == session_id)
+        if curr_session:
+            await curr_session.delete()
+            deleted_sessions += 1
+
     return ApiResponse(
-        message="Forgotten." if cleared else "There was nothing remembered.",
-        data={"cleared": cleared},
+        message="AI memory and past conversations permanently purged." if (cleared or deleted_sessions > 0) else "There was nothing remembered.",
+        data={"cleared": True, "deleted_sessions": deleted_sessions},
     )
