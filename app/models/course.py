@@ -76,7 +76,9 @@ class Course(Document):
         name = "courses"
         indexes = [
             [("slug", pymongo.ASCENDING)],
-            [("category", pymongo.ASCENDING), ("is_published", pymongo.ASCENDING)],
+            [("is_published", pymongo.ASCENDING), ("is_deleted", pymongo.ASCENDING), ("is_featured", pymongo.DESCENDING), ("created_at", pymongo.DESCENDING)],
+            [("category", pymongo.ASCENDING), ("is_published", pymongo.ASCENDING), ("is_deleted", pymongo.ASCENDING)],
+            [("level", pymongo.ASCENDING), ("is_published", pymongo.ASCENDING), ("is_deleted", pymongo.ASCENDING)],
             [("is_featured", pymongo.ASCENDING)],
             [("is_deleted", pymongo.ASCENDING)],
             [("created_at", pymongo.DESCENDING)],

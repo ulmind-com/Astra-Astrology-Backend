@@ -142,6 +142,12 @@ class CourseService:
         return credited >= required
 
 
+    _courses_cache: dict[tuple, tuple[float, list[Course]]] = {}
+
+    @classmethod
+    def invalidate_courses_cache(cls) -> None:
+        cls._courses_cache.clear()
+
     @staticmethod
     async def list_courses(
         category: str | None = None,
@@ -150,7 +156,15 @@ class CourseService:
         limit: int = 20,
         skip: int = 0,
     ) -> list[Course]:
-        """Returns active, published courses with optional filtering."""
+        """Returns active, published courses with optional filtering and high-speed in-memory caching."""
+        cache_key = (category, level, (search.strip().lower() if search else None), limit, skip)
+        import time
+        now = time.time()
+        if cache_key in CourseService._courses_cache:
+            ts, cached_courses = CourseService._courses_cache[cache_key]
+            if now - ts < 120:  # 2 minute cache
+                return cached_courses
+
         query: dict[str, Any] = {"is_published": True, "is_deleted": False}
         if category and category != "all":
             query["category"] = category
@@ -163,13 +177,15 @@ class CourseService:
                 {"tags": {"$in": [search.lower()]}},
             ]
 
-        return (
+        results = (
             await Course.find(query)
             .sort([("is_featured", -1), ("created_at", -1)])
             .skip(skip)
             .limit(limit)
             .to_list()
         )
+        CourseService._courses_cache[cache_key] = (now, results)
+        return results
 
     @staticmethod
     async def get_course_by_slug(slug: str, user: User | None = None) -> dict[str, Any]:
