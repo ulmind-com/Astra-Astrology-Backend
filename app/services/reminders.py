@@ -168,18 +168,24 @@ async def check_and_send_appointment_reminders() -> int:
 
     reminded_count = 0
 
-    # Query candidate appointments
-    candidates = (
-        await Appointment.find(
-            {
-                "status": AppointmentStatus.BOOKED,
-                "reminded_at": None,
-                "starts_at": {"$lte": reminder_threshold, "$gt": past_safety_margin},
-            }
+    # Query candidate appointments with transient retry protection
+    from app.db.mongodb import with_mongo_retry
+
+    try:
+        candidates = await with_mongo_retry(
+            lambda: Appointment.find(
+                {
+                    "status": AppointmentStatus.BOOKED,
+                    "reminded_at": None,
+                    "starts_at": {"$lte": reminder_threshold, "$gt": past_safety_margin},
+                }
+            )
+            .limit(50)
+            .to_list()
         )
-        .limit(50)
-        .to_list()
-    )
+    except Exception as exc:
+        logger.warning("Failed to query appointments for reminders: {}", exc)
+        return 0
 
     for candidate in candidates:
         # Atomic lock claim
@@ -361,7 +367,12 @@ async def appointment_reminder_worker_loop() -> None:
         except asyncio.CancelledError:
             logger.info("Appointment reminder background worker stopped gracefully.")
             break
-        except PyMongoError as db_err:
+        except (PyMongoError, TimeoutError, OSError) as db_err:
+            try:
+                from app.db.mongodb import heal_connection
+                heal_connection()
+            except Exception:
+                pass
             logger.warning(
                 "MongoDB temporarily unavailable in appointment reminder worker (will retry next tick): {}",
                 db_err,

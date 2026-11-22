@@ -44,7 +44,12 @@ async def periodic_cloudinary_orphan_cleaner_loop(interval_seconds: int = 86400)
         except asyncio.CancelledError:
             logger.info("Cloudinary orphan cleaner loop stopped gracefully.")
             break
-        except PyMongoError as db_err:
+        except (PyMongoError, TimeoutError, OSError) as db_err:
+            try:
+                from app.db.mongodb import heal_connection
+                heal_connection()
+            except Exception:
+                pass
             logger.warning(
                 "MongoDB temporarily unavailable in Cloudinary orphan cleaner sweep (will retry): {}",
                 db_err,
