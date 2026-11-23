@@ -2527,6 +2527,7 @@ async def request_birth_time_rectification(
     note: str | None = None,
 ) -> Appointment:
     """Astrologer requests exact birth time clarification/rectification from the client."""
+    from app.core.config import settings
     from app.services import email as email_service
     from app.services.email_templates import appointment_btr_requested_client_email_html
 
@@ -2602,6 +2603,7 @@ async def update_birth_time_rectification(
     notes: str | None = None,
 ) -> Appointment:
     """Client submits corrected/verified exact birth time for the consultation."""
+    from app.core.config import settings
     from app.services import email as email_service
     from app.services.email_templates import appointment_btr_updated_astrologer_email_html
 
