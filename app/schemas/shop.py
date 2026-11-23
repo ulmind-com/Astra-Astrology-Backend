@@ -618,6 +618,24 @@ class ShopOrderOut(BaseModel):
     updated_at: datetime
 
 
+class ShopOrderTrackingOut(BaseModel):
+    order_id: str
+    order_number: str
+    order_status: ShopOrderStatus
+    courier_partner: str | None = None
+    tracking_id: str | None = None
+    tracking_url: str | None = None
+    estimated_delivery_date: datetime | None = None
+    delivered_at: datetime | None = None
+    shipping_address: dict
+    items_count: int
+    items_summary: list[dict]
+    status_history: list[ShopOrderStatusLogOut] = Field(default_factory=list)
+    consecration_certificate_url: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
 class ShopCancelOrderPayload(BaseModel):
     """Customer-initiated order cancellation payload with UPI/QR payout details."""
 

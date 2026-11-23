@@ -367,6 +367,31 @@ async def get_booking_token(booking_id: str, current_user: User) -> tuple[PujaBo
     return booking, token
 
 
+async def get_booking(booking_id: str, current_user: User) -> PujaBooking:
+    """Fetches a single PujaBooking, authorizing only the devotee, assigned Purohit, or admin."""
+    booking: PujaBooking | None = None
+    try:
+        b_oid = PydanticObjectId(booking_id)
+        booking = await PujaBooking.get(b_oid)
+    except Exception:
+        pass
+
+    if booking is None:
+        booking = await PujaBooking.find_one(PujaBooking.booking_number == booking_id)
+
+    if booking is None:
+        raise NotFoundError("Booking not found.", error_code="booking_not_found")
+
+    is_devotee = booking.user_id == current_user.id
+    is_purohit = booking.purohit_user_id == current_user.id
+    is_admin = current_user.role in (UserRole.ADMIN, UserRole.SUPER_ADMIN)
+
+    if not (is_devotee or is_purohit or is_admin):
+        raise ForbiddenError("You are not authorized to view this booking.", error_code="access_denied")
+
+    return booking
+
+
 async def list_purohit_bookings(purohit_user_id: PydanticObjectId) -> list[PujaBooking]:
     """Lists bookings for the logged-in Purohit's dashboard."""
     return await PujaBooking.find(PujaBooking.purohit_user_id == purohit_user_id).sort("-created_at").to_list()

@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    admin_abuse_reports,
     admin_astrologers,
     admin_course,
     admin_purohits,
@@ -49,6 +50,7 @@ api_router.include_router(astrologers.router)
 api_router.include_router(appointments.router)
 api_router.include_router(astrology.router)
 api_router.include_router(admin_astrologers.router)
+api_router.include_router(admin_abuse_reports.router)
 api_router.include_router(wallet.router)
 api_router.include_router(admin_wallets.router)
 api_router.include_router(admin_settings.router)

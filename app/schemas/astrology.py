@@ -2055,3 +2055,113 @@ class FestivalCalendarResponse(BaseModel):
     festivals: list[FestivalItem] = Field(default_factory=list)
     engine: str = "Swiss Ephemeris 2.10 (pyswisseph)"
     calculated_at: str
+
+
+class AnnualReportVerificationResponse(BaseModel):
+    is_valid: bool
+    status: str = "verified"  # "verified" | "invalid"
+    report_id: str
+    target_year: int
+    consecration_date: str | None = None
+    client_name: str
+    date_of_birth: str | None = None
+    time_of_birth: str | None = None
+    city_name: str | None = None
+    natal_lagna: str | None = None
+    moon_rashi: str | None = None
+    varshphal_lagna: str | None = None
+    overall_score: int
+    digital_seal: dict[str, Any] = Field(default_factory=dict)
+    summary_text: str | None = None
+    curated_remedies_count: int = 0
+    verified_at: str
+    engine: str = "Astra Cryptographic Verification Network (Swiss Ephemeris 2.10)"
+
+
+class MuhuratTimingWindow(BaseModel):
+    id: str
+    name: dict[str, str]
+    start_time: str
+    end_time: str
+    formatted: str
+    quality: Literal["super_auspicious", "auspicious", "neutral", "inauspicious", "remedial"]
+    is_active: bool = False
+    description: dict[str, str] = Field(default_factory=dict)
+    activities_recommended: list[str] = Field(default_factory=list)
+    activities_prohibited: list[str] = Field(default_factory=list)
+
+
+class MuhuratChoghadiyaSlot(BaseModel):
+    slot_index: int
+    name: str
+    name_translations: dict[str, str]
+    period_type: Literal["day", "night"]
+    start_time: str
+    end_time: str
+    quality: Literal["super_auspicious", "auspicious", "neutral", "inauspicious"]
+    ruling_planet: str
+    description: dict[str, str]
+    is_active: bool = False
+
+
+class MuhuratHoraSlot(BaseModel):
+    hora_index: int
+    start_time: str
+    end_time: str
+    lord: str
+    nature: str
+    is_active: bool = False
+    activities: str
+
+
+class MuhuratMilestoneItem(BaseModel):
+    id: str
+    name: dict[str, str]
+    tagline: dict[str, str]
+    desc: dict[str, str]
+    shloka: str
+    shloka_meaning: dict[str, str]
+    best_nakshatras: str
+    best_tithis: str
+    best_vara: str
+    best_choghadiya: str
+    caution: str
+    scripture_ref: str
+    today_compatibility: str  # "Favorable", "Moderate", "Avoid"
+    today_reason: dict[str, str]
+
+
+class MuhuratRequest(BaseModel):
+    date: str | None = None  # YYYY-MM-DD
+    latitude: float = 22.5726  # Kolkata
+    longitude: float = 88.3639
+    timezone: float = 5.5
+    language: Literal["en", "bn", "hi"] = "en"
+
+
+class MuhuratResponse(BaseModel):
+    date: str
+    weekday: dict[str, str]
+    sunrise: str
+    sunset: str
+    solar_noon: str
+    next_sunrise: str
+    day_duration_hours: float
+    night_duration_hours: float
+    core_windows: list[MuhuratTimingWindow]
+    abhijit: MuhuratTimingWindow
+    brahma_muhurat: MuhuratTimingWindow
+    rahu_kaal: MuhuratTimingWindow
+    yamaganda: MuhuratTimingWindow
+    gulika_kaal: MuhuratTimingWindow
+    durmuhurat: list[MuhuratTimingWindow]
+    amrit_kaal: MuhuratTimingWindow | None = None
+    vijaya_muhurat: MuhuratTimingWindow | None = None
+    godhuli_muhurat: MuhuratTimingWindow | None = None
+    choghadiyas: list[MuhuratChoghadiyaSlot]
+    horas: list[MuhuratHoraSlot]
+    milestone_muhurats: list[MuhuratMilestoneItem]
+    panchang_summary: dict[str, Any]
+    engine: str = "Swiss Ephemeris 2.10 (pyswisseph)"
+    calculated_at: str
+
