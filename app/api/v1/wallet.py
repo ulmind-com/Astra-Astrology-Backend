@@ -1,7 +1,8 @@
 """The signed-in user's wallet, and the Razorpay webhook."""
 
-from typing import Annotated, Any
+import asyncio
 import json
+from typing import Annotated, Any
 
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Header, Query, Request, status
@@ -49,9 +50,11 @@ async def enrich_consultations(
         return {}
 
     unique_session_ids = list(set(session_ids))
-    chats = await ChatSession.find({"_id": {"$in": unique_session_ids}}).to_list()
-    calls = await CallSession.find({"_id": {"$in": unique_session_ids}}).to_list()
-    appts = await Appointment.find({"_id": {"$in": unique_session_ids}}).to_list()
+    chats, calls, appts = await asyncio.gather(
+        ChatSession.find({"_id": {"$in": unique_session_ids}}).to_list(),
+        CallSession.find({"_id": {"$in": unique_session_ids}}).to_list(),
+        Appointment.find({"_id": {"$in": unique_session_ids}}).to_list(),
+    )
 
     astro_ids: set[PydanticObjectId] = set()
     for c in chats:
@@ -181,33 +184,41 @@ async def to_balance(wallet: Any) -> WalletBalance:
     blocked = getattr(wallet, "blocked_coins", 0)
     avail = max(0, wallet.balance_coins - blocked)
 
-    # Fetch active holds for scheduled appointments
-    from app.models.appointment import Appointment
-    from app.models.astrologer import Astrologer
-    from app.models.enums import AppointmentStatus
-    from beanie.operators import And, In
-
-    active_appts = await Appointment.find(
-        And(
-            Appointment.user_id == wallet.user_id,
-            In(Appointment.status, [AppointmentStatus.BOOKED]),
-            Appointment.held_coins > 0,
-            Appointment.held_status == "held",
-        )
-    ).to_list()
-
     holds = []
-    for a in active_appts:
-        astro = await Astrologer.get(a.astrologer_id)
-        holds.append({
-            "appointment_id": str(a.id),
-            "astrologer_name": astro.display_name if astro else "Astrologer",
-            "starts_at": a.starts_at.isoformat(),
-            "ends_at": a.ends_at.isoformat(),
-            "minutes": a.minutes,
-            "held_coins": a.held_coins,
-            "deposit_coins": a.deposit_coins,
-        })
+    # Only inspect appointment escrows if coins are actually blocked
+    if blocked > 0:
+        from app.models.appointment import Appointment
+        from app.models.astrologer import Astrologer
+        from app.models.enums import AppointmentStatus
+        from beanie.operators import And, In
+
+        active_appts = await Appointment.find(
+            And(
+                Appointment.user_id == wallet.user_id,
+                In(Appointment.status, [AppointmentStatus.BOOKED]),
+                Appointment.held_coins > 0,
+                Appointment.held_status == "held",
+            )
+        ).to_list()
+
+        if active_appts:
+            astro_ids = list({a.astrologer_id for a in active_appts if a.astrologer_id})
+            astro_map: dict[PydanticObjectId, Astrologer] = {}
+            if astro_ids:
+                astros = await Astrologer.find({"_id": {"$in": astro_ids}}).to_list()
+                astro_map = {a.id: a for a in astros}
+
+            for a in active_appts:
+                astro = astro_map.get(a.astrologer_id)
+                holds.append({
+                    "appointment_id": str(a.id),
+                    "astrologer_name": astro.display_name if astro else "Astrologer",
+                    "starts_at": a.starts_at.isoformat(),
+                    "ends_at": a.ends_at.isoformat(),
+                    "minutes": a.minutes,
+                    "held_coins": a.held_coins,
+                    "deposit_coins": a.deposit_coins,
+                })
 
     return WalletBalance(
         balance_coins=wallet.balance_coins,
@@ -224,9 +235,11 @@ async def to_balance(wallet: Any) -> WalletBalance:
 @router.get("", response_model=ApiResponse[WalletSummary], summary="My balance and recent activity")
 async def my_wallet(user: CurrentUser) -> ApiResponse[WalletSummary]:
     wallet = await wallet_service.get_or_create_wallet(user.id)
-    recent, _ = await wallet_service.list_transactions(user.id, page=1, limit=5)
+    (recent, _), wallet_balance = await asyncio.gather(
+        wallet_service.list_transactions(user.id, page=1, limit=5, include_total=False),
+        to_balance(wallet),
+    )
     consultations = await enrich_consultations(recent)
-    wallet_balance = await to_balance(wallet)
     return ApiResponse(
         message="Wallet fetched.",
         data=WalletSummary(

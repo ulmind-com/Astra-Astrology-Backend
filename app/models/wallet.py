@@ -124,6 +124,10 @@ class WalletTransaction(TimestampedDocument):
                 [("user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
                 name="txn_user_recent",
             ),
+            pymongo.IndexModel(
+                [("user_id", pymongo.ASCENDING), ("reason", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+                name="txn_user_reason_recent",
+            ),
             pymongo.IndexModel([("wallet_id", pymongo.ASCENDING)], name="txn_wallet"),
             pymongo.IndexModel([("reason", pymongo.ASCENDING)], name="txn_reason"),
             pymongo.IndexModel(

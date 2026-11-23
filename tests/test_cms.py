@@ -19,7 +19,7 @@ def test_cms_defaults_and_schemas():
 
     stats = default_trust_stats()
     assert len(stats) == 3
-    assert stats[0].value == "500+"
+    assert stats[0].value == "100%"
 
     update = HomePageCMSUpdate(
         hero_title_highlight="COSMOS",

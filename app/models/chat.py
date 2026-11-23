@@ -84,6 +84,10 @@ class ChatSession(TimestampedDocument):
                 name="chat_user_recent",
             ),
             pymongo.IndexModel(
+                [("user_id", pymongo.ASCENDING), ("status", pymongo.ASCENDING), ("ended_at", pymongo.DESCENDING)],
+                name="chat_user_status_ended",
+            ),
+            pymongo.IndexModel(
                 [
                     ("astrologer_user_id", pymongo.ASCENDING),
                     ("created_at", pymongo.DESCENDING),

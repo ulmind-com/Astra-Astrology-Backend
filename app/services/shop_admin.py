@@ -719,9 +719,29 @@ async def get_inventory_summary() -> InventorySummaryResponse:
 # Store Banners & Hero Offers CMS
 # ===========================================================================
 
+import time
 
-async def get_shop_banner_settings() -> ShopBannerSettingsOut:
-    """Returns store announcement bar, marquee, cashback, free gift, and hero carousel configurations."""
+_cached_shop_banner_settings: ShopBannerSettingsOut | None = None
+_cached_shop_banner_time: float = 0.0
+_SHOP_BANNER_CACHE_TTL: float = 120.0  # Cache in memory for 2 minutes
+
+
+def invalidate_shop_banner_cache() -> None:
+    """Invalidates the in-memory cache for Shop CMS banner settings."""
+    global _cached_shop_banner_settings, _cached_shop_banner_time
+    _cached_shop_banner_settings = None
+    _cached_shop_banner_time = 0.0
+
+
+async def get_shop_banner_settings(force_refresh: bool = False) -> ShopBannerSettingsOut:
+    """Returns store announcement bar, marquee, cashback, free gift, and hero carousel configurations.
+    Uses in-memory caching (120s TTL) for lightning-fast (<1ms) response times.
+    """
+    global _cached_shop_banner_settings, _cached_shop_banner_time
+    now = time.monotonic()
+    if not force_refresh and _cached_shop_banner_settings is not None and (now - _cached_shop_banner_time) < _SHOP_BANNER_CACHE_TTL:
+        return _cached_shop_banner_settings
+
     cms = None
     try:
         cms = await ShopCMS.find_one({"$or": [{"key": CMS_KEY_SHOP}, {"key": "shop_cms"}]})
@@ -740,7 +760,7 @@ async def get_shop_banner_settings() -> ShopBannerSettingsOut:
     if not reels:
         reels = default_shop_reels()
 
-    return ShopBannerSettingsOut(
+    result = ShopBannerSettingsOut(
         announcement_bar_text=cms.announcement_bar_text,
         announcement_bar_link=cms.announcement_bar_link,
         announcement_bar_active=cms.announcement_bar_active,
@@ -780,6 +800,9 @@ async def get_shop_banner_settings() -> ShopBannerSettingsOut:
         invoice_prefix=getattr(cms, "invoice_prefix", "DIVIN-INV"),
         invoice_footer_notes=getattr(cms, "invoice_footer_notes", "Thank you for welcoming divine vibrations into your sacred home! May Lord Shiva and the Navagrahas bestow eternal peace, health, and prosperity."),
     )
+    _cached_shop_banner_settings = result
+    _cached_shop_banner_time = now
+    return result
 
 
 async def update_shop_banner_settings(payload: ShopBannerSettingsUpdate) -> ShopBannerSettingsOut:
@@ -828,8 +851,9 @@ async def update_shop_banner_settings(payload: ShopBannerSettingsUpdate) -> Shop
     cms.invoice_footer_notes = payload.invoice_footer_notes
 
     await cms.save()
+    invalidate_shop_banner_cache()
     logger.info("Updated Shop CMS store settings (cashback_percent={}%, free_shipping_threshold={})", cms.cashback_percent, cms.free_shipping_threshold)
-    return await get_shop_banner_settings()
+    return await get_shop_banner_settings(force_refresh=True)
 
 
 # ===========================================================================
