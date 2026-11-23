@@ -394,6 +394,11 @@ async def transcribe_voice_message(
             "That recording is too long. Please keep it under two minutes.",
             error_code="audio_too_large",
         )
+    if len(contents) < 50:
+        raise BadRequestError(
+            "The recording was empty or too short. Please speak again.",
+            error_code="audio_too_short",
+        )
 
     try:
         text = await speech.transcribe(contents, file.filename or "audio.webm")
