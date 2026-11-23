@@ -168,6 +168,59 @@ async def test_brahma_pause_rescue_action_refund():
 
 
 @pytest.mark.asyncio
+async def test_brahma_pause_rescue_action_reschedule():
+    """Verify seeker can choose 1-click free reschedule during Brahma Pause."""
+    from datetime import datetime, timezone, timedelta
+    from app.models.astrologer import Astrologer
+
+    user_id = PydanticObjectId()
+    astro_id = PydanticObjectId()
+    user = SimpleNamespace(id=user_id, role="user")
+    now = datetime.now(timezone.utc)
+    new_starts_at = (now + timedelta(days=1)).replace(hour=14, minute=0, second=0, microsecond=0)
+
+    appointment = SimpleNamespace(
+        id=PydanticObjectId(),
+        user_id=user_id,
+        astrologer_id=astro_id,
+        astrologer_user_id=PydanticObjectId(),
+        status=AppointmentStatus.BOOKED,
+        brahma_pause_affected=True,
+        starts_at=now + timedelta(hours=2),
+        ends_at=now + timedelta(hours=2, minutes=30),
+        minutes=30,
+        rescheduled_count=0,
+        save=AsyncMock(),
+    )
+
+    mock_astro = SimpleNamespace(
+        id=astro_id,
+        brahma_pause_until=None,
+        appointment=SimpleNamespace(buffer_minutes=0),
+    )
+
+    mock_slot_query = MagicMock()
+    mock_slot_query.to_list = AsyncMock(return_value=[])
+    mock_slot_query.delete = AsyncMock(return_value=None)
+
+    with patch.object(Astrologer, "get", AsyncMock(return_value=mock_astro)):
+        with patch("app.services.appointments._windows_for", AsyncMock(return_value=[SimpleNamespace(starts_at=new_starts_at - timedelta(hours=1), ends_at=new_starts_at + timedelta(hours=2))])):
+            with patch.object(AppointmentSlot, "find", return_value=mock_slot_query):
+                with patch.object(AppointmentSlot, "__init__", return_value=None):
+                    with patch.object(AppointmentSlot, "insert", AsyncMock(return_value=None)):
+                        updated = await service.handle_brahma_pause_rescue_action(
+                            appointment=appointment,
+                            user=user,
+                            action="reschedule",
+                            new_starts_at=new_starts_at,
+                            reason="Seeker complimentary reschedule during Brahma Pause",
+                        )
+                        assert updated.brahma_pause_affected is False
+                        assert updated.starts_at == new_starts_at
+                        assert updated.rescheduled_count == 1
+
+
+@pytest.mark.asyncio
 async def test_red_flag_appointment_and_blacklist():
     """Astrologer can red-flag an abusive client, capture escrow fee, and blacklist client."""
     from app.models.abuse_report import AbuseReport
