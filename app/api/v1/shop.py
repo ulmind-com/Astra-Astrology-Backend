@@ -38,6 +38,7 @@ from app.schemas.shop import (
     ShopCouponValidateResponse,
     ShopOrderListResponse,
     ShopOrderOut,
+    ShopOrderTrackingOut,
     ShopPaymentVerifyRequest,
     ShopProductRecommendationOut,
     StockReservationRequest,
@@ -338,6 +339,50 @@ async def get_shop_order_detail(
         user_id=user.id,
     )
     return ApiResponse.ok(data=order)
+
+
+@router.get(
+    "/orders/{order_key}/track",
+    response_model=ApiResponse[ShopOrderTrackingOut],
+    summary="Track delivery status, carrier timeline and consecration status for a remedy order",
+)
+async def track_shop_order(
+    order_key: str,
+    user: OptionalUser = None,
+) -> ApiResponse[ShopOrderTrackingOut]:
+    """Retrieves dedicated tracking events, courier AWB and status history for the order."""
+    order = await ShopOrderService.get_order_by_number_or_id(
+        order_key=order_key,
+        user_id=user.id if user else None,
+    )
+    items_summary = [
+        {
+            "product_name": it.product_name,
+            "quantity": it.quantity,
+            "image_url": it.image_url,
+            "unit_price": it.unit_price,
+            "selected_option": it.selected_option,
+        }
+        for it in order.items
+    ]
+    data = ShopOrderTrackingOut(
+        order_id=order.id,
+        order_number=order.order_number,
+        order_status=order.order_status,
+        courier_partner=order.courier_partner,
+        tracking_id=order.tracking_id,
+        tracking_url=order.tracking_url,
+        estimated_delivery_date=order.estimated_delivery_date,
+        delivered_at=order.delivered_at,
+        shipping_address=order.shipping_address,
+        items_count=len(order.items),
+        items_summary=items_summary,
+        status_history=order.status_history,
+        consecration_certificate_url=order.consecration_certificate_url,
+        created_at=order.created_at,
+        updated_at=order.updated_at,
+    )
+    return ApiResponse.ok(data=data, message="Order tracking status retrieved successfully.")
 
 
 @router.post(

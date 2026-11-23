@@ -169,6 +169,19 @@ async def get_purohit_profile(identifier: str) -> ApiResponse[PurohitOut]:
     return ApiResponse(data=PurohitOut(**data))
 
 
+@router.get(
+    "/{identifier}/catalog",
+    response_model=ApiResponse[list[PurohitPujaItemOut]],
+    summary="Get the dedicated puja catalog of a specific Purohit by ID or slug",
+)
+async def get_purohit_catalog(identifier: str) -> ApiResponse[list[PurohitPujaItemOut]]:
+    """Retrieves verified pujas offered by the given Purohit."""
+    data = await purohit_service.get_purohit_by_id_or_slug(identifier)
+    pujas = data.get("pujas_catalog") or []
+    out = [PurohitPujaItemOut(**p) for p in pujas]
+    return ApiResponse(data=out)
+
+
 # ---------------------------------------------------------------------------
 # Purohit Dashboard (Protected: Purohit role)
 # ---------------------------------------------------------------------------
@@ -451,6 +464,40 @@ async def get_my_devotee_bookings(user: CurrentUser) -> ApiResponse[list[PujaBoo
         )
         for b in bookings
     ]
+    return ApiResponse(data=out)
+
+
+@router.get(
+    "/bookings/{booking_id}",
+    response_model=ApiResponse[PujaBookingOut],
+    summary="Fetch full details for a single puja booking by ID or booking number",
+)
+async def get_single_booking_endpoint(booking_id: str, user: CurrentUser) -> ApiResponse[PujaBookingOut]:
+    """Retrieves full details for a single puja booking for the devotee or the Purohit."""
+    booking = await purohit_service.get_booking(booking_id, user)
+    out = PujaBookingOut(
+        id=str(booking.id),
+        booking_number=booking.booking_number,
+        user_id=str(booking.user_id),
+        user_name=booking.user_name,
+        user_phone=booking.user_phone,
+        purohit_id=str(booking.purohit_id),
+        purohit_name=booking.purohit_name,
+        puja_item_id=booking.puja_item_id,
+        puja_name=booking.puja_name,
+        puja_duration_minutes=booking.puja_duration_minutes,
+        amount_inr=booking.amount_inr,
+        sankalpa_name=booking.sankalpa_name,
+        sankalpa_gotra=booking.sankalpa_gotra,
+        sankalpa_nakshatra=booking.sankalpa_nakshatra,
+        sankalpa_wish=booking.sankalpa_wish,
+        room_id=booking.room_id,
+        status=booking.status,
+        payment_status=booking.payment_status,
+        started_at=booking.started_at,
+        completed_at=booking.completed_at,
+        created_at=booking.created_at,
+    )
     return ApiResponse(data=out)
 
 
