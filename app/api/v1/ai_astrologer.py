@@ -612,6 +612,7 @@ async def forget_memory(
 
     cleared = False
     deleted_sessions = 0
+    clean_session_id = session_id.strip() if session_id and session_id.strip() else None
 
     if user:
         cleared = await ai_memory.forget(user.id)
@@ -620,13 +621,13 @@ async def forget_memory(
         for s in user_sessions:
             await s.delete()
             deleted_sessions += 1
-    elif session_id:
+    elif clean_session_id:
         cleared = True
     else:
         raise UnauthorizedError("Sign in or provide a session ID to purge AI memory.")
 
-    if session_id:
-        curr_session = await AIChatSession.find_one(AIChatSession.session_id == session_id)
+    if clean_session_id:
+        curr_session = await AIChatSession.find_one(AIChatSession.session_id == clean_session_id)
         if curr_session:
             await curr_session.delete()
             deleted_sessions += 1
