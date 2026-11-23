@@ -37,10 +37,52 @@ MAX_SECONDS = 120
 #: browser believes it is sending.
 MAX_BYTES = 25 * 1024 * 1024
 
-#: What browsers actually produce from MediaRecorder, plus the common uploads.
+#: What browsers and mobile devices produce from MediaRecorder or native AudioRecorder,
+#: plus standard audio file containers.
 ALLOWED_SUFFIXES = (
-    ".webm", ".ogg", ".oga", ".mp3", ".mp4", ".m4a", ".wav", ".flac", ".mpga", ".mpeg",
+    ".webm", ".ogg", ".oga", ".mp3", ".mp4", ".m4a", ".wav", ".flac", ".mpga", ".mpeg", ".aac",
 )
+
+MIME_MAP = {
+    ".m4a": "audio/m4a",
+    ".mp4": "audio/mp4",
+    ".mp3": "audio/mpeg",
+    ".mpeg": "audio/mpeg",
+    ".mpga": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".webm": "audio/webm",
+    ".ogg": "audio/ogg",
+    ".oga": "audio/ogg",
+    ".flac": "audio/flac",
+    ".aac": "audio/aac",
+}
+
+
+def detect_audio_extension_and_mime(audio: bytes, fallback_name: str = "audio.webm") -> tuple[str, str]:
+    """Detects appropriate filename extension and MIME type from magic bytes or fallback name."""
+    # 1. Check magic bytes
+    if len(audio) >= 12:
+        if audio[:4] == b"RIFF" and audio[8:12] == b"WAVE":
+            return "audio.wav", "audio/wav"
+        if audio[:4] == b"OggS":
+            return "audio.ogg", "audio/ogg"
+        if audio[:4] == b"\x1aE\xdf\xa3":
+            return "audio.webm", "audio/webm"
+        if audio[:4] == b"fLaC":
+            return "audio.flac", "audio/flac"
+        if audio[4:8] == b"ftyp" or b"ftyp" in audio[:32]:
+            return "audio.m4a", "audio/m4a"
+        if audio[:3] == b"ID3" or (audio[0] == 0xFF and (audio[1] & 0xE0) == 0xE0):
+            return "audio.mp3", "audio/mpeg"
+
+    # 2. Check suffix if magic bytes were inconclusive
+    name = (fallback_name or "audio.webm").lower()
+    for suffix, mime in MIME_MAP.items():
+        if name.endswith(suffix):
+            return fallback_name, mime
+
+    # Default to webm
+    return "audio.webm", "audio/webm"
 
 
 class SpeechError(RuntimeError):
@@ -59,24 +101,19 @@ async def transcribe(audio: bytes, filename: str = "audio.webm") -> str:
     """
     if not settings.GROQ_API_KEY:
         raise SpeechError("Voice input is not configured on this server.")
-    if not audio:
-        raise SpeechError("The recording was empty.")
+    if not audio or len(audio) < 50:
+        raise SpeechError("The recording was empty or too short. Please speak again.")
     if len(audio) > MAX_BYTES:
         raise SpeechError("That recording is too long. Please keep it under two minutes.")
 
-    name = filename or "audio.webm"
-    if not name.lower().endswith(ALLOWED_SUFFIXES):
-        # MediaRecorder names vary and some browsers send none at all. The
-        # content is what matters to Whisper; the extension only tells it how
-        # to open the bytes, so webm is the right default for a browser clip.
-        name = "audio.webm"
+    upload_name, mime_type = detect_audio_extension_and_mime(audio, filename)
 
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
                 GROQ_TRANSCRIBE_URL,
                 headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}"},
-                files={"file": (name, audio, "application/octet-stream")},
+                files={"file": (upload_name, audio, mime_type)},
                 data={"model": MODEL, "response_format": "json"},
             )
     except Exception as exc:  # noqa: BLE001 - network, DNS, timeout
