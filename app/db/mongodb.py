@@ -129,13 +129,13 @@ async def connect_to_mongo() -> bool:
     try:
         from pymongo import ReadPreference
 
-        connect_timeout = int(getattr(settings, "MONGODB_CONNECT_TIMEOUT_MS", 15_000))
-        server_sel_timeout = int(getattr(settings, "MONGODB_SERVER_SELECTION_TIMEOUT_MS", 15_000))
+        connect_timeout = int(getattr(settings, "MONGODB_CONNECT_TIMEOUT_MS", 10_000))
+        server_sel_timeout = int(getattr(settings, "MONGODB_SERVER_SELECTION_TIMEOUT_MS", 5_000))
         socket_timeout = int(getattr(settings, "MONGODB_SOCKET_TIMEOUT_MS", 45_000))
-        max_idle_time = int(getattr(settings, "MONGODB_MAX_IDLE_TIME_MS", 180_000))
+        max_idle_time = int(getattr(settings, "MONGODB_MAX_IDLE_TIME_MS", 300_000))
         heartbeat_freq = int(getattr(settings, "MONGODB_HEARTBEAT_FREQUENCY_MS", 10_000))
-        wait_queue_timeout = int(getattr(settings, "MONGODB_WAIT_QUEUE_TIMEOUT_MS", 10_000))
-        min_pool_size = int(getattr(settings, "MONGODB_MIN_POOL_SIZE", 0))
+        wait_queue_timeout = int(getattr(settings, "MONGODB_WAIT_QUEUE_TIMEOUT_MS", 5_000))
+        min_pool_size = max(10, int(getattr(settings, "MONGODB_MIN_POOL_SIZE", 10)))
 
         _client = AsyncMongoClient(
             settings.MONGODB_URI,

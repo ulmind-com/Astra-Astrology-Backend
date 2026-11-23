@@ -76,6 +76,10 @@ class CallSession(TimestampedDocument):
                 name="call_user_recent",
             ),
             pymongo.IndexModel(
+                [("user_id", pymongo.ASCENDING), ("status", pymongo.ASCENDING), ("ended_at", pymongo.DESCENDING)],
+                name="call_user_status_ended",
+            ),
+            pymongo.IndexModel(
                 [("astrologer_user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
                 name="call_astrologer_recent",
             ),

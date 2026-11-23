@@ -80,6 +80,19 @@ class Course(Document):
             [("is_featured", pymongo.ASCENDING)],
             [("is_deleted", pymongo.ASCENDING)],
             [("created_at", pymongo.DESCENDING)],
+            [
+                ("is_published", pymongo.ASCENDING),
+                ("is_deleted", pymongo.ASCENDING),
+                ("is_featured", pymongo.DESCENDING),
+                ("created_at", pymongo.DESCENDING),
+            ],
+            [
+                ("category", pymongo.ASCENDING),
+                ("is_published", pymongo.ASCENDING),
+                ("is_deleted", pymongo.ASCENDING),
+                ("is_featured", pymongo.DESCENDING),
+                ("created_at", pymongo.DESCENDING),
+            ],
         ]
 
 

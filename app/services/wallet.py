@@ -322,12 +322,13 @@ async def list_transactions(
     page: int = 1,
     limit: int = 20,
     reason: TransactionReason | None = None,
+    include_total: bool = True,
 ) -> tuple[list[WalletTransaction], int]:
     query = WalletTransaction.find(WalletTransaction.user_id == user_id)
     if reason is not None:
         query = query.find(WalletTransaction.reason == reason)
 
-    total = await query.count()
+    total = await query.count() if include_total else -1
     items = (
         await query.sort(-WalletTransaction.created_at)
         .skip((page - 1) * limit)
