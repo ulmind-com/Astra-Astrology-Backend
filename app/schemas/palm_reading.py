@@ -199,13 +199,33 @@ class PalmRuleOut(BaseModel):
     reviewed: bool = False
 
 
+class PalmRuleCreate(BaseModel):
+    """Admin creating a new palm reading rule."""
+
+    feature: str = Field(..., max_length=64)
+    option: str = Field(..., max_length=64)
+    label: str = Field(..., max_length=120)
+    meaning: str = Field(..., max_length=4000)
+    area: str | None = Field(default=None, max_length=40)
+    source: str | None = Field(default=None, max_length=200)
+    requires: list[str] = Field(default_factory=lambda: ["geometry"])
+    conditions: list[dict[str, Any]] = Field(default_factory=list)
+    priority: int = Field(default=0, ge=-100, le=100)
+    is_default: bool = False
+    enabled: bool = True
+    reviewed: bool = False
+
+
 class PalmRuleUpdate(BaseModel):
-    """What an admin may change. Thresholds and wording, not the rule's identity."""
+    """What an admin may change. Thresholds, conditions and wording."""
 
     label: str | None = Field(default=None, max_length=120)
     meaning: str | None = Field(default=None, max_length=4000)
     area: str | None = Field(default=None, max_length=40)
+    source: str | None = Field(default=None, max_length=200)
+    requires: list[str] | None = None
     conditions: list[dict[str, Any]] | None = None
     priority: int | None = Field(default=None, ge=-100, le=100)
+    is_default: bool | None = None
     enabled: bool | None = None
     reviewed: bool | None = None
