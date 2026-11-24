@@ -104,100 +104,6 @@ CHART_FRAME_SQUARE_PATH = os.path.join(TEMPLATE_DIR, "chart_frame_square.jpg")
 CHART_FRAME_RECT_PATH = os.path.join(TEMPLATE_DIR, "chart_frame_rect.jpg")
 
 
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-
-FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../assets/fonts")
-
-# Register Noto Sans fonts for Bengali and Devanagari (Hindi)
-_FONTS_REGISTERED = False
-HAS_BENGALI_FONT = False
-HAS_DEVANAGARI_FONT = False
-
-def _register_unicode_fonts():
-    global _FONTS_REGISTERED, HAS_BENGALI_FONT, HAS_DEVANAGARI_FONT
-    if _FONTS_REGISTERED:
-        return
-    bn_reg = os.path.join(FONTS_DIR, "NotoSansBengali-Regular.ttf")
-    bn_bold = os.path.join(FONTS_DIR, "NotoSansBengali-Bold.ttf")
-    if os.path.exists(bn_reg) and os.path.exists(bn_bold):
-        try:
-            pdfmetrics.registerFont(TTFont("NotoSansBengali", bn_reg))
-            pdfmetrics.registerFont(TTFont("NotoSansBengali-Bold", bn_bold))
-            HAS_BENGALI_FONT = True
-        except Exception:
-            pass
-
-    hi_reg = os.path.join(FONTS_DIR, "NotoSansDevanagari-Regular.ttf")
-    hi_bold = os.path.join(FONTS_DIR, "NotoSansDevanagari-Bold.ttf")
-    if os.path.exists(hi_reg) and os.path.exists(hi_bold):
-        try:
-            pdfmetrics.registerFont(TTFont("NotoSansDevanagari", hi_reg))
-            pdfmetrics.registerFont(TTFont("NotoSansDevanagari-Bold", hi_bold))
-            HAS_DEVANAGARI_FONT = True
-        except Exception:
-            pass
-    _FONTS_REGISTERED = True
-
-_register_unicode_fonts()
-
-
-ABBR_MAP_EN = {
-    "Sun": "Su", "Moon": "Mo", "Mars": "Ma", "Mercury": "Me",
-    "Jupiter": "Ju", "Venus": "Ve", "Saturn": "Sa", "Rahu": "Ra", "Ketu": "Ke",
-    "Uranus": "Ur", "Neptune": "Ne", "Pluto": "Pl"
-}
-ABBR_MAP_BN = {
-    "Sun": "রবি", "Moon": "চং", "Mars": "মং", "Mercury": "বুধ",
-    "Jupiter": "বৃহ", "Venus": "শুক্র", "Saturn": "শনি", "Rahu": "রাহু", "Ketu": "কেতু",
-    "Uranus": "ইউ", "Neptune": "নেপ", "Pluto": "প্লুটো"
-}
-ABBR_MAP_HI = {
-    "Sun": "सूर्य", "Moon": "चन्द्र", "Mars": "मंगल", "Mercury": "बुध",
-    "Jupiter": "गुरु", "Venus": "शुक्र", "Saturn": "शनि", "Rahu": "राहु", "Ketu": "केतु",
-    "Uranus": "यूरे", "Neptune": "नेप", "Pluto": "प्लूटो"
-}
-
-I18N = {
-    "en": {
-        "title_master": "COMPREHENSIVE VEDIC KUNDLI MASTER DOSSIER",
-        "subtitle_master": "HOROSOFT PROFESSIONAL EDITION • MODULE 7 MASTER DOSSIER",
-        "running_header": "DIVINLINK VEDIC ASTROLOGY",
-        "running_footer": "DivinLink  •  Vedic Astrology & Planetary Science Platform  •  www.divinlink.com",
-        "sudarshan_chakra": "SUDARSHAN CHAKRA",
-        "sudarshan_sub": "Simultaneous synthesis of Tanu (Lagna), Chandra (Moon) and Surya (Sun) celestial houses.",
-        "shodashvarga_title": "SHODASHVARGA DIVISIONAL CHARTS",
-        "house_str": "HOUSE",
-        "life_guidance": "LIFE MANIFESTATION & GUIDANCE",
-        "retro_suf": "(R)",
-    },
-    "bn": {
-        "title_master": "দিভীনলিংক সম্পূর্ণ বৈদিক কুষ্ঠী মহাদর্শন",
-        "subtitle_master": "হোরোসফ্ট প্রফেশনাল এডিশন • মডিউল ৭ মাস্টার ডসিয়ার",
-        "running_header": "দিভীনলিংক বৈদিক জ্যোতিষশাস্ত্র",
-        "running_footer": "দিভীনলিংক  •  বৈদিক জ্যোতিষ ও গ্রহ বিজ্ঞান প্ল্যাটফর্ম  •  www.divinlink.com",
-        "sudarshan_chakra": "সুদর্শন চক্র",
-        "sudarshan_sub": "তনু (লগ্ন), চন্দ্র ও সূর্য ভিত্তিক সমকেন্দ্রিক ত্রিমুখী বৈদিক সমন্বয়।",
-        "shodashvarga_title": "ষোড়শবর্গ বিভাগীয় চক্র",
-        "house_str": "ভাব",
-        "life_guidance": "জীবন পরিচালনা ও ফলিত বৈদিক নির্দেশিকা",
-        "retro_suf": "(ব)",
-    },
-    "hi": {
-        "title_master": "डिविनलिंक संपूर्ण वैदिक कुंडली महादस्तावेज",
-        "subtitle_master": "होरोसॉफ्ट प्रोफेशनल एडिशन • मॉड्यूल 7 मास्टर डॉसियर",
-        "running_header": "डिविनलिंक वैदिक ज्योतिष शास्त्र",
-        "running_footer": "डिविनलिंक  •  वैदिक ज्योतिष एवं ग्रह विज्ञान संस्थान  •  www.divinlink.com",
-        "sudarshan_chakra": "सुदर्शन चक्र",
-        "sudarshan_sub": "तनु (लग्न), चन्द्र एवं सूर्य आधारित समकेन्द्रीय त्रिविध वैदिक समन्वय।",
-        "shodashvarga_title": "षोडशवर्ग विभागीय चक्र",
-        "house_str": "भाव",
-        "life_guidance": "जीवन मार्गदर्शन एवं फलित वैदिक निर्देशिका",
-        "retro_suf": "(व)",
-    }
-}
-
-
 def on_cover_page(canv: canvas.Canvas, doc: Any) -> None:
     canv.saveState()
     if os.path.exists(COVER_GANESHA_PATH):
@@ -214,10 +120,6 @@ def on_later_pages(canv: canvas.Canvas, doc: Any) -> None:
 
 class DivinLinkNumberedCanvas(canvas.Canvas):
     """Two-pass canvas for precise running headers, page numbers & royal borders."""
-    doc_lang: str = "en"
-    font_reg: str = "Helvetica"
-    font_bold: str = "Helvetica-Bold"
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._saved_page_states: list[dict[str, Any]] = []
@@ -233,26 +135,21 @@ class DivinLinkNumberedCanvas(canvas.Canvas):
             w, h = A4
             if self._pageNumber > 1:
                 self.saveState()
-                f_bold = getattr(self, "font_bold", "Helvetica-Bold")
-                f_reg = getattr(self, "font_reg", "Helvetica")
-                lang = getattr(self, "doc_lang", "en")
-                i18n = I18N.get(lang, I18N["en"])
-
                 # Running Header
-                self.setFont(f_bold, 8)
+                self.setFont("Helvetica-Bold", 8)
                 self.setFillColor(colors.HexColor("#92400E"))
-                self.drawCentredString(w / 2.0, h - 33, i18n["running_header"])
+                self.drawCentredString(w / 2.0, h - 33, "DIVINLINK VEDIC ASTROLOGY")
 
                 # Running Footer Left
-                self.setFont(f_reg, 7.5)
+                self.setFont("Helvetica", 7.5)
                 self.setFillColor(colors.HexColor("#78350F"))
-                self.drawString(45, 34, i18n["running_footer"])
+                self.drawString(45, 34, "DivinLink  •  Vedic Astrology & Planetary Science Platform  •  www.divinlink.com")
 
                 # Running Footer Right: Circled Page Number matching Horosoft
                 self.setStrokeColor(colors.HexColor("#78350F"))
                 self.setLineWidth(0.8)
                 self.circle(w - 55, 36, 10, fill=0, stroke=1)
-                self.setFont(f_bold, 8)
+                self.setFont("Helvetica-Bold", 8)
                 self.setFillColor(colors.HexColor("#1E293B"))
                 self.drawCentredString(w - 55, 33, str(self._pageNumber))
                 self.restoreState()
@@ -261,7 +158,7 @@ class DivinLinkNumberedCanvas(canvas.Canvas):
 
 
 class NorthIndianChartFlowable(Flowable):
-    """Renders authentic North Indian diamond chart with safe margins, no text collisions."""
+    """Renders authentic North Indian diamond chart using real frame assets."""
     def __init__(
         self,
         width: float,
@@ -270,9 +167,6 @@ class NorthIndianChartFlowable(Flowable):
         house_planets: dict[int, list[str]],
         title: str = "",
         is_rect: bool = False,
-        lang: str = "en",
-        font_reg: str = "Helvetica",
-        font_bold: str = "Helvetica-Bold",
     ):
         super().__init__()
         self.width = width
@@ -281,9 +175,6 @@ class NorthIndianChartFlowable(Flowable):
         self.house_planets = house_planets
         self.title = title
         self.is_rect = is_rect
-        self.lang = lang
-        self.font_reg = font_reg
-        self.font_bold = font_bold
         if is_rect:
             self.frame_path = CHART_FRAME_RECT_PATH
         else:
@@ -301,7 +192,7 @@ class NorthIndianChartFlowable(Flowable):
 
         # Draw Title
         if self.title:
-            canv.setFont(self.font_bold, 8.5)
+            canv.setFont("Helvetica-Bold", 8.5)
             canv.setFillColor(colors.HexColor("#92400E"))
             canv.drawCentredString(w / 2.0, h + 3, self.title)
 
@@ -309,23 +200,23 @@ class NorthIndianChartFlowable(Flowable):
         if os.path.exists(self.frame_path):
             canv.drawImage(self.frame_path, 0, 0, width=w, height=h)
 
-        # House Rashi Numbers at 12 Inner Vertices (spaced away from center cross to prevent collisions)
+        # House Rashi Numbers at 12 Inner Vertices (offset from diagonals to prevent collisions)
         rashi_coords = {
-            1:  (w * 0.50, h * 0.60),  # Top Kendra
-            2:  (w * 0.31, h * 0.77),
-            3:  (w * 0.23, h * 0.69),
-            4:  (w * 0.40, h * 0.50),  # Left Kendra
-            5:  (w * 0.23, h * 0.31),
-            6:  (w * 0.31, h * 0.23),
-            7:  (w * 0.50, h * 0.40),  # Bottom Kendra
-            8:  (w * 0.69, h * 0.23),
-            9:  (w * 0.77, h * 0.31),
-            10: (w * 0.60, h * 0.50),  # Right Kendra
-            11: (w * 0.77, h * 0.69),
-            12: (w * 0.69, h * 0.77),
+            1:  (w * 0.50, h * 0.54),
+            2:  (w * 0.30, h * 0.77),
+            3:  (w * 0.22, h * 0.70),
+            4:  (w * 0.46, h * 0.50),
+            5:  (w * 0.22, h * 0.30),
+            6:  (w * 0.30, h * 0.23),
+            7:  (w * 0.50, h * 0.46),
+            8:  (w * 0.70, h * 0.23),
+            9:  (w * 0.78, h * 0.30),
+            10: (w * 0.54, h * 0.50),
+            11: (w * 0.78, h * 0.70),
+            12: (w * 0.70, h * 0.77),
         }
 
-        canv.setFont(self.font_bold, 6.5 if not self.is_rect else 7.5)
+        canv.setFont("Helvetica-Bold", 6.5 if not self.is_rect else 7.5)
         canv.setFillColor(colors.HexColor("#B45309"))
         for house_idx, (rx, ry) in rashi_coords.items():
             sign_num = ((self.asc_sign - 1 + (house_idx - 1)) % 12) + 1
@@ -333,29 +224,28 @@ class NorthIndianChartFlowable(Flowable):
 
         # House Planet Coordinates (Centers of house areas)
         planet_centers = {
-            1:  (w * 0.50, h * 0.78),
-            2:  (w * 0.30, h * 0.88),
-            3:  (w * 0.13, h * 0.70),
-            4:  (w * 0.24, h * 0.50),
-            5:  (w * 0.13, h * 0.30),
-            6:  (w * 0.30, h * 0.12),
-            7:  (w * 0.50, h * 0.22),
-            8:  (w * 0.70, h * 0.12),
-            9:  (w * 0.87, h * 0.30),
-            10: (w * 0.76, h * 0.50),
-            11: (w * 0.87, h * 0.70),
-            12: (w * 0.70, h * 0.88),
+            1:  (w * 0.50, h * 0.74),
+            2:  (w * 0.32, h * 0.88),
+            3:  (w * 0.12, h * 0.70),
+            4:  (w * 0.26, h * 0.50),
+            5:  (w * 0.12, h * 0.30),
+            6:  (w * 0.32, h * 0.12),
+            7:  (w * 0.50, h * 0.26),
+            8:  (w * 0.68, h * 0.12),
+            9:  (w * 0.88, h * 0.30),
+            10: (w * 0.74, h * 0.50),
+            11: (w * 0.88, h * 0.70),
+            12: (w * 0.68, h * 0.88),
         }
 
-        if self.lang == "bn":
-            abbr_map = ABBR_MAP_BN
-        elif self.lang == "hi":
-            abbr_map = ABBR_MAP_HI
-        else:
-            abbr_map = ABBR_MAP_EN
+        ABBR_MAP = {
+            "Sun": "Su", "Moon": "Mo", "Mars": "Ma", "Mercury": "Me",
+            "Jupiter": "Ju", "Venus": "Ve", "Saturn": "Sa", "Rahu": "Ra", "Ketu": "Ke",
+            "Uranus": "Ur", "Neptune": "Ne", "Pluto": "Pl"
+        }
 
         font_size = 6.0 if not self.is_rect else 7.5
-        canv.setFont(self.font_bold, font_size)
+        canv.setFont("Helvetica-Bold", font_size)
         canv.setFillColor(colors.HexColor("#1E293B"))
 
         for house_idx, (px, py) in planet_centers.items():
@@ -365,39 +255,26 @@ class NorthIndianChartFlowable(Flowable):
 
             clean_list = []
             for p in planets:
-                is_r = "(R)" in p or "®" in p or "(ব)" in p or "(व)" in p
-                base = p.replace("(R)", "").replace("®", "").replace("(ব)", "").replace("(व)", "").strip()
-                suf = "(ব)" if (is_r and self.lang == "bn") else ("(व)" if (is_r and self.lang == "hi") else ("(R)" if is_r else ""))
+                is_r = "(R)" in p or "®" in p
+                base = p.replace("(R)", "").replace("®", "").strip()
                 if not self.is_rect and len(planets) >= 2:
-                    abbr = abbr_map.get(base, base[:2])
-                    clean_list.append(f"{abbr}{suf}")
+                    abbr = ABBR_MAP.get(base, base[:2])
+                    clean_list.append(f"{abbr}(R)" if is_r else abbr)
                 else:
-                    abbr = abbr_map.get(base, base) if not self.is_rect else base
-                    clean_list.append(f"{abbr}{suf}")
-
-            # Multi-planet packing: group into rows of max 2-3 planets to prevent overflow
-            lines = []
-            if len(clean_list) == 1:
-                lines = [clean_list[0]]
-            elif len(clean_list) == 2:
-                lines = [clean_list[0], clean_list[1]]
-            elif len(clean_list) in (3, 4):
-                lines = [f"{clean_list[0]} {clean_list[1]}", f"{clean_list[2]} {clean_list[3]}" if len(clean_list) == 4 else clean_list[2]]
-            else:  # 5 or more (e.g. Hora D2 with 7 planets)
-                for i in range(0, len(clean_list), 3):
-                    lines.append(" ".join(clean_list[i:i+3]))
+                    abbr = ABBR_MAP.get(base, base) if not self.is_rect else base
+                    clean_list.append(f"{abbr}(R)" if is_r else abbr)
 
             line_height = 7.0 if not self.is_rect else 9.0
-            total_h = len(lines) * line_height
+            total_h = len(clean_list) * line_height
             start_y = py + (total_h / 2.0) - line_height + 2
-            for i, p_str in enumerate(lines):
+            for i, p_str in enumerate(clean_list):
                 canv.drawCentredString(px, start_y - (i * line_height), p_str)
 
         canv.restoreState()
 
 
 class SudarshanChakraFlowable(Flowable):
-    """Renders authoritative Vedic Sudarshan Chakra (Triple Harmonic Rings, Counter-Clockwise)."""
+    """Renders authoritative Vedic Sudarshan Chakra (Triple Harmonic Rings)."""
     def __init__(
         self,
         size: float,
@@ -409,9 +286,6 @@ class SudarshanChakraFlowable(Flowable):
         sun_planets: dict[int, list[str]],
         native_name: str,
         dob_tob_str: str,
-        lang: str = "en",
-        font_reg: str = "Helvetica",
-        font_bold: str = "Helvetica-Bold",
     ):
         super().__init__()
         self.size = size
@@ -425,9 +299,6 @@ class SudarshanChakraFlowable(Flowable):
         self.sun_planets = sun_planets
         self.native_name = native_name
         self.dob_tob_str = dob_tob_str
-        self.lang = lang
-        self.font_reg = font_reg
-        self.font_bold = font_bold
 
     def wrap(self, availWidth, availHeight):
         return self.size, self.size
@@ -438,8 +309,8 @@ class SudarshanChakraFlowable(Flowable):
         cx = self.size / 2.0
         cy = self.size / 2.0
 
-        r_hub = self.size * 0.12
-        r_inner = self.size * 0.245
+        r_hub = self.size * 0.13
+        r_inner = self.size * 0.25
         r_mid = self.size * 0.37
         r_outer = self.size * 0.49
 
@@ -457,11 +328,11 @@ class SudarshanChakraFlowable(Flowable):
         canv.setLineWidth(1.2)
         canv.circle(cx, cy, r_hub, fill=1, stroke=1)
 
-        # 12 Radial Sector Dividing Lines (boundaries at 75°, 105°, 135°...)
+        # 12 Radial Sector Dividing Lines at 15°, 45°, 75°...
         canv.setStrokeColor(colors.HexColor("#D97706"))
         canv.setLineWidth(0.7)
         for i in range(12):
-            angle_rad = math.radians(75.0 + i * 30.0)
+            angle_rad = math.radians(i * 30.0 + 15.0)
             x1 = cx + r_hub * math.cos(angle_rad)
             y1 = cy + r_hub * math.sin(angle_rad)
             x2 = cx + r_outer * math.cos(angle_rad)
@@ -469,95 +340,83 @@ class SudarshanChakraFlowable(Flowable):
             canv.line(x1, y1, x2, y2)
 
         # Central Hub Content
-        canv.setFont(self.font_bold, 7.5)
+        canv.setFont("Helvetica-Bold", 7.5)
         canv.setFillColor(colors.HexColor("#92400E"))
-        t_chakra = "সুদর্শন চক্র" if self.lang == "bn" else ("सुदर्शन चक्र" if self.lang == "hi" else "SUDARSHAN CHAKRA")
-        canv.drawCentredString(cx, cy + 14, t_chakra)
-
-        canv.setFont(self.font_bold, 6.5)
+        canv.drawCentredString(cx, cy + 18, "SUDARSHAN")
+        canv.drawCentredString(cx, cy + 9, "CHAKRA")
+        canv.setFont("Helvetica-Bold", 6.5)
         canv.setFillColor(colors.HexColor("#1E293B"))
-        canv.drawCentredString(cx, cy + 2, self.native_name[:18])
-
-        canv.setFont(self.font_reg, 5.5)
+        canv.drawCentredString(cx, cy - 2, self.native_name[:18])
+        canv.setFont("Helvetica", 5.5)
         canv.setFillColor(colors.HexColor("#64748B"))
-        canv.drawCentredString(cx, cy - 8, self.dob_tob_str)
-        lbl_lagna = f"লগ্ন: রাশি {self.d1_asc}" if self.lang == "bn" else (f"लग्न: राशि {self.d1_asc}" if self.lang == "hi" else f"Lagna: Rasi {self.d1_asc}")
-        canv.drawCentredString(cx, cy - 16, lbl_lagna)
+        canv.drawCentredString(cx, cy - 12, self.dob_tob_str)
+        canv.drawCentredString(cx, cy - 20, f"Lagna: Rasi {self.d1_asc}")
 
-        if self.lang == "bn":
-            abbr_map = ABBR_MAP_BN
-        elif self.lang == "hi":
-            abbr_map = ABBR_MAP_HI
-        else:
-            abbr_map = ABBR_MAP_EN
+        ABBR_MAP = {
+            "Sun": "Su", "Moon": "Mo", "Mars": "Ma", "Mercury": "Me",
+            "Jupiter": "Ju", "Venus": "Ve", "Saturn": "Sa", "Rahu": "Ra", "Ketu": "Ke"
+        }
 
         def format_planets(p_list: list[str]) -> str:
             res = []
             for p in p_list:
-                is_r = "(R)" in p or "®" in p or "(ব)" in p or "(व)" in p
-                base = p.replace("(R)", "").replace("®", "").replace("(ব)", "").replace("(व)", "").strip()
-                abbr = abbr_map.get(base, base[:2])
-                suf = "(ব)" if (is_r and self.lang == "bn") else ("(व)" if (is_r and self.lang == "hi") else ("(R)" if is_r else ""))
-                res.append(f"{abbr}{suf}")
+                is_r = "(R)" in p or "®" in p
+                base = p.replace("(R)", "").replace("®", "").strip()
+                abbr = ABBR_MAP.get(base, base[:2])
+                res.append(f"{abbr}(R)" if is_r else abbr)
             return " ".join(res[:3])
 
-        # 12 Sectors: Counter-Clockwise starting from 90° (Top / House 1)
+        # 12 Sectors
         for h in range(1, 13):
-            mid_angle = math.radians(90.0 + (h - 1) * 30.0)
+            mid_angle = math.radians(90.0 - (h - 1) * 30.0)
 
             # 1. Innermost Ring (Tanu / Lagna)
+            r_l = (r_hub + r_inner) / 2.0
+            lx = cx + r_l * math.cos(mid_angle)
+            ly = cy + r_l * math.sin(mid_angle)
             s_l = ((self.d1_asc - 1 + (h - 1)) % 12) + 1
+            canv.setFont("Helvetica-Bold", 6.5)
+            canv.setFillColor(colors.HexColor("#B45309"))
             p_l_str = format_planets(self.d1_planets.get(h, []))
             if p_l_str:
-                r_num = r_hub + 11
-                r_pla = r_inner - 14
-                canv.setFont(self.font_bold, 6.5)
-                canv.setFillColor(colors.HexColor("#B45309"))
-                canv.drawCentredString(cx + r_num * math.cos(mid_angle), cy + r_num * math.sin(mid_angle) - 2, str(s_l))
-                canv.setFont(self.font_bold, 5.5)
+                canv.drawCentredString(lx, ly + 3, str(s_l))
+                canv.setFont("Helvetica-Bold", 5.5)
                 canv.setFillColor(colors.HexColor("#1E293B"))
-                canv.drawCentredString(cx + r_pla * math.cos(mid_angle), cy + r_pla * math.sin(mid_angle) - 2, p_l_str)
+                canv.drawCentredString(lx, ly - 5, p_l_str)
             else:
-                r_mid_l = (r_hub + r_inner) / 2.0
-                canv.setFont(self.font_bold, 6.5)
-                canv.setFillColor(colors.HexColor("#B45309"))
-                canv.drawCentredString(cx + r_mid_l * math.cos(mid_angle), cy + r_mid_l * math.sin(mid_angle) - 2, str(s_l))
+                canv.drawCentredString(lx, ly - 2, str(s_l))
 
             # 2. Middle Ring (Chandra / Moon)
+            r_m = (r_inner + r_mid) / 2.0
+            mx = cx + r_m * math.cos(mid_angle)
+            my = cy + r_m * math.sin(mid_angle)
             s_m = ((self.moon_sign - 1 + (h - 1)) % 12) + 1
+            canv.setFont("Helvetica-Bold", 6.5)
+            canv.setFillColor(colors.HexColor("#B45309"))
             p_m_str = format_planets(self.moon_planets.get(h, []))
             if p_m_str:
-                r_num = r_inner + 12
-                r_pla = r_mid - 15
-                canv.setFont(self.font_bold, 6.5)
-                canv.setFillColor(colors.HexColor("#B45309"))
-                canv.drawCentredString(cx + r_num * math.cos(mid_angle), cy + r_num * math.sin(mid_angle) - 2, str(s_m))
-                canv.setFont(self.font_bold, 5.5)
+                canv.drawCentredString(mx, my + 3, str(s_m))
+                canv.setFont("Helvetica-Bold", 5.5)
                 canv.setFillColor(colors.HexColor("#1E293B"))
-                canv.drawCentredString(cx + r_pla * math.cos(mid_angle), cy + r_pla * math.sin(mid_angle) - 2, p_m_str)
+                canv.drawCentredString(mx, my - 5, p_m_str)
             else:
-                r_mid_m = (r_inner + r_mid) / 2.0
-                canv.setFont(self.font_bold, 6.5)
-                canv.setFillColor(colors.HexColor("#B45309"))
-                canv.drawCentredString(cx + r_mid_m * math.cos(mid_angle), cy + r_mid_m * math.sin(mid_angle) - 2, str(s_m))
+                canv.drawCentredString(mx, my - 2, str(s_m))
 
             # 3. Outer Ring (Surya / Sun)
+            r_o = (r_mid + r_outer) / 2.0
+            ox = cx + r_o * math.cos(mid_angle)
+            oy = cy + r_o * math.sin(mid_angle)
             s_o = ((self.sun_sign - 1 + (h - 1)) % 12) + 1
+            canv.setFont("Helvetica-Bold", 6.5)
+            canv.setFillColor(colors.HexColor("#B45309"))
             p_o_str = format_planets(self.sun_planets.get(h, []))
             if p_o_str:
-                r_num = r_mid + 12
-                r_pla = r_outer - 15
-                canv.setFont(self.font_bold, 6.5)
-                canv.setFillColor(colors.HexColor("#B45309"))
-                canv.drawCentredString(cx + r_num * math.cos(mid_angle), cy + r_num * math.sin(mid_angle) - 2, str(s_o))
-                canv.setFont(self.font_bold, 5.5)
+                canv.drawCentredString(ox, oy + 3, str(s_o))
+                canv.setFont("Helvetica-Bold", 5.5)
                 canv.setFillColor(colors.HexColor("#1E293B"))
-                canv.drawCentredString(cx + r_pla * math.cos(mid_angle), cy + r_pla * math.sin(mid_angle) - 2, p_o_str)
+                canv.drawCentredString(ox, oy - 5, p_o_str)
             else:
-                r_mid_o = (r_mid + r_outer) / 2.0
-                canv.setFont(self.font_bold, 6.5)
-                canv.setFillColor(colors.HexColor("#B45309"))
-                canv.drawCentredString(cx + r_mid_o * math.cos(mid_angle), cy + r_mid_o * math.sin(mid_angle) - 2, str(s_o))
+                canv.drawCentredString(ox, oy - 2, str(s_o))
 
         canv.restoreState()
 
@@ -841,257 +700,6 @@ def parse_full_degree(deg_str: str) -> float:
 # =============================================================================
 
 
-
-ZODIAC_NAMES_BN = ["মেষ", "বৃষ", "মিথুন", "কর্কট", "সিংহ", "কন্যা", "তুলা", "বৃশ্চিক", "ধনু", "মকর", "কুম্ভ", "মীন"]
-ZODIAC_NAMES_HI = ["मेष", "वृषभ", "मिथुन", "कर्क", "सिंह", "कन्या", "तुला", "वृश्चिक", "धनु", "मकर", "कुम्भ", "मीन"]
-ZODIAC_NAMES_EN = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"]
-
-PLANET_NAMES_BN = {
-    "Sun": "সূর্য", "Moon": "চন্দ্র", "Mars": "মঙ্গল", "Mercury": "বুধ",
-    "Jupiter": "বৃহস্পতি", "Venus": "শুক্র", "Saturn": "শনি", "Rahu": "রাহু", "Ketu": "কেতু",
-    "Asc": "লগ্ন", "Lagna": "লগ্ন"
-}
-PLANET_NAMES_HI = {
-    "Sun": "सूर्य", "Moon": "चन्द्र", "Mars": "मंगल", "Mercury": "बुध",
-    "Jupiter": "गुरु", "Venus": "शुक्र", "Saturn": "शनि", "Rahu": "राहु", "Ketu": "केतु",
-    "Asc": "लग्न", "Lagna": "लग्न"
-}
-PLANET_NAMES_EN = {
-    "Sun": "Sun", "Moon": "Moon", "Mars": "Mars", "Mercury": "Mercury",
-    "Jupiter": "Jupiter", "Venus": "Venus", "Saturn": "Saturn", "Rahu": "Rahu", "Ketu": "Ketu",
-    "Asc": "Ascendant", "Lagna": "Ascendant"
-}
-
-BHAVA_TITLES_BN = [
-    ("তনু ভাব", "দেহ, জীবনীশক্তি, মানসিক গঠন ও ব্যক্তিত্ব"),
-    ("ধন ভাব", "স্থাবর সম্পত্তি, ধন-সম্পদ, বাচনভঙ্গি ও পারিবারিক সুখ"),
-    ("সহজ ভাব", "পরাক্রম, ভ্রাতা-ভগিনী, সাহস ও উদ্যম"),
-    ("বন্ধু ভাব", "মাতৃসুখ, গৃহ, যানবাহন, জমি ও আন্তরিক প্রশান্তি"),
-    ("পুত্র ভাব", "মেধা, সন্তানসন্ততি, উচ্চশিক্ষা ও সৃজনশীল প্রতিভা"),
-    ("অরি ভাব", "আরোগ্য, ঋণমুক্তি, শত্রু বিনাশ ও প্রতিযোগিতা জয়"),
-    ("যুবতী ভাব", "বিবাহিত জীবন, অংশীদারি ব্যবসা ও সামাজিক সম্পর্ক"),
-    ("রন্ধ্র ভাব", "আয়ুষ্কাল, নিগূঢ় বিদ্যা, রূপান্তর ও অপ্রত্যাশিত প্রাপ্তি"),
-    ("ধর্ম ভাব", "ভাগ্যোদয়, গুরুকৃপা, ধার্মিক নিষ্ঠা ও উচ্চতর দর্শন"),
-    ("কর্ম ভাব", "পেশা, সামাজিক সম্মান, কর্তৃত্ব ও কর্মসিদ্ধি"),
-    ("লাভ ভাব", "সর্বপ্রকার সাফল্য, অর্থপ্রাপ্তি, জ্যেষ্ঠ ভ্রাতা ও মিত্রলাভ"),
-    ("ব্যয় ভাব", "বিদেশযাত্রা, মোক্ষলাভ, আত্মিক জাগরণ ও অর্থবিনিয়োগ"),
-]
-
-BHAVA_TITLES_HI = [
-    ("तनु भाव", "शारीरिक गठन, जीवन शक्ति, रूप-रंग एवं आत्म-चेतना"),
-    ("धन भाव", "पैतृक सम्पत्ति, संचित कोष, वाणी एवं पारिवारिक सौहार्द"),
-    ("सहज भाव", "पराक्रम, अनुज भ्राता-भगिनी, शौर्य एवं उद्यमशीलता"),
-    ("बन्धु भाव", "मातृ सुख, भूमि, भवन, वाहन एवं आन्तरिक शांति"),
-    ("पुत्र भाव", "बुद्धि, संतति, उच्च विद्या, विवेक एवं सृजनात्मकता"),
-    ("अरि भाव", "आरोग्य, ऋण मुक्ति, रोग-रिपु निवारण एवं प्रतियोगिता"),
-    ("युवती भाव", "दांपत्य सुख, व्यावसायिक साझेदारी एवं सामाजिक प्रतिष्ठा"),
-    ("रन्ध्र भाव", "आयु, गूढ़ रहस्य, परिवर्तन एवं अप्रत्याशित घटनाएं"),
-    ("धर्म भाव", "भाग्य, गुरु कृपा, तीर्थाटन, धर्म एवं आत्मिक उत्थान"),
-    ("कर्म भाव", "आजीविका, पद-प्रतिष्ठा, राज्य कृपा एवं अधिकार"),
-    ("लाभ भाव", "सर्व-मनोरथ सिद्धि, धनागमन, ज्येष्ठ भ्राता एवं मित्र"),
-    ("व्यय भाव", "मोक्ष, वैराग्य, विदेश वास, दान एवं आध्यात्मिक जागृति"),
-]
-
-BHAVA_TITLES_EN = [
-    ("Tanu Bhava", "Self, Vitality, Physical Frame & Personality"),
-    ("Dhana Bhava", "Wealth, Liquid Assets, Speech & Family Lineage"),
-    ("Sahaja Bhava", "Courage, Siblings, Initiative & Enterprise"),
-    ("Bandhu Bhava", "Mother, Real Estate, Vehicles & Domestic Bliss"),
-    ("Putra Bhava", "Intellect, Progeny, Discernment & Creative Spark"),
-    ("Ari Bhava", "Health, Debt Overcoming, Competitions & Resilience"),
-    ("Yuvati Bhava", "Marriage, Alliances, Partnerships & Public Relations"),
-    ("Randhra Bhava", "Longevity, Occult Secrets, Transformation & Legacies"),
-    ("Dharma Bhava", "Higher Wisdom, Divine Grace, Fortunes & Spiritual Guru"),
-    ("Karma Bhava", "Profession, Social Status, Executive Authority & Fame"),
-    ("Labha Bhava", "Gains, Aspirations, Social Networks & Acquisitions"),
-    ("Vyaya Bhava", "Foreign Travels, Expenses, Liberation & Spiritual Transcendence"),
-]
-
-SIGN_LORDS = {
-    1: "Mars", 2: "Venus", 3: "Mercury", 4: "Moon", 5: "Sun", 6: "Mercury",
-    7: "Venus", 8: "Mars", 9: "Jupiter", 10: "Saturn", 11: "Saturn", 12: "Jupiter"
-}
-
-BHAVA_KARAKAS = {
-    1: "Sun", 2: "Jupiter", 3: "Mars", 4: "Moon", 5: "Jupiter", 6: "Mars",
-    7: "Venus", 8: "Saturn", 9: "Jupiter", 10: "Mercury", 11: "Jupiter", 12: "Saturn"
-}
-
-PLANET_REMEDIES = {
-    "Sun": {
-        "gem_en": "Ruby (Manikya) 3.5+ Ct in Gold / Copper (Ring finger)",
-        "gem_bn": "মানিক্য (চুনি) ৩.৫+ ক্যারাট স্বর্ণ বা তাম্রাধারে (অনামিকা)",
-        "gem_hi": "माणिक्य (रूबी) 3.5+ रत्ती स्वर्ण/ताम्र में (अनामिका)",
-        "mantra": "ॐ ह्रां ह्रीं ह्रौं सः सूर्याय नमः (108x daily)",
-        "day_en": "Sunday Sunrise (Surya Puja with water libation)",
-        "day_bn": "রবিবার সূর্যোদয় (তাম্রপাত্রে অর্ঘ্য প্রদান ও আদিত্য হৃদয় স্তোত্র)",
-        "day_hi": "रविवार सूर्योदय (ताम्र पात्र से सूर्य को अर्घ्य व आदित्य हृदय स्तोत्र)",
-        "charity_en": "Donate wheat, jaggery, red cloth, or copper utensils",
-        "charity_bn": "গম, গুড়, লাল বস্ত্র বা তাম্রপাত্র দান করুন",
-        "charity_hi": "गेहूं, गुड़, लाल वस्त्र या तांबे के बर्तन का दान करें",
-        "yantra_en": "Energized Surya Yantra placed in East zone",
-        "yantra_bn": "পূর্ব দিকে প্রাণপ্রতিষ্ঠিত সূর্য যন্ত্র স্থাপন",
-        "yantra_hi": "पूर्व दिशा में प्राण-प्रतिष्ठित सूर्य यन्त्र स्थापित करें"
-    },
-    "Moon": {
-        "gem_en": "Natural Pearl (Moti) 4.25+ Ct in Silver (Little finger)",
-        "gem_bn": "মুক্তা ৪.২৫+ ক্যারাট রৌপ্যাধারে (কনিষ্ঠা অঙ্গুলি)",
-        "gem_hi": "सच्चा मोती 4.25+ रत्ती चांदी में (कनिष्ठिका)",
-        "mantra": "ॐ श्रां श्रीं श्रौं सः चन्द्रमसे नमः (108x daily)",
-        "day_en": "Monday Evening (Shivling Jalabhishek with milk)",
-        "day_bn": "সোমবার সূর্যাস্ত (শিবলিঙ্গে কাঁচা দুধ ও গঙ্গাজল অর্পণ)",
-        "day_hi": "सोमवार सायं (शिवलिंग पर दुग्ध व गंगाजल अभिषेक)",
-        "charity_en": "Donate basmati rice, white sweets, milk, or silver",
-        "charity_bn": "চাল, দুধ, সাদা মিষ্টি বা রৌপ্য দান করুন",
-        "charity_hi": "चावल, दूध, सफेद मिष्ठान्न या चांदी का दान करें",
-        "yantra_en": "Energized Chandra Yantra in North-West zone",
-        "yantra_bn": "উত্তর-পশ্চিম (বায়ুকোণ) দিকে চন্দ্র যন্ত্র স্থাপন",
-        "yantra_hi": "उत्तर-पश्चिम (वायव्य) में चन्द्र यन्त्र स्थापित करें"
-    },
-    "Mars": {
-        "gem_en": "Red Coral (Moonga) 5.25+ Ct in Copper / Gold (Ring finger)",
-        "gem_bn": "রক্তপ্রবাল ৫.২৫+ ক্যারাট তামা বা স্বর্ণে (অনামিকা)",
-        "gem_hi": "लाल मूंगा 5.25+ रत्ती तांबे/सोने में (अनामिका)",
-        "mantra": "ॐ क्रां क्रीं क्रौं सः भौमाय नमः (108x daily)",
-        "day_en": "Tuesday Morning (Hanuman Chalisa & Sundarkand)",
-        "day_bn": "মঙ্গলবার প্রাতঃকাল (শ্রী হনুমান চালিসা ও বজরং বাণ পাঠ)",
-        "day_hi": "मंगलवार प्रातः (श्री हनुमान चालीसा व सुन्दरकाण्ड पाठ)",
-        "charity_en": "Donate red lentils (masoor), jaggery, or blood donation",
-        "charity_bn": "মসুর ডাল, গুড়, লাল মিষ্টি বা রক্তদান করুন",
-        "charity_hi": "मसूर दाल, गुड़, लाल वस्त्र का दान अथवा रक्तदान करें",
-        "yantra_en": "Energized Mangal Yantra placed in South zone",
-        "yantra_bn": "দক্ষিণ দিকে প্রাণপ্রতিষ্ঠিত মঙ্গল যন্ত্র স্থাপন",
-        "yantra_hi": "दक्षिण दिशा में प्राण-प्रतिष्ठित मंगल यन्त्र स्थापित करें"
-    },
-    "Mercury": {
-        "gem_en": "Emerald (Panna) 3.5+ Ct in Gold / Panchadhatu (Little finger)",
-        "gem_bn": "পান্না ৩.৫+ ক্যারাট স্বর্ণ বা পঞ্চধাতুতে (কনিষ্ঠা অঙ্গুলি)",
-        "gem_hi": "पन्ना 3.5+ रत्ती स्वर्ण/पंचधातु में (कनिष्ठिका)",
-        "mantra": "ॐ ब्रां ब्रीं ब्रौं सः बुधाय नमः (108x daily)",
-        "day_en": "Wednesday Morning (Ganesh Atharvashirsha chant)",
-        "day_bn": "বুধবার প্রাতঃকাল (শ্রী গণেশ পূজা ও দূর্বাঘাস অর্পণ)",
-        "day_hi": "बुधवार प्रातः (श्री गणेश जी को दूर्वा अर्पण व अथर्वशीर्ष)",
-        "charity_en": "Donate whole green moong, books, green fruits to students",
-        "charity_bn": "সবুজ মুগ ডাল, পাঠ্যপুস্তক বা সবুজ ফল দান করুন",
-        "charity_hi": "साबुत मूंग, पुस्तकें, हरी सब्जियां या फल दान करें",
-        "yantra_en": "Energized Budh Yantra placed in North zone",
-        "yantra_bn": "উত্তর দিকে প্রাণপ্রতিষ্ঠিত বুধ যন্ত্র স্থাপন",
-        "yantra_hi": "उत्तर दिशा में प्राण-प्रतिष्ठित बुध यन्त्र स्थापित करें"
-    },
-    "Jupiter": {
-        "gem_en": "Yellow Sapphire (Pukhraj) 4.25+ Ct in Gold (Index finger)",
-        "gem_bn": "পোখরাজ (পীতমণি) ৪.২৫+ ক্যারাট স্বর্ণাধারে (তর্জনী)",
-        "gem_hi": "पीला पुखराज 4.25+ रत्ती स्वर्ण में (तर्जनी)",
-        "mantra": "ॐ ग्रां ग्रीं ग्रौं सः गुरवे नमः (108x daily)",
-        "day_en": "Thursday Morning (Brihaspati Katha & Vishnu Sahasranama)",
-        "day_bn": "বৃহস্পতিবার প্রাতঃকাল (বিষ্ণু সহস্রনাম পাঠ ও কলাগাছে জলদান)",
-        "day_hi": "गुरुवार प्रातः (विष्णु सहस्रनाम पाठ व केले के वृक्ष का पूजन)",
-        "charity_en": "Donate chana dal, turmeric, saffron, yellow sweets to scholars",
-        "charity_bn": "ছোলা ডাল, হলুদ, জাফরান বা হলুদ মিষ্টি দান করুন",
-        "charity_hi": "चना दाल, हल्दी, केसर, पीले मिष्ठान्न का दान करें",
-        "yantra_en": "Energized Guru Yantra in North-East (Ishanya) zone",
-        "yantra_bn": "ঈশান কোণে (উত্তর-পূর্ব) বৃহস্পতি যন্ত্র স্থাপন",
-        "yantra_hi": "ईशान कोण (उत्तर-पूर्व) में गुरु यन्त्र स्थापित करें"
-    },
-    "Venus": {
-        "gem_en": "Diamond or White Zircon 1.5+ Ct in Platinum / Silver (Middle/Ring)",
-        "gem_bn": "হীরা বা শ্বেত জারকন ১.৫+ ক্যারাট রৌপ্যে (মধ্যমা বা অনামিকা)",
-        "gem_hi": "हीरा अथवा श्वेत जरकन 1.5+ रत्ती चांदी में (मध्यमा/अनामिका)",
-        "mantra": "ॐ द्रां द्रीं द्रौं सः शुक्राय नमः (108x daily)",
-        "day_en": "Friday Dawn (Sri Suktam chant & Mahalaxmi worship)",
-        "day_bn": "শুক্রবার প্রত্যূষে (শ্রী সূক্তম পাঠ ও মা লক্ষ্মী আরাধনা)",
-        "day_hi": "शुक्रवार प्रातः (श्री सूक्तम पाठ व महालक्ष्मी पूजन)",
-        "charity_en": "Donate sugar, camphor, ghee, silk clothing, or perfumes",
-        "charity_bn": "চিনি, কর্পূর, ঘি, রেশমি বস্ত্র বা সুগন্ধি দান করুন",
-        "charity_hi": "शक्कर, कर्पूर, शुद्ध घी, रेशमी वस्त्र का दान करें",
-        "yantra_en": "Energized Shukra Yantra placed in South-East zone",
-        "yantra_bn": "অগ্নি কোণে (দক্ষিণ-পূর্ব) শুক্র যন্ত্র স্থাপন",
-        "yantra_hi": "आग्नेय कोण (दक्षिण-पूर्व) में शुक्र यन्त्र स्थापित करें"
-    },
-    "Saturn": {
-        "gem_en": "Blue Sapphire (Neelam) or Amethyst 4.5+ Ct in Iron/Silver (Middle)",
-        "gem_bn": "নীলা বা জামুনিয়া ৪.৫+ ক্যারাট পঞ্চধাতু বা রৌপ্যে (মধ্যমা)",
-        "gem_hi": "नीलम अथवा जामुनिया 4.5+ रत्ती पंचधातु/चांदी में (मध्यमा)",
-        "mantra": "ॐ प्रां प्रीं प्रौं सः शनैश्चराय नमः (108x daily)",
-        "day_en": "Saturday Dusk (Mustard oil deepam under Peepal tree)",
-        "day_bn": "শনিবার গোধূলিলগ্নে (অশ্বত্থ বৃক্ষমূলে সরিষার তেলের প্রদীপ)",
-        "day_hi": "शनिवार सायं (पीपल वृक्ष के नीचे सरसों तेल का दीपक)",
-        "charity_en": "Donate black sesame, iron vessels, mustard oil, black shoes",
-        "charity_bn": "কালো তিল, সরিষার তেল, লৌহপাত্র বা কম্বল দান করুন",
-        "charity_hi": "काले तिल, सरसों का तेल, लोहे के बर्तन या कंबल दान करें",
-        "yantra_en": "Energized Shani Yantra placed in West zone",
-        "yantra_bn": "পশ্চিম দিকে প্রাণপ্রতিষ্ঠিত শনি যন্ত্র স্থাপন",
-        "yantra_hi": "पश्चिम दिशा में प्राण-प्रतिष्ठित शनि यन्त्र स्थापित करें"
-    },
-    "Rahu": {
-        "gem_en": "Hessonite Garnet (Gomed) 4.5+ Ct in Silver/Panchadhatu (Middle)",
-        "gem_bn": "গোমেদ ৪.৫+ ক্যারাট রৌপ্যাধারে (মধ্যমা অঙ্গুলি)",
-        "gem_hi": "गोमेद 4.5+ रत्ती चांदी/पंचधातु में (मध्यमा)",
-        "mantra": "ॐ भ्रां भ्रीं भ्रौं सः राहवे नमः (108x daily)",
-        "day_en": "Saturday Night (Maha Mrityunjaya & Durga worship)",
-        "day_bn": "শনিবার নিশীথে (মহামৃত্যুঞ্জয় জপ ও মা দুর্গার আরতি)",
-        "day_hi": "शनिवार रात्रि (महामृत्युंजय मन्त्र जप व दुर्गा आराधना)",
-        "charity_en": "Donate black urad dal, dark blankets, coconut to running water",
-        "charity_bn": "কালো বিউলি ডাল, কালো কম্বল দান বা প্রবাহিত জলে নারকেল অর্পণ",
-        "charity_hi": "काली उड़द, गहरे रंग का कंबल अथवा बहते जल में नारियल प्रवाहित करें",
-        "yantra_en": "Energized Rahu Yantra in South-West (Nairutya) zone",
-        "yantra_bn": "নৈঋত কোণে (দক্ষিণ-পশ্চিম) রাহু যন্ত্র স্থাপন",
-        "yantra_hi": "नैऋत्य कोण (दक्षिण-पश्चिम) में राहु यन्त्र स्थापित करें"
-    },
-    "Ketu": {
-        "gem_en": "Cat\'s Eye (Lehsuniya) 4.0+ Ct in Silver (Little/Middle finger)",
-        "gem_bn": "বৈদূর্য (লহসুনিয়া) ৪.০+ ক্যারাট রৌপ্যে (কনিষ্ঠা বা মধ্যমা)",
-        "gem_hi": "लहसुनिया 4.0+ रत्ती चांदी में (कनिष्ठिका/मध्यमा)",
-        "mantra": "ॐ स्रां स्रीं स्रौं सः केतवे नमः (108x daily)",
-        "day_en": "Tuesday / Thursday Dusk (Ganesh worship & feeding dogs)",
-        "day_bn": "মঙ্গলবার বা বৃহস্পতিবার সায়াহ্নে (গণেশ পূজা ও পথকুকুরদের আহার)",
-        "day_hi": "मंगलवार/गुरुवार सायं (श्री गणेश उपासना व श्वान को भोजन)",
-        "charity_en": "Donate seven grains (Satnaja), two-color blanket, sesame",
-        "charity_bn": "সপ্তশস্য (সতনজা), দ্বিবর্ণ কম্বল বা তিল দান করুন",
-        "charity_hi": "सप्तधान्य (सतनाजा), दोरंगा कंबल या तिल का दान करें",
-        "yantra_en": "Energized Ketu Yantra in North-West zone",
-        "yantra_bn": "উত্তর-পশ্চিম দিকে প্রাণপ্রতিষ্ঠিত কেতু যন্ত্র স্থাপন",
-        "yantra_hi": "उत्तर-पश्चिम दिशा में प्राण-प्रतिष्ठित केतु यन्त्र स्थापित करें"
-    }
-}
-
-def get_house_aspects(target_h: int, p_houses: dict[str, int], target_lang: str) -> list[dict[str, str]]:
-    aspects = []
-    for p, h in p_houses.items():
-        if p in ("Asc", "Lagna", "Ascendant"):
-            continue
-        dist = ((target_h - h) % 12) + 1
-        is_asp = False
-        asp_deg = ""
-        if dist == 7:
-            is_asp = True
-            asp_deg = "7th (Full Purna)" if target_lang == "en" else ("৭ম (পূর্ণ দৃষ্টি)" if target_lang == "bn" else "7वीं (पूर्ण दृष्टि)")
-        elif p == "Mars" and dist in (4, 8):
-            is_asp = True
-            asp_deg = f"{dist}th (Special)" if target_lang == "en" else (f"{dist}ম (বিশেষ দৃষ্টি)" if target_lang == "bn" else f"{dist}वीं (विशेष दृष्टि)")
-        elif p == "Jupiter" and dist in (5, 9):
-            is_asp = True
-            asp_deg = f"{dist}th (Trinal Grace)" if target_lang == "en" else (f"{dist}ম (ত্রিকোণ শুভদৃষ্টি)" if target_lang == "bn" else f"{dist}वीं (त्रिकोण दृष्टि)")
-        elif p == "Saturn" and dist in (3, 10):
-            is_asp = True
-            asp_deg = f"{dist}th (Karmic Focus)" if target_lang == "en" else (f"{dist}ম (কর্মফল দৃষ্টি)" if target_lang == "bn" else f"{dist}वीं (कर्म दृष्टि)")
-        elif p in ("Rahu", "Ketu") and dist in (5, 9):
-            is_asp = True
-            asp_deg = f"{dist}th (Shadow Trine)" if target_lang == "en" else (f"{dist}ম (ছায়া ত্রিকোণ)" if target_lang == "bn" else f"{dist}वीं (छाया दृष्टि)")
-        
-        if is_asp:
-            is_ben = p in ("Jupiter", "Venus", "Moon", "Mercury")
-            p_lbl = PLANET_NAMES_BN.get(p, p) if target_lang == "bn" else (PLANET_NAMES_HI.get(p, p) if target_lang == "hi" else p)
-            nat_lbl = ("Benefic Grace" if is_ben else "Disciplining Malefic") if target_lang == "en" else (("শুভপ্রদ" if is_ben else "শৃঙ্খলাবদ্ধকারী") if target_lang == "bn" else ("शुभ फलदायी" if is_ben else "अनुशासक"))
-            imp_lbl = ("Amplifies prosperity & stability" if is_ben else "Demands caution, ethical rigor & effort") if target_lang == "en" else (("উন্নতি ও স্থায়িত্ব বৃদ্ধি করে" if is_ben else "সতর্কতা, সংযম ও নিরলস পরিশ্রম দাবী করে") if target_lang == "bn" else ("समृद्धि व उन्नति प्रदाता" if is_ben else "सावधानी व सतत परिश्रम की अपेक्षा"))
-            aspects.append({
-                "planet": p_lbl,
-                "type": asp_deg,
-                "nature": nat_lbl,
-                "impact": imp_lbl
-            })
-    return aspects
-
 def generate_comprehensive_kundli_pdf(
     payload: KundliCalculateRequest,
     user: User | None = None,
@@ -1112,32 +720,13 @@ def generate_comprehensive_kundli_pdf(
         pageTemplates=[template_cover, template_later],
     )
 
-    # Multi-Language Resolution (en, bn, hi)
-    raw_lang = (payload.language or (user.language if user else None) or "en").lower().strip()
-    if raw_lang.startswith("bn") or "bangla" in raw_lang or "bengali" in raw_lang:
-        target_lang = "bn"
-        font_reg = "NotoSansBengali" if HAS_BENGALI_FONT else "Helvetica"
-        font_bold = "NotoSansBengali-Bold" if HAS_BENGALI_FONT else "Helvetica-Bold"
-    elif raw_lang.startswith("hi") or "hindi" in raw_lang:
-        target_lang = "hi"
-        font_reg = "NotoSansDevanagari" if HAS_DEVANAGARI_FONT else "Helvetica"
-        font_bold = "NotoSansDevanagari-Bold" if HAS_DEVANAGARI_FONT else "Helvetica-Bold"
-    else:
-        target_lang = "en"
-        font_reg = "Helvetica"
-        font_bold = "Helvetica-Bold"
-
-    DivinLinkNumberedCanvas.doc_lang = target_lang
-    DivinLinkNumberedCanvas.font_reg = font_reg
-    DivinLinkNumberedCanvas.font_bold = font_bold
-
     base_styles = getSampleStyleSheet()
 
-    # Typography styles (Dynamic Unicode font binding)
+    # Typography styles
     title_style = ParagraphStyle(
         "CoverTitle",
         parent=base_styles["Title"],
-        fontName=font_bold,
+        fontName="Helvetica-Bold",
         fontSize=18,
         leading=22,
         textColor=NAVY_PRIMARY,
@@ -1146,7 +735,7 @@ def generate_comprehensive_kundli_pdf(
     subtitle_style = ParagraphStyle(
         "CoverSubTitle",
         parent=base_styles["Normal"],
-        fontName=font_bold,
+        fontName="Helvetica-Bold",
         fontSize=10,
         leading=14,
         textColor=GOLD_PRIMARY,
@@ -1155,54 +744,54 @@ def generate_comprehensive_kundli_pdf(
     page_header = ParagraphStyle(
         "PageHeader",
         parent=base_styles["Heading2"],
-        fontName=font_bold,
-        fontSize=11.5,
-        leading=14.5,
+        fontName="Helvetica-Bold",
+        fontSize=12,
+        leading=15,
         textColor=NAVY_PRIMARY,
-        spaceAfter=5,
+        spaceAfter=6,
     )
     page_subhead = ParagraphStyle(
         "PageSubHead",
         parent=base_styles["Normal"],
-        fontName=font_bold,
-        fontSize=8.0,
-        leading=10.5,
+        fontName="Helvetica-Bold",
+        fontSize=8.5,
+        leading=11,
         textColor=GOLD_PRIMARY,
-        spaceAfter=5,
+        spaceAfter=6,
     )
     body_text = ParagraphStyle(
         "BodyText",
         parent=base_styles["Normal"],
-        fontName=font_reg,
-        fontSize=7.2,
-        leading=9.8,
+        fontName="Helvetica",
+        fontSize=7.5,
+        leading=10.5,
         textColor=TEXT_DARK,
     )
     body_text_bold = ParagraphStyle(
         "BodyTextBold",
         parent=body_text,
-        fontName=font_bold,
+        fontName="Helvetica-Bold",
     )
     table_header = ParagraphStyle(
         "TableHeader",
-        fontName=font_bold,
-        fontSize=6.8,
-        leading=8.5,
+        fontName="Helvetica-Bold",
+        fontSize=7,
+        leading=9,
         textColor=WHITE,
         alignment=1,
     )
     table_cell = ParagraphStyle(
         "TableCell",
-        fontName=font_reg,
-        fontSize=6.8,
-        leading=8.5,
+        fontName="Helvetica",
+        fontSize=7,
+        leading=9,
         textColor=TEXT_DARK,
         alignment=1,
     )
     table_cell_bold = ParagraphStyle(
         "TableCellBold",
         parent=table_cell,
-        fontName=font_bold,
+        fontName="Helvetica-Bold",
     )
     table_cell_left = ParagraphStyle(
         "TableCellLeft",
@@ -1634,7 +1223,7 @@ def generate_comprehensive_kundli_pdf(
     story.append(Spacer(1, 10))
 
     # Rectangular North Indian Diamond Chart (D1 Lagna Chart)
-    d1_rect = NorthIndianChartFlowable(width=432, height=230, asc_sign=d1_asc_sign, house_planets=d1_house_map, title="Birth Lagna Kundli (D1)" if target_lang == "en" else ("জন্ম লগ্ন কুন্ডলী (D1)" if target_lang == "bn" else "जन्म लग्न कुंडली (D1)"), is_rect=True, lang=target_lang, font_reg=font_reg, font_bold=font_bold)
+    d1_rect = NorthIndianChartFlowable(width=432, height=230, asc_sign=d1_asc_sign, house_planets=d1_house_map, title="Birth Lagna Kundli (D1)", is_rect=True)
     t_d1_box = Table([[d1_rect]], colWidths=[520])
     t_d1_box.setStyle(TableStyle([
         ("ALIGN", (0,0), (-1,-1), "CENTER"),
@@ -1679,8 +1268,8 @@ def generate_comprehensive_kundli_pdf(
     story.append(Spacer(1, 10))
 
     # Dual Square Charts: Chandra Lagna and Navamsha (D9)
-    chandra_chart = NorthIndianChartFlowable(width=215, height=215, asc_sign=moon_sign, house_planets=moon_house_map, title="Chandra Lagna Kundli" if target_lang == "en" else ("চন্দ্র লগ্ন কুন্ডলী" if target_lang == "bn" else "चन्द्र लग्न कुंडली"), is_rect=False, lang=target_lang, font_reg=font_reg, font_bold=font_bold)
-    d9_chart = NorthIndianChartFlowable(width=215, height=215, asc_sign=d9_asc_sign, house_planets=d9_house_map, title="Navamsha Kundli (D9)" if target_lang == "en" else ("নবমাংশ কুন্ডলী (D9)" if target_lang == "bn" else "नवांश कुंडली (D9)"), is_rect=False, lang=target_lang, font_reg=font_reg, font_bold=font_bold)
+    chandra_chart = NorthIndianChartFlowable(width=215, height=215, asc_sign=moon_sign, house_planets=moon_house_map, title="Chandra Lagna Kundli", is_rect=False)
+    d9_chart = NorthIndianChartFlowable(width=215, height=215, asc_sign=d9_asc_sign, house_planets=d9_house_map, title="Navamsha Kundli (D9)", is_rect=False)
     grid_p5 = Table([[chandra_chart, d9_chart]], colWidths=[260, 260])
     grid_p5.setStyle(TableStyle([
         ("ALIGN", (0,0), (-1,-1), "CENTER"),
@@ -1734,8 +1323,8 @@ def generate_comprehensive_kundli_pdf(
     story.append(Spacer(1, 10))
 
     # Dual Square Charts: Lagna (D1) and Chalit
-    p6_d1 = NorthIndianChartFlowable(width=215, height=210, asc_sign=d1_asc_sign, house_planets=d1_house_map, title="Birth Lagna (D1)" if target_lang == "en" else ("জন্ম লগ্ন (D1)" if target_lang == "bn" else "जन्म लग्न (D1)"), is_rect=False, lang=target_lang, font_reg=font_reg, font_bold=font_bold)
-    p6_chalit = NorthIndianChartFlowable(width=215, height=210, asc_sign=d1_asc_sign, house_planets=chalit_house_map, title="Bhava Chalit Chart" if target_lang == "en" else ("ভাব চলিত চক্র" if target_lang == "bn" else "भाव चलित चक्र"), is_rect=False, lang=target_lang, font_reg=font_reg, font_bold=font_bold)
+    p6_d1 = NorthIndianChartFlowable(width=215, height=210, asc_sign=d1_asc_sign, house_planets=d1_house_map, title="Birth Lagna (D1)", is_rect=False)
+    p6_chalit = NorthIndianChartFlowable(width=215, height=210, asc_sign=d1_asc_sign, house_planets=chalit_house_map, title="Bhava Chalit Chart", is_rect=False)
     grid_p6 = Table([[p6_d1, p6_chalit]], colWidths=[260, 260])
     grid_p6.setStyle(TableStyle([
         ("ALIGN", (0,0), (-1,-1), "CENTER"),
@@ -1780,10 +1369,10 @@ def generate_comprehensive_kundli_pdf(
 
     for g_title, g_charts in varga_groups:
         story.append(Paragraph(g_title, page_header))
-        c1 = NorthIndianChartFlowable(210, 160, g_charts[0][1], g_charts[0][2], g_charts[0][0], is_rect=False, lang=target_lang, font_reg=font_reg, font_bold=font_bold)
-        c2 = NorthIndianChartFlowable(210, 160, g_charts[1][1], g_charts[1][2], g_charts[1][0], is_rect=False, lang=target_lang, font_reg=font_reg, font_bold=font_bold)
-        c3 = NorthIndianChartFlowable(210, 160, g_charts[2][1], g_charts[2][2], g_charts[2][0], is_rect=False, lang=target_lang, font_reg=font_reg, font_bold=font_bold)
-        c4 = NorthIndianChartFlowable(210, 160, g_charts[3][1], g_charts[3][2], g_charts[3][0], is_rect=False, lang=target_lang, font_reg=font_reg, font_bold=font_bold)
+        c1 = NorthIndianChartFlowable(210, 160, g_charts[0][1], g_charts[0][2], g_charts[0][0], is_rect=False)
+        c2 = NorthIndianChartFlowable(210, 160, g_charts[1][1], g_charts[1][2], g_charts[1][0], is_rect=False)
+        c3 = NorthIndianChartFlowable(210, 160, g_charts[2][1], g_charts[2][2], g_charts[2][0], is_rect=False)
+        c4 = NorthIndianChartFlowable(210, 160, g_charts[3][1], g_charts[3][2], g_charts[3][0], is_rect=False)
         grid = Table([[c1, c2], [c3, c4]], colWidths=[260, 260])
         grid.setStyle(TableStyle([
             ("ALIGN", (0, 0), (-1, -1), "CENTER"),
@@ -1811,10 +1400,7 @@ def generate_comprehensive_kundli_pdf(
         moon_planets=moon_house_map,
         sun_planets=sun_house_map,
         native_name=c_name,
-        dob_tob_str=f"{birth_dt_str} {birth_tm_str}",
-        lang=target_lang,
-        font_reg=font_reg,
-        font_bold=font_bold
+        dob_tob_str=f"{birth_dt_str} {birth_tm_str}"
     )
     t_sud_box = Table([[sudarshan]], colWidths=[520])
     t_sud_box.setStyle(TableStyle([
@@ -2174,8 +1760,8 @@ def generate_comprehensive_kundli_pdf(
     story.append(Spacer(1, 10))
 
     # Dual Square Charts: Manglik Analysis and Sade Sati
-    c_manglik = NorthIndianChartFlowable(215, 205, d1_asc_sign, d1_house_map, "Manglik Kuja Vichar" if target_lang == "en" else ("মাঙ্গলিক কুজ বিচার" if target_lang == "bn" else "मांगलिक कुज विचार"), is_rect=False, lang=target_lang, font_reg=font_reg, font_bold=font_bold)
-    c_sade = NorthIndianChartFlowable(215, 205, moon_sign, moon_house_map, "Shani Sade Sati Gochar" if target_lang == "en" else ("শনি সাড়ে সতী গোচর" if target_lang == "bn" else "शनि साढ़े साती गोचर"), is_rect=False, lang=target_lang, font_reg=font_reg, font_bold=font_bold)
+    c_manglik = NorthIndianChartFlowable(215, 205, d1_asc_sign, d1_house_map, "Manglik Kuja Vichar", is_rect=False)
+    c_sade = NorthIndianChartFlowable(215, 205, moon_sign, moon_house_map, "Shani Sade Sati Gochar", is_rect=False)
     grid_p36 = Table([[c_manglik, c_sade]], colWidths=[260, 260])
     grid_p36.setStyle(TableStyle([
         ("ALIGN", (0,0), (-1,-1), "CENTER"),
@@ -2242,7 +1828,7 @@ def generate_comprehensive_kundli_pdf(
         h: [f"{ashtakavarga['sarvashtakavarga'][((d1_asc_sign - 1 + (h - 1)) % 12)]} Bindus"]
         for h in range(1, 13)
     }
-    c_ashtaka = NorthIndianChartFlowable(432, 215, d1_asc_sign, ashtaka_house_map, "Sarvashtakavarga Chakra" if target_lang == "en" else ("সর্বাষ্টকবর্গ চক্র" if target_lang == "bn" else "सर्वाष्टकवर्ग चक्र"), is_rect=True, lang=target_lang, font_reg=font_reg, font_bold=font_bold)
+    c_ashtaka = NorthIndianChartFlowable(432, 215, d1_asc_sign, ashtaka_house_map, "Sarvashtakavarga Chakra", is_rect=True)
     t_ash_box = Table([[c_ashtaka]], colWidths=[520])
     t_ash_box.setStyle(TableStyle([
         ("ALIGN", (0,0), (-1,-1), "CENTER"),
@@ -2338,28 +1924,31 @@ def generate_comprehensive_kundli_pdf(
     # =========================================================================
     # PAGES 41-65: COMPREHENSIVE 12-BHAVA VEDIC LIFE PREDICTIONS (25 PAGES)
     # =========================================================================
-    bhava_titles = BHAVA_TITLES_BN if target_lang == "bn" else (BHAVA_TITLES_HI if target_lang == "hi" else BHAVA_TITLES_EN)
-    cur_zodiac_names = ZODIAC_NAMES_BN if target_lang == "bn" else (ZODIAC_NAMES_HI if target_lang == "hi" else ZODIAC_NAMES_EN)
-    cur_planet_names = PLANET_NAMES_BN if target_lang == "bn" else (PLANET_NAMES_HI if target_lang == "hi" else PLANET_NAMES_EN)
-
     # Page 41: Overview of the 12 Bhavas
-    ov_title = "দ্বাদশ ভাব ও জীবনের সামগ্রিক রূপরেখা" if target_lang == "bn" else ("द्वादश भाव एवं जीवन का समग्र प्रारूप" if target_lang == "hi" else "THE 12-BHAVA COSMIC PORTFOLIO OVERVIEW")
-    ov_sub = "মানব জীবনের সর্বপ্রকার ক্ষেত্র ও ফলিত জ্যোতিষ নির্দেশিকা।" if target_lang == "bn" else ("मानव जीवन के समस्त आयामों का फलित ज्योतिषीय समन्वय।" if target_lang == "hi" else "Master synopsis of the 12 astrological houses governing all human life affairs.")
-    story.append(Paragraph(ov_title, page_header))
-    story.append(Paragraph(ov_sub, page_subhead))
+    story.append(Paragraph("THE 12-BHAVA COSMIC PORTFOLIO OVERVIEW", page_header))
+    story.append(Paragraph("Master synopsis of the 12 astrological houses governing all human life affairs.", page_subhead))
 
-    lbl_bhava = "ভাব" if target_lang == "bn" else ("भाव" if target_lang == "hi" else "Bhava")
-    lbl_domain = "ক্ষেত্র" if target_lang == "bn" else ("क्षेत्र" if target_lang == "hi" else "Domain Title")
-    lbl_sign = "রাশি" if target_lang == "bn" else ("राशि" if target_lang == "hi" else "Sign")
-    lbl_signif = "মূল তাৎপর্য ও প্রভাব" if target_lang == "bn" else ("मूल तात्पर्य एवं प्रभाव" if target_lang == "hi" else "Core Significance")
-
-    ov_headers = [Paragraph(lbl_bhava, table_header), Paragraph(lbl_domain, table_header), Paragraph(lbl_sign, table_header), Paragraph(lbl_signif, table_header)]
+    ov_headers = [Paragraph("Bhava", table_header), Paragraph("Domain Title", table_header), Paragraph("Sign", table_header), Paragraph("Core Significance", table_header)]
     ov_rows = [ov_headers]
+    bhava_titles = [
+        ("Tanu Bhava", "Self, Vitality & Physical Constitution"),
+        ("Dhana Bhava", "Wealth, Assets, Family & Speech"),
+        ("Sahaja Bhava", "Courage, Siblings & Enterprise"),
+        ("Bandhu Bhava", "Mother, Real Estate & Domestic Bliss"),
+        ("Putra Bhava", "Intellect, Progeny & Creative Spark"),
+        ("Ari Bhava", "Health, Competitions & Overcoming Obstacles"),
+        ("Yuvati Bhava", "Marriage, Alliances & Public Relations"),
+        ("Randhra Bhava", "Longevity, Occult & Deep Transformations"),
+        ("Dharma Bhava", "Higher Wisdom, Fortune & Spiritual Guru"),
+        ("Karma Bhava", "Profession, Status, Career & Authority"),
+        ("Labha Bhava", "Gains, Aspirations & Social Networks"),
+        ("Vyaya Bhava", "Foreign Travels, Expenses & Spiritual Liberation"),
+    ]
     for h_idx in range(1, 13):
         t_name, t_domain = bhava_titles[h_idx - 1]
-        s_name = cur_zodiac_names[(d1_asc_sign - 1 + h_idx - 1) % 12]
+        s_name = ZODIAC_NAMES[(d1_asc_sign - 1 + h_idx - 1) % 12]
         ov_rows.append([
-            Paragraph(f"<b>{lbl_bhava} {h_idx}</b>", table_cell_bold),
+            Paragraph(f"<b>House {h_idx}</b>", table_cell_bold),
             Paragraph(t_name, table_cell_bold),
             Paragraph(s_name, table_cell),
             Paragraph(t_domain, table_cell_left),
@@ -2380,61 +1969,21 @@ def generate_comprehensive_kundli_pdf(
     for hp in kd.get("house_predictions", []):
         house_preds_map[hp.get("house", 1)] = hp.get("prediction", "")
 
-    # Planet house mapping for aspects
-    p_houses_map = {}
-    for p_obj in kd.get("planets_table", []):
-        pn = p_obj["name"]
-        if pn in ZODIAC_NAMES:
-            continue
-        p_sign_str = p_obj["sign"]
-        p_s_idx = ZODIAC_NAMES.index(p_sign_str) + 1 if p_sign_str in ZODIAC_NAMES else 1
-        p_h = ((p_s_idx - d1_asc_sign) % 12) + 1
-        p_houses_map[pn] = p_h
-
-    dignity_map = {d["planet"]: d for d in kd.get("planetary_dignities", [])}
-
     for h in range(1, 13):
         t_name, t_domain = bhava_titles[h - 1]
         sign_idx = ((d1_asc_sign - 1 + (h - 1)) % 12) + 1
-        s_name = cur_zodiac_names[sign_idx - 1]
-        lord_name_en = SIGN_LORDS[sign_idx]
-        lord_name_loc = cur_planet_names.get(lord_name_en, lord_name_en)
-        karaka_name_en = BHAVA_KARAKAS[h]
-        karaka_name_loc = cur_planet_names.get(karaka_name_en, karaka_name_en)
-        sav_pts = ashtakavarga["sarvashtakavarga"][sign_idx - 1]
+        s_name = ZODIAC_NAMES[sign_idx - 1]
         raw_pred = house_preds_map.get(h, "Favorable Parashari planetary configurations indicate prosperous developments.")
 
         # Page A: Classical Parashari House Foundations & Karaka Analysis
-        hdr_pA = f"HOUSE {h}: {t_name.upper()} — FOUNDATIONAL ANALYSIS" if target_lang == "en" else (f"ভাব {h}: {t_name} — ভিত্তি ও গ্রহ সন্নিবেশ" if target_lang == "bn" else f"भाव {h}: {t_name} — आधारभूत विश्लेषण")
-        sub_pA = f"Zodiac Sign: {s_name}  •  Domain: {t_domain}" if target_lang == "en" else (f"রাশি: {s_name}  •  কারকত্ব: {t_domain}" if target_lang == "bn" else f"राशि: {s_name}  •  कारकत्व: {t_domain}")
-        story.append(Paragraph(hdr_pA, page_header))
-        story.append(Paragraph(sub_pA, page_subhead))
-
-        lbl_sign_placed = "Sign Placed:" if target_lang == "en" else ("রাশি অবস্থান:" if target_lang == "bn" else "राशि स्थिति:")
-        lbl_category = "Bhava Category:" if target_lang == "en" else ("ভাবের শ্রেণী:" if target_lang == "bn" else "भाव श्रेणी:")
-        lbl_karaka = "Primary Karaka:" if target_lang == "en" else ("প্রধান কারক গ্রহ:" if target_lang == "bn" else "मुख्य कारक:")
-        lbl_occupants = "Occupants:" if target_lang == "en" else ("অবস্থিত গ্রহগণ:" if target_lang == "bn" else "स्थित ग्रह:")
-
-        cat_str = ("Kendra" if h in [1, 4, 7, 10] else ("Trikona" if h in [5, 9] else ("Upachaya" if h in [3, 6, 10, 11] else "Dusthana")))
-        if target_lang == "bn":
-            cat_str = "কেন্দ্র ভাব (সুদৃঢ় স্তম্ভ)" if h in [1, 4, 7, 10] else ("ত্রিকোণ ভাব (মহাশুভ)" if h in [5, 9] else ("উপচয় ভাব (উন্নতিশীল)" if h in [3, 6, 10, 11] else "দুঃস্থান ভাব (কঠিন পরীক্ষা)"))
-        elif target_lang == "hi":
-            cat_str = "केन्द्र भाव (सुदृढ़ आधार)" if h in [1, 4, 7, 10] else ("त्रिकोण भाव (अति शुभ)" if h in [5, 9] else ("उपचय भाव (प्रगतिकारक)" if h in [3, 6, 10, 11] else "दुस्थान भाव (परिश्रमसाध्य)"))
-
-        occupants_loc = []
-        for p_occ in d1_house_map.get(h, []):
-            is_r = "(R)" in p_occ
-            base = p_occ.replace("(R)", "").strip()
-            loc_p = cur_planet_names.get(base, base)
-            occupants_loc.append(f"{loc_p}{'(ব)' if target_lang == 'bn' and is_r else ('(व)' if target_lang == 'hi' and is_r else ('(R)' if is_r else ''))}")
-
-        clean_occ_str = ", ".join(occupants_loc) if occupants_loc else ("None (Clean Bhava)" if target_lang == "en" else ("কোনো গ্রহ নেই (নির্মল ভাব)" if target_lang == "bn" else "कोई ग्रह नहीं (निर्मल भाव)"))
+        story.append(Paragraph(f"HOUSE {h}: {t_name.upper()} — FOUNDATIONAL ANALYSIS", page_header))
+        story.append(Paragraph(f"Zodiac Sign: {s_name}  •  Domain: {t_domain}", page_subhead))
 
         h_meta = [
-            [Paragraph(f"<b>{lbl_sign_placed}</b>", table_cell_left), Paragraph(s_name, table_cell_left),
-             Paragraph(f"<b>{lbl_category}</b>", table_cell_left), Paragraph(cat_str, table_cell_left)],
-            [Paragraph(f"<b>{lbl_karaka}</b>", table_cell_left), Paragraph(f"{karaka_name_loc} ({karaka_name_en})", table_cell_left),
-             Paragraph(f"<b>{lbl_occupants}</b>", table_cell_left), Paragraph(clean_occ_str, table_cell_left)],
+            [Paragraph("<b>Sign Placed:</b>", table_cell_left), Paragraph(s_name, table_cell_left),
+             Paragraph("<b>Bhava Category:</b>", table_cell_left), Paragraph("Kendra" if h in [1, 4, 7, 10] else ("Trikona" if h in [5, 9] else ("Upachaya" if h in [3, 6, 10, 11] else "Dusthana")), table_cell_left)],
+            [Paragraph("<b>Primary Karaka:</b>", table_cell_left), Paragraph("Sun / Jupiter", table_cell_left),
+             Paragraph("<b>Occupants:</b>", table_cell_left), Paragraph(", ".join(d1_house_map.get(h, [])) or "None (Clean Bhava)", table_cell_left)],
         ]
         t_hmeta = Table(h_meta, colWidths=[110, 150, 110, 150])
         t_hmeta.setStyle(TableStyle([
@@ -2445,216 +1994,50 @@ def generate_comprehensive_kundli_pdf(
             ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         ]))
         story.append(t_hmeta)
-        story.append(Spacer(1, 8))
+        story.append(Spacer(1, 10))
 
-        sec_title_principles = "Classical Parashari Principles & Dispositor Strength:" if target_lang == "en" else ("মহর্ষি পরাশর অনুশাসন ও ভাবাধিপতি বিচার:" if target_lang == "bn" else "महर्षि पराशर सिद्धांत एवं भावेश विचार:")
-        story.append(Paragraph(f"<b>{sec_title_principles}</b>", body_text_bold))
-        if target_lang == "bn":
-            pA_text = (
-                f"বৃহৎ পরাশর হোরা শাস্ত্র অনুসারে, {h}ম ভাব মানব জীবনের {t_domain.lower()} সম্পূর্ণ নিয়ন্ত্রণ করে। "
-                f"এই ভাবের রাশিতে অবস্থিত {s_name} তার নিজস্ব মৌলিক শক্তি সঞ্চার করেছে। "
-                f"ভাবাধিপতি {lord_name_loc} আপনার কুষ্ঠীর সামগ্রিক জীবনে অত্যন্ত প্রভাবশালী ভূমিকা পালন করে। "
-                f"শুভ গ্রহের দৃষ্টি বা অবস্থান এই ভাবের শুভ ফল দ্রুত প্রস্ফুটিত করে, অন্যদিকে পাপ গ্রহের দৃষ্টি আত্মসংযম ও একাগ্রতার আহ্বান জানায়।<br/><br/>"
-                f"<b>সমন্বিত ফলিত সিদ্ধান্ত:</b><br/>{raw_pred}"
-            )
-        elif target_lang == "hi":
-            pA_text = (
-                f"बृहत् पराशर होरा शास्त्र के अनुसार, {h}वां भाव मानव जीवन के {t_domain.lower()} का पूर्ण नियंत्रण करता है। "
-                f"इस भाव में स्थित {s_name} राशि अपनी मौलिक ऊर्जा का संचार करती है। "
-                f"भावेश {lord_name_loc} आपकी जन्म कुंडली में अत्यंत महत्वपूर्ण भूमिका निभाते हैं। "
-                f"शुभ ग्रहों की दृष्टि अथवा युति इस भाव के परिणामों को अत्यंत बलवान व शुभ बनाती है।<br/><br/>"
-                f"<b>समन्वित फलित निर्णय:</b><br/>{raw_pred}"
-            )
-        else:
-            pA_text = (
-                f"According to Brihat Parashara Hora Shastra, House {h} governs {t_domain.lower()}. "
-                f"With {s_name} on the cusp, the natural qualities of this sign infuse the house with its cosmic element. "
-                f"The lord of this house ({lord_name_loc}) connects deeply with your natal destiny, shaping how energy manifests across life phases. "
-                f"The presence or aspect of natural benefics ensures steady growth and fruitful returns during active dasha cycles.<br/><br/>"
-                f"<b>Synthesized Astrodynamic Prediction:</b><br/>{raw_pred}"
-            )
-        story.append(Paragraph(pA_text, body_text))
+        story.append(Paragraph("<b>Classical Parashari Principles & Dispositor Strength:</b>", body_text_bold))
+        story.append(Paragraph(
+            f"According to Brihat Parashara Hora Shastra, House {h} governs {t_domain.lower()}. "
+            f"With {s_name} on the cusp, the natural qualities of this sign infuse the house with its element. "
+            f"The lord of this house connects deeply with your natal life journey, shaping how energy manifests across life phases. "
+            f"The presence or aspect of natural benefics ensures steady growth, resilience against adversity, and fruitful returns during active dasha cycles.<br/><br/>"
+            f"<b>Synthesized Astrodynamic Prediction:</b><br/>{raw_pred}",
+            body_text
+        ))
         story.append(PageBreak())  # End of Page A for House h
 
-        # =====================================================================
-        # Page B: Practical Manifestations, Drishti Matrix, Bhava Bala & Remedies
-        # =====================================================================
-        hdr_pB = f"HOUSE {h}: {t_name.upper()} — LIFE MANIFESTATION & GUIDANCE" if target_lang == "en" else (f"ভাব {h}: {t_name} — জীবন পরিচালনা ও বৈদিক নির্দেশিকা" if target_lang == "bn" else f"भाव {h}: {t_name} — जीवन मार्गदर्शन एवं फलित निर्देशिका")
-        sub_pB = f"Actionable life strategies, planetary aspects, and consecrated Vedic remedies for House {h}." if target_lang == "en" else (f"দৃষ্টি প্রভাব, গ্রহবল, দশা সক্রিয়করণ ও নিশ্চিত বৈদিক প্রতিকার।" if target_lang == "bn" else f"दृष्टि प्रभाव, ग्रह बल, दशा सक्रियता एवं सिद्ध वैदिक उपाय।")
-        story.append(Paragraph(hdr_pB, page_header))
-        story.append(Paragraph(sub_pB, page_subhead))
+        # Page B: Practical Manifestations, Career, Relationships & Vedic Remedies
+        story.append(Paragraph(f"HOUSE {h}: {t_name.upper()} — LIFE MANIFESTATION & GUIDANCE", page_header))
+        story.append(Paragraph(f"Actionable life strategies, potential pitfalls, and Vedic remedial guidance for House {h}.", page_subhead))
 
-        # 1. Bhava Drishti Aspects Matrix Table
-        lbl_drishti_title = "Planetary Aspects (Bhava Drishti) on this House:" if target_lang == "en" else ("এই ভাবে পতিত গ্রহদৃষ্টি (ভাব দৃষ্টি বিচার):" if target_lang == "bn" else "इस भाव पर पड़ने वाली ग्रह दृष्टियां (भाव दृष्टि विचार):")
-        story.append(Paragraph(f"<b>{lbl_drishti_title}</b>", body_text_bold))
+        story.append(Paragraph("<b>Material & Real-World Outcomes:</b>", body_text_bold))
+        story.append(Paragraph(
+            f"In practical life affairs, the {h}th house governs specific milestones. "
+            f"When operating at high strength, it unlocks fortunate circumstances in career, family harmony, and personal fulfillment. "
+            f"During the transits of Jupiter and Saturn over this house or its trines, transformative developments are triggered that leave a lasting imprint on your life.",
+            body_text
+        ))
+        story.append(Spacer(1, 8))
 
-        aspects_list = get_house_aspects(h, p_houses_map, target_lang)
-        col_asp_p = "Aspecting Graha" if target_lang == "en" else ("দৃষ্টিদাতা গ্রহ" if target_lang == "bn" else "दृष्टिकर्ता ग्रह")
-        col_asp_t = "Aspect Angle" if target_lang == "en" else ("দৃষ্টির ধরন" if target_lang == "bn" else "दृष्टि प्रकार")
-        col_asp_n = "Cosmic Nature" if target_lang == "en" else ("কার্যকারী স্বভাব" if target_lang == "bn" else "प्रभाव स्वभाव")
-        col_asp_i = "Vedic Manifestation" if target_lang == "en" else ("ফলিত তাৎপর্য" if target_lang == "bn" else "फलित परिणाम")
-
-        asp_headers = [Paragraph(col_asp_p, table_header), Paragraph(col_asp_t, table_header), Paragraph(col_asp_n, table_header), Paragraph(col_asp_i, table_header)]
-        asp_rows = [asp_headers]
-        if aspects_list:
-            for asp in aspects_list:
-                asp_rows.append([
-                    Paragraph(f"<b>{asp['planet']}</b>", table_cell_bold),
-                    Paragraph(asp["type"], table_cell),
-                    Paragraph(asp["nature"], table_cell),
-                    Paragraph(asp["impact"], table_cell_left),
-                ])
-        else:
-            txt_clean_asp = ("No Direct Aspect", "Self-Contained Bhava", "Neutral Energy", "Direct unobstructed manifestation of house lord") if target_lang == "en" else (("কোনো প্রত্যক্ষ দৃষ্টি নেই", "স্বতন্ত্র ভাব মণ্ডল", "নিরঙ্কুশ শক্তি", "ভাবাধিপতির অবধারিত ও স্পষ্ট ফল প্রকাশ") if target_lang == "bn" else ("कोई प्रत्यक्ष दृष्टि नहीं", "स्वतंत्र भाव मंडल", "निष्पक्ष ऊर्जा", "भावेश का स्वतंत्र व स्पष्ट फल"))
-            asp_rows.append([
-                Paragraph(f"<b>{txt_clean_asp[0]}</b>", table_cell_bold),
-                Paragraph(txt_clean_asp[1], table_cell),
-                Paragraph(txt_clean_asp[2], table_cell),
-                Paragraph(txt_clean_asp[3], table_cell_left),
-            ])
-        t_asp = Table(asp_rows, colWidths=[100, 110, 110, 200])
-        t_asp.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), NAVY_PRIMARY),
-            ("GRID", (0, 0), (-1, -1), 0.5, BORDER_LIGHT),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, TABLE_ALT_ROW]),
-            ("TOPPADDING", (0, 0), (-1, -1), 2.5),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
+        remedy_box = Table([[
+            Paragraph(
+                f"<b>CONSECRATED VEDIC REMEDY FOR HOUSE {h}:</b><br/>"
+                f"• Chant the Beej Mantra of the dispositor planet 108 times daily during morning sandhya.<br/>"
+                f"• Perform water libation (Arghya) and donate items associated with {s_name}'s ruler on auspicious days.<br/>"
+                f"• Maintain ethical transparency and avoid conflicts related to {t_domain.lower()}.",
+                ParagraphStyle("RemH", parent=body_text, leading=11, textColor=NAVY_PRIMARY)
+            )
+        ]], colWidths=[520])
+        remedy_box.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), GOLD_LIGHT),
+            ("BOX", (0, 0), (-1, -1), 1.0, GOLD_ACCENT),
+            ("TOPPADDING", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ("LEFTPADDING", (0, 0), (-1, -1), 10),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 10),
         ]))
-        story.append(t_asp)
-        story.append(Spacer(1, 4))
-
-        # 2. Bhava Bala & Karaka Dignity Table
-        lbl_bala_title = "Bhava Bala & Dignity Assessment:" if target_lang == "en" else ("ভাববল ও কারক গ্রহ মর্যাদা নিরূপণ:" if target_lang == "bn" else "भाव बल एवं कारक ग्रह स्थिति:")
-        story.append(Paragraph(f"<b>{lbl_bala_title}</b>", body_text_bold))
-
-        col_b_p = "Astrological Factor" if target_lang == "en" else ("জ্যোতিষ উপাদান" if target_lang == "bn" else "ज्योतिष कारक")
-        col_b_g = "Regent / Indicator" if target_lang == "en" else ("নির্ধারক গ্রহ" if target_lang == "bn" else "निर्धारक ग्रह")
-        col_b_d = "Dignity / Value" if target_lang == "en" else ("মর্যাদা ও মান" if target_lang == "bn" else "स्थिति व मान")
-        col_b_s = "Vedic Activation Capacity" if target_lang == "en" else ("ফলিত সক্ষমতা" if target_lang == "bn" else "फल प्रदाता क्षमता")
-
-        lord_dig = dignity_map.get(lord_name_en, {})
-        dignity_str = lord_dig.get("dignity_bn" if target_lang == "bn" else ("dignity_hi" if target_lang == "hi" else "dignity"), "Well-Placed")
-        sav_eval = "Highly Auspicious (30+)" if sav_pts >= 30 else ("Balanced Vitality (28)" if sav_pts >= 28 else "Demands Remedial Focus (<28)")
-        if target_lang == "bn":
-            sav_eval = "অত্যন্ত শুভ ও বলিষ্ঠ (৩০+ বিন্দু)" if sav_pts >= 30 else ("স্থিতিশীল ও ভারসাম্যপূর্ণ (২৮ বিন্দু)" if sav_pts >= 28 else "বিশেষ প্রতিকার সাপেক্ষ (<২৮ বিন্দু)")
-        elif target_lang == "hi":
-            sav_eval = "अत्यंत शुभ व बलिष्ठ (30+ बिंदु)" if sav_pts >= 30 else ("संतुलित ऊर्जा (28 बिंदु)" if sav_pts >= 28 else "विशेष उपाय अपेक्षित (<28 बिंदु)")
-
-        bala_rows = [
-            [Paragraph(col_b_p, table_header), Paragraph(col_b_g, table_header), Paragraph(col_b_d, table_header), Paragraph(col_b_s, table_header)],
-            [Paragraph("<b>House Dispositor Lord</b>" if target_lang == "en" else ("<b>ভাবাধিপতি গ্রহ</b>" if target_lang == "bn" else "<b>भावेश ग्रह</b>"), table_cell_bold),
-             Paragraph(f"{lord_name_loc} ({lord_name_en})", table_cell),
-             Paragraph(str(dignity_str), table_cell),
-             Paragraph("Primary Controller of this domain" if target_lang == "en" else ("এই ক্ষেত্রের প্রধান নিয়ন্ত্রক" if target_lang == "bn" else "इस भाव का मुख्य नियंत्रक"), table_cell_left)],
-            [Paragraph("<b>Natural Karaka Indicator</b>" if target_lang == "en" else ("<b>নৈসর্গিক কারক গ্রহ</b>" if target_lang == "bn" else "<b>नैसर्गिक कारक ग्रह</b>"), table_cell_bold),
-             Paragraph(f"{karaka_name_loc} ({karaka_name_en})", table_cell),
-             Paragraph("Cosmic Signifier" if target_lang == "en" else ("মূল কারকত্ব" if target_lang == "bn" else "स्थिर कारक"), table_cell),
-             Paragraph("Shapes core emotional & life archetype" if target_lang == "en" else ("মানসিক ও বাস্তব জীবনের ভিত্তি গড়ে" if target_lang == "bn" else "मानसिक व व्यावहारिक आधार तय करता है"), table_cell_left)],
-            [Paragraph("<b>Sarvashtakavarga (SAV)</b>" if target_lang == "en" else ("<b>সর্বাষ্টকবর্গ বিন্দু</b>" if target_lang == "bn" else "<b>सर्वाष्टकवर्ग बिंदु</b>"), table_cell_bold),
-             Paragraph(f"Sign {s_name}", table_cell),
-             Paragraph(f"<b>{sav_pts} Bindus</b>", table_cell_bold),
-             Paragraph(sav_eval, table_cell_left)],
-        ]
-        t_bala = Table(bala_rows, colWidths=[120, 120, 110, 170])
-        t_bala.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), GOLD_PRIMARY),
-            ("GRID", (0, 0), (-1, -1), 0.5, BORDER_LIGHT),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, TABLE_ALT_ROW]),
-            ("TOPPADDING", (0, 0), (-1, -1), 2.5),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
-        ]))
-        story.append(t_bala)
-        story.append(Spacer(1, 4))
-
-        # 3. Vimshottari Dasha & Transit Activation Timing
-        lbl_timing_hdr = "Vimshottari Dasha & Transit Activation Windows:" if target_lang == "en" else ("বিংশোত্তরী দশা ও গোচর সক্রিয়করণ কাল:" if target_lang == "bn" else "विंशोत्तरी दशा एवं गोचर सक्रियता काल:")
-        story.append(Paragraph(f"<b>{lbl_timing_hdr}</b>", body_text_bold))
-        if target_lang == "bn":
-            timing_text = (
-                f"এই ভাবের ফলাফল সর্বাধিক ফলবতী হয় ভাবাধিপতি {lord_name_loc} এবং কারক {karaka_name_loc}-এর মহাদশা ও অন্তর্দশাকালে। "
-                f"বৃহস্পতি যখন গোচরে {s_name} বা এর ত্রিকোণ রাশিতে (৫ম ও ৯ম ভাবে) সঞ্চার করে, তখন সৌভাগ্য ও নতুন দিগন্ত উন্মোচিত হয়। "
-                f"শনির গোচরকালে শৃঙ্খলা, ধৈর্য ও একাগ্রতার সাথে অগ্রসর হলে স্থায়ী সাফল্য লাভ সম্ভব।"
-            )
-        elif target_lang == "hi":
-            timing_text = (
-                f"इस भाव के परिणाम भावेश {lord_name_loc} एवं कारक {karaka_name_loc} की महादशा व अंतर्दशा में पूर्ण रूप से सक्रिय होते हैं। "
-                f"गुरु का गोचर जब {s_name} अथवा इसके त्रिकोण भावों में होता है, तब शुभ अवसरों व भाग्य की प्राप्ति होती है। "
-                f"शनि के गोचर काल में धैर्य, अनुशासन व सत्यनिष्ठा से कार्य करने पर स्थायी सफलता मिलती है।"
-            )
-        else:
-            timing_text = (
-                f"This house delivers peak results during the Mahadasha and Antardasha cycles of its dispositor {lord_name_loc} and Karaka {karaka_name_loc}. "
-                f"Major breakthroughs materialize when Jupiter transits over {s_name} or casts trine aspects on it. "
-                f"Saturn transits demand sustained discipline, ethical prudence, and long-term strategic focus."
-            )
-        story.append(Paragraph(timing_text, body_text))
-        story.append(Spacer(1, 4))
-
-        # 4. Strategic Life Guidance
-        lbl_strat_hdr = "Strategic Life Guidance & Real-World Outcomes:" if target_lang == "en" else ("বাস্তব জীবন পরিচালনা ও কর্মপদ্ধতি নির্দেশিকা:" if target_lang == "bn" else "व्यावहारिक जीवन मार्गदर्शन एवं कार्यप्रणाली:")
-        story.append(Paragraph(f"<b>{lbl_strat_hdr}</b>", body_text_bold))
-        if target_lang == "bn":
-            strat_text = (
-                f"দৈনন্দিন কর্মজীবনে {t_domain.lower()}-এর ক্ষেত্রগুলিতে ভারসাম্য বজায় রাখুন। "
-                f"অহেতুক সংঘাত পরিহার করে ধৈর্য ও সৎনিষ্ঠার সাথে সিদ্ধান্ত গ্রহণ করুন। "
-                f"শুভ গ্রহের শক্তিকে কাজে লাগিয়ে সময়োপযোগী পরিকল্পনা বাস্তবায়ন করুন।"
-            )
-        elif target_lang == "hi":
-            strat_text = (
-                f"दैनिक जीवन में {t_domain.lower()} से संबंधित क्षेत्रों में संतुलन बनाए रखें। "
-                f"विवादों से बचते हुए धैर्य एवं सत्यनिष्ठा के साथ निर्णय लें। "
-                f"शुभ ग्रहों की सकारात्मक ऊर्जा का सदुपयोग करते हुए सुनियोजित कार्यप्रणाली अपनाएं।"
-            )
-        else:
-            strat_text = (
-                f"Maintain strategic equilibrium in domains governed by {t_domain.lower()}. "
-                f"Avoid impulsive decisions during adverse transits and cultivate disciplined consistency. "
-                f"Harness positive planetary rays through ethical conduct and calculated milestone execution."
-            )
-        story.append(Paragraph(strat_text, body_text))
-        story.append(Spacer(1, 4))
-
-        # 5. Consecrated Vedic Remedial Protocol Table
-        lbl_rem_tbl_hdr = f"Consecrated Vedic Remedial Protocol (House {h}):" if target_lang == "en" else (f"ভাব {h}-এর প্রামাণ্য শাস্ত্রীয় বৈদিক প্রতিকার বিধান:" if target_lang == "bn" else f"भाव {h} हेतु प्रामाणिक सिद्ध वैदिक उपाय विधान:")
-        story.append(Paragraph(f"<b>{lbl_rem_tbl_hdr}</b>", body_text_bold))
-
-        rem_info = PLANET_REMEDIES.get(lord_name_en, PLANET_REMEDIES["Sun"])
-        gem_str = rem_info["gem_bn"] if target_lang == "bn" else (rem_info["gem_hi"] if target_lang == "hi" else rem_info["gem_en"])
-        day_str = rem_info["day_bn"] if target_lang == "bn" else (rem_info["day_hi"] if target_lang == "hi" else rem_info["day_en"])
-        charity_str = rem_info["charity_bn"] if target_lang == "bn" else (rem_info["charity_hi"] if target_lang == "hi" else rem_info["charity_en"])
-        yantra_str = rem_info["yantra_bn"] if target_lang == "bn" else (rem_info["yantra_hi"] if target_lang == "hi" else rem_info["yantra_en"])
-
-        col_r_d = "Remedial Dimension" if target_lang == "en" else ("প্রতিকার মাত্রা" if target_lang == "bn" else "उपचार आयाम")
-        col_r_a = "Prescribed Action" if target_lang == "en" else ("শাস্ত্রীয় বিধান" if target_lang == "bn" else "शास्त्रीय विधान")
-        col_r_t = "Auspicious Timing" if target_lang == "en" else ("প্রশস্ত সময় ও বিধি" if target_lang == "bn" else "शुभ मुहूर्त व विधि")
-
-        rem_rows = [
-            [Paragraph(col_r_d, table_header), Paragraph(col_r_a, table_header), Paragraph(col_r_t, table_header)],
-            [Paragraph("<b>Primary Gemstone</b>" if target_lang == "en" else ("<b>প্রধান রত্ন</b>" if target_lang == "bn" else "<b>मुख्य रत्न</b>"), table_cell_bold),
-             Paragraph(gem_str, table_cell_left),
-             Paragraph("Auspicious Sunrise" if target_lang == "en" else ("শুভ সূর্যোদয়ে ধারণীয়" if target_lang == "bn" else "शुभ सूर्योदय में धार्य"), table_cell)],
-            [Paragraph("<b>Sacred Beej Mantra</b>" if target_lang == "en" else ("<b>পবিত্র বীজ মন্ত্র</b>" if target_lang == "bn" else "<b>पवित्र बीज मन्त्र</b>"), table_cell_bold),
-             Paragraph(f"<b>{rem_info['mantra']}</b>", table_cell_left),
-             Paragraph("Morning Sandhya" if target_lang == "en" else ("প্রাতঃকালীন নিত্য পাঠ" if target_lang == "bn" else "नित्य प्रातः सन्ध्या"), table_cell)],
-            [Paragraph("<b>Deity & Day Worship</b>" if target_lang == "en" else ("<b>ইষ্ট দেব ও তিথি পূজা</b>" if target_lang == "bn" else "<b>इष्ट देव व पूजन</b>"), table_cell_bold),
-             Paragraph(day_str, table_cell_left),
-             Paragraph("Weekly observance" if target_lang == "en" else ("সাপ্তাহিক পালনীয়" if target_lang == "bn" else "साप्ताहिक अनुष्ठान"), table_cell)],
-            [Paragraph("<b>Charitable Dana</b>" if target_lang == "en" else ("<b>দান মাহাত্ম্য</b>" if target_lang == "bn" else "<b>पुण्य दान</b>"), table_cell_bold),
-             Paragraph(charity_str, table_cell_left),
-             Paragraph("Auspicious Tithis" if target_lang == "en" else ("শুভ তিথি ও নক্ষত্রে" if target_lang == "bn" else "शुभ तिथि व पर्व पर"), table_cell)],
-            [Paragraph("<b>Consecrated Yantra</b>" if target_lang == "en" else ("<b>সিদ্ধ যন্ত্র স্থাপন</b>" if target_lang == "bn" else "<b>सिद्ध यन्त्र स्थापना</b>"), table_cell_bold),
-             Paragraph(yantra_str, table_cell_left),
-             Paragraph("Puja Altar" if target_lang == "en" else ("পূজা বেদীতে স্থাপন" if target_lang == "bn" else "पूजा वेदी पर स्थापित"), table_cell)],
-        ]
-        t_rem = Table(rem_rows, colWidths=[110, 280, 130])
-        t_rem.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), GOLD_PRIMARY),
-            ("GRID", (0, 0), (-1, -1), 0.5, BORDER_LIGHT),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, TABLE_ALT_ROW]),
-            ("TOPPADDING", (0, 0), (-1, -1), 2.5),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
-        ]))
-        story.append(t_rem)
+        story.append(remedy_box)
         story.append(PageBreak())  # End of Page B for House h (Total 24 pages for 12 houses!)
 
     # =========================================================================
@@ -2719,22 +2102,12 @@ def generate_comprehensive_kundli_pdf(
     story.append(t_num)
     story.append(PageBreak())  # End of Page 69
 
-    # Page 70: Enriched Lo Shu 3x3 Astro-Grid & Missing Number Remedies
-    hdr_loshu = "LO SHU 3x3 MAGIC SQUARE ASTRO-GRID" if target_lang == "en" else ("লো-শু ৩x৩ মহাজাগতিক গ্রিড ও তল বিশ্লেষণ" if target_lang == "bn" else "लो-शू 3x3 कॉस्मिक ग्रिड एवं तल विश्लेषण")
-    sub_loshu = "Ancient 3x3 cosmic grid mapping the Mental, Emotional, and Practical planes of consciousness." if target_lang == "en" else ("মানসিক, আত্মিক ও ব্যবহারিক চেতনার ভারসাম্য এবং অনুপস্থিত সংখ্যার প্রতিকার।" if target_lang == "bn" else "मानसिक, आत्मिक एवं व्यावहारिक चेतना का संतुलन तथा अनुपस्थित अंक उपाय।")
-    story.append(Paragraph(hdr_loshu, page_header))
-    story.append(Paragraph(sub_loshu, page_subhead))
-
+    story.append(Paragraph("LO SHU 3x3 MAGIC SQUARE ASTRO-GRID", page_header))
+    story.append(Paragraph("Ancient 3x3 cosmic grid mapping the Mental, Emotional, and Practical planes of consciousness.", page_subhead))
     loshu_grid = [
-        [Paragraph("<b>4</b><br/>(Wood / Wealth)" if target_lang == "en" else ("<b>৪</b><br/>(কাষ্ঠ / ধনসম্পদ)" if target_lang == "bn" else "<b>4</b><br/>(काष्ठ / धन)"), table_cell_bold),
-         Paragraph("<b>9</b><br/>(Fire / Fame)" if target_lang == "en" else ("<b>৯</b><br/>(অগ্নি / খ্যাতি)" if target_lang == "bn" else "<b>9</b><br/>(अग्नि / यश)"), table_cell_bold),
-         Paragraph("<b>2</b><br/>(Earth / Marriage)" if target_lang == "en" else ("<b>২</b><br/>(মৃত্তিকা / বিবাহ)" if target_lang == "bn" else "<b>2</b><br/>(पृथ्वी / विवाह)"), table_cell_bold)],
-        [Paragraph("<b>3</b><br/>(Wood / Family)" if target_lang == "en" else ("<b>৩</b><br/>(কাষ্ঠ / পরিবার)" if target_lang == "bn" else "<b>3</b><br/>(काष्ठ / परिवार)"), table_cell_bold),
-         Paragraph("<b>5</b><br/>(Earth / Balance)" if target_lang == "en" else ("<b>৫</b><br/>(মৃত্তিকা / স্থিতি)" if target_lang == "bn" else "<b>5</b><br/>(पृथ्वी / संतुलन)"), table_cell_bold),
-         Paragraph("<b>7</b><br/>(Metal / Creativity)" if target_lang == "en" else ("<b>৭</b><br/>(ধাতু / প্রতিভা)" if target_lang == "bn" else "<b>7</b><br/>(धातु / रचनात्मकता)"), table_cell_bold)],
-        [Paragraph("<b>8</b><br/>(Earth / Wisdom)" if target_lang == "en" else ("<b>৮</b><br/>(মৃত্তিকা / বিদ্যা)" if target_lang == "bn" else "<b>8</b><br/>(पृथ्वी / ज्ञान)"), table_cell_bold),
-         Paragraph("<b>1</b><br/>(Water / Career)" if target_lang == "en" else ("<b>১</b><br/>(জল / জীবিকা)" if target_lang == "bn" else "<b>1</b><br/>(जल / आजीविका)"), table_cell_bold),
-         Paragraph("<b>6</b><br/>(Metal / Friends)" if target_lang == "en" else ("<b>৬</b><br/>(ধাতু / মিত্রতা)" if target_lang == "bn" else "<b>6</b><br/>(धातु / मित्र)"), table_cell_bold)],
+        [Paragraph("<b>4</b><br/>(Wood / Wealth)", table_cell_bold), Paragraph("<b>9</b><br/>(Fire / Fame)", table_cell_bold), Paragraph("<b>2</b><br/>(Earth / Marriage)", table_cell_bold)],
+        [Paragraph("<b>3</b><br/>(Wood / Family)", table_cell_bold), Paragraph("<b>5</b><br/>(Earth / Core Balance)", table_cell_bold), Paragraph("<b>7</b><br/>(Metal / Creativity)", table_cell_bold)],
+        [Paragraph("<b>8</b><br/>(Earth / Knowledge)", table_cell_bold), Paragraph("<b>1</b><br/>(Water / Career)", table_cell_bold), Paragraph("<b>6</b><br/>(Metal / Helpful Friends)", table_cell_bold)],
     ]
     t_loshu = Table(loshu_grid, colWidths=[160, 160, 160])
     t_loshu.setStyle(TableStyle([
@@ -2742,300 +2115,56 @@ def generate_comprehensive_kundli_pdf(
         ("GRID", (0, 0), (-1, -1), 1.0, GOLD_PRIMARY),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 14),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 14),
     ]))
     story.append(t_loshu)
-    story.append(Spacer(1, 4))
-
-    # Lo Shu 8 Planes & Arrows Table
-    lbl_planes_hdr = "Lo Shu 8 Cosmic Planes & Equilibrium Status:" if target_lang == "en" else ("লো-শু ৮টি মহাজাগতিক তল ও শক্তির স্থিতি:" if target_lang == "bn" else "लो-शू 8 कॉस्मिक तल एवं ऊर्जा संतुलन:")
-    story.append(Paragraph(f"<b>{lbl_planes_hdr}</b>", body_text_bold))
-
-    dob_digits = set(str(birth_dt_str).replace("-", "").replace("/", ""))
-    planes_spec = [
-        ("Mental Plane (4-9-2)", "মানসিক তল (৪-৯-২)", "मानसिक तल (4-9-2)", "Intellectual capacity & memory retention", "মেধা, স্মৃতিশক্তি ও মননশীলতা", "बुद्धि, स्मरण शक्ति एवं विवेक", {"4", "9", "2"}),
-        ("Emotional Plane (3-5-7)", "আত্মিক তল (৩-৫-৭)", "भावनात्मक तल (3-5-7)", "Intuition, empathy & heart wisdom", "অনুভূতি, সংবেদনশীলতা ও প্রেম", "संवेदना, सहानुभूति एवं अंतर्ज्ञान", {"3", "5", "7"}),
-        ("Practical Plane (8-1-6)", "ব্যবহারিক তল (৮-১-৬)", "व्यावहारिक तल (8-1-6)", "Execution, manual discipline & trade", "কর্মক্ষমতা, ব্যবসায়িক বুদ্ধি ও ফলপ্রসূতা", "कर्मठता, व्यावसायिक कौशल व श्रम", {"8", "1", "6"}),
-        ("Thought Plane (4-3-8)", "পরিকল্পনা তল (৪-৩-৮)", "विचार तल (4-3-8)", "Visionary foresight & conceptual depth", "দূরদর্শিতা, গভীর চিন্তা ও উদ্ভাবন", "दूरदर्शिता एवं मौलिक विचार", {"4", "3", "8"}),
-        ("Will Plane (9-5-1)", "ইচ্ছাশক্তি তল (৯-৫-১)", "संकल्प तल (9-5-1)", "Tenacity, resilience & perseverance", "দৃঢ় সংকল্প, অদম্য সাহস ও একাগ্রতা", "दृढ़ संकल्प, धैर्य एवं लगन", {"9", "5", "1"}),
-        ("Action Plane (2-7-6)", "কর্মায়ন তল (২-৭-৬)", "कर्म तल (2-7-6)", "Physical implementation of thoughts", "পরিকল্পনা বাস্তবে রূপায়নের দক্ষতা", "विचारों को यथार्थ में बदलना", {"2", "7", "6"}),
-        ("Golden Plane (2-5-8)", "স্বর্ণরেখা তল (২-৫-৮)", "स्वर्ण तल (2-5-8)", "Real estate, stable fortune & land assets", "স্থাবর সম্পত্তি, সৌভাগ্য ও ভূমি যোগ", "भूमि, भवन एवं स्थिर समृद्धि", {"2", "5", "8"}),
-        ("Silver Plane (4-5-6)", "রৌপ্যরেখা তল (৪-৫-৬)", "रजत तल (4-5-6)", "Commercial eloquence & trade magnetism", "বাণিজ্যিক সৌভাগ্য, সুবক্তা ও আর্থিক লাভ", "व्यापारिक लाभ व संवाद कौशल", {"4", "5", "6"}),
-    ]
-
-    p_col1 = "Cosmic Plane / Arrow" if target_lang == "en" else ("মহাজাগতিক তল" if target_lang == "bn" else "कॉस्मिक तल")
-    p_col2 = "Core Significance" if target_lang == "en" else ("মূল তাৎপর্য" if target_lang == "bn" else "मूल तात्पर्य")
-    p_col3 = "Active Balance" if target_lang == "en" else ("ভারসাম্য স্থিতি" if target_lang == "bn" else "संतुलन स्थिति")
-    p_col4 = "Energy Rating" if target_lang == "en" else ("শক্তি মাত্রা" if target_lang == "bn" else "ऊर्जा स्तर")
-
-    plane_rows = [[Paragraph(p_col1, table_header), Paragraph(p_col2, table_header), Paragraph(p_col3, table_header), Paragraph(p_col4, table_header)]]
-    for p_en, p_bn, p_hi, sig_en, sig_bn, sig_hi, d_set in planes_spec:
-        matched = len(d_set.intersection(dob_digits))
-        p_name = p_bn if target_lang == "bn" else (p_hi if target_lang == "hi" else p_en)
-        sig_name = sig_bn if target_lang == "bn" else (sig_hi if target_lang == "hi" else sig_en)
-        if matched == 3:
-            st = "Complete (100%)" if target_lang == "en" else ("সম্পূর্ণ (১০০%)" if target_lang == "bn" else "पूर्ण (100%)")
-            rt = "Excellent Peak Energy" if target_lang == "en" else ("অত্যন্ত বলবান" if target_lang == "bn" else "उत्कृष्ट ऊर्जा")
-        elif matched == 2:
-            st = "Active (66%)" if target_lang == "en" else ("সক্রিয় (৬৬%)" if target_lang == "bn" else "सक्रिय (66%)")
-            rt = "Balanced & Supportive" if target_lang == "en" else ("ভারসাম্যপূর্ণ" if target_lang == "bn" else "संतुलित")
-        elif matched == 1:
-            st = "Latent (33%)" if target_lang == "en" else ("সুপ্ত (৩৩%)" if target_lang == "bn" else "सुप्त (33%)")
-            rt = "Moderate Potential" if target_lang == "en" else ("মধ্যম ক্ষমতা" if target_lang == "bn" else "मध्यम")
-        else:
-            st = "Deficit (0%)" if target_lang == "en" else ("অনুপস্থিত (০%)" if target_lang == "bn" else "अभाव (0%)")
-            rt = "Remedial Focus" if target_lang == "en" else ("প্রতিকার সাপেক্ষ" if target_lang == "bn" else "उपाय साध्य")
-
-        plane_rows.append([
-            Paragraph(f"<b>{p_name}</b>", table_cell_bold),
-            Paragraph(sig_name, table_cell_left),
-            Paragraph(st, table_cell),
-            Paragraph(rt, table_cell_left),
-        ])
-
-    t_planes = Table(plane_rows, colWidths=[120, 200, 90, 110])
-    t_planes.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), NAVY_PRIMARY),
-        ("GRID", (0, 0), (-1, -1), 0.5, BORDER_LIGHT),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, TABLE_ALT_ROW]),
-        ("TOPPADDING", (0, 0), (-1, -1), 1.5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
-    ]))
-    story.append(t_planes)
-    story.append(Spacer(1, 4))
-
-    # Missing Numbers Remedial Table
-    lbl_miss_hdr = "Karmic Remedial Protocol for Missing Digits:" if target_lang == "en" else ("অনুপস্থিত সংখ্যার পঞ্চভূত ভারসাম্য ও বাস্তু প্রতিকার:" if target_lang == "bn" else "अनुपस्थित अंकों का पंचतत्व संतुलन एवं वास्तु उपचार:")
-    story.append(Paragraph(f"<b>{lbl_miss_hdr}</b>", body_text_bold))
-
-    missing_digits = [d for d in "123456789" if d not in dob_digits]
-    m_rems = {
-        "1": ("Water (Jal)", "জলতত্ত্বের ঘাটতি", "जल तत्व अभाव", "Keep mini water fountain in North, wear Pearl", "উত্তর দিকে জলধারা স্থাপন, মুক্তা ধারণ", "उत्तर में जल स्रोत रखें, मोती धारण करें"),
-        "2": ("Earth (Prithvi)", "ভূমিতত্ত্বের ঘাটতি", "पृथ्वी तत्व अभाव", "Rose quartz crystal in South-West, foster emotional patience", "দক্ষিণ-পশ্চিমে ক্রিস্টাল স্থাপন, ধৈর্য অভ্যাস", "नैऋत्य में स्फटिक रखें, धैर्य का अभ्यास करें"),
-        "3": ("Wood (Vriksha)", "কাষ্ঠতত্ত্বের ঘাটতি", "काष्ठ तत्व अभाव", "Place 5-stem bamboo plant in East, wear Tulsi rosary", "পূর্ব দিকে বাঁশগাছ স্থাপন, তুলসীমালা ধারণ", "पूर्व दिशा में बांस का पौधा लगाएं, तुलसी माला"),
-        "4": ("Wood (Wealth)", "ঐশ্বর্য ঘাটতি", "धन ऊर्जा अभाव", "Green pens on wooden desk, Emerald or Green Aventurine", "সবুজ কলম ব্যবহার, পান্না বা সবুজ আভেন্টুরিন", "हरी कलम का प्रयोग, पन्ना अथवा ग्रीन एवेंच्यूरिन"),
-        "5": ("Earth (Core)", "কেন্দ্রীয় ভারসাম্যহীনতা", "केन्द्र असंतुलन", "Yellow crystals or brass bell at house center (Brahmasthan)", "গৃহের কেন্দ্রে পিতলের ঘণ্টা বা হলুদ ক্রিস্টাল", "ब्रह्मस्थान में पीतल की घंटी अथवा पीत स्फटिक"),
-        "6": ("Metal (Sukha)", "মিত্রতা ও সুখের অভাব", "मित्र व सुख अभाव", "Hang 6-rod metal wind chime in North-West, wear silver", "বায়ুকোণে ৬টি রডের উইন্ড চাইম, রৌপ্য ধারণ", "वायव्य में 6 छड़ों वाली विंड चाइम, चांदी धारण"),
-        "7": ("Metal (Intuition)", "অন্তর্দৃষ্টির ঘাটতি", "अंतर्ज्ञान अभाव", "Meditation, white crystal ball in West zone", "পশ্চিম দিকে স্ফটিক গোলক, ধ্যান সাধনা", "पश्चिम में स्फटिक गोलाकार यंत्र, ध्यान साधना"),
-        "8": ("Earth (Wisdom)", "বাস্তববুদ্ধির ঘাটতি", "व्यावहारिक ज्ञान अभाव", "Crystal lotus in North-East, donate sesame on Saturday", "ঈশান কোণে স্ফটিক পদ্ম, শনিবার তিল দান", "ईशान में स्फटिक कमल, शनिवार को तिल दान"),
-        "9": ("Fire (Agni)", "উদ্যম ও খ্যাতির ঘাটতি", "उत्साह व यश अभाव", "Light red bulb or oil lamp in South zone, wear Red Coral", "দক্ষিণ দিকে লাল আলোর প্রদীপ, রক্তপ্রবাল ধারণ", "दक्षिण दिशा में लाल दीपक, लाल मूंगा धारण"),
-    }
-
-    col_m1 = "Missing Digit" if target_lang == "en" else ("অনুপস্থিত সংখ্যা" if target_lang == "bn" else "अनुपस्थित अंक")
-    col_m2 = "Cosmic Deficit" if target_lang == "en" else ("পঞ্চভূত ঘাটতি" if target_lang == "bn" else "तत्व असंतुलन")
-    col_m3 = "Prescribed Vedic & Vastu Remedy" if target_lang == "en" else ("নির্দেশিত বৈদিক ও বাস্তু প্রতিকার" if target_lang == "bn" else "विहित वैदिक एवं वास्तु उपचार")
-
-    miss_rows = [[Paragraph(col_m1, table_header), Paragraph(col_m2, table_header), Paragraph(col_m3, table_header)]]
-    if missing_digits:
-        for md in missing_digits[:4]:  # Show up to 4 most critical
-            info = m_rems.get(md, ("Element", "ঘাটতি", "अभाव", "Remedy", "প্রতিকার", "उपाय"))
-            def_lbl = info[1] if target_lang == "bn" else (info[2] if target_lang == "hi" else info[0])
-            rem_lbl = info[4] if target_lang == "bn" else (info[5] if target_lang == "hi" else info[3])
-            miss_rows.append([
-                Paragraph(f"<b>Digit {md}</b>" if target_lang == "en" else (f"<b>সংখ্যা {md}</b>" if target_lang == "bn" else f"<b>अंक {md}</b>"), table_cell_bold),
-                Paragraph(def_lbl, table_cell),
-                Paragraph(rem_lbl, table_cell_left),
-            ])
-    else:
-        all_bal = ("Complete Harmony", "All 9 Cosmic Rays Active", "Full elemental equilibrium in birth matrix") if target_lang == "en" else (("সম্পূর্ণ ভারসাম্য", "৯টি মহাজাগতিক রশ্মি বিদ্যমান", "জন্মছকে পঞ্চভূতের সম্পূর্ণ ভারসাম্য উপস্থিত") if target_lang == "bn" else ("पूर्ण संतुलन", "समस्त 9 कॉस्मिक किरणें सक्रिय", "कुंडली में पंचतत्वों का पूर्ण संतुलन उपस्थित"))
-        miss_rows.append([
-            Paragraph(f"<b>{all_bal[0]}</b>", table_cell_bold),
-            Paragraph(all_bal[1], table_cell),
-            Paragraph(all_bal[2], table_cell_left),
-        ])
-
-    t_miss = Table(miss_rows, colWidths=[100, 130, 290])
-    t_miss.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), GOLD_PRIMARY),
-        ("GRID", (0, 0), (-1, -1), 0.5, BORDER_LIGHT),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, TABLE_ALT_ROW]),
-        ("TOPPADDING", (0, 0), (-1, -1), 2.0),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2.0),
-    ]))
-    story.append(t_miss)
     story.append(PageBreak())  # End of Page 70
 
     # =========================================================================
     # PAGES 71-79: AUSPICIOUS VEDIC YOGAS (9 PAGES)
     # =========================================================================
-    yoga_topics_data = [
-        ("Gajakesari & Budhaditya Yoga", "রাজকীয় প্রজ্ঞা, বিদ্যা ও লোকসম্মান", "राजकीय प्रज्ञा, विद्या एवं प्रतिष्ठा",
-         "Royal wisdom, academic brilliance, and societal reverence.",
-         "केन्द्रे देवगुरौ लग्नाच्चन्द्राद्वा शुभवीक्षिते। नीचारिगृहहीने च गजকেसरी योग उच्यते॥\nसूर्यज्ञयोस्तु संयोगे बुधादित्य योग उच्यते। धीमान् सर्वकलाप्रवीणो तेजस्वी च भवेन्नरः॥",
-         [("Jupiter & Moon", "বৃহস্পতি ও চন্দ্র", "गुरु व चन्द्र", "Kendra & Trine placement", "Exalted / Own Sign", "Gajakesari Catalyst"),
-          ("Sun & Mercury", "সূর্য ও বুধ", "सूर्य व बुध", "Intellectual alignment", "Nipuna Formation", "Budhaditya Catalyst")]),
-        ("Pancha Mahapurusha Yogas", "পঞ্চ মহাপুরুষ যোগ — রুচক, ভদ্র, হংস, মালব্য, শশ", "पंच महापुरुष योग — रुचक, भद्र, हंस, मालव्य, शश",
-         "Ruchaka, Bhadra, Hamsa, Malavya, and Shasha yoga formations.",
-         "कुजेन रुचको ज्ञेन भद्रो जीवेन हंसकः। मालव्यो भृगुणा सौरेः शशश्चेति महापुरुषाः॥",
-         [("Mars / Mercury", "মঙ্গল / বুধ", "मंगल / बुध", "Kendra from Lagna", "Exalted / Sva-Kshetra", "Executive Authority"),
-          ("Jupiter / Venus / Saturn", "বৃহস্পতি / শুক্র / শনি", "गुरु / शुक्र / शनि", "Angular quadrant", "Kendra Majesty", "Pinnacle Governance")]),
-        ("Kendra-Trikona Raja Yogas", "ধর্মকর্মাধিপতি ও কেন্দ্র-ত্রিকোণ রাজযোগ", "धर्मकर्माधिपति एवं केन्द्र-त्रिकोण राजयोग",
-         "Auspicious lordship associations creating royal status and supreme prosperity.",
-         "केन्द्राधिपोऽथ कोणाधिपत्येन च संयुतः। धर्मकर्माधिपौ चैव राजयोगप्रदौ स्मृतौ॥",
-         [("9th Lord & 10th Lord", "নবমেশ ও দশমেশ", "नवमेश व दशमेश", "Dharma-Karma Union", "Auspicious Trine", "Sovereign Status"),
-          ("1st, 4th, 5th Lords", "লগ্ন, চতুর্থ ও পঞ্চমেশ", "लग्नेश, चतुर्थेश व पंचमेश", "Mutual aspect / Kendra", "Potent Sambandha", "Material Stability")]),
-        ("Dhana Yogas (Wealth Formations)", "মহাধন যোগ ও স্থায়ী সমৃদ্ধি", "महाधन योग एवं स्थिर समृद्धि",
-         "Connections between 2nd, 5th, 9th, and 11th houses conferring affluence.",
-         "धनेशलाभाधिपयोः सम्बन्धेन धनप्रदः। भाग्यकर्मेशयोश्चैव योगे महाधनाढ्यभाक्॥",
-         [("2nd & 11th Lords", "দ্বিতীয়াধিপতি ও একাদশেশ", "द्वितीयाधिपति व एकादशेश", "Dhana-Labha Bhava", "Mutual Reception", "Exponential Gains"),
-          ("5th & 9th Lords", "পঞ্চমেশ ও ভাগ্যেশ", "पंचमेश व भाग्येश", "Lakshmi Sthana", "Exalted Trines", "Generational Assets")]),
-        ("Viparita Raja Yogas", "বিপরীত রাজযোগ — হর্ষ, সরল ও বিমল", "विपरीत राजयोग — हर्ष, सरल एवं विमल",
-         "Harsha, Sarala, and Vimala yogas triumphing over adversity and crisis.",
-         "रन्ध्रेशे व्ययगे वाऽपि षष्ठेशे रन्ध्रमाश्रिते। विपरीतोद्भवो योगो भूपतित्वं प्रयच्छति॥",
-         [("6th Lord (Harsha)", "ষষ্ঠেশ (হর্ষ যোগ)", "षष्ठेश (हर्ष योग)", "In 8th or 12th house", "Dusthana neutralization", "Crushes Competitors"),
-          ("8th & 12th Lords", "অষ্টমেশ ও দ্বাদশেশ", "अष्टमेश व द्वादशेश", "Mutual 6/8/12 exchange", "Karmic alchemy", "Triumph Over Crisis")]),
-        ("Lunar & Solar Yogas", "চন্দ্র ও সৌর যোগ — সুনফা, অনফা, দুরূধুরা, বেশী, বোশী", "चन्द्र व सौर योग — सुनफा, अनफा, दुरुधुरा, वेशि, वोशि",
-         "Sunafa, Anafa, Durudhara, Vesi, Vosi, and Ubhayachari celestial formations.",
-         "चन्द्राद् द्वादशगैः सुनफा द्वितीयेऽनफा स्मृता। उभयस्थैर्धुरुधुरा रविगाद् वेशि वोशि च॥",
-         [("Flanking Moon", "চন্দ্রের পার্শ্বস্থ গ্রহগণ", "चन्द्र के पार्श्व ग्रह", "2nd & 12th from Moon", "Benefic Rays", "Emotional Equilibrium"),
-          ("Flanking Sun", "সূর্যের পার্শ্বস্থ গ্রহগণ", "सूर्य के पार्श्व ग्रह", "2nd & 12th from Sun", "Solar Radiance", "Charismatic Authority")]),
-        ("Special Auspicious Formations", "বিশেষ শুভ যোগ — মহাভাগ্য, অমলা ও সরস্বতী যোগ", "विशेष शुभ योग — महाभाग्य, अमला एवं सरस्वती योग",
-         "Mahabhagya, Amala, and Saraswati yoga blessings elevating native reputation.",
-         "लग्नचन्द्रार्कभागेषु शुभैर्युक्तेषु वीक्षिते। महाभाग्यो भवेन्मर्त्यः सर्वसम्पत्समन्वितः॥",
-         [("Jupiter, Venus, Mercury", "বৃহস্পতি, শুক্র, বুধ", "गुरु, शुक्र, बुध", "Kendra & Trikona", "Saraswati Formation", "Scholarly Eminence"),
-          ("10th House Benefic", "দশমে শুভ গ্রহ (অমলা)", "दशम में शुभ ग्रह (अमला)", "Pure Midheaven", "Untainted Virtue", "Impeccable Fame")]),
-        ("Parivartana Yogas (Mutual Exchanges)", "গ্রহ পরিবর্তন যোগ — মহা যোগ ও সম্বন্ধ বিচার", "ग्रह परिवर्तन योग — महा योग एवं संबंध विचार",
-         "Maha, Dainya, and Kahala planetary sign exchange yogas across kendras.",
-         "अन्योन्यगृहसम्बन्धात् परिवर्तनाभिधः स्मृतः। महायोगो महाकीर्तिः सुखसौभाग्यवर्धनः॥",
-         [("Planetary Pair 1", "প্রথম গ্রহ যুগল", "प्रथम ग्रह युगल", "Mutual Rasi Exchange", "Sambandha Sthiti", "Bilateral Synergies"),
-          ("Planetary Pair 2", "দ্বিতীয় গ্রহ যুগল", "द्वितीय ग्रह युगल", "Reciprocal Sign", "House Resonance", "Karmic Flexibility")]),
-        ("Comprehensive Active Yogas Summary", "কুষ্ঠীর সামগ্রিক সক্রিয় যোগ ও দশা সমন্বয়", "कुंडली के समस्त सक्रिय योग एवं फलित समन्वय",
-         "Master catalogue of all verified yogas synthesizing lifetime outcomes.",
-         "यदा सर्वे ग्रहाः प्रीताः स्वतुङ्गस्वगृहादिषु। तदा योगसहस्राणां फलमाप्नोति मानवः॥",
-         [("Synthesized Yogas", "সমন্বিত যোগসমূহ", "समन्वित योग", "All active yogas", "Harmonic Balance", "Holistic Elevation"),
-          ("Dasha Coincidence", "দশা সংযোগ", "दशा संयोग", "Upcoming Mahadashas", "Catalytic Windows", "Peak Realization")]),
+    yoga_topics = [
+        ("Gajakesari & Budhaditya Yoga", "Royal wisdom, academic brilliance, and societal reverence."),
+        ("Pancha Mahapurusha Yogas", "Ruchaka, Bhadra, Hamsa, Malavya, and Shasha yoga formations."),
+        ("Kendra-Trikona Raja Yogas", "Auspicious lordship associations creating royal status."),
+        ("Dhana Yogas (Wealth Formations)", "Connections between 2nd, 5th, 9th, and 11th houses conferring affluence."),
+        ("Viparita Raja Yogas", "Harsha, Sarala, and Vimala yogas triumphing over adversity."),
+        ("Lunar & Solar Yogas", "Sunafa, Anafa, Durudhara, Vesi, Vosi, and Ubhayachari yogas."),
+        ("Special Auspicious Formations", "Mahabhagya, Amala, and Saraswati yoga blessings."),
+        ("Parivartana Yogas (Mutual Exchanges)", "Maha, Dainya, and Kahala planetary sign exchange yogas."),
+        ("Comprehensive Active Yogas Summary", "Master catalogue of all verified yogas in the natal chart."),
     ]
+    for y_idx, (y_name, y_desc) in enumerate(yoga_topics, 71):
+        story.append(Paragraph(f"VEDIC YOGA CATALOGUE (TOPIC {y_idx - 70}: {y_name.upper()})", page_header))
+        story.append(Paragraph(y_desc, page_subhead))
 
-    for y_idx, (y_en, y_bn, y_hi, y_desc_en, shloka_txt, comp_rows) in enumerate(yoga_topics_data, 71):
-        y_name = y_bn if target_lang == "bn" else (y_hi if target_lang == "hi" else y_en)
-        y_topic_num = y_idx - 70
-        hdr_yg = f"VEDIC YOGA CATALOGUE (TOPIC {y_topic_num}: {y_name.upper()})" if target_lang == "en" else (f"বৈদিক যোগ সংকলন (বিষয় {y_topic_num}: {y_name})" if target_lang == "bn" else f"वैदिक योग संकलन (विषय {y_topic_num}: {y_name})")
-        sub_yg = y_desc_en if target_lang == "en" else ("শাস্ত্রীয় শ্লোক, গ্রহ সন্নিবেশ, ত্রি-পর্যায়ে ফলপ্রকাশ ও নিশ্চিত প্রতিকার।" if target_lang == "bn" else "शास्त्रीय श्लोक, ग्रह विन्यास, त्रिविध जीवन फल एवं सिद्ध उपाय।")
-        story.append(Paragraph(hdr_yg, page_header))
-        story.append(Paragraph(sub_yg, page_subhead))
+        story.append(Paragraph(
+            f"<b>Planetary Mechanics & Shastra Definition:</b><br/>"
+            f"Classical Vedic horoscopy identifies {y_name} as a powerful catalyst for human advancement. "
+            f"When planets form precise geometrical angles or mutual kendra/trikona placements, their combined vibrational rays elevate the native above standard karmic limitations. "
+            f"The strength of this yoga depends directly on Shadbala potency and freedom from combust or debilitated states.<br/><br/>"
+            f"<b>Timing of Activation:</b><br/>"
+            f"The full potential of this formation crystallizes during the Mahadasha and Antardasha of the participating lords.",
+            body_text
+        ))
+        story.append(Spacer(1, 10))
 
-        # Sanskrit Shloka Box
-        shloka_p = Paragraph(f"<i><b>{shloka_txt}</b></i>", ParagraphStyle("Shloka", parent=body_text, fontName="NotoSansDevanagari-Bold" if HAS_DEVANAGARI_FONT else font_bold, fontSize=7.0, leading=9.5, textColor=colors.HexColor("#78350F"), alignment=1))
-        t_shloka = Table([[shloka_p]], colWidths=[520])
-        t_shloka.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), GOLD_LIGHT),
-            ("BOX", (0, 0), (-1, -1), 0.8, GOLD_PRIMARY),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-            ("LEFTPADDING", (0, 0), (-1, -1), 8),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-        ]))
-        story.append(t_shloka)
-        story.append(Spacer(1, 4))
-
-        # Active Planetary Components Table
-        lbl_comp_hdr = "Active Planetary Configurations & Yoga Formation:" if target_lang == "en" else ("যোগ সৃষ্টিকারী গ্রহ সন্নিবেশ ও ষড়বল শক্তি:" if target_lang == "bn" else "योग निर्माणकारी ग्रह स्थिति एवं षडबल:")
-        story.append(Paragraph(f"<b>{lbl_comp_hdr}</b>", body_text_bold))
-
-        c_col1 = "Participating Grahas" if target_lang == "en" else ("অংশগ্রহণকারী গ্রহ" if target_lang == "bn" else "संबंधित ग्रह")
-        c_col2 = "Planetary Alignment" if target_lang == "en" else ("গ্রহ অবস্থান" if target_lang == "bn" else "ग्रह स्थिति")
-        c_col3 = "Dignity & Strength" if target_lang == "en" else ("মর্যাদা ও বল" if target_lang == "bn" else "स्थिति व बल")
-        c_col4 = "Functional Role" if target_lang == "en" else ("যোগের ফলিত ভূমিকা" if target_lang == "bn" else "योग में भूमिका")
-
-        yg_comp_tbl = [[Paragraph(c_col1, table_header), Paragraph(c_col2, table_header), Paragraph(c_col3, table_header), Paragraph(c_col4, table_header)]]
-        for row in comp_rows:
-            p_lbl = row[1] if target_lang == "bn" else (row[2] if target_lang == "hi" else row[0])
-            yg_comp_tbl.append([
-                Paragraph(f"<b>{p_lbl}</b>", table_cell_bold),
-                Paragraph(row[3], table_cell),
-                Paragraph(row[4], table_cell),
-                Paragraph(row[5], table_cell_left),
-            ])
-        t_yg_comp = Table(yg_comp_tbl, colWidths=[130, 130, 110, 150])
-        t_yg_comp.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), NAVY_PRIMARY),
-            ("GRID", (0, 0), (-1, -1), 0.5, BORDER_LIGHT),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, TABLE_ALT_ROW]),
-            ("TOPPADDING", (0, 0), (-1, -1), 2),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-        ]))
-        story.append(t_yg_comp)
-        story.append(Spacer(1, 4))
-
-        # 3-Phase Life Manifestation Trajectory Table
-        lbl_traj_hdr = "3-Phase Life Manifestation Trajectory:" if target_lang == "en" else ("ত্রি-পর্যায়ে জীবনের ফলপ্রসূতা ও সাফল্যধারা:" if target_lang == "bn" else "जीवन के तीन चरणों में फलित विकास:")
-        story.append(Paragraph(f"<b>{lbl_traj_hdr}</b>", body_text_bold))
-
-        t_col1 = "Life Phase" if target_lang == "en" else ("জীবনের পর্যায়" if target_lang == "bn" else "जीवन चरण")
-        t_col2 = "Age Span" if target_lang == "en" else ("বয়স সীমা" if target_lang == "bn" else "आयु सीमा")
-        t_col3 = "Karmic Trajectory & Milestones" if target_lang == "en" else ("কর্মফল প্রকাশ ও শুভ মাইলফলক" if target_lang == "bn" else "कर्म फल एवं महत्वपूर्ण उपलब्धियां")
-
-        traj_rows = [
-            [Paragraph(t_col1, table_header), Paragraph(t_col2, table_header), Paragraph(t_col3, table_header)],
-            [Paragraph("<b>Phase 1: Foundation</b>" if target_lang == "en" else ("<b>১ম পর্যায়: ভিত্তি স্থাপন</b>" if target_lang == "bn" else "<b>चरण 1: आधारशिला</b>"), table_cell_bold),
-             Paragraph("Ages 0 - 24" if target_lang == "en" else ("০ - ২৪ বছর" if target_lang == "bn" else "0 - 24 वर्ष"), table_cell),
-             Paragraph("Moral upbringing, exceptional educational aptitude, and latent seed development." if target_lang == "en" else ("সুদৃঢ় পারিবারিক শিক্ষা, বিদ্যালাভে নিষ্ঠা ও প্রতিভার অঙ্কুরোদ্গম।" if target_lang == "bn" else "सद्गुणों का विकास, उच्च शिक्षा एवं प्रतिभा का प्रकटीकरण।"), table_cell_left)],
-            [Paragraph("<b>Phase 2: Breakthrough</b>" if target_lang == "en" else ("<b>২য় পর্যায়: কর্ম সাফল্য</b>" if target_lang == "bn" else "<b>चरण 2: उन्नति व विस्तार</b>"), table_cell_bold),
-             Paragraph("Ages 25 - 48" if target_lang == "en" else ("২৫ - ৪৮ বছর" if target_lang == "bn" else "25 - 48 वर्ष"), table_cell),
-             Paragraph("Rapid career ascension, financial self-reliance, and societal honor." if target_lang == "en" else ("পেশাগত ক্ষেত্রে অভাবনীয় অগ্রগতি, আর্থিক স্বাবলম্বিতা ও সামাজিক সম্মান লাভ।" if target_lang == "bn" else "आजीविका में तीव्र प्रगति, वित्तीय स्वतंत्रता एवं सामाजिक प्रतिष्ठा।"), table_cell_left)],
-            [Paragraph("<b>Phase 3: Pinnacle</b>" if target_lang == "en" else ("<b>৩য় পর্যায়: শীর্ষ সম্মান</b>" if target_lang == "bn" else "<b>चरण 3: शीर्ष गौरव</b>"), table_cell_bold),
-             Paragraph("Ages 49+" if target_lang == "en" else ("৪৯+ বছর" if target_lang == "bn" else "49+ वर्ष"), table_cell),
-             Paragraph("Institutional authority, enduring philanthropic legacy, and spiritual peace." if target_lang == "en" else ("কর্তৃত্বপূর্ণ অবস্থান, পরোপকারী মহৎ অবদান ও পরম আত্মিক প্রশান্তি।" if target_lang == "bn" else "मार्गदर्शक स्थिति, लोककल्याणकारी योगदान एवं आध्यात्मिक शांति।"), table_cell_left)],
-        ]
-        t_traj = Table(traj_rows, colWidths=[120, 80, 320])
-        t_traj.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), GOLD_PRIMARY),
-            ("GRID", (0, 0), (-1, -1), 0.5, BORDER_LIGHT),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, TABLE_ALT_ROW]),
-            ("TOPPADDING", (0, 0), (-1, -1), 2),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-        ]))
-        story.append(t_traj)
-        story.append(Spacer(1, 4))
-
-        # Dasha Activation & Amplification Protocol
-        lbl_act_hdr = "Auspicious Timing & Consecrated Amplification Protocol:" if target_lang == "en" else ("দশা সক্রিয়করণ সময়কাল ও যোগ বর্ধন প্রতিকার:" if target_lang == "bn" else "दशा सक्रियता काल एवं योग संवर्धन उपाय:")
-        story.append(Paragraph(f"<b>{lbl_act_hdr}</b>", body_text_bold))
-        if target_lang == "bn":
-            yg_act_text = (
-                f"এই শুভ যোগের শ্রেষ্ঠ ফল লাভ হয় সক্রিয়কারী গ্রহের বিংশোত্তরী মহাদশা, অন্তর্দশা ও বৃহস্পতির অনুকূল গোচরকালে। "
-                f"প্রতিদিন প্রাতঃকালে গায়ত্রী মন্ত্র জপ করুন এবং মাতা-পিতা ও গুরুজনদের চরণ স্পর্শ করে আশীর্বাদ গ্রহণ করুন। "
-                f"নীতি ও সত্যনিষ্ঠার পথে থেকে স্বীয় প্রতিভার সর্বোচ্চ বিকাশ সাধন করুন।"
-            )
-        elif target_lang == "hi":
-            yg_act_text = (
-                f"इस शुभ योग के सर्वाधिक श्रेष्ठ फल संबंधित ग्रहों की महादशा, अंतर्दशा एवं गुरु के अनुकूल गोचर में प्राप्त होते हैं। "
-                f"प्रतिदिन प्रातः गायत्री मन्त्र का जप करें तथा माता-पिता व गुरुजनों का आशीर्वाद लें। "
-                f"धर्म एवं सत्य के मार्ग पर चलते हुए अपनी अंतर्निहित क्षमताओं का पूर्ण सदुपयोग करें।"
-            )
-        else:
-            yg_act_text = (
-                f"The full potential of this royal formation crystallizes during the Mahadasha and Antardasha of participating lords. "
-                f"Amplify positive vibrations through daily sunrise Gayatri Mantra meditation and honoring mentors. "
-                f"Maintain ethical integrity to channel this celestial blessing into enduring societal achievements."
-            )
-        story.append(Paragraph(yg_act_text, body_text))
-        story.append(Spacer(1, 4))
-
-        # Status Box
         y_box = Table([[
             Paragraph(
                 f"<b>STATUS IN YOUR NATAL CHART: ACTIVE & VERIFIED</b><br/>"
                 f"• Benefic dispositor placed in auspicious house with positive Shadbala.<br/>"
-                f"• Confers dignity, material stability, and elevated intellectual discernment." if target_lang == "en" else (
-                    f"<b>আপনার জন্মছকে এই যোগের স্থিতি: সক্রিয় ও সুপ্রতিষ্ঠিত</b><br/>"
-                    f"• শুভ ভাবাধিপতি উচ্চ ষড়বল সহ শুভ স্থানে অবস্থান করে মঙ্গলদায়ক প্রভাব বিস্তার করছে।<br/>"
-                    f"• এই যোগ আপনার জীবনে বিদ্যা, প্রতিপত্তি, অর্থবত্তা ও আত্মিক তেজ নিশ্চিত করে।" if target_lang == "bn" else
-                    f"<b>आपकी जन्म कुंडली में इस योग की स्थिति: सक्रिय एवं प्रमाणित</b><br/>"
-                    f"• शुभ भावेश उच्च षडबल के साथ अनुकूल भाव में स्थित होकर कल्याणकारी प्रभाव दे रहे हैं।<br/>"
-                    f"• यह योग आपके जीवन में बुद्धि, यश, धन-संपदा एवं आध्यात्मिक तेज सुनिश्चित करता है।"
-                ),
-                ParagraphStyle("YgBox", parent=body_text, leading=10, textColor=NAVY_PRIMARY)
+                f"• Confers dignity, material stability, and elevated intellectual discernment.",
+                ParagraphStyle("YgBox", parent=body_text, leading=11, textColor=NAVY_PRIMARY)
             )
         ]], colWidths=[520])
         y_box.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, -1), GOLD_LIGHT),
             ("BOX", (0, 0), (-1, -1), 1.0, GOLD_ACCENT),
-            ("TOPPADDING", (0, 0), (-1, -1), 5),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ("LEFTPADDING", (0, 0), (-1, -1), 8),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ("LEFTPADDING", (0, 0), (-1, -1), 10),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 10),
         ]))
         story.append(y_box)
         story.append(PageBreak())  # Pages 71 to 79
@@ -3280,8 +2409,8 @@ def generate_comprehensive_kundli_pdf(
     story.append(Spacer(1, 10))
 
     # Dual Square Charts: KP Lagna & KP Chalit
-    kp_d1 = NorthIndianChartFlowable(215, 190, d1_asc_sign, d1_house_map, "KP Lagna Chart" if target_lang == "en" else ("কেপি লগ্ন চক্র" if target_lang == "bn" else "केपी लग्न चक्र"), is_rect=False, lang=target_lang, font_reg=font_reg, font_bold=font_bold)
-    kp_chalit = NorthIndianChartFlowable(215, 190, d1_asc_sign, chalit_house_map, "KP Cusp Chalit" if target_lang == "en" else ("কেপি ভাব চলিত" if target_lang == "bn" else "केपी भाव चलित"), is_rect=False, lang=target_lang, font_reg=font_reg, font_bold=font_bold)
+    kp_d1 = NorthIndianChartFlowable(215, 190, d1_asc_sign, d1_house_map, "KP Lagna Chart", is_rect=False)
+    kp_chalit = NorthIndianChartFlowable(215, 190, d1_asc_sign, chalit_house_map, "KP Cusp Chalit", is_rect=False)
     grid_p113 = Table([[kp_d1, kp_chalit]], colWidths=[260, 260])
     grid_p113.setStyle(TableStyle([
         ("ALIGN", (0,0), (-1,-1), "CENTER"),
