@@ -24,6 +24,7 @@ from app.schemas.abuse_report import (
     AbuseReportReviewRequest,
     AbuseReportStats,
     AbuseReportUnblockRequest,
+    AbuseReportUnblockResponse,
     PaginatedAbuseReports,
 )
 from app.schemas.common import ApiResponse, build_page
@@ -151,10 +152,10 @@ async def list_abuse_reports(
             )
         )
 
-    meta = build_page(items, total, page, limit).model_dump()
+    page_obj = build_page(items, total, page, limit)
     return ApiResponse(
         message=f"{total} abuse report(s).",
-        data=PaginatedAbuseReports(items=items, meta=meta),
+        data=PaginatedAbuseReports(items=items, meta=page_obj.meta.model_dump()),
     )
 
 
@@ -272,14 +273,14 @@ async def review_abuse_report(
 
 @router.post(
     "/{report_id}/unblock-client",
-    response_model=ApiResponse[dict[str, Any]],
+    response_model=ApiResponse[AbuseReportUnblockResponse],
     summary="Remove a client from the reporting astrologer's personal blacklist",
 )
 async def unblock_client_from_report(
     report_id: str,
     payload: AbuseReportUnblockRequest,
     admin: AdminUser,
-) -> ApiResponse[dict[str, Any]]:
+) -> ApiResponse[AbuseReportUnblockResponse]:
     if not PydanticObjectId.is_valid(report_id):
         raise NotFoundError("Abuse report not found.", error_code="abuse_report_not_found")
 
@@ -315,12 +316,18 @@ async def unblock_client_from_report(
         )
         return ApiResponse(
             message="Client removed from the astrologer's blacklist.",
-            data={"unblocked": True, "client_user_id": str(report.client_user_id)},
+            data=AbuseReportUnblockResponse(
+                unblocked=True,
+                client_user_id=str(report.client_user_id),
+            ),
         )
 
     return ApiResponse(
         message="Client was not on this astrologer's blacklist.",
-        data={"unblocked": False, "client_user_id": str(report.client_user_id)},
+        data=AbuseReportUnblockResponse(
+            unblocked=False,
+            client_user_id=str(report.client_user_id),
+        ),
     )
 
 

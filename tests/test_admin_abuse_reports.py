@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from beanie import PydanticObjectId
+from beanie import PydanticObjectId, init_beanie
 
 from app.api.v1.admin_abuse_reports import (
     abuse_report_stats,
@@ -22,6 +22,29 @@ from app.schemas.abuse_report import (
     AbuseReportReviewRequest,
     AbuseReportUnblockRequest,
 )
+
+
+@pytest.fixture(autouse=True)
+async def init_mock_beanie():
+    """Initializes Beanie DocumentSettings in memory for standalone unit testing."""
+    mock_db = MagicMock()
+    mock_db.command = AsyncMock(return_value={"version": "6.0.0", "versionArray": [6, 0, 0]})
+    mock_db.list_collection_names = AsyncMock(return_value=[])
+
+    mock_coll = MagicMock()
+    mock_coll.create_index = AsyncMock()
+    mock_coll.create_indexes = AsyncMock()
+    mock_coll.index_information = AsyncMock(return_value={})
+    mock_db.__getitem__.return_value = mock_coll
+
+    await init_beanie(
+        database=mock_db,
+        document_models=[
+            AbuseReport,
+            Astrologer,
+            User,
+        ],
+    )
 
 
 def _admin_user() -> SimpleNamespace:
@@ -90,7 +113,7 @@ async def test_list_abuse_reports_returns_paginated_items():
     assert item.client_name == "Rahul Roy"
     assert item.client_email_masked == "rah***@example.com"
     assert item.status == "pending"
-    assert result.data.meta.total == 1
+    assert result.data.meta["total"] == 1
 
 
 async def test_get_abuse_report_returns_full_detail():
@@ -136,7 +159,9 @@ async def test_get_abuse_report_invalid_id():
 async def test_review_abuse_report_changes_status():
     admin = _admin_user()
     report = _make_report(status="pending")
-    with patch.object(AbuseReport, "get", AsyncMock(return_value=report)):
+    with patch.object(AbuseReport, "get", AsyncMock(return_value=report)), \
+         patch("app.api.v1.admin_abuse_reports._load_astrologer_name", AsyncMock(return_value=("Pandit Sharma", "pandit@astra.com"))), \
+         patch("app.api.v1.admin_abuse_reports._load_user_name", AsyncMock(return_value=("Rahul Roy", "rahul@example.com"))):
         payload = AbuseReportReviewRequest(
             status="resolved", admin_notes="Investigated, found valid."
         )

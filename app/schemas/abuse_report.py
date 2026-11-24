@@ -67,6 +67,13 @@ class AbuseReportUnblockRequest(BaseModel):
     client_user_id: str = Field(description="User id of the client to unblock")
 
 
+class AbuseReportUnblockResponse(BaseModel):
+    """Response returned when an admin unblocks a client from an astrologer's blacklist."""
+
+    unblocked: bool
+    client_user_id: str
+
+
 class AbuseReportStats(BaseModel):
     """Aggregate safety dashboard metrics."""
 
