@@ -50,6 +50,8 @@ def _out(doc) -> PlatformSettingsOut:
         annual_horoscope_enabled=getattr(doc, "annual_horoscope_enabled", True),
         kundli_coins=getattr(doc, "kundli_coins", 20),
         kundli_enabled=getattr(doc, "kundli_enabled", True),
+        kundli_pdf_coins=getattr(doc, "kundli_pdf_coins", 50),
+        kundli_pdf_enabled=getattr(doc, "kundli_pdf_enabled", True),
         kundli_matching_coins=getattr(doc, "kundli_matching_coins", 20),
         kundli_matching_enabled=getattr(doc, "kundli_matching_enabled", True),
         kp_calculator_coins=getattr(doc, "kp_calculator_coins", 20),

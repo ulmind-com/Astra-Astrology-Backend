@@ -2,7 +2,7 @@
 
 import httpx
 from datetime import datetime, timezone
-from fastapi import APIRouter, Body, HTTPException, Query, Request, status
+from fastapi import APIRouter, Body, HTTPException, Query, Request, Response, status
 from loguru import logger
 
 from app.api.dependencies import OptionalUser
@@ -50,6 +50,7 @@ from app.services.astrology.geocoder import geocode_place
 from app.services.astrology.kp_calculator import calculate_kp
 from app.services.astrology.kundli_matching_service import calculate_kundli_matching
 from app.services.astrology.kundli_service import calculate_kundli
+from app.services.astrology.kundli_pdf_generator import generate_comprehensive_kundli_pdf
 from app.services.astrology.nakshatra_rules import NAKSHATRAS_MASTER
 from app.services.astrology.rashi_rules import RASHIS_DATA
 from app.services.astrology.timezone_resolver import (
@@ -188,6 +189,14 @@ async def get_features_pricing() -> ApiResponse[dict[str, FeaturePricingItem]]:
             enabled=getattr(platform, "kundli_enabled", True),
             description="Lagna D1, Navamsa D9, Vimshottari Dasha & Yogas",
         ),
+        "kundli_pdf": FeaturePricingItem(
+            feature_id="kundli_pdf",
+            name="Kundli Full PDF Report (DivinLink Horosoft Edition)",
+            coins=getattr(platform, "kundli_pdf_coins", 50),
+            is_free=getattr(platform, "kundli_pdf_coins", 50) == 0,
+            enabled=getattr(platform, "kundli_pdf_enabled", True),
+            description="113-Page Horosoft Model 7 Comprehensive Kundli PDF Dossier with Shodashvarga, Vimshottari/Yogini Dashas, Ashtakavarga, Shadbala, Lal Kitab & KP Analysis",
+        ),
         "kundli_matching": FeaturePricingItem(
             feature_id="kundli_matching",
             name="Kundli Matching",
@@ -283,6 +292,50 @@ async def get_kundli(
     if charged > 0:
         msg += f" · {charged} coins deducted (Balance: {balance})"
     return ApiResponse(message=msg, data=result)
+
+
+@router.post(
+    "/kundli/pdf",
+    summary="Download 113-topic Comprehensive Kundli PDF Report (DivinLink Horosoft Model 7 Edition)",
+    response_class=Response,
+)
+async def download_kundli_pdf(
+    payload: KundliCalculateRequest,
+    user: OptionalUser = None,
+) -> Response:
+    """Generates and streams the publication-grade 113-topic DivinLink Kundli PDF Dossier.
+    Charges user wallet based on Admin settings for 'kundli_pdf' feature (or free if 0 coins).
+    """
+    charged, balance = await _charge_feature(
+        "kundli_pdf", "Kundli Full PDF Report (DivinLink Horosoft Edition)", user
+    )
+
+    try:
+        pdf_bytes = generate_comprehensive_kundli_pdf(payload, user)
+    except Exception as exc:
+        logger.exception("Failed to generate comprehensive Kundli PDF: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate comprehensive Kundli PDF. Please try again.",
+        ) from exc
+
+    raw_name = payload.name or "Seeker"
+    safe_name = "".join(c for c in raw_name if c.isalnum() or c in ("-", "_")).strip() or "Seeker"
+    filename = f"DivinLink_Kundli_{safe_name}.pdf"
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Content-Type": "application/pdf",
+        "X-Coins-Spent": str(charged),
+    }
+    if balance is not None:
+        headers["X-Wallet-Balance"] = str(balance)
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers=headers,
+    )
 
 
 @router.post(
