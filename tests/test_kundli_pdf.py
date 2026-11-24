@@ -37,12 +37,12 @@ def test_generate_comprehensive_kundli_pdf_direct():
     assert len(pdf_bytes) > 20000
 
     reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
-    assert len(reader.pages) >= 12
+    assert len(reader.pages) == 113
     # Verify title & cover
     cover_text = reader.pages[0].extract_text()
     assert "DIVINLINK" in cover_text
     assert "Arjun Roy" in cover_text
-    assert "COMPREHENSIVE KUNDLI DOSSIER" in cover_text
+    assert "MODULE 7 MASTER DOSSIER" in cover_text
 
 
 def test_download_kundli_pdf_endpoint(client: TestClient):
