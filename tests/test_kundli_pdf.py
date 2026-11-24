@@ -69,4 +69,38 @@ def test_download_kundli_pdf_endpoint(client: TestClient):
 
     # Ensure valid PDF binary
     reader = pypdf.PdfReader(io.BytesIO(response.content))
-    assert len(reader.pages) >= 12
+    assert len(reader.pages) == 113
+
+
+def test_shodashvarga_and_chart_alignment_in_pdf():
+    """Verify that Shodashvarga charts have diverse, correct divisional mappings and no planet clustering."""
+    req = KundliCalculateRequest(
+        name="Samiran Samanta",
+        day=30,
+        month=6,
+        year=2004,
+        hour=12,
+        minute=0,
+        second=0,
+        period="24H",
+        place="Kolkata, West Bengal, India",
+        latitude=22.5726,
+        longitude=88.3639,
+        timezone=5.5,
+        language="en",
+    )
+    pdf_bytes = generate_comprehensive_kundli_pdf(req)
+    reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
+    assert len(reader.pages) == 113
+
+    # Check Page 7 (Group 1: D1, D2, D3, D4)
+    p7_text = reader.pages[6].extract_text()
+    assert "SHODASHVARGA DIVISIONAL CHARTS (GROUP 1" in p7_text
+    assert "Lagna Chart (D1)" in p7_text
+    assert "Hora Chart (D2 - Wealth)" in p7_text
+
+    # Check Page 11 (Sudarshan Chakra)
+    p11_text = reader.pages[10].extract_text()
+    assert "SUDARSHAN CHAKRA" in p11_text
+    assert "Samiran Samanta" in p11_text
+    assert "Lagna: Rasi 6" in p11_text
