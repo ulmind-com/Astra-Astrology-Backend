@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 
 from beanie import PydanticObjectId
 from loguru import logger
+from pymongo import ReadPreference
 from pymongo.errors import DuplicateKeyError, OperationFailure, PyMongoError
 
 from app.core.exceptions import BadRequestError, ConflictError, ForbiddenError, NotFoundError
@@ -134,8 +135,8 @@ async def _move(
         try:
             async with client.start_session() as session:
                 # pymongo's async start_transaction is a coroutine that returns
-                # the context manager, so it has to be awaited first.
-                async with await session.start_transaction():
+                # the context manager, so it has to be awaited first. Explicitly enforce PRIMARY.
+                async with await session.start_transaction(read_preference=ReadPreference.PRIMARY):
                     wallet = await Wallet.get(opened.id, session=session)
                     assert wallet is not None and wallet.id is not None
 
@@ -226,6 +227,89 @@ async def _move(
             return existing, False
 
         except (OperationFailure, PyMongoError) as exc:
+            # Standalone MongoDB instances (no replica set) cannot run multi-document transactions.
+            # Fall back to atomic single-document operations.
+            op_msg = str(exc)
+            if "Transaction numbers are only allowed" in op_msg or getattr(exc, "code", None) == 20:
+                logger.warning(
+                    "MongoDB instance does not support transactions; applying atomic wallet update for {}: {}",
+                    user_id,
+                    exc,
+                )
+                wallet = await Wallet.get(opened.id)
+                assert wallet is not None and wallet.id is not None
+
+                if wallet.is_frozen and not allow_when_frozen:
+                    raise ForbiddenError(
+                        "This wallet is frozen. Please contact support.",
+                        error_code="wallet_frozen",
+                    )
+
+                current_blocked = getattr(wallet, "blocked_coins", 0) or 0
+                new_blocked = current_blocked
+                if direction is TransactionDirection.CREDIT:
+                    new_balance = wallet.balance_coins + amount_coins
+                else:
+                    if unblock_coins > 0:
+                        new_blocked = max(0, current_blocked - unblock_coins)
+                    available = max(0, wallet.balance_coins - new_blocked)
+                    if available < amount_coins:
+                        raise BadRequestError(
+                            "Not enough spendable coins. Some coins are reserved for your scheduled appointments. Please recharge.",
+                            error_code="insufficient_balance",
+                            details={
+                                "balance_coins": wallet.balance_coins,
+                                "blocked_coins": new_blocked,
+                                "available_coins": available,
+                                "required_coins": amount_coins,
+                            },
+                        )
+                    new_balance = wallet.balance_coins - amount_coins
+
+                now = datetime.now(UTC)
+                txn = WalletTransaction(
+                    wallet_id=wallet.id,
+                    user_id=user_id,
+                    direction=direction,
+                    reason=reason,
+                    amount_coins=amount_coins,
+                    balance_after_coins=new_balance,
+                    amount_paise=amount_paise,
+                    coins_per_rupee=coins_per_rupee,
+                    idempotency_key=idempotency_key,
+                    ref=ref or TransactionRef(),
+                    note=note,
+                    created_by=created_by,
+                )
+                await txn.insert()
+
+                set_fields: dict[str, object] = {
+                    "balance_coins": new_balance,
+                    "last_transaction_at": now,
+                    "updated_at": now,
+                }
+                if unblock_coins > 0:
+                    set_fields["blocked_coins"] = new_blocked
+
+                await Wallet.get_pymongo_collection().update_one(
+                    {"_id": wallet.id},
+                    {"$set": set_fields},
+                )
+
+                logger.info(
+                    "Wallet {} {} {} coins ({}) -> balance {} (standalone mode)",
+                    user_id,
+                    direction.value,
+                    amount_coins,
+                    reason.value,
+                    txn.balance_after_coins,
+                )
+
+                from app.services import realtime
+
+                await realtime.publish_wallet_for_user(user_id, txn.balance_after_coins)
+                return txn, True
+
             if _is_transient(exc):
                 if attempt < _MAX_TRANSACTION_ATTEMPTS:
                     delay = min(0.6, (0.05 * (2 ** (attempt - 1))) + random.uniform(0.02, 0.08))
