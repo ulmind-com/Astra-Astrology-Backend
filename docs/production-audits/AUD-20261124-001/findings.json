@@ -1,0 +1,490 @@
+{
+  "schema_version": "1.0",
+  "audit_id": "AUD-20261124-001",
+  "project": {
+    "name": "Astra Astrology",
+    "repository": "Astra-Astrology",
+    "branch": "samiran",
+    "commit": "7112598b102594432f5df834eaa3a36da0237dd8",
+    "working_tree_state": "CLEAN"
+  },
+  "generated_at": "2026-11-24T11:30:00Z",
+  "audit_scope": [
+    "Web",
+    "Mobile",
+    "Admin",
+    "Backend",
+    "Database",
+    "Security",
+    "Infrastructure"
+  ],
+  "coverage": {
+    "source_files_identified": 1023,
+    "source_files_reviewed": 680,
+    "source_files_partially_reviewed": 295,
+    "source_files_unreviewed": 48,
+    "coverage_notes": [
+      "Deep line-by-line inspection across backend routers, core services, Beanie models, and auth guards.",
+      "Static analysis and full type checks across Admin (Next.js 16), Web (Next.js 16), and Mobile (Expo SDK 58).",
+      "Third-party build artifacts and library internals (.venv, node_modules) excluded from source code review."
+    ]
+  },
+  "findings": [
+    {
+      "id": "AUD-001",
+      "title": "Missing MongoDB Indexes on Core Astrologer Document (user_id, slug, is_active)",
+      "severity": "HIGH",
+      "confidence": "CONFIRMED",
+      "evidence_status": "STATICALLY_VERIFIED",
+      "category": "PERFORMANCE",
+      "affected_surfaces": ["BACKEND", "DATABASE"],
+      "affected_files": [
+        {
+          "path": "Astra-Astrology-Backend/app/models/astrologer.py",
+          "line_start": 130,
+          "line_end": 220,
+          "symbol": "Astrologer"
+        }
+      ],
+      "description": "The primary Astrologer Beanie Document model lacks an inner class Settings definition specifying MongoDB indexes on user_id, slug, and status lookup fields. Unlike Purohit, Support, and Wallet documents which define explicit indexes, Astrologer queries execute full collection scans.",
+      "actual_behavior": "Lookups such as Astrologer.find_one(Astrologer.user_id == uid) or Astrologer.find_one(Astrologer.slug == slug) trigger an unindexed COLLSCAN in MongoDB.",
+      "expected_behavior": "Lookups on user_id and slug should utilize unique compound/single B-tree indexes for O(log N) execution.",
+      "failure_scenario": "Under production traffic with hundreds of astrologers and simultaneous client searches, unindexed lookups will consume high CPU and increase query latency exponentially.",
+      "business_impact": "Slow directory rendering and consultation booking delays; higher database infrastructure bills.",
+      "technical_impact": "COLLSCAN query execution, elevated database memory pressure, lock contention.",
+      "root_cause": "The Astrologer model in app/models/astrologer.py inherits from TimestampedDocument but omitted the inner class Settings with index definitions.",
+      "recommended_fix": "Add class Settings to Astrologer with compound and unique indexes: user_id (unique), slug (unique, sparse), and [('is_active', 1), ('availability.is_online', 1)].",
+      "acceptance_criteria": [
+        "Astrologer model includes class Settings with indexes on user_id, slug, and availability fields.",
+        "Database initialization confirms creation of indexes in MongoDB."
+      ],
+      "required_tests": [
+        "tests/test_astrologer_directory.py"
+      ],
+      "dependencies": [],
+      "blockers": [],
+      "related_findings": [],
+      "reproduction_steps": [
+        "Inspect Astra-Astrology-Backend/app/models/astrologer.py at line 130.",
+        "Observe absence of class Settings or Indexed() annotations on user_id and slug."
+      ],
+      "evidence": [
+        "astrologer.py line 130: class Astrologer(TimestampedDocument) has no inner class Settings.",
+        "Query planner in MongoDB will flag queries by user_id as COLLSCAN."
+      ]
+    },
+    {
+      "id": "AUD-002",
+      "title": "Missing IP / Account Rate Limiting on Authentication & Public Consultation Endpoints",
+      "severity": "HIGH",
+      "confidence": "CONFIRMED",
+      "evidence_status": "STATICALLY_VERIFIED",
+      "category": "SECURITY",
+      "affected_surfaces": ["API", "BACKEND", "SECURITY"],
+      "affected_files": [
+        {
+          "path": "Astra-Astrology-Backend/app/api/v1/auth.py",
+          "line_start": 30,
+          "line_end": 180,
+          "symbol": "login_access_token"
+        },
+        {
+          "path": "Astra-Astrology-Backend/app/main.py",
+          "line_start": 40,
+          "line_end": 60,
+          "symbol": "app"
+        }
+      ],
+      "description": "Public authentication endpoints (/api/v1/auth/login, /api/v1/auth/otp, /api/v1/auth/register) do not enforce rate-limiting middleware (such as slowapi or Redis token bucket).",
+      "actual_behavior": "Clients can send unlimited login, OTP verification, and registration requests without being throttled.",
+      "expected_behavior": "Auth endpoints should throttle excessive failed requests (e.g. 5 requests per minute per IP / phone).",
+      "failure_scenario": "An attacker conducts credential stuffing or SMS/OTP bombing against the auth endpoints, exhausting SMS budgets and compromising weak accounts.",
+      "business_impact": "Account compromise risks, SMS gateway bill exhaustion, compliance breach.",
+      "technical_impact": "Denial of service and database overload on password verification routines.",
+      "root_cause": "Rate limiting middleware is not registered in FastAPI main application or route handlers.",
+      "recommended_fix": "Integrate slowapi or Redis-based rate limiter middleware on all authentication, password reset, and OTP generation endpoints.",
+      "acceptance_criteria": [
+        "Consecutive rapid requests beyond threshold return HTTP 429 Too Many Requests.",
+        "Standard legitimate traffic operates normally."
+      ],
+      "required_tests": [
+        "tests/test_auth_rate_limiting.py"
+      ],
+      "dependencies": [],
+      "blockers": [],
+      "related_findings": [],
+      "reproduction_steps": [
+        "Send 20 POST requests to /api/v1/auth/login with invalid credentials within 5 seconds.",
+        "Observe all requests return 401 instead of 429."
+      ],
+      "evidence": [
+        "Astra-Astrology-Backend/app/api/v1/auth.py contains no Limiter or RateLimit dependencies.",
+        "Astra-Astrology-Backend/app/main.py has no rate limiting middleware registered."
+      ]
+    },
+    {
+      "id": "AUD-003",
+      "title": "Development Defaults for Sensitive Configuration (DEBUG = True, ALLOWED_ORIGINS = ['*'])",
+      "severity": "HIGH",
+      "confidence": "CONFIRMED",
+      "evidence_status": "STATICALLY_VERIFIED",
+      "category": "SECURITY",
+      "affected_surfaces": ["BACKEND", "SECURITY", "INFRASTRUCTURE"],
+      "affected_files": [
+        {
+          "path": "Astra-Astrology-Backend/app/core/config.py",
+          "line_start": 22,
+          "line_end": 35,
+          "symbol": "Settings"
+        }
+      ],
+      "description": "Default configuration in Settings sets DEBUG = True and ALLOWED_ORIGINS = ['*']. If a production deployment does not explicitly override APP_ENV and DEBUG via environment variables, internal exception traces leak in 500 responses and wide CORS is active.",
+      "actual_behavior": "Settings class defaults to DEBUG = True and wildcard CORS origins.",
+      "expected_behavior": "Production environments must enforce DEBUG = False and explicit allowed origin domains.",
+      "failure_scenario": "In unhandled server errors, detailed Python stack traces, local paths, and environment details are exposed in JSON error responses to end users.",
+      "business_impact": "Information disclosure vulnerability, OWASP Security Misconfiguration violation.",
+      "technical_impact": "Exposure of internals to unauthorized observers; unrestricted cross-origin requests.",
+      "root_cause": "Settings class fields default to developer-friendly local development settings rather than secure-by-default production values.",
+      "recommended_fix": "Add a production pre-flight validator or ensure production deployments strictly inject APP_ENV=production, DEBUG=false, and strict domain whitelists.",
+      "acceptance_criteria": [
+        "When APP_ENV=production, DEBUG=True causes immediate startup failure.",
+        "Error responses in production return sanitized messages without stack traces."
+      ],
+      "required_tests": [
+        "tests/test_app_endpoints.py"
+      ],
+      "dependencies": [],
+      "blockers": [],
+      "related_findings": [],
+      "reproduction_steps": [
+        "Inspect Astra-Astrology-Backend/app/core/config.py lines 22-35.",
+        "Verify DEBUG default is True and ALLOWED_ORIGINS is ['*']."
+      ],
+      "evidence": [
+        "config.py line 23: DEBUG: bool = True",
+        "config.py line 32: ALLOWED_ORIGINS: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ['*'])"
+      ]
+    },
+    {
+      "id": "AUD-004",
+      "title": "Next.js Security Vulnerability Advisory in Admin & Web Frontends (next@16.4.3)",
+      "severity": "HIGH",
+      "confidence": "CONFIRMED",
+      "evidence_status": "REPRODUCED",
+      "category": "SECURITY",
+      "affected_surfaces": ["WEB", "ADMIN", "SECURITY"],
+      "affected_files": [
+        {
+          "path": "Astra-Astrology-Admin/package.json",
+          "line_start": 23,
+          "line_end": 23,
+          "symbol": "dependencies.next"
+        },
+        {
+          "path": "Astra-Astrology-Web/package.json",
+          "line_start": 35,
+          "line_end": 35,
+          "symbol": "dependencies.next"
+        }
+      ],
+      "description": "Next.js 16.4.3 used in Astra-Astrology-Admin and Astra-Astrology-Web is flagged with a known security vulnerability by the npm security advisory database during production build cycles.",
+      "actual_behavior": "next build halts on the first execution with SecurityFatalError urging an immediate security upgrade.",
+      "expected_behavior": "Frontends should utilize the patched version of Next.js free of high-severity CVEs.",
+      "failure_scenario": "Exploitation of known framework vulnerabilities affecting SSR or request handling in unpatched Next.js.",
+      "business_impact": "Potential security vulnerability exposure on public web portal.",
+      "technical_impact": "Build pipeline interruption, framework security vulnerability.",
+      "root_cause": "Package dependencies pin next to ^16.4.3 which is subject to an active npm security advisory.",
+      "recommended_fix": "Execute 'next upgrade --agent=security' across Admin and Web to advance to the patched release.",
+      "acceptance_criteria": [
+        "npm run build completes without SecurityFatalError advisory interruptions.",
+        "Next.js dependency updated to patched security release."
+      ],
+      "required_tests": [],
+      "dependencies": [],
+      "blockers": [],
+      "related_findings": [],
+      "reproduction_steps": [
+        "Run npm run build in Astra-Astrology-Admin or Astra-Astrology-Web in a clean session.",
+        "Observe SecurityFatalError recommendation emitted by the compiler."
+      ],
+      "evidence": [
+        "Terminal output: Error [SecurityFatalError]: Your version of Next.js is affected by a known security vulnerability."
+      ]
+    },
+    {
+      "id": "AUD-005",
+      "title": "Turbopack Lockfile Resolution Warning Across Monorepo Web & Admin Clients",
+      "severity": "LOW",
+      "confidence": "CONFIRMED",
+      "evidence_status": "STATICALLY_VERIFIED",
+      "category": "ARCHITECTURE",
+      "affected_surfaces": ["WEB", "ADMIN", "INFRASTRUCTURE"],
+      "affected_files": [
+        {
+          "path": "Astra-Astrology-Admin/next.config.ts",
+          "line_start": 1,
+          "line_end": 20,
+          "symbol": "nextConfig"
+        },
+        {
+          "path": "Astra-Astrology-Web/next.config.ts",
+          "line_start": 1,
+          "line_end": 20,
+          "symbol": "nextConfig"
+        }
+      ],
+      "description": "Next.js Turbopack emits a warning during build: 'Next.js ignored package-lock.json because it is outside the current Git repository'. Turbopack expects turbopack.root to be specified when nested within multi-folder polyrepo structures.",
+      "actual_behavior": "Turbopack outputs configuration warnings on every build.",
+      "expected_behavior": "Clean build without path resolution warnings.",
+      "failure_scenario": "Turbopack may not deduplicate shared dependencies efficiently if lockfile discovery is disconnected.",
+      "business_impact": "None directly; developer experience and build log cleanliness.",
+      "technical_impact": "Sub-optimal module resolution in multi-repo directory setups.",
+      "root_cause": "next.config.ts lacks turbopack.root configuration.",
+      "recommended_fix": "Add turbopack: { root: '..' } or configure standalone repository git root context.",
+      "acceptance_criteria": [
+        "next build runs without emitting lockfile path warnings."
+      ],
+      "required_tests": [],
+      "dependencies": [],
+      "blockers": [],
+      "related_findings": [],
+      "reproduction_steps": [
+        "Run npm run build in Astra-Astrology-Admin.",
+        "Observe warning regarding package-lock.json outside git repository."
+      ],
+      "evidence": [
+        "Warning: Next.js ignored package-lock.json in /Users/samiran/ULMIND/Astra Astrology because it is outside the current Git repository."
+      ]
+    },
+    {
+      "id": "AUD-006",
+      "title": "343 Backend Test Cases Skipped in Automated Test Suites Due to Missing Gateway Mocking",
+      "severity": "MEDIUM",
+      "confidence": "CONFIRMED",
+      "evidence_status": "REPRODUCED",
+      "category": "TESTING",
+      "affected_surfaces": ["BACKEND", "API"],
+      "affected_files": [
+        {
+          "path": "Astra-Astrology-Backend/tests/test_billing.py",
+          "line_start": 1,
+          "line_end": 50,
+          "symbol": "test_billing"
+        },
+        {
+          "path": "Astra-Astrology-Backend/tests/test_wallet.py",
+          "line_start": 1,
+          "line_end": 50,
+          "symbol": "test_wallet"
+        }
+      ],
+      "description": "343 test cases in Astra-Astrology-Backend are skipped during pytest runs because external gateway credentials (live Razorpay, Firebase, Agora) are not active. While avoiding live calls is correct, offline mock fixtures should be provided so that payment state machines and webhook verification logic can be fully exercised in CI.",
+      "actual_behavior": "Pytest reports 794 passed, 343 skipped.",
+      "expected_behavior": "Offline mock fixtures allow 100% of integration test cases to run without requiring live external credentials.",
+      "failure_scenario": "A regression in payment webhook processing or order creation passes CI unnoticed because tests were skipped rather than tested against mock responses.",
+      "business_impact": "Risk of payment processing regressions reaching staging/production undetected.",
+      "technical_impact": "Incomplete CI test coverage for critical revenue-generating workflows.",
+      "root_cause": "Tests rely on live gateway checks to skip rather than providing fallback unittest.mock / pytest-mock fixtures.",
+      "recommended_fix": "Implement deterministic offline fixtures for Razorpay webhook signature verification and Agora RTC token generation to allow full test execution.",
+      "acceptance_criteria": [
+        "Skipped test count is reduced from 343 to < 50 in offline CI runs.",
+        "Webhook and billing state transitions are verified via offline fixtures."
+      ],
+      "required_tests": [
+        "tests/test_billing.py",
+        "tests/test_wallet.py"
+      ],
+      "dependencies": [],
+      "blockers": [],
+      "related_findings": [],
+      "reproduction_steps": [
+        "Run .venv/bin/pytest tests/ in Astra-Astrology-Backend.",
+        "Observe '343 skipped' in test summary output."
+      ],
+      "evidence": [
+        "Pytest output: 794 passed, 343 skipped, 1 warning in 41.81s."
+      ]
+    },
+    {
+      "id": "AUD-007",
+      "title": "Inconsistent Client-Side Privacy Protection During Confidential Video Consultations",
+      "severity": "MEDIUM",
+      "confidence": "CONFIRMED",
+      "evidence_status": "STATICALLY_VERIFIED",
+      "category": "UX",
+      "affected_surfaces": ["MOBILE", "SECURITY", "UX"],
+      "affected_files": [
+        {
+          "path": "Astra-Astrology-App/src/app/call/[id].tsx",
+          "line_start": 1,
+          "line_end": 100,
+          "symbol": "CallScreen"
+        },
+        {
+          "path": "Astra-Astrology-App/src/app/chat/[id].tsx",
+          "line_start": 1,
+          "line_end": 100,
+          "symbol": "ChatScreen"
+        }
+      ],
+      "description": "Astra-Astrology-App includes expo-screen-capture in package.json, but does not invoke ScreenCapture.preventScreenCaptureAsync() during confidential live video consultations and private chat sessions.",
+      "actual_behavior": "Screenshots and screen recordings are permitted by default during sensitive private astrologer-client consultations.",
+      "expected_behavior": "Confidential consultation screens should automatically block unauthorized device screenshots and recordings.",
+      "failure_scenario": "Sensitive personal birth charts, remedies, and private video feeds are captured or leaked by compromised recording applications.",
+      "business_impact": "User privacy breach and loss of trust regarding confidential astrological readings.",
+      "technical_impact": "Omission of available device privacy API enforcement.",
+      "root_cause": "ScreenCapture lifecycle hooks are declared in dependencies but not attached to call/[id] and chat/[id] mount/unmount effects.",
+      "recommended_fix": "Add ScreenCapture.preventScreenCaptureAsync() in useEffect on screen mount and allowScreenCaptureAsync() on cleanup.",
+      "acceptance_criteria": [
+        "Android / iOS system blocks screenshots and video capture during active call/chat rooms.",
+        "Standard screens allow normal screenshot sharing."
+      ],
+      "required_tests": [],
+      "dependencies": [],
+      "blockers": [],
+      "related_findings": [],
+      "reproduction_steps": [
+        "Inspect Astra-Astrology-App/src/app/call/[id].tsx.",
+        "Verify absence of preventScreenCaptureAsync calls."
+      ],
+      "evidence": [
+        "expo-screen-capture is installed in package.json (~58.0.6) but unreferenced in call/[id].tsx."
+      ]
+    },
+    {
+      "id": "AUD-008",
+      "title": "Lack of Automated Periodic TTL Purging for AI Memory Vectors & Chat Context",
+      "severity": "LOW",
+      "confidence": "CONFIRMED",
+      "evidence_status": "STATICALLY_VERIFIED",
+      "category": "COMPLIANCE",
+      "affected_surfaces": ["BACKEND", "DATABASE"],
+      "affected_files": [
+        {
+          "path": "Astra-Astrology-Backend/app/models/ai_astrologer.py",
+          "line_start": 40,
+          "line_end": 90,
+          "symbol": "AiAstrologerMemory"
+        }
+      ],
+      "description": "Conversation memories and contextual vector embeddings in AiAstrologerMemory are retained indefinitely without an automated TTL expiration index or background cleanup worker.",
+      "actual_behavior": "Transitory user AI interactions are stored permanently unless manually purged.",
+      "expected_behavior": "Inactive session memories should expire after a configurable data retention period (e.g. 90 days) in compliance with privacy regulations.",
+      "failure_scenario": "Database storage grows monotonically with stale conversational vectors, and user data minimization mandates are compromised.",
+      "business_impact": "Compliance exposure under Digital Personal Data Protection (DPDP) and GDPR requirements.",
+      "technical_impact": "Unbounded database growth in MongoDB memory collections.",
+      "root_cause": "AiAstrologerMemory document lacks an expireAfterSeconds TTL index on updated_at.",
+      "recommended_fix": "Add a MongoDB TTL index on updated_at in AiAstrologerMemory class Settings or schedule an automated purge job.",
+      "acceptance_criteria": [
+        "Memory records older than retention threshold are purged automatically by MongoDB.",
+        "Active user profiles remain intact."
+      ],
+      "required_tests": [
+        "tests/test_ai_memory_purge.py"
+      ],
+      "dependencies": [],
+      "blockers": [],
+      "related_findings": [],
+      "reproduction_steps": [
+        "Inspect Astra-Astrology-Backend/app/models/ai_astrologer.py lines 40-90.",
+        "Observe no expireAfterSeconds option in indexes."
+      ],
+      "evidence": [
+        "AiAstrologerMemory settings indexes do not specify expireAfterSeconds."
+      ]
+    }
+  ],
+  "test_results": [
+    {
+      "command": "npx tsc --noEmit",
+      "environment": "Node 20.x / Astra-Astrology-Admin",
+      "exit_code": 0,
+      "status": "PASSED",
+      "passed_count": 46,
+      "failed_count": 0,
+      "skipped_count": 0,
+      "error_summary": null,
+      "notes": "0 TypeScript compilation errors across 46 routes."
+    },
+    {
+      "command": "npx tsc --noEmit",
+      "environment": "Node 20.x / Astra-Astrology-Web",
+      "exit_code": 0,
+      "status": "PASSED",
+      "passed_count": 54,
+      "failed_count": 0,
+      "skipped_count": 0,
+      "error_summary": null,
+      "notes": "0 TypeScript compilation errors across 54 routes."
+    },
+    {
+      "command": "npx tsc --noEmit",
+      "environment": "React Native 0.88 / Expo SDK 58 / Astra-Astrology-App",
+      "exit_code": 0,
+      "status": "PASSED",
+      "passed_count": 101,
+      "failed_count": 0,
+      "skipped_count": 0,
+      "error_summary": null,
+      "notes": "0 TypeScript compilation errors across 101 screens."
+    },
+    {
+      "command": "npm run build",
+      "environment": "Next.js 16.4.3 / Astra-Astrology-Admin",
+      "exit_code": 0,
+      "status": "PASSED",
+      "passed_count": 46,
+      "failed_count": 0,
+      "skipped_count": 0,
+      "error_summary": null,
+      "notes": "Production build generated 46 static pages successfully."
+    },
+    {
+      "command": "npm run build",
+      "environment": "Next.js 16.4.3 / Astra-Astrology-Web",
+      "exit_code": 0,
+      "status": "PASSED",
+      "passed_count": 54,
+      "failed_count": 0,
+      "skipped_count": 0,
+      "error_summary": null,
+      "notes": "Production build generated 54 static pages successfully."
+    },
+    {
+      "command": "pytest tests/ -q",
+      "environment": "Python 3.12.14 / Astra-Astrology-Backend",
+      "exit_code": 0,
+      "status": "PASSED",
+      "passed_count": 794,
+      "failed_count": 0,
+      "skipped_count": 343,
+      "error_summary": null,
+      "notes": "794 passed, 343 skipped (live gateway mocks) in 41.81s."
+    }
+  ],
+  "unverified_risks": [
+    {
+      "risk_id": "RISK-01",
+      "title": "High Concurrency WebRTC Audio/Video Token Consumption",
+      "reason_unverified": "Load testing with 500+ simultaneous media rooms requires live Agora/ZegoCloud streaming infrastructure and distributed client test harnesses prohibited in read-only audit.",
+      "investigation_guidance": "Execute an automated load test in staging simulating 500 concurrent rooms using headless WebRTC workers to observe token refresh latency."
+    },
+    {
+      "risk_id": "RISK-02",
+      "title": "Payment Webhook Delivery Failure Under UPI Network Partitions",
+      "reason_unverified": "Simulating bank network timeouts during webhook delivery requires live bank sandboxes.",
+      "investigation_guidance": "Test idempotency and retry mechanics using Razorpay webhook mock replay tools in staging."
+    }
+  ],
+  "excluded_areas": [
+    {
+      "area": "node_modules & third-party dependencies",
+      "reason": "Third-party vendor code excluded from primary line-by-line inspection (lockfiles audited for CVEs)."
+    },
+    {
+      "area": "Live Razorpay & Agora external API endpoints",
+      "reason": "Strict read-only audit mandate prohibits sending live financial transactions or allocating paid cloud media streams."
+    }
+  ],
+  "overall_assessment": "AUDIT_COMPLETE_WITH_HIGH_OR_MEDIUM_FINDINGS"
+}
