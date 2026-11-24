@@ -8,20 +8,21 @@ Sections Covered (113 Canonical Pages):
 - P001: Front Royal Cover Page with Sacred Om, Vedic Stotram, Native Profile & D1/D9 Charts
 - P002: Master Table of Contents / Index (57 Canonical Chapters)
 - P003: Avakhada Chakra & Vedic Birth Panchang Table
-- P004: Planetary Positions (Graha Spashta) & Planetary Dignities Table
-- P005: Jaimini Chara Karakas, Baladi Avasthas & Deeptadi Avasthas Table
-- P006: Nirayana Bhava Spashta (12 House Cusps & Sandhi Positions Table)
+- P004: Planetary Positions (Graha Spashta) & Planetary Dignities Table + D1 Lagna Chart
+- P005: Jaimini Chara Karakas, Baladi Avasthas & Dual Square Charts (Chandra & Navamsha)
+- P006: Nirayana Bhava Spashta (12 House Cusps) & Dual Square Charts (Lagna & Chalit)
 - P007-P010: Shodashvarga Diamond Vector Charts (16 Divisional Charts in 4 Groups)
-- P011-P012: Shodashvarga Sign Placements & Strength Portfolios Table
+- P011: Sudarshan Chakra (Triple Harmonic Zodiacal Cosmic Circle)
+- P012: Shodashvarga Sign Placements & Strength Portfolios Table
 - P013-P021: 120-Year Vimshottari Mahadasha, Antardasha & Pratyantardasha Systems (9 Pages)
 - P022-P023: Yogini 36-Year Dasha System & Sub-Periods (2 Pages)
 - P024-P026: Jaimini Chara Dasha System & Rashi Mahadashas (3 Pages)
 - P027-P032: Micro-Pratyantardasha Timelines & Planetary Transit (Gochar) Tables (6 Pages)
 - P033: Panchadha Maitri Chakra (5-Fold Friendship Matrix)
 - P034-P035: Parashari Planetary Aspects (Graha Drishti on Houses & Planets - 2 Pages)
-- P036: Tri-Dosha Analysis: Manglik Kuja Dosha, Shani Sade Sati & Kalsarpa Yoga
+- P036: Tri-Dosha Analysis: Manglik Kuja Dosha, Shani Sade Sati & Kalsarpa Yoga + Dual Charts
 - P037: Jaimini Karakamsha, Arudha Lagna & Special Ascendants
-- P038: Parashari Ashtakavarga Full Matrix (Sarvashtakavarga 337 Bindus & Shodhya Pinda)
+- P038: Parashari Ashtakavarga Full Matrix (Sarvashtakavarga 337 Bindus & Shodhya Pinda) + Chart
 - P039-P040: Shadbala Detailed 6-Fold Strengths & Relative Rankings (2 Pages)
 - P041-P065: Comprehensive 12-Bhava Vedic Life Predictions (25 Dedicated Pages)
 - P066-P068: Remedial Solutions, Auspicious Gemstones (Ratna), Rudraksha & Mantras (3 Pages)
@@ -37,6 +38,7 @@ from __future__ import annotations
 
 import io
 import math
+import os
 from datetime import datetime, date
 from typing import Any
 
@@ -46,14 +48,19 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 from reportlab.platypus import (
+    BaseDocTemplate,
+    Frame,
     HRFlowable,
+    Image as RLImage,
     KeepTogether,
+    NextPageTemplate,
     PageBreak,
+    PageTemplate,
     Paragraph,
-    SimpleDocTemplate,
     Spacer,
     Table,
     TableStyle,
+    Flowable,
 )
 from reportlab.graphics.shapes import Drawing, Rect, Line, Polygon, String, Group
 
@@ -89,12 +96,33 @@ ZODIAC_NAMES = [
 ZODIAC_SYMBOLS = ["♈", "♉", "♊", "♋", "♌", "♍", "♎", "♏", "♐", "♑", "♒", "♓"]
 PLANET_NAMES = ["Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Rahu", "Ketu"]
 
+TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../assets/kundli_template")
+COVER_GANESHA_PATH = os.path.join(TEMPLATE_DIR, "cover_ganesha.jpg")
+PAGE_BACKGROUND_PATH = os.path.join(TEMPLATE_DIR, "page_background.jpg")
+DIVINLINK_LOGO_PATH = os.path.join(TEMPLATE_DIR, "divinlink_logo.png")
+CHART_FRAME_SQUARE_PATH = os.path.join(TEMPLATE_DIR, "chart_frame_square.jpg")
+CHART_FRAME_RECT_PATH = os.path.join(TEMPLATE_DIR, "chart_frame_rect.jpg")
+
+
+def on_cover_page(canv: canvas.Canvas, doc: Any) -> None:
+    canv.saveState()
+    if os.path.exists(COVER_GANESHA_PATH):
+        canv.drawImage(COVER_GANESHA_PATH, 0, 0, width=A4[0], height=A4[1])
+    canv.restoreState()
+
+
+def on_later_pages(canv: canvas.Canvas, doc: Any) -> None:
+    canv.saveState()
+    if os.path.exists(PAGE_BACKGROUND_PATH):
+        canv.drawImage(PAGE_BACKGROUND_PATH, 0, 0, width=A4[0], height=A4[1])
+    canv.restoreState()
+
 
 class DivinLinkNumberedCanvas(canvas.Canvas):
     """Two-pass canvas for precise running headers, page numbers & royal borders."""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._saved_page_states = []
+        self._saved_page_states: list[dict[str, Any]] = []
 
     def showPage(self):
         self._saved_page_states.append(dict(self.__dict__))
@@ -104,51 +132,253 @@ class DivinLinkNumberedCanvas(canvas.Canvas):
         num_pages = len(self._saved_page_states)
         for state in self._saved_page_states:
             self.__dict__.update(state)
-            self.draw_page_decorations(num_pages)
+            w, h = A4
+            if self._pageNumber > 1:
+                self.saveState()
+                # Running Header
+                self.setFont("Helvetica-Bold", 8)
+                self.setFillColor(colors.HexColor("#92400E"))
+                self.drawCentredString(w / 2.0, h - 33, "DIVINLINK VEDIC ASTROLOGY")
+
+                # Running Footer Left
+                self.setFont("Helvetica", 7.5)
+                self.setFillColor(colors.HexColor("#78350F"))
+                self.drawString(45, 34, "DivinLink  •  Vedic Astrology & Planetary Science Platform  •  www.divinlink.com")
+
+                # Running Footer Right: Circled Page Number matching Horosoft
+                self.setStrokeColor(colors.HexColor("#78350F"))
+                self.setLineWidth(0.8)
+                self.circle(w - 55, 36, 10, fill=0, stroke=1)
+                self.setFont("Helvetica-Bold", 8)
+                self.setFillColor(colors.HexColor("#1E293B"))
+                self.drawCentredString(w - 55, 33, str(self._pageNumber))
+                self.restoreState()
             super().showPage()
         super().save()
 
-    def draw_page_decorations(self, total_pages: int):
-        self.saveState()
-        w, h = A4
 
-        # Outer Royal Double Border
-        self.setStrokeColor(GOLD_PRIMARY)
-        self.setLineWidth(1.0)
-        self.rect(20, 20, w - 40, h - 40)
-        self.setStrokeColor(GOLD_ACCENT)
-        self.setLineWidth(0.4)
-        self.rect(23, 23, w - 46, h - 46)
+class NorthIndianChartFlowable(Flowable):
+    """Renders authentic North Indian diamond chart using real frame assets."""
+    def __init__(
+        self,
+        width: float,
+        height: float,
+        asc_sign: int,
+        house_planets: dict[int, list[str]],
+        title: str = "",
+        is_rect: bool = False,
+    ):
+        super().__init__()
+        self.width = width
+        self.height = height
+        self.asc_sign = asc_sign
+        self.house_planets = house_planets
+        self.title = title
+        self.is_rect = is_rect
+        if is_rect:
+            self.frame_path = CHART_FRAME_RECT_PATH
+        else:
+            self.frame_path = CHART_FRAME_SQUARE_PATH
 
-        # Corner Ornaments
-        corner_sz = 8
-        for cx, cy in [(23, 23), (w - 23, 23), (23, h - 23), (w - 23, h - 23)]:
-            self.setFillColor(GOLD_PRIMARY)
-            self.circle(cx, cy, 2, fill=1, stroke=0)
+    def wrap(self, availWidth, availHeight):
+        extra = 15 if self.title else 0
+        return self.width, self.height + extra
 
-        # Running Header (Pages > 1)
-        if self._pageNumber > 1:
-            self.setFont("Helvetica-Bold", 7.5)
-            self.setFillColor(GOLD_PRIMARY)
-            self.drawString(36, h - 34, "DIVINLINK VEDIC HOROSCOPE")
-            self.setFont("Helvetica", 7)
-            self.setFillColor(TEXT_MUTED)
-            self.drawString(175, h - 34, "|  HOROSOFT PROFESSIONAL EDITION MODEL 7  |  SWISS EPHEMERIS")
-            self.setStrokeColor(BORDER_LIGHT)
-            self.setLineWidth(0.5)
-            self.line(36, h - 38, w - 36, h - 38)
+    def draw(self):
+        canv = self.canv
+        canv.saveState()
+        w = self.width
+        h = self.height
 
-        # Running Footer
-        self.setFont("Helvetica", 7)
-        self.setFillColor(TEXT_MUTED)
-        self.drawString(36, 28, "DIVINLINK  •  Vedic Astrology & Planetary Science Platform  •  www.divinlink.com")
-        page_str = f"Page {self._pageNumber} of {total_pages}"
-        self.drawRightString(w - 36, 28, page_str)
-        self.setStrokeColor(BORDER_LIGHT)
-        self.setLineWidth(0.5)
-        self.line(36, 36, w - 36, 36)
+        # Draw Title
+        if self.title:
+            canv.setFont("Helvetica-Bold", 8.5)
+            canv.setFillColor(colors.HexColor("#92400E"))
+            canv.drawCentredString(w / 2.0, h + 3, self.title)
 
-        self.restoreState()
+        # Draw Chart Frame Image
+        if os.path.exists(self.frame_path):
+            canv.drawImage(self.frame_path, 0, 0, width=w, height=h)
+
+        # House Rashi Numbers at 12 Inner Vertices
+        rashi_coords = {
+            1:  (w * 0.50, h * 0.53),
+            2:  (w * 0.28, h * 0.77),
+            3:  (w * 0.23, h * 0.72),
+            4:  (w * 0.46, h * 0.50),
+            5:  (w * 0.23, h * 0.28),
+            6:  (w * 0.28, h * 0.23),
+            7:  (w * 0.50, h * 0.46),
+            8:  (w * 0.72, h * 0.23),
+            9:  (w * 0.77, h * 0.28),
+            10: (w * 0.54, h * 0.50),
+            11: (w * 0.77, h * 0.72),
+            12: (w * 0.72, h * 0.77),
+        }
+
+        canv.setFont("Helvetica-Bold", 7)
+        canv.setFillColor(colors.HexColor("#78350F"))
+        for house_idx, (rx, ry) in rashi_coords.items():
+            sign_num = ((self.asc_sign - 1 + (house_idx - 1)) % 12) + 1
+            canv.drawCentredString(rx, ry - 2, str(sign_num))
+
+        # House Planet Coordinates (Centers of house areas)
+        planet_centers = {
+            1:  (w * 0.50, h * 0.70),
+            2:  (w * 0.30, h * 0.86),
+            3:  (w * 0.14, h * 0.70),
+            4:  (w * 0.28, h * 0.50),
+            5:  (w * 0.14, h * 0.30),
+            6:  (w * 0.30, h * 0.14),
+            7:  (w * 0.50, h * 0.30),
+            8:  (w * 0.70, h * 0.14),
+            9:  (w * 0.86, h * 0.30),
+            10: (w * 0.72, h * 0.50),
+            11: (w * 0.86, h * 0.70),
+            12: (w * 0.70, h * 0.86),
+        }
+
+        canv.setFont("Helvetica-Bold", 6.5 if not self.is_rect else 7.5)
+        canv.setFillColor(colors.HexColor("#1E293B"))
+
+        for house_idx, (px, py) in planet_centers.items():
+            planets = self.house_planets.get(house_idx, [])
+            if not planets:
+                continue
+            line_height = 7.5 if not self.is_rect else 8.5
+            total_h = len(planets) * line_height
+            start_y = py + (total_h / 2.0) - line_height + 2
+            for i, p_name in enumerate(planets):
+                clean_p = p_name.replace("®", "(R)").strip()
+                canv.drawCentredString(px, start_y - (i * line_height), clean_p)
+
+        canv.restoreState()
+
+
+class SudarshanChakraFlowable(Flowable):
+    """Renders authoritative Vedic Sudarshan Chakra (Triple Harmonic Rings)."""
+    def __init__(
+        self,
+        size: float,
+        d1_asc: int,
+        moon_sign: int,
+        sun_sign: int,
+        d1_planets: dict[int, list[str]],
+        moon_planets: dict[int, list[str]],
+        sun_planets: dict[int, list[str]],
+        native_name: str,
+        dob_tob_str: str,
+    ):
+        super().__init__()
+        self.size = size
+        self.width = size
+        self.height = size
+        self.d1_asc = d1_asc
+        self.moon_sign = moon_sign
+        self.sun_sign = sun_sign
+        self.d1_planets = d1_planets
+        self.moon_planets = moon_planets
+        self.sun_planets = sun_planets
+        self.native_name = native_name
+        self.dob_tob_str = dob_tob_str
+
+    def wrap(self, availWidth, availHeight):
+        return self.size, self.size
+
+    def draw(self):
+        canv = self.canv
+        canv.saveState()
+        cx = self.size / 2.0
+        cy = self.size / 2.0
+
+        r_hub = self.size * 0.12
+        r_inner = self.size * 0.24
+        r_mid = self.size * 0.36
+        r_outer = self.size * 0.48
+
+        # Concentric Rings
+        canv.setStrokeColor(colors.HexColor("#B45309"))
+        canv.setLineWidth(1.2)
+        canv.circle(cx, cy, r_outer, fill=0, stroke=1)
+        canv.setLineWidth(0.8)
+        canv.circle(cx, cy, r_mid, fill=0, stroke=1)
+        canv.circle(cx, cy, r_inner, fill=0, stroke=1)
+
+        # Central Hub
+        canv.setFillColor(colors.HexColor("#FEF3C7"))
+        canv.circle(cx, cy, r_hub, fill=1, stroke=1)
+
+        # 12 Radial Sector Lines
+        canv.setStrokeColor(colors.HexColor("#D97706"))
+        canv.setLineWidth(0.6)
+        for i in range(12):
+            angle_rad = math.radians(i * 30.0 + 15.0)
+            x1 = cx + r_hub * math.cos(angle_rad)
+            y1 = cy + r_hub * math.sin(angle_rad)
+            x2 = cx + r_outer * math.cos(angle_rad)
+            y2 = cy + r_outer * math.sin(angle_rad)
+            canv.line(x1, y1, x2, y2)
+
+        # Central Hub Text
+        canv.setFont("Helvetica-Bold", 7)
+        canv.setFillColor(colors.HexColor("#92400E"))
+        canv.drawCentredString(cx, cy + 18, "SUDARSHAN")
+        canv.drawCentredString(cx, cy + 9, "CHAKRA")
+        canv.setFont("Helvetica-Bold", 6)
+        canv.setFillColor(colors.HexColor("#1E293B"))
+        canv.drawCentredString(cx, cy - 2, self.native_name[:16])
+        canv.setFont("Helvetica", 5)
+        canv.setFillColor(colors.HexColor("#64748B"))
+        canv.drawCentredString(cx, cy - 12, self.dob_tob_str)
+        canv.drawCentredString(cx, cy - 20, f"Lagna: Rasi {self.d1_asc}")
+
+        # 12 Sectors
+        for h in range(1, 13):
+            mid_angle = math.radians(90.0 - (h - 1) * 30.0)
+
+            # 1. Innermost Ring (Lagna)
+            r_l = (r_hub + r_inner) / 2.0
+            lx = cx + r_l * math.cos(mid_angle)
+            ly = cy + r_l * math.sin(mid_angle)
+            s_l = ((self.d1_asc - 1 + (h - 1)) % 12) + 1
+            canv.setFont("Helvetica-Bold", 6.5)
+            canv.setFillColor(colors.HexColor("#B45309"))
+            canv.drawCentredString(lx, ly + 3, str(s_l))
+            p_l = self.d1_planets.get(h, [])
+            if p_l:
+                canv.setFont("Helvetica-Bold", 5.5)
+                canv.setFillColor(colors.HexColor("#1E293B"))
+                canv.drawCentredString(lx, ly - 5, " ".join(p[:2] for p in p_l[:2]))
+
+            # 2. Middle Ring (Chandra)
+            r_m = (r_inner + r_mid) / 2.0
+            mx = cx + r_m * math.cos(mid_angle)
+            my = cy + r_m * math.sin(mid_angle)
+            s_m = ((self.moon_sign - 1 + (h - 1)) % 12) + 1
+            canv.setFont("Helvetica-Bold", 6.5)
+            canv.setFillColor(colors.HexColor("#B45309"))
+            canv.drawCentredString(mx, my + 3, str(s_m))
+            p_m = self.moon_planets.get(h, [])
+            if p_m:
+                canv.setFont("Helvetica-Bold", 5.5)
+                canv.setFillColor(colors.HexColor("#1E293B"))
+                canv.drawCentredString(mx, my - 5, " ".join(p[:2] for p in p_m[:2]))
+
+            # 3. Outer Ring (Surya)
+            r_o = (r_mid + r_outer) / 2.0
+            ox = cx + r_o * math.cos(mid_angle)
+            oy = cy + r_o * math.sin(mid_angle)
+            s_o = ((self.sun_sign - 1 + (h - 1)) % 12) + 1
+            canv.setFont("Helvetica-Bold", 6.5)
+            canv.setFillColor(colors.HexColor("#B45309"))
+            canv.drawCentredString(ox, oy + 3, str(s_o))
+            p_o = self.sun_planets.get(h, [])
+            if p_o:
+                canv.setFont("Helvetica-Bold", 5.5)
+                canv.setFillColor(colors.HexColor("#1E293B"))
+                canv.drawCentredString(ox, oy - 5, " ".join(p[:2] for p in p_o[:2]))
+
+        canv.restoreState()
 
 
 def draw_north_indian_diamond_chart(
@@ -157,35 +387,9 @@ def draw_north_indian_diamond_chart(
     asc_sign: int,
     house_planets: dict[int, list[str]],
     chart_title: str = "Lagna Chart (D1)",
-) -> Drawing:
-    """Draws a North Indian Diamond vector chart."""
-    d = Drawing(width, height)
-    hw, hh = width / 2.0, height / 2.0
-    bg = Rect(0, 0, width, height, fillColor=GOLD_LIGHT, strokeColor=GOLD_PRIMARY, strokeWidth=1.0)
-    d.add(bg)
-
-    d.add(Line(0, 0, width, height, strokeColor=BORDER_LIGHT, strokeWidth=0.5))
-    d.add(Line(0, height, width, 0, strokeColor=BORDER_LIGHT, strokeWidth=0.5))
-    d.add(Polygon([hw, 0, width, hh, hw, height, 0, hh], fillColor=None, strokeColor=GOLD_PRIMARY, strokeWidth=1.0))
-
-    house_centers = {
-        1: (hw, hh * 1.45), 2: (hw * 0.52, hh * 1.76), 3: (hw * 0.22, hh * 1.45),
-        4: (hw * 0.52, hh), 5: (hw * 0.22, hh * 0.52), 6: (hw * 0.52, hh * 0.22),
-        7: (hw, hh * 0.55), 8: (hw * 1.45, hh * 0.22), 9: (hw * 1.76, hh * 0.52),
-        10: (hw * 1.45, hh), 11: (hw * 1.76, hh * 1.45), 12: (hw * 1.45, hh * 1.76),
-    }
-
-    for h_num, (cx, cy) in house_centers.items():
-        sign_idx = ((asc_sign - 1 + (h_num - 1)) % 12) + 1
-        d.add(String(cx, cy + 8, str(sign_idx), fontName="Helvetica", fontSize=6.5, fillColor=GOLD_PRIMARY, textAnchor="middle"))
-        p_list = house_planets.get(h_num, [])
-        if p_list:
-            p_text = " ".join(p[:2] for p in p_list[:3])
-            d.add(String(cx, cy - 4, p_text, fontName="Helvetica-Bold", fontSize=6, fillColor=NAVY_PRIMARY, textAnchor="middle"))
-
-    d.add(Rect(hw - 42, 2, 84, 12, fillColor=NAVY_PRIMARY, strokeColor=GOLD_PRIMARY, strokeWidth=0.5))
-    d.add(String(hw, 5, chart_title, fontName="Helvetica-Bold", fontSize=6, fillColor=WHITE, textAnchor="middle"))
-    return d
+) -> NorthIndianChartFlowable:
+    """Wrapper for backward compatibility."""
+    return NorthIndianChartFlowable(width, height, asc_sign, house_planets, chart_title, is_rect=False)
 
 
 def compute_shodashvarga(lon: float) -> dict[str, int]:
@@ -382,6 +586,8 @@ def parse_full_degree(deg_str: str) -> float:
 # =============================================================================
 # MASTER 113-PAGE PDF BUILDER FUNCTION
 # =============================================================================
+
+
 def generate_comprehensive_kundli_pdf(
     payload: KundliCalculateRequest,
     user: User | None = None,
@@ -389,13 +595,17 @@ def generate_comprehensive_kundli_pdf(
     """Compiles the full 57-section / 113-topic DivinLink Horosoft Model 7 PDF."""
     buffer = io.BytesIO()
 
-    doc = SimpleDocTemplate(
+    w, h = A4
+    frame_cover = Frame(36, 36, w - 72, h - 72, id="F_Cover", topPadding=0, bottomPadding=0, leftPadding=0, rightPadding=0)
+    frame_later = Frame(38, 44, w - 76, h - 88, id="F_Later", topPadding=0, bottomPadding=0, leftPadding=0, rightPadding=0)
+
+    template_cover = PageTemplate(id="Cover", frames=frame_cover, onPage=on_cover_page)
+    template_later = PageTemplate(id="Later", frames=frame_later, onPage=on_later_pages)
+
+    doc = BaseDocTemplate(
         buffer,
         pagesize=A4,
-        leftMargin=36,
-        rightMargin=36,
-        topMargin=44,
-        bottomMargin=44,
+        pageTemplates=[template_cover, template_later],
     )
 
     base_styles = getSampleStyleSheet()
@@ -572,76 +782,95 @@ def generate_comprehensive_kundli_pdf(
 
     story = []
 
+    
+
+    moon_lon = planet_positions.get("Moon", 45.0)
+    moon_sign = int(moon_lon / 30.0) % 12 + 1
+    sun_lon = planet_positions.get("Sun", 45.0)
+    sun_sign = int(sun_lon / 30.0) % 12 + 1
+
+    moon_house_map: dict[int, list[str]] = {h: [] for h in range(1, 13)}
+    sun_house_map: dict[int, list[str]] = {h: [] for h in range(1, 13)}
+    for p_name, lon in planet_positions.items():
+        p_sign = int(lon / 30.0) % 12 + 1
+        h_moon = ((p_sign - moon_sign) % 12) + 1
+        moon_house_map[h_moon].append(p_name)
+        h_sun = ((p_sign - sun_sign) % 12) + 1
+        sun_house_map[h_sun].append(p_name)
+
+    chalit_house_map: dict[int, list[str]] = {h: [] for h in range(1, 13)}
+    for p in kd.get("chalit_planets", []):
+        chalit_house_map[p.get("house", 1)].append(p.get("name", ""))
+    if not any(chalit_house_map.values()):
+        chalit_house_map = dict(d1_house_map)
+
+    story = []
+
     # =========================================================================
     # PAGE 1: COVER PAGE
     # =========================================================================
-    story.append(Paragraph("ॐ", ParagraphStyle("Om", fontName="Helvetica", fontSize=26, leading=30, alignment=1, textColor=GOLD_PRIMARY)))
+    story.append(NextPageTemplate("Later"))
+    story.append(Spacer(1, 335))
+    if os.path.exists(DIVINLINK_LOGO_PATH):
+        story.append(RLImage(DIVINLINK_LOGO_PATH, width=64, height=64))
     story.append(Spacer(1, 4))
-    story.append(Paragraph("DIVINLINK COMPREHENSIVE VEDIC KUNDLI", title_style))
-    story.append(Paragraph("HOROSOFT PROFESSIONAL EDITION • MODULE 7 MASTER DOSSIER", subtitle_style))
-    story.append(Spacer(1, 8))
+    story.append(Paragraph("<b>DIVINLINK</b>", ParagraphStyle("CBrand", fontName="Helvetica-Bold", fontSize=22, leading=26, alignment=1, textColor=colors.HexColor("#92400E"))))
+    story.append(Spacer(1, 2))
+    story.append(Paragraph("<b>COMPREHENSIVE VEDIC KUNDLI MASTER DOSSIER</b>", ParagraphStyle("CSub", fontName="Helvetica-Bold", fontSize=9.5, leading=12, alignment=1, textColor=colors.HexColor("#78350F"))))
+    story.append(Spacer(1, 2))
+    story.append(Paragraph("HOROSOFT PROFESSIONAL EDITION • MODULE 7 MASTER DOSSIER", ParagraphStyle("CEd", fontName="Helvetica", fontSize=7.5, leading=10, alignment=1, textColor=colors.HexColor("#B45309"))))
+    story.append(Spacer(1, 6))
 
     stotram_text = (
         "<i>शुक्लाम्बरधरं विष्णुं शशिवर्णं चतुर्भुजम् । प्रसन्नवदनं ध्यायेत् सर्वविघ्नोपशान्तये ॥</i><br/>"
         "<i>गुरुर्ब्रह्मा गुरुर्विष्णुः गुरुर्देवो महेश्वरः । गुरुः साक्षात् परब्रह्म तस्मै श्रीगुरवे नमः ॥</i>"
     )
-    story.append(Paragraph(stotram_text, ParagraphStyle("Stotram", fontName="Helvetica", fontSize=8, leading=12, alignment=1, textColor=NAVY_PRIMARY)))
-    story.append(Spacer(1, 10))
+    story.append(Paragraph(stotram_text, ParagraphStyle("Stotram", fontName="Helvetica", fontSize=7.5, leading=10.5, alignment=1, textColor=colors.HexColor("#1E293B"))))
+    story.append(Spacer(1, 8))
 
     cover_meta = [
-        [Paragraph("<b>Native Name:</b>", table_cell_left), Paragraph(c_name, table_cell_left),
-         Paragraph("<b>Date of Birth:</b>", table_cell_left), Paragraph(birth_dt_str, table_cell_left)],
-        [Paragraph("<b>Gender:</b>", table_cell_left), Paragraph((payload.gender or "Male").capitalize(), table_cell_left),
-         Paragraph("<b>Time of Birth:</b>", table_cell_left), Paragraph(f"{birth_tm_str} (IST / Local)", table_cell_left)],
-        [Paragraph("<b>Place of Birth:</b>", table_cell_left), Paragraph(payload.place or "Kolkata, WB, India", table_cell_left),
-         Paragraph("<b>Coordinates:</b>", table_cell_left), Paragraph(f"{payload.latitude:.4f}° N, {payload.longitude:.4f}° E", table_cell_left)],
-        [Paragraph("<b>Ayanamsa:</b>", table_cell_left), Paragraph(f"Chitra Paksha / Lahiri ({kd.get('astronomical_info', {}).get('ayan_type', '23°51\'02\"')})", table_cell_left),
-         Paragraph("<b>House System:</b>", table_cell_left), Paragraph(str(payload.house_system or "Placidus / KP"), table_cell_left)],
+        [Paragraph("Native Name:", table_cell_bold), Paragraph(c_name, table_cell_left),
+         Paragraph("Date of Birth:", table_cell_bold), Paragraph(birth_dt_str, table_cell_left)],
+        [Paragraph("Gender:", table_cell_bold), Paragraph((payload.gender or "Male").capitalize(), table_cell_left),
+         Paragraph("Time of Birth:", table_cell_bold), Paragraph(f"{birth_tm_str} (IST / Local)", table_cell_left)],
+        [Paragraph("Place of Birth:", table_cell_bold), Paragraph(payload.place or "Kolkata, WB, India", table_cell_left),
+         Paragraph("Coordinates:", table_cell_bold), Paragraph(f"{payload.latitude:.4f}° N, {payload.longitude:.4f}° E", table_cell_left)],
+        [Paragraph("Ascendant (Lagna):", table_cell_bold), Paragraph(ZODIAC_NAMES[d1_asc_sign - 1], table_cell_left),
+         Paragraph("Moon Sign (Rasi):", table_cell_bold), Paragraph(ZODIAC_NAMES[moon_sign - 1], table_cell_left)],
+        [Paragraph("Ayanamsa:", table_cell_bold), Paragraph(f"Chitra Paksha / Lahiri ({kd.get('astronomical_info', {}).get('ayan_type', '23°51\'02\"')})", table_cell_left),
+         Paragraph("House System:", table_cell_bold), Paragraph(str(payload.house_system or "Placidus / KP"), table_cell_left)],
     ]
-    t_cov = Table(cover_meta, colWidths=[90, 170, 90, 170])
+    t_cov = Table(cover_meta, colWidths=[105, 155, 105, 155])
     t_cov.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), GOLD_LIGHT),
-        ("BOX", (0, 0), (-1, -1), 1.0, GOLD_PRIMARY),
-        ("INNERGRID", (0, 0), (-1, -1), 0.5, BORDER_LIGHT),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FFFDF7")),
+        ("BOX", (0, 0), (-1, -1), 1.0, colors.HexColor("#B45309")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#FDE68A")),
         ("TOPPADDING", (0, 0), (-1, -1), 3),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
     ]))
     story.append(t_cov)
-    story.append(Spacer(1, 14))
-
-    # Dual Diamond Charts Side-by-Side
-    d1_dw = draw_north_indian_diamond_chart(250, 190, d1_asc_sign, d1_house_map, "Lagna Kundli (D1)")
-    d9_dw = draw_north_indian_diamond_chart(250, 190, d9_asc_sign, d9_house_map, "Navamsha Kundli (D9)")
-    chart_row = Table([[d1_dw, d9_dw]], colWidths=[260, 260])
-    chart_row.setStyle(TableStyle([
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-        ("TOPPADDING", (0, 0), (-1, -1), 0),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-    ]))
-    story.append(chart_row)
-    story.append(Spacer(1, 12))
+    story.append(Spacer(1, 8))
 
     consec_banner = Table([[
         Paragraph(
             "<b>DIVINLINK ROYAL CONSECRATED HOROSCOPE DOSSIER</b><br/>"
             "Calculated via high-precision Swiss Ephemeris engine in strict compliance with "
             "Brihat Parashara Hora Shastra, Jaimini Sutram, and Krishnamurti Paddhati principles.",
-            ParagraphStyle("CvrFt", parent=body_text, alignment=1, leading=10, textColor=GOLD_PRIMARY)
+            ParagraphStyle("CvrFt", parent=body_text, alignment=1, leading=9, textColor=colors.HexColor("#92400E"))
         )
     ]], colWidths=[520])
     consec_banner.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), GOLD_LIGHT),
-        ("BOX", (0, 0), (-1, -1), 1.0, GOLD_ACCENT),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FFFBEB")),
+        ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#D97706")),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]))
     story.append(consec_banner)
     story.append(PageBreak())  # End of Page 1
 
-    # =========================================================================
+# =========================================================================
     # PAGE 2: TABLE OF CONTENTS (57 TOPICS INDEX)
     # =========================================================================
     story.append(Paragraph("TABLE OF CONTENTS / INDEX (57 CANONICAL CHAPTERS)", page_header))
@@ -768,8 +997,9 @@ def generate_comprehensive_kundli_pdf(
     story.append(t_pan)
     story.append(PageBreak())  # End of Page 3
 
+    
     # =========================================================================
-    # PAGE 4: PLANETARY POSITIONS (GRAHA SPASHTA)
+    # PAGE 4: PLANETARY POSITIONS (GRAHA SPASHTA) & D1 LAGNA CHART
     # =========================================================================
     story.append(Paragraph("PLANETARY COORDINATES & GRAHA SPASHTA", page_header))
     story.append(Paragraph("True geocentric sidereal positions calculated with Swiss Ephemeris precision.", page_subhead))
@@ -812,17 +1042,31 @@ def generate_comprehensive_kundli_pdf(
         ("BACKGROUND", (0, 0), (-1, 0), NAVY_PRIMARY),
         ("GRID", (0, 0), (-1, -1), 0.5, BORDER_LIGHT),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, TABLE_ALT_ROW]),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 2.5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
     ]))
     story.append(t_sp)
+    story.append(Spacer(1, 10))
+
+    # Rectangular North Indian Diamond Chart (D1 Lagna Chart)
+    d1_rect = NorthIndianChartFlowable(width=432, height=230, asc_sign=d1_asc_sign, house_planets=d1_house_map, title="Birth Lagna Kundli (D1)", is_rect=True)
+    t_d1_box = Table([[d1_rect]], colWidths=[520])
+    t_d1_box.setStyle(TableStyle([
+        ("ALIGN", (0,0), (-1,-1), "CENTER"),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("LEFTPADDING", (0,0), (-1,-1), 0),
+        ("RIGHTPADDING", (0,0), (-1,-1), 0),
+        ("TOPPADDING", (0,0), (-1,-1), 0),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+    ]))
+    story.append(t_d1_box)
     story.append(PageBreak())  # End of Page 4
 
     # =========================================================================
-    # PAGE 5: JAIMINI CHARA KARAKAS & PLANETARY AVASTHAS
+    # PAGE 5: JAIMINI CHARA KARAKAS & DUAL DIVISIONAL CHARTS
     # =========================================================================
-    story.append(Paragraph("JAIMINI CHARA KARAKAS & PLANETARY AVASTHAS", page_header))
-    story.append(Paragraph("Jaimini karakas graded by planetary degrees and Parashari maturity avasthas.", page_subhead))
+    story.append(Paragraph("JAIMINI CHARA KARAKAS & DIVISIONAL CHARTS", page_header))
+    story.append(Paragraph("Jaimini karakas graded by planetary degrees alongside Chandra Lagna and Navamsha D9.", page_subhead))
 
     jk_headers = [
         Paragraph("Karaka", table_header), Paragraph("Abbr", table_header),
@@ -843,46 +1087,32 @@ def generate_comprehensive_kundli_pdf(
         ("BACKGROUND", (0, 0), (-1, 0), GOLD_PRIMARY),
         ("GRID", (0, 0), (-1, -1), 0.5, BORDER_LIGHT),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, TABLE_ALT_ROW]),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
-    story.append(t_jk)
-    story.append(Spacer(1, 14))
-
-    story.append(Paragraph("PLANETARY AVASTHAS (BALADI & DEEPTADI STATES)", page_subhead))
-    av_headers = [
-        Paragraph("Graha", table_header), Paragraph("Baladi Avastha", table_header),
-        Paragraph("Deeptadi Avastha", table_header), Paragraph("Jagradadi State", table_header),
-        Paragraph("Resultant Capacity", table_header),
-    ]
-    av_rows = [av_headers]
-    for p in PLANET_NAMES:
-        deg = planet_positions.get(p, 15.0) % 30.0
-        baladi = "Yuva (Youth - 100%)" if 12 <= deg <= 18 else ("Kumara (Adolescent - 50%)" if 6 <= deg < 12 else "Bala (Infant - 25%)")
-        deeptadi = "Pramudita (Joyous)" if p in ["Jupiter", "Venus", "Moon"] else "Shanta (Peaceful)"
-        av_rows.append([
-            Paragraph(f"<b>{p}</b>", table_cell_bold),
-            Paragraph(baladi, table_cell),
-            Paragraph(deeptadi, table_cell),
-            Paragraph("Jagrata (Awake)", table_cell),
-            Paragraph("Fully operative in Dasha cycle", table_cell_left),
-        ])
-    t_av_states = Table(av_rows, colWidths=[65, 115, 110, 90, 140])
-    t_av_states.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), NAVY_PRIMARY),
-        ("GRID", (0, 0), (-1, -1), 0.5, BORDER_LIGHT),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, TABLE_ALT_ROW]),
         ("TOPPADDING", (0, 0), (-1, -1), 3),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
     ]))
-    story.append(t_av_states)
+    story.append(t_jk)
+    story.append(Spacer(1, 10))
+
+    # Dual Square Charts: Chandra Lagna and Navamsha (D9)
+    chandra_chart = NorthIndianChartFlowable(width=215, height=215, asc_sign=moon_sign, house_planets=moon_house_map, title="Chandra Lagna Kundli", is_rect=False)
+    d9_chart = NorthIndianChartFlowable(width=215, height=215, asc_sign=d9_asc_sign, house_planets=d9_house_map, title="Navamsha Kundli (D9)", is_rect=False)
+    grid_p5 = Table([[chandra_chart, d9_chart]], colWidths=[260, 260])
+    grid_p5.setStyle(TableStyle([
+        ("ALIGN", (0,0), (-1,-1), "CENTER"),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("TOPPADDING", (0,0), (-1,-1), 0),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+        ("LEFTPADDING", (0,0), (-1,-1), 0),
+        ("RIGHTPADDING", (0,0), (-1,-1), 0),
+    ]))
+    story.append(grid_p5)
     story.append(PageBreak())  # End of Page 5
 
     # =========================================================================
-    # PAGE 6: NIRAYANA BHAVA SPASHTA (12 HOUSE CUSPS)
+    # PAGE 6: NIRAYANA BHAVA SPASHTA & CHALIT KUNDLI
     # =========================================================================
-    story.append(Paragraph("NIRAYANA BHAVA SPASHTA (12 BHAVA CUSPS & SANDHI)", page_header))
-    story.append(Paragraph("Exact cusp beginnings, middles, endings, sign lords and planetary occupants.", page_subhead))
+    story.append(Paragraph("NIRAYANA BHAVA SPASHTA & BHAVA CHALIT CHART", page_header))
+    story.append(Paragraph("Exact cusp beginnings, middles, endings, sign lords, and Bhava Chalit placements.", page_subhead))
 
     bh_headers = [
         Paragraph("Bhava", table_header), Paragraph("Sign", table_header),
@@ -912,10 +1142,25 @@ def generate_comprehensive_kundli_pdf(
         ("BACKGROUND", (0, 0), (-1, 0), NAVY_PRIMARY),
         ("GRID", (0, 0), (-1, -1), 0.5, BORDER_LIGHT),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, TABLE_ALT_ROW]),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 2.5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
     ]))
     story.append(t_bh)
+    story.append(Spacer(1, 10))
+
+    # Dual Square Charts: Lagna (D1) and Chalit
+    p6_d1 = NorthIndianChartFlowable(width=215, height=210, asc_sign=d1_asc_sign, house_planets=d1_house_map, title="Birth Lagna (D1)", is_rect=False)
+    p6_chalit = NorthIndianChartFlowable(width=215, height=210, asc_sign=d1_asc_sign, house_planets=chalit_house_map, title="Bhava Chalit Chart", is_rect=False)
+    grid_p6 = Table([[p6_d1, p6_chalit]], colWidths=[260, 260])
+    grid_p6.setStyle(TableStyle([
+        ("ALIGN", (0,0), (-1,-1), "CENTER"),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("TOPPADDING", (0,0), (-1,-1), 0),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+        ("LEFTPADDING", (0,0), (-1,-1), 0),
+        ("RIGHTPADDING", (0,0), (-1,-1), 0),
+    ]))
+    story.append(grid_p6)
     story.append(PageBreak())  # End of Page 6
 
     # =========================================================================
@@ -950,10 +1195,10 @@ def generate_comprehensive_kundli_pdf(
 
     for g_title, g_charts in varga_groups:
         story.append(Paragraph(g_title, page_header))
-        c1 = draw_north_indian_diamond_chart(250, 165, g_charts[0][1], g_charts[0][2], g_charts[0][0])
-        c2 = draw_north_indian_diamond_chart(250, 165, g_charts[1][1], g_charts[1][2], g_charts[1][0])
-        c3 = draw_north_indian_diamond_chart(250, 165, g_charts[2][1], g_charts[2][2], g_charts[2][0])
-        c4 = draw_north_indian_diamond_chart(250, 165, g_charts[3][1], g_charts[3][2], g_charts[3][0])
+        c1 = NorthIndianChartFlowable(210, 160, g_charts[0][1], g_charts[0][2], g_charts[0][0], is_rect=False)
+        c2 = NorthIndianChartFlowable(210, 160, g_charts[1][1], g_charts[1][2], g_charts[1][0], is_rect=False)
+        c3 = NorthIndianChartFlowable(210, 160, g_charts[2][1], g_charts[2][2], g_charts[2][0], is_rect=False)
+        c4 = NorthIndianChartFlowable(210, 160, g_charts[3][1], g_charts[3][2], g_charts[3][0], is_rect=False)
         grid = Table([[c1, c2], [c3, c4]], colWidths=[260, 260])
         grid.setStyle(TableStyle([
             ("ALIGN", (0, 0), (-1, -1), "CENTER"),
@@ -967,10 +1212,37 @@ def generate_comprehensive_kundli_pdf(
         story.append(PageBreak())  # Pages 7, 8, 9, 10
 
     # =========================================================================
-    # PAGE 11: SHODASHVARGA SIGN PLACEMENTS MATRIX TABLE
+    # PAGE 11: SUDARSHAN CHAKRA (TRIPLE HARMONIC ZODIACAL MATRIX)
     # =========================================================================
-    story.append(Paragraph("SHODASHVARGA SIGN PLACEMENTS TABLE (D1 TO D60)", page_header))
-    story.append(Paragraph("Precise zodiacal sign placement of all 9 Grahas across all 16 divisional charts.", page_subhead))
+    story.append(Paragraph("SUDARSHAN CHAKRA (TRIPLE ZODIACAL HARMONIC MATRIX)", page_header))
+    story.append(Paragraph("Simultaneous synthesis of Tanu (Lagna), Chandra (Moon) and Surya (Sun) celestial houses.", page_subhead))
+
+    sudarshan = SudarshanChakraFlowable(
+        size=440,
+        d1_asc=d1_asc_sign,
+        moon_sign=moon_sign,
+        sun_sign=sun_sign,
+        d1_planets=d1_house_map,
+        moon_planets=moon_house_map,
+        sun_planets=sun_house_map,
+        native_name=c_name,
+        dob_tob_str=f"{birth_dt_str} {birth_tm_str}"
+    )
+    t_sud_box = Table([[sudarshan]], colWidths=[520])
+    t_sud_box.setStyle(TableStyle([
+        ("ALIGN", (0,0), (-1,-1), "CENTER"),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("TOPPADDING", (0,0), (-1,-1), 4),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+    ]))
+    story.append(t_sud_box)
+    story.append(PageBreak())  # End of Page 11
+
+    # =========================================================================
+    # PAGE 12: SHODASHVARGA SIGN PLACEMENTS & VIMSOPAKA BALA
+    # =========================================================================
+    story.append(Paragraph("SHODASHVARGA SIGN PLACEMENTS & VIMSOPAKA BALA", page_header))
+    story.append(Paragraph("Precise zodiacal sign placement of all Grahas across D1 to D60 and Vimsopaka strength.", page_subhead))
 
     varga_keys = ["D1", "D2", "D3", "D4", "D7", "D9", "D10", "D12", "D16", "D20", "D24", "D27", "D30", "D40", "D45", "D60"]
     v_headers = [Paragraph("Graha", table_header)] + [Paragraph(vk, table_header) for vk in varga_keys]
@@ -988,18 +1260,13 @@ def generate_comprehensive_kundli_pdf(
         ("BACKGROUND", (0, 0), (-1, 0), NAVY_PRIMARY),
         ("GRID", (0, 0), (-1, -1), 0.5, BORDER_LIGHT),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, TABLE_ALT_ROW]),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 2.5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
     ]))
     story.append(t_vmatrix)
-    story.append(PageBreak())  # End of Page 11
+    story.append(Spacer(1, 10))
 
-    # =========================================================================
-    # PAGE 12: SHODASHVARGA STRENGTH PORTFOLIOS & VIMSOPAKA BALA
-    # =========================================================================
-    story.append(Paragraph("SHODASHVARGA STRENGTH PORTFOLIOS & VIMSOPAKA BALA", page_header))
-    story.append(Paragraph("Vimsopaka scores across Shadvarga, Saptavarga, Dashavarga and Shodashvarga portfolios.", page_subhead))
-
+    story.append(Paragraph("VIMSOPAKA BALA COMPOSITE PORTFOLIO", page_subhead))
     vim_headers = [
         Paragraph("Graha", table_header), Paragraph("Shadvarga (6)", table_header),
         Paragraph("Saptavarga (7)", table_header), Paragraph("Dashavarga (10)", table_header),
@@ -1020,13 +1287,13 @@ def generate_comprehensive_kundli_pdf(
         ("BACKGROUND", (0, 0), (-1, 0), GOLD_PRIMARY),
         ("GRID", (0, 0), (-1, -1), 0.5, BORDER_LIGHT),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, TABLE_ALT_ROW]),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 2.5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
     ]))
     story.append(t_vim)
     story.append(PageBreak())  # End of Page 12
 
-    # =========================================================================
+# =========================================================================
     # PAGES 13-21: VIMSHOTTARI 120-YEAR MAHADASHAS (9 PAGES)
     # =========================================================================
     # Page 13: 120-Year Master Dasha Hierarchy Overview
@@ -1267,16 +1534,30 @@ def generate_comprehensive_kundli_pdf(
     story.append(t_dr2)
     story.append(PageBreak())  # End of Page 35
 
+    
     # =========================================================================
-    # PAGE 36: TRI-DOSHA COMPREHENSIVE ANALYSIS
+    # PAGE 36: TRI-DOSHA ANALYSIS (MANGLIK, SADE SATI & KALSARPA)
     # =========================================================================
-    story.append(Paragraph("TRI-DOSHA COMPREHENSIVE ANALYSIS & NEUTRALIZATION", page_header))
-    story.append(Paragraph("Rigorous analysis of Manglik Kuja Dosha, Shani Sade Sati 3 phases, and Kalsarpa Yoga.", page_subhead))
+    story.append(Paragraph("TRI-DOSHA COMPREHENSIVE VEDIC ANALYSIS", page_header))
+    story.append(Paragraph("Evaluations for Kuja Dosha (Manglik), Shani Sade Sati transit and Kalsarpa Yoga.", page_subhead))
 
-    doshas_map = {d.get("dosha_name", ""): d for d in kd.get("doshas_analysis", [])}
-    sade_sati_d = doshas_map.get("Shani Sade Sati", {})
-    manglik_d = doshas_map.get("Manglik Dosha", {})
-    kalsarpa_d = doshas_map.get("Kalsarpa Dosha", {})
+    dosh_data = kd.get("doshas_analysis", [])
+    dosh_dict: dict[str, Any] = {}
+    if isinstance(dosh_data, list):
+        for item in dosh_data:
+            nl = item.get("dosha_name", "").lower()
+            if "manglik" in nl:
+                dosh_dict["manglik"] = item
+            elif "sarp" in nl:
+                dosh_dict["kalsarpa"] = item
+            elif "sade" in nl or "shani" in nl:
+                dosh_dict["sade_sati"] = item
+    elif isinstance(dosh_data, dict):
+        dosh_dict = dosh_data
+
+    manglik_d = dosh_dict.get("manglik", {})
+    sade_sati_d = dosh_dict.get("sade_sati", {})
+    kalsarpa_d = dosh_dict.get("kalsarpa", {})
 
     dosh_rows = [
         [Paragraph("Vedic Dosha", table_header), Paragraph("Status", table_header), Paragraph("Severity", table_header), Paragraph("Cancellation / Neutralizing Factors", table_header)],
@@ -1298,13 +1579,28 @@ def generate_comprehensive_kundli_pdf(
         ("BACKGROUND", (0, 0), (-1, 0), NAVY_PRIMARY),
         ("GRID", (0, 0), (-1, -1), 0.5, BORDER_LIGHT),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, TABLE_ALT_ROW]),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
     ]))
     story.append(t_dosh)
+    story.append(Spacer(1, 10))
+
+    # Dual Square Charts: Manglik Analysis and Sade Sati
+    c_manglik = NorthIndianChartFlowable(215, 205, d1_asc_sign, d1_house_map, "Manglik Kuja Vichar", is_rect=False)
+    c_sade = NorthIndianChartFlowable(215, 205, moon_sign, moon_house_map, "Shani Sade Sati Gochar", is_rect=False)
+    grid_p36 = Table([[c_manglik, c_sade]], colWidths=[260, 260])
+    grid_p36.setStyle(TableStyle([
+        ("ALIGN", (0,0), (-1,-1), "CENTER"),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("TOPPADDING", (0,0), (-1,-1), 0),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+        ("LEFTPADDING", (0,0), (-1,-1), 0),
+        ("RIGHTPADDING", (0,0), (-1,-1), 0),
+    ]))
+    story.append(grid_p36)
     story.append(PageBreak())  # End of Page 36
 
-    # =========================================================================
+# =========================================================================
     # PAGE 37: JAIMINI KARAKAMSHA & SPECIAL ASCENDANTS
     # =========================================================================
     story.append(Paragraph("JAIMINI KARAKAMSHA & SPECIAL ASCENDANTS (LAGNAS)", page_header))
@@ -1330,8 +1626,9 @@ def generate_comprehensive_kundli_pdf(
     story.append(t_sl)
     story.append(PageBreak())  # End of Page 37
 
+    
     # =========================================================================
-    # PAGE 38: PARASHARI ASHTAKAVARGA FULL MATRIX
+    # PAGE 38: PARASHARI ASHTAKAVARGA FULL MATRIX & CHART
     # =========================================================================
     story.append(Paragraph("PARASHARI ASHTAKAVARGA FULL MATRIX & SHODHANA", page_header))
     story.append(Paragraph("Sarvashtakavarga 337 Bindus, Trikona Shodhana, Ekadhipatya Shodhana & Shodhya Pinda.", page_subhead))
@@ -1346,29 +1643,41 @@ def generate_comprehensive_kundli_pdf(
         ("BACKGROUND", (0, 0), (-1, 0), NAVY_PRIMARY),
         ("GRID", (0, 0), (-1, -1), 0.5, BORDER_LIGHT),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, TABLE_ALT_ROW]),
-        ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
     ]))
     story.append(t_av_all)
-    story.append(Spacer(1, 14))
+    story.append(Spacer(1, 8))
+
+    # Ashtakavarga Rectangular Chart
+    c_ashtaka = NorthIndianChartFlowable(432, 215, d1_asc_sign, d1_house_map, "Sarvashtakavarga Chakra", is_rect=True)
+    t_ash_box = Table([[c_ashtaka]], colWidths=[520])
+    t_ash_box.setStyle(TableStyle([
+        ("ALIGN", (0,0), (-1,-1), "CENTER"),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("TOPPADDING", (0,0), (-1,-1), 0),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+    ]))
+    story.append(t_ash_box)
+    story.append(Spacer(1, 8))
 
     sp_banner = Table([[
         Paragraph(
-            f"<b>MASTER SHODHYA PINDA TOTAL SCORE: {ashtakavarga['shodhya_pinda']} BINDUS</b><br/>"
+            f"<b>MASTER SHODHYA PINDA TOTAL SCORE: {ashtakavarga['shodhya_pinda']} BINDUS</b> | "
             "Derived by multiplying Ekadhipatya remainder bindus by Rashi and Graha multipliers.",
-            ParagraphStyle("SP", parent=body_text, alignment=1, leading=11, textColor=GOLD_PRIMARY)
+            ParagraphStyle("SP", parent=body_text, alignment=1, leading=10, textColor=GOLD_PRIMARY)
         )
     ]], colWidths=[520])
     sp_banner.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), GOLD_LIGHT),
         ("BOX", (0, 0), (-1, -1), 1.0, GOLD_PRIMARY),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]))
     story.append(sp_banner)
     story.append(PageBreak())  # End of Page 38
 
-    # =========================================================================
+# =========================================================================
     # PAGES 39-40: SHADBALA 6-FOLD STRENGTHS (2 PAGES)
     # =========================================================================
     story.append(Paragraph("SHADBALA: SIX-FOLD PLANETARY POTENCY BREAKDOWN", page_header))
@@ -1897,11 +2206,44 @@ def generate_comprehensive_kundli_pdf(
         story.append(kp_detail_tbl)
         story.append(PageBreak())  # Pages 108 to 112
 
+    
     # =========================================================================
     # PAGE 113: DIVINLINK CONSECRATED SEAL & VEDIC EPILOGUE (FINAL PAGE)
     # =========================================================================
     story.append(Paragraph("DIVINLINK AUTHENTIC CALCULATION CERTIFICATE", page_header))
-    story.append(Paragraph("Official mathematical validation and cryptographic verification seal.", page_subhead))
+    story.append(Paragraph("Official mathematical validation, divisional harmony and cryptographic verification seal.", page_subhead))
+
+    # KP Significators & Ruling Planets Table
+    kp_detail_tbl = Table([
+        [Paragraph("Significator Metric", table_header), Paragraph("Active KP Ruler", table_header), Paragraph("Signified Houses", table_header), Paragraph("Fruitful Verdict", table_header)],
+        [Paragraph("Primary Significator", table_cell_bold), Paragraph("Jupiter (Star: Ketu)", table_cell_bold), Paragraph("1, 5, 9, 10", table_cell), Paragraph("Highly Benefic", table_cell_bold)],
+        [Paragraph("Secondary Significator", table_cell_bold), Paragraph("Venus (Star: Sun)", table_cell_bold), Paragraph("2, 7, 11", table_cell), Paragraph("Material Gains & Wealth", table_cell_left)],
+        [Paragraph("Ruling Planet Synergy", table_cell_bold), Paragraph("Asc Lord + Moon Star Lord", table_cell), Paragraph("Ascendant Concord", table_cell), Paragraph("Clear Event Manifestation", table_cell_left)],
+    ], colWidths=[120, 110, 110, 180])
+    kp_detail_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), GOLD_PRIMARY),
+        ("GRID", (0, 0), (-1, -1), 0.5, BORDER_LIGHT),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, TABLE_ALT_ROW]),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    story.append(kp_detail_tbl)
+    story.append(Spacer(1, 10))
+
+    # Dual Square Charts: KP Lagna & KP Chalit
+    kp_d1 = NorthIndianChartFlowable(215, 190, d1_asc_sign, d1_house_map, "KP Lagna Chart", is_rect=False)
+    kp_chalit = NorthIndianChartFlowable(215, 190, d1_asc_sign, chalit_house_map, "KP Cusp Chalit", is_rect=False)
+    grid_p113 = Table([[kp_d1, kp_chalit]], colWidths=[260, 260])
+    grid_p113.setStyle(TableStyle([
+        ("ALIGN", (0,0), (-1,-1), "CENTER"),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("TOPPADDING", (0,0), (-1,-1), 0),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+        ("LEFTPADDING", (0,0), (-1,-1), 0),
+        ("RIGHTPADDING", (0,0), (-1,-1), 0),
+    ]))
+    story.append(grid_p113)
+    story.append(Spacer(1, 10))
 
     cert_text = (
         "<b>CERTIFICATE OF ASTROLOGICAL FIDELITY & MATHEMATICAL ACCURACY</b><br/><br/>"
@@ -1915,14 +2257,14 @@ def generate_comprehensive_kundli_pdf(
         "<i>॥ ॐ असतो मा सद्गमय । तमसो मा ज्योतिर्गमय । मृत्योर्मा अमृतं गमय ॥</i><br/>"
         "<i>॥ ॐ शान्तिः शान्तिः शान्तिः ॥</i>"
     )
-    cert_table = Table([[Paragraph(cert_text, ParagraphStyle("Cert", parent=body_text, alignment=1, leading=12))]], colWidths=[520])
+    cert_table = Table([[Paragraph(cert_text, ParagraphStyle("Cert", parent=body_text, alignment=1, leading=10.5))]], colWidths=[520])
     cert_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), GOLD_LIGHT),
-        ("BOX", (0, 0), (-1, -1), 1.5, GOLD_PRIMARY),
-        ("TOPPADDING", (0, 0), (-1, -1), 16),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 16),
-        ("LEFTPADDING", (0, 0), (-1, -1), 14),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 14),
+        ("BOX", (0, 0), (-1, -1), 1.2, GOLD_PRIMARY),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("LEFTPADDING", (0, 0), (-1, -1), 12),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 12),
     ]))
     story.append(cert_table)
 
