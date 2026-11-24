@@ -104,3 +104,50 @@ def test_shodashvarga_and_chart_alignment_in_pdf():
     assert "SUDARSHAN CHAKRA" in p11_text
     assert "Samiran Samanta" in p11_text
     assert "Lagna: Rasi 6" in p11_text
+
+    # Check Page 49 (House 4 Life Manifestation & Guidance)
+    p49_text = reader.pages[48].extract_text()
+    assert "HOUSE 4: BANDHU BHAVA" in p49_text
+    assert "Bhava Drishti" in p49_text
+    assert "Consecrated Vedic Remedial Protocol" in p49_text
+
+    # Check Page 70 (Lo Shu Grid & Missing Numbers)
+    p70_text = reader.pages[69].extract_text()
+    assert "LO SHU 3x3 MAGIC SQUARE" in p70_text
+    assert "Mental Plane" in p70_text
+
+    # Check Page 71 (Yoga Catalogue & 3-Phase Trajectory)
+    p71_text = reader.pages[70].extract_text()
+    assert "VEDIC YOGA CATALOGUE" in p71_text
+    assert "Phase 1: Foundation" in p71_text
+
+
+def test_bengali_and_hindi_pdf_generation():
+    """Verify that user language preferences (bn, hi) generate authentic localized PDFs with exactly 113 pages."""
+    for lang, expected_token in [("bn", "বন্ধু ভাব"), ("hi", "बन्धु भाव")]:
+        req = KundliCalculateRequest(
+            name="Samiran Samanta",
+            day=30,
+            month=6,
+            year=2004,
+            hour=12,
+            minute=0,
+            second=0,
+            period="24H",
+            place="Kolkata, West Bengal, India",
+            latitude=22.5726,
+            longitude=88.3639,
+            timezone=5.5,
+            language=lang,
+        )
+        pdf_bytes = generate_comprehensive_kundli_pdf(req)
+        assert isinstance(pdf_bytes, bytes)
+        assert len(pdf_bytes) > 20000
+
+        reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
+        assert len(reader.pages) == 113
+
+        # Verify page 49 contains localized house title
+        p49_text = reader.pages[48].extract_text()
+        assert expected_token in p49_text
+
