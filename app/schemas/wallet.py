@@ -221,6 +221,9 @@ class PlatformSettingsOut(BaseModel):
     kundli_coins: int = 20
     kundli_enabled: bool = True
 
+    kundli_pdf_coins: int = 50
+    kundli_pdf_enabled: bool = True
+
     kundli_matching_coins: int = 20
     kundli_matching_enabled: bool = True
 
@@ -269,6 +272,9 @@ class FeaturePricingUpdate(BaseModel):
 
     kundli_coins: int | None = Field(default=None, ge=0, le=1_000_000)
     kundli_enabled: bool | None = None
+
+    kundli_pdf_coins: int | None = Field(default=None, ge=0, le=1_000_000)
+    kundli_pdf_enabled: bool | None = None
 
     kundli_matching_coins: int | None = Field(default=None, ge=0, le=1_000_000)
     kundli_matching_enabled: bool | None = None
