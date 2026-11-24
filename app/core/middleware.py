@@ -107,13 +107,18 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 
 
 def register_middleware(app: FastAPI) -> None:
-    # Added last = outermost, so CORS headers apply to every response.
+    from app.core.rate_limit import RateLimitingMiddleware
+
+    # Innermost: Rate limiting
+    app.add_middleware(RateLimitingMiddleware)
+    # Middle: Request context & IP extraction
     app.add_middleware(RequestContextMiddleware)
+    # Outermost: CORS headers apply to every response (including 429 and errors)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.ALLOWED_ORIGINS,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=["X-Request-ID", "X-Response-Time-ms"],
+        expose_headers=["X-Request-ID", "X-Response-Time-ms", "X-RateLimit-Remaining"],
     )

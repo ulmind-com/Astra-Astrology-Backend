@@ -75,7 +75,10 @@ class AIChatSession(TimestampedDocument):
         indexes = [
             pymongo.IndexModel([("session_id", pymongo.ASCENDING)], unique=True),
             pymongo.IndexModel([("user_id", pymongo.ASCENDING)]),
-            pymongo.IndexModel([("updated_at", pymongo.DESCENDING)]),
+            pymongo.IndexModel(
+                [("updated_at", pymongo.DESCENDING)],
+                expireAfterSeconds=7776000,  # 90-day retention policy for conversation history
+            ),
         ]
 
 

@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # parsed by the validator below, not as JSON).
     ALLOWED_ORIGINS: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["*"])
 
+    # --------------------------------------------------------- rate limiting
+    RATE_LIMIT_ENABLED: bool = True
+
     # ------------------------------------------------------------- mongodb
     MONGODB_URI: str = "mongodb://localhost:27017"
     MONGODB_DB_NAME: str = "astra_astrology"
@@ -209,6 +212,15 @@ class Settings(BaseSettings):
             if v.strip() == "*":
                 return ["*"]
             return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
+
+    @field_validator("DEBUG", mode="after")
+    @classmethod
+    def _validate_debug_for_prod(cls, v: bool, info) -> bool:
+        env = info.data.get("APP_ENV")
+        if env == "production" and v is True:
+            # Force safety in production to avoid leaking internal exception details
+            return False
         return v
 
     @property

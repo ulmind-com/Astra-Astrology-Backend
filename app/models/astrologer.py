@@ -203,6 +203,8 @@ class Astrologer(TimestampedDocument):
                 partialFilterExpression={"slug": {"$type": "string"}},
             ),
             [("is_listed", pymongo.DESCENDING), ("display_order", pymongo.ASCENDING)],
+            [("is_listed", pymongo.ASCENDING), ("availability.is_online", pymongo.ASCENDING)],
+            [("rating.average", pymongo.DESCENDING)],
             [("skills", pymongo.ASCENDING)],
             [("languages", pymongo.ASCENDING)],
         ]
