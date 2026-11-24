@@ -139,7 +139,7 @@ async def connect_to_mongo() -> bool:
 
         _client = AsyncMongoClient(
             settings.MONGODB_URI,
-            readPreference="primaryPreferred",
+            readPreference="primary",
             maxPoolSize=settings.MONGODB_MAX_POOL_SIZE,
             minPoolSize=min_pool_size,
             maxIdleTimeMS=max_idle_time,
@@ -155,7 +155,7 @@ async def connect_to_mongo() -> bool:
         )
         _database = _client.get_database(
             settings.MONGODB_DB_NAME,
-            read_preference=ReadPreference.PRIMARY_PREFERRED,
+            read_preference=ReadPreference.PRIMARY,
         )
 
         await _client.admin.command("ping")
