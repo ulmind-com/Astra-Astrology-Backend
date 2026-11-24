@@ -200,57 +200,75 @@ class NorthIndianChartFlowable(Flowable):
         if os.path.exists(self.frame_path):
             canv.drawImage(self.frame_path, 0, 0, width=w, height=h)
 
-        # House Rashi Numbers at 12 Inner Vertices
+        # House Rashi Numbers at 12 Inner Vertices (offset from diagonals to prevent collisions)
         rashi_coords = {
-            1:  (w * 0.50, h * 0.53),
-            2:  (w * 0.28, h * 0.77),
-            3:  (w * 0.23, h * 0.72),
+            1:  (w * 0.50, h * 0.54),
+            2:  (w * 0.30, h * 0.77),
+            3:  (w * 0.22, h * 0.70),
             4:  (w * 0.46, h * 0.50),
-            5:  (w * 0.23, h * 0.28),
-            6:  (w * 0.28, h * 0.23),
+            5:  (w * 0.22, h * 0.30),
+            6:  (w * 0.30, h * 0.23),
             7:  (w * 0.50, h * 0.46),
-            8:  (w * 0.72, h * 0.23),
-            9:  (w * 0.77, h * 0.28),
+            8:  (w * 0.70, h * 0.23),
+            9:  (w * 0.78, h * 0.30),
             10: (w * 0.54, h * 0.50),
-            11: (w * 0.77, h * 0.72),
-            12: (w * 0.72, h * 0.77),
+            11: (w * 0.78, h * 0.70),
+            12: (w * 0.70, h * 0.77),
         }
 
-        canv.setFont("Helvetica-Bold", 7)
-        canv.setFillColor(colors.HexColor("#78350F"))
+        canv.setFont("Helvetica-Bold", 6.5 if not self.is_rect else 7.5)
+        canv.setFillColor(colors.HexColor("#B45309"))
         for house_idx, (rx, ry) in rashi_coords.items():
             sign_num = ((self.asc_sign - 1 + (house_idx - 1)) % 12) + 1
             canv.drawCentredString(rx, ry - 2, str(sign_num))
 
         # House Planet Coordinates (Centers of house areas)
         planet_centers = {
-            1:  (w * 0.50, h * 0.70),
-            2:  (w * 0.30, h * 0.86),
-            3:  (w * 0.14, h * 0.70),
-            4:  (w * 0.28, h * 0.50),
-            5:  (w * 0.14, h * 0.30),
-            6:  (w * 0.30, h * 0.14),
-            7:  (w * 0.50, h * 0.30),
-            8:  (w * 0.70, h * 0.14),
-            9:  (w * 0.86, h * 0.30),
-            10: (w * 0.72, h * 0.50),
-            11: (w * 0.86, h * 0.70),
-            12: (w * 0.70, h * 0.86),
+            1:  (w * 0.50, h * 0.74),
+            2:  (w * 0.32, h * 0.88),
+            3:  (w * 0.12, h * 0.70),
+            4:  (w * 0.26, h * 0.50),
+            5:  (w * 0.12, h * 0.30),
+            6:  (w * 0.32, h * 0.12),
+            7:  (w * 0.50, h * 0.26),
+            8:  (w * 0.68, h * 0.12),
+            9:  (w * 0.88, h * 0.30),
+            10: (w * 0.74, h * 0.50),
+            11: (w * 0.88, h * 0.70),
+            12: (w * 0.68, h * 0.88),
         }
 
-        canv.setFont("Helvetica-Bold", 6.5 if not self.is_rect else 7.5)
+        ABBR_MAP = {
+            "Sun": "Su", "Moon": "Mo", "Mars": "Ma", "Mercury": "Me",
+            "Jupiter": "Ju", "Venus": "Ve", "Saturn": "Sa", "Rahu": "Ra", "Ketu": "Ke",
+            "Uranus": "Ur", "Neptune": "Ne", "Pluto": "Pl"
+        }
+
+        font_size = 6.0 if not self.is_rect else 7.5
+        canv.setFont("Helvetica-Bold", font_size)
         canv.setFillColor(colors.HexColor("#1E293B"))
 
         for house_idx, (px, py) in planet_centers.items():
             planets = self.house_planets.get(house_idx, [])
             if not planets:
                 continue
-            line_height = 7.5 if not self.is_rect else 8.5
-            total_h = len(planets) * line_height
+
+            clean_list = []
+            for p in planets:
+                is_r = "(R)" in p or "®" in p
+                base = p.replace("(R)", "").replace("®", "").strip()
+                if not self.is_rect and len(planets) >= 2:
+                    abbr = ABBR_MAP.get(base, base[:2])
+                    clean_list.append(f"{abbr}(R)" if is_r else abbr)
+                else:
+                    abbr = ABBR_MAP.get(base, base) if not self.is_rect else base
+                    clean_list.append(f"{abbr}(R)" if is_r else abbr)
+
+            line_height = 7.0 if not self.is_rect else 9.0
+            total_h = len(clean_list) * line_height
             start_y = py + (total_h / 2.0) - line_height + 2
-            for i, p_name in enumerate(planets):
-                clean_p = p_name.replace("®", "(R)").strip()
-                canv.drawCentredString(px, start_y - (i * line_height), clean_p)
+            for i, p_str in enumerate(clean_list):
+                canv.drawCentredString(px, start_y - (i * line_height), p_str)
 
         canv.restoreState()
 
@@ -291,26 +309,28 @@ class SudarshanChakraFlowable(Flowable):
         cx = self.size / 2.0
         cy = self.size / 2.0
 
-        r_hub = self.size * 0.12
-        r_inner = self.size * 0.24
-        r_mid = self.size * 0.36
-        r_outer = self.size * 0.48
+        r_hub = self.size * 0.13
+        r_inner = self.size * 0.25
+        r_mid = self.size * 0.37
+        r_outer = self.size * 0.49
 
         # Concentric Rings
         canv.setStrokeColor(colors.HexColor("#B45309"))
-        canv.setLineWidth(1.2)
+        canv.setLineWidth(1.4)
         canv.circle(cx, cy, r_outer, fill=0, stroke=1)
-        canv.setLineWidth(0.8)
+        canv.setLineWidth(0.9)
         canv.circle(cx, cy, r_mid, fill=0, stroke=1)
         canv.circle(cx, cy, r_inner, fill=0, stroke=1)
 
         # Central Hub
         canv.setFillColor(colors.HexColor("#FEF3C7"))
+        canv.setStrokeColor(colors.HexColor("#B45309"))
+        canv.setLineWidth(1.2)
         canv.circle(cx, cy, r_hub, fill=1, stroke=1)
 
-        # 12 Radial Sector Lines
+        # 12 Radial Sector Dividing Lines at 15°, 45°, 75°...
         canv.setStrokeColor(colors.HexColor("#D97706"))
-        canv.setLineWidth(0.6)
+        canv.setLineWidth(0.7)
         for i in range(12):
             angle_rad = math.radians(i * 30.0 + 15.0)
             x1 = cx + r_hub * math.cos(angle_rad)
@@ -319,64 +339,84 @@ class SudarshanChakraFlowable(Flowable):
             y2 = cy + r_outer * math.sin(angle_rad)
             canv.line(x1, y1, x2, y2)
 
-        # Central Hub Text
-        canv.setFont("Helvetica-Bold", 7)
+        # Central Hub Content
+        canv.setFont("Helvetica-Bold", 7.5)
         canv.setFillColor(colors.HexColor("#92400E"))
         canv.drawCentredString(cx, cy + 18, "SUDARSHAN")
         canv.drawCentredString(cx, cy + 9, "CHAKRA")
-        canv.setFont("Helvetica-Bold", 6)
+        canv.setFont("Helvetica-Bold", 6.5)
         canv.setFillColor(colors.HexColor("#1E293B"))
-        canv.drawCentredString(cx, cy - 2, self.native_name[:16])
-        canv.setFont("Helvetica", 5)
+        canv.drawCentredString(cx, cy - 2, self.native_name[:18])
+        canv.setFont("Helvetica", 5.5)
         canv.setFillColor(colors.HexColor("#64748B"))
         canv.drawCentredString(cx, cy - 12, self.dob_tob_str)
         canv.drawCentredString(cx, cy - 20, f"Lagna: Rasi {self.d1_asc}")
+
+        ABBR_MAP = {
+            "Sun": "Su", "Moon": "Mo", "Mars": "Ma", "Mercury": "Me",
+            "Jupiter": "Ju", "Venus": "Ve", "Saturn": "Sa", "Rahu": "Ra", "Ketu": "Ke"
+        }
+
+        def format_planets(p_list: list[str]) -> str:
+            res = []
+            for p in p_list:
+                is_r = "(R)" in p or "®" in p
+                base = p.replace("(R)", "").replace("®", "").strip()
+                abbr = ABBR_MAP.get(base, base[:2])
+                res.append(f"{abbr}(R)" if is_r else abbr)
+            return " ".join(res[:3])
 
         # 12 Sectors
         for h in range(1, 13):
             mid_angle = math.radians(90.0 - (h - 1) * 30.0)
 
-            # 1. Innermost Ring (Lagna)
+            # 1. Innermost Ring (Tanu / Lagna)
             r_l = (r_hub + r_inner) / 2.0
             lx = cx + r_l * math.cos(mid_angle)
             ly = cy + r_l * math.sin(mid_angle)
             s_l = ((self.d1_asc - 1 + (h - 1)) % 12) + 1
             canv.setFont("Helvetica-Bold", 6.5)
             canv.setFillColor(colors.HexColor("#B45309"))
-            canv.drawCentredString(lx, ly + 3, str(s_l))
-            p_l = self.d1_planets.get(h, [])
-            if p_l:
+            p_l_str = format_planets(self.d1_planets.get(h, []))
+            if p_l_str:
+                canv.drawCentredString(lx, ly + 3, str(s_l))
                 canv.setFont("Helvetica-Bold", 5.5)
                 canv.setFillColor(colors.HexColor("#1E293B"))
-                canv.drawCentredString(lx, ly - 5, " ".join(p[:2] for p in p_l[:2]))
+                canv.drawCentredString(lx, ly - 5, p_l_str)
+            else:
+                canv.drawCentredString(lx, ly - 2, str(s_l))
 
-            # 2. Middle Ring (Chandra)
+            # 2. Middle Ring (Chandra / Moon)
             r_m = (r_inner + r_mid) / 2.0
             mx = cx + r_m * math.cos(mid_angle)
             my = cy + r_m * math.sin(mid_angle)
             s_m = ((self.moon_sign - 1 + (h - 1)) % 12) + 1
             canv.setFont("Helvetica-Bold", 6.5)
             canv.setFillColor(colors.HexColor("#B45309"))
-            canv.drawCentredString(mx, my + 3, str(s_m))
-            p_m = self.moon_planets.get(h, [])
-            if p_m:
+            p_m_str = format_planets(self.moon_planets.get(h, []))
+            if p_m_str:
+                canv.drawCentredString(mx, my + 3, str(s_m))
                 canv.setFont("Helvetica-Bold", 5.5)
                 canv.setFillColor(colors.HexColor("#1E293B"))
-                canv.drawCentredString(mx, my - 5, " ".join(p[:2] for p in p_m[:2]))
+                canv.drawCentredString(mx, my - 5, p_m_str)
+            else:
+                canv.drawCentredString(mx, my - 2, str(s_m))
 
-            # 3. Outer Ring (Surya)
+            # 3. Outer Ring (Surya / Sun)
             r_o = (r_mid + r_outer) / 2.0
             ox = cx + r_o * math.cos(mid_angle)
             oy = cy + r_o * math.sin(mid_angle)
             s_o = ((self.sun_sign - 1 + (h - 1)) % 12) + 1
             canv.setFont("Helvetica-Bold", 6.5)
             canv.setFillColor(colors.HexColor("#B45309"))
-            canv.drawCentredString(ox, oy + 3, str(s_o))
-            p_o = self.sun_planets.get(h, [])
-            if p_o:
+            p_o_str = format_planets(self.sun_planets.get(h, []))
+            if p_o_str:
+                canv.drawCentredString(ox, oy + 3, str(s_o))
                 canv.setFont("Helvetica-Bold", 5.5)
                 canv.setFillColor(colors.HexColor("#1E293B"))
-                canv.drawCentredString(ox, oy - 5, " ".join(p[:2] for p in p_o[:2]))
+                canv.drawCentredString(ox, oy - 5, p_o_str)
+            else:
+                canv.drawCentredString(ox, oy - 2, str(s_o))
 
         canv.restoreState()
 
@@ -393,26 +433,98 @@ def draw_north_indian_diamond_chart(
 
 
 def compute_shodashvarga(lon: float) -> dict[str, int]:
-    """Computes sign numbers (1-12) for all 16 Divisional Charts."""
-    sign = int(lon / 30.0)
+    """Computes sign numbers (1-12) for all 16 Divisional Charts according to Brihat Parashara Hora Shastra."""
+    sign = int(lon / 30.0) % 12
     deg_in_sign = lon % 30.0
+    is_odd_sign = (sign % 2 == 0)  # 0-indexed: 0=Aries, 2=Gemini, 4=Leo... (Odd signs in 1-indexed)
     r: dict[str, int] = {}
+
+    # D1: Rasi (1)
     r["D1"] = sign + 1
-    r["D2"] = (3 if deg_in_sign < 15.0 else 4) if sign % 2 == 0 else (4 if deg_in_sign < 15.0 else 3)
+
+    # D2: Hora (2) - Sun in odd (Leo=5), Moon in even (Cancer=4)
+    if is_odd_sign:
+        r["D2"] = 5 if deg_in_sign < 15.0 else 4
+    else:
+        r["D2"] = 4 if deg_in_sign < 15.0 else 5
+
+    # D3: Drekkana (3) - 1st: same, 2nd: 5th, 3rd: 9th
     r["D3"] = (sign + int(deg_in_sign / 10.0) * 4) % 12 + 1
+
+    # D4: Chaturthamsha (4) - 1st: same, 2nd: 4th, 3rd: 7th, 4th: 10th
     r["D4"] = (sign + int(deg_in_sign / 7.5) * 3) % 12 + 1
-    r["D7"] = (sign + int(deg_in_sign / (30.0 / 7.0))) % 12 + 1 if sign % 2 == 0 else (sign + 6 + int(deg_in_sign / (30.0 / 7.0))) % 12 + 1
-    r["D9"] = (int(lon / (30.0 / 9.0))) % 12 + 1
-    r["D10"] = (sign + int(deg_in_sign / 3.0)) % 12 + 1 if sign % 2 == 0 else (sign + 8 + int(deg_in_sign / 3.0)) % 12 + 1
+
+    # D7: Saptamsha (7) - Odd: from sign; Even: from 7th
+    sapt_part = int(deg_in_sign / (30.0 / 7.0))
+    r["D7"] = (sign + sapt_part) % 12 + 1 if is_odd_sign else (sign + 6 + sapt_part) % 12 + 1
+
+    # D9: Navamsha (9) - 108 parts across 360 deg
+    r["D9"] = int(lon / (30.0 / 9.0)) % 12 + 1
+
+    # D10: Dashamsha (10) - Odd: from sign; Even: from 9th
+    dash_part = int(deg_in_sign / 3.0)
+    r["D10"] = (sign + dash_part) % 12 + 1 if is_odd_sign else (sign + 8 + dash_part) % 12 + 1
+
+    # D12: Dwadashamsha (12) - Consecutive from sign
     r["D12"] = (sign + int(deg_in_sign / 2.5)) % 12 + 1
-    r["D16"] = (sign + int(deg_in_sign / (30.0 / 16.0))) % 12 + 1
-    r["D20"] = (sign + int(deg_in_sign / 1.5)) % 12 + 1
-    r["D24"] = (4 + int(deg_in_sign / 1.25)) % 12 + 1 if sign % 2 == 0 else (3 + int(deg_in_sign / 1.25)) % 12 + 1
-    r["D27"] = (sign + int(deg_in_sign / (30.0 / 27.0))) % 12 + 1
-    r["D30"] = (sign + int(deg_in_sign / 1.0)) % 12 + 1
-    r["D40"] = (sign + int(deg_in_sign / 0.75)) % 12 + 1
-    r["D45"] = (sign + int(deg_in_sign / (30.0 / 45.0))) % 12 + 1
-    r["D60"] = (int(lon / 0.5)) % 12 + 1
+
+    # D16: Shodashamsha (16) - Movable: Aries(0), Fixed: Leo(4), Dual: Sag(8)
+    shod_part = int(deg_in_sign / (30.0 / 16.0))
+    mod4 = sign % 4
+    start_d16 = 0 if mod4 == 0 else (4 if mod4 == 1 else 8)
+    r["D16"] = (start_d16 + shod_part) % 12 + 1
+
+    # D20: Vimshamsha (20) - Movable: Aries(0), Fixed: Sag(8), Dual: Leo(4)
+    vim_part = int(deg_in_sign / 1.5)
+    start_d20 = 0 if mod4 == 0 else (8 if mod4 == 1 else 4)
+    r["D20"] = (start_d20 + vim_part) % 12 + 1
+
+    # D24: Chaturvimshamsha (24) - Odd: Leo(4), Even: Cancer(3)
+    chatur_part = int(deg_in_sign / 1.25)
+    r["D24"] = (4 + chatur_part) % 12 + 1 if is_odd_sign else (3 + chatur_part) % 12 + 1
+
+    # D27: Saptavimshamsha (27) - Fiery: Aries(0), Earthy: Cancer(3), Airy: Libra(6), Watery: Cap(9)
+    sapta_part = int(deg_in_sign / (30.0 / 27.0))
+    start_d27 = (sign % 4) * 3
+    r["D27"] = (start_d27 + sapta_part) % 12 + 1
+
+    # D30: Trimshamsha (30) - Classical Parashari degree thresholds
+    if is_odd_sign:
+        if deg_in_sign < 5.0:
+            r["D30"] = 1   # Mars / Aries
+        elif deg_in_sign < 10.0:
+            r["D30"] = 11  # Saturn / Aquarius
+        elif deg_in_sign < 18.0:
+            r["D30"] = 9   # Jupiter / Sagittarius
+        elif deg_in_sign < 25.0:
+            r["D30"] = 3   # Mercury / Gemini
+        else:
+            r["D30"] = 7   # Venus / Libra
+    else:
+        if deg_in_sign < 5.0:
+            r["D30"] = 2   # Venus / Taurus
+        elif deg_in_sign < 12.0:
+            r["D30"] = 6   # Mercury / Virgo
+        elif deg_in_sign < 20.0:
+            r["D30"] = 12  # Jupiter / Pisces
+        elif deg_in_sign < 25.0:
+            r["D30"] = 10  # Saturn / Capricorn
+        else:
+            r["D30"] = 8   # Mars / Scorpio
+
+    # D40: Khavedamsha (40) - Odd: Aries(0), Even: Libra(6)
+    khav_part = int(deg_in_sign / 0.75)
+    start_d40 = 0 if is_odd_sign else 6
+    r["D40"] = (start_d40 + khav_part) % 12 + 1
+
+    # D45: Akshavedamsha (45) - Movable: Aries(0), Fixed: Leo(4), Dual: Sag(8)
+    aksha_part = int(deg_in_sign / (30.0 / 45.0))
+    start_d45 = 0 if mod4 == 0 else (4 if mod4 == 1 else 8)
+    r["D45"] = (start_d45 + aksha_part) % 12 + 1
+
+    # D60: Shashtiamsha (60) - Starts from sign itself
+    r["D60"] = (sign + int(deg_in_sign / 0.5)) % 12 + 1
+
     return r
 
 
@@ -753,26 +865,55 @@ def generate_comprehensive_kundli_pdf(
         if p not in planet_positions:
             for cp in kd.get("d1_planets", []):
                 if cp.get("name") == p:
-                    planet_positions[p] = (cp.get("sign", 1) - 1) * 30.0 + 15.0
+                    planet_positions[p] = (cp.get("sign_num", 1) - 1) * 30.0 + 15.0
                     break
         if p not in planet_positions:
             planet_positions[p] = 45.0
 
-    d1_asc_sign = kd.get("d1_asc_sign", 1)
+    d1_asc_sign = kd.get("d1_asc_sign") or (int(asc_lon / 30.0) % 12 + 1)
     d9_asc_sign = kd.get("d9_asc_sign", 1)
     d10_asc_sign = kd.get("d10_asc_sign", 1)
 
+    retrograde_map: dict[str, bool] = {}
+    for pt in kd.get("planets_table", []):
+        p_raw = pt.get("name", "")
+        clean_n = p_raw.replace("®", "").strip()
+        is_r = "®" in p_raw or pt.get("is_retrograde", False)
+        if clean_n in PLANET_NAMES:
+            retrograde_map[clean_n] = is_r
+    for cp in kd.get("d1_planets", []):
+        cp_n = cp.get("name", "").replace("®", "").strip()
+        if cp.get("is_retrograde"):
+            retrograde_map[cp_n] = True
+
+    # Compute authentic D1 house placements (filtered, clean, distinct)
     d1_house_map: dict[int, list[str]] = {h: [] for h in range(1, 13)}
-    for p in kd.get("d1_planets", []):
-        d1_house_map[p.get("house", 1)].append(p.get("name", ""))
+    for p_name, lon in planet_positions.items():
+        if p_name in ("Asc", "Lagna", "Ascendant"):
+            continue
+        p_sign = int(lon / 30.0) % 12 + 1
+        h_num = ((p_sign - d1_asc_sign) % 12) + 1
+        is_r = retrograde_map.get(p_name, False)
+        d1_house_map[h_num].append(f"{p_name}(R)" if is_r else p_name)
 
-    d9_house_map: dict[int, list[str]] = {h: [] for h in range(1, 13)}
-    for p in kd.get("d9_planets", []):
-        d9_house_map[p.get("house", 1)].append(p.get("name", ""))
-
-    d10_house_map: dict[int, list[str]] = {h: [] for h in range(1, 13)}
-    for p in kd.get("d10_planets", []):
-        d10_house_map[p.get("house", 1)].append(p.get("name", ""))
+    # Compute authentic Bhava Chalit placements
+    chalit_house_map: dict[int, list[str]] = {h: [] for h in range(1, 13)}
+    if kd.get("chalit_planets"):
+        for cp in kd.get("chalit_planets", []):
+            cp_n = cp.get("name", "").replace("®", "").strip()
+            if cp_n in ("Asc", "Lagna", "Ascendant"):
+                continue
+            h_c = cp.get("house_num") or cp.get("house")
+            if h_c:
+                is_r = cp.get("is_retrograde", False) or retrograde_map.get(cp_n, False)
+                chalit_house_map[h_c].append(f"{cp_n}(R)" if is_r else cp_n)
+    if not any(chalit_house_map.values()):
+        for p_name, lon in planet_positions.items():
+            if p_name in ("Asc", "Lagna", "Ascendant"):
+                continue
+            h_c = int((lon - (asc_lon - 15.0)) % 360.0 / 30.0) + 1
+            is_r = retrograde_map.get(p_name, False)
+            chalit_house_map[h_c].append(f"{p_name}(R)" if is_r else p_name)
 
     # Mathematical Vedic Derivations
     chara_karakas = compute_jaimini_chara_karakas(planet_positions)
@@ -780,10 +921,7 @@ def generate_comprehensive_kundli_pdf(
     maitri = compute_panchadha_maitri(planet_positions)
     shadbala = compute_shadbala(planet_positions, asc_lon)
 
-    story = []
-
-    
-
+    # Compute Chandra & Surya charts
     moon_lon = planet_positions.get("Moon", 45.0)
     moon_sign = int(moon_lon / 30.0) % 12 + 1
     sun_lon = planet_positions.get("Sun", 45.0)
@@ -792,17 +930,53 @@ def generate_comprehensive_kundli_pdf(
     moon_house_map: dict[int, list[str]] = {h: [] for h in range(1, 13)}
     sun_house_map: dict[int, list[str]] = {h: [] for h in range(1, 13)}
     for p_name, lon in planet_positions.items():
+        if p_name in ("Asc", "Lagna", "Ascendant"):
+            continue
         p_sign = int(lon / 30.0) % 12 + 1
         h_moon = ((p_sign - moon_sign) % 12) + 1
-        moon_house_map[h_moon].append(p_name)
         h_sun = ((p_sign - sun_sign) % 12) + 1
-        sun_house_map[h_sun].append(p_name)
+        is_r = retrograde_map.get(p_name, False)
+        display_n = f"{p_name}(R)" if is_r else p_name
+        moon_house_map[h_moon].append(display_n)
+        sun_house_map[h_sun].append(display_n)
 
-    chalit_house_map: dict[int, list[str]] = {h: [] for h in range(1, 13)}
-    for p in kd.get("chalit_planets", []):
-        chalit_house_map[p.get("house", 1)].append(p.get("name", ""))
-    if not any(chalit_house_map.values()):
-        chalit_house_map = dict(d1_house_map)
+    # Compute all 16 Shodashvarga divisional charts dynamically
+    asc_vargas = compute_shodashvarga(asc_lon)
+    vargas_specs = [
+        ("D1", "Lagna Chart (D1)", asc_vargas["D1"]),
+        ("D2", "Hora Chart (D2 - Wealth)", asc_vargas["D2"]),
+        ("D3", "Drekkana Chart (D3 - Siblings)", asc_vargas["D3"]),
+        ("D4", "Chaturthamsha (D4 - Assets)", asc_vargas["D4"]),
+        ("D7", "Saptamsha (D7 - Children)", asc_vargas["D7"]),
+        ("D9", "Navamsha (D9 - Fortune & Dharma)", d9_asc_sign or asc_vargas["D9"]),
+        ("D10", "Dashamsha (D10 - Career & Karma)", d10_asc_sign or asc_vargas["D10"]),
+        ("D12", "Dwadashamsha (D12 - Lineage)", asc_vargas["D12"]),
+        ("D16", "Shodashamsha (D16 - Vehicles)", asc_vargas["D16"]),
+        ("D20", "Vimshamsha (D20 - Spiritual Progress)", asc_vargas["D20"]),
+        ("D24", "Chaturvimshamsha (D24 - Higher Wisdom)", asc_vargas["D24"]),
+        ("D27", "Saptavimshamsha (D27 - Inner Strengths)", asc_vargas["D27"]),
+        ("D30", "Trimshamsha (D30 - Misfortunes & Arishta)", asc_vargas["D30"]),
+        ("D40", "Khavedamsha (D40 - Auspicious Effects)", asc_vargas["D40"]),
+        ("D45", "Akshavedamsha (D45 - General Well-Being)", asc_vargas["D45"]),
+        ("D60", "Shashtiamsha (D60 - Past Life Karma)", asc_vargas["D60"]),
+    ]
+
+    all_varga_charts: dict[str, tuple[str, int, dict[int, list[str]]]] = {}
+    for vk, v_title, v_asc in vargas_specs:
+        v_hmap: dict[int, list[str]] = {h: [] for h in range(1, 13)}
+        for p_name, lon in planet_positions.items():
+            if p_name in ("Asc", "Lagna", "Ascendant"):
+                continue
+            p_vsign = compute_shodashvarga(lon)[vk]
+            vh = ((p_vsign - v_asc) % 12) + 1
+            is_r = retrograde_map.get(p_name, False)
+            v_hmap[vh].append(f"{p_name}(R)" if is_r else p_name)
+        all_varga_charts[vk] = (v_title, v_asc, v_hmap)
+
+    d9_house_map = all_varga_charts["D9"][2]
+    d9_asc_sign = all_varga_charts["D9"][1]
+    d10_house_map = all_varga_charts["D10"][2]
+    d10_asc_sign = all_varga_charts["D10"][1]
 
     story = []
 
@@ -1168,28 +1342,28 @@ def generate_comprehensive_kundli_pdf(
     # =========================================================================
     varga_groups = [
         ("SHODASHVARGA DIVISIONAL CHARTS (GROUP 1: D1, D2, D3, D4)", [
-            ("Lagna Chart (D1)", d1_asc_sign, d1_house_map),
-            ("Hora Chart (D2 - Wealth)", d1_asc_sign, d1_house_map),
-            ("Drekkana Chart (D3 - Siblings)", d1_asc_sign, d1_house_map),
-            ("Chaturthamsha (D4 - Assets)", d1_asc_sign, d1_house_map),
+            all_varga_charts["D1"],
+            all_varga_charts["D2"],
+            all_varga_charts["D3"],
+            all_varga_charts["D4"],
         ]),
         ("SHODASHVARGA DIVISIONAL CHARTS (GROUP 2: D7, D9, D10, D12)", [
-            ("Saptamsha (D7 - Children)", d1_asc_sign, d1_house_map),
-            ("Navamsha (D9 - Fortune & Dharma)", d9_asc_sign, d9_house_map),
-            ("Dashamsha (D10 - Career & Karma)", d10_asc_sign, d10_house_map),
-            ("Dwadashamsha (D12 - Lineage)", d1_asc_sign, d1_house_map),
+            all_varga_charts["D7"],
+            all_varga_charts["D9"],
+            all_varga_charts["D10"],
+            all_varga_charts["D12"],
         ]),
         ("SHODASHVARGA DIVISIONAL CHARTS (GROUP 3: D16, D20, D24, D27)", [
-            ("Shodashamsha (D16 - Vehicles)", d1_asc_sign, d1_house_map),
-            ("Vimshamsha (D20 - Spiritual Progress)", d1_asc_sign, d1_house_map),
-            ("Chaturvimshamsha (D24 - Higher Wisdom)", d1_asc_sign, d1_house_map),
-            ("Saptavimshamsha (D27 - Inner Strengths)", d1_asc_sign, d1_house_map),
+            all_varga_charts["D16"],
+            all_varga_charts["D20"],
+            all_varga_charts["D24"],
+            all_varga_charts["D27"],
         ]),
         ("SHODASHVARGA DIVISIONAL CHARTS (GROUP 4: D30, D40, D45, D60)", [
-            ("Trimshamsha (D30 - Misfortunes & Arishta)", d1_asc_sign, d1_house_map),
-            ("Khavedamsha (D40 - Auspicious Effects)", d1_asc_sign, d1_house_map),
-            ("Akshavedamsha (D45 - General Well-Being)", d1_asc_sign, d1_house_map),
-            ("Shashtiamsha (D60 - Past Life Karma)", d1_asc_sign, d1_house_map),
+            all_varga_charts["D30"],
+            all_varga_charts["D40"],
+            all_varga_charts["D45"],
+            all_varga_charts["D60"],
         ]),
     ]
 
@@ -1649,8 +1823,12 @@ def generate_comprehensive_kundli_pdf(
     story.append(t_av_all)
     story.append(Spacer(1, 8))
 
-    # Ashtakavarga Rectangular Chart
-    c_ashtaka = NorthIndianChartFlowable(432, 215, d1_asc_sign, d1_house_map, "Sarvashtakavarga Chakra", is_rect=True)
+    # Ashtakavarga Rectangular Chart with Bindus per Bhava
+    ashtaka_house_map = {
+        h: [f"{ashtakavarga['sarvashtakavarga'][((d1_asc_sign - 1 + (h - 1)) % 12)]} Bindus"]
+        for h in range(1, 13)
+    }
+    c_ashtaka = NorthIndianChartFlowable(432, 215, d1_asc_sign, ashtaka_house_map, "Sarvashtakavarga Chakra", is_rect=True)
     t_ash_box = Table([[c_ashtaka]], colWidths=[520])
     t_ash_box.setStyle(TableStyle([
         ("ALIGN", (0,0), (-1,-1), "CENTER"),
