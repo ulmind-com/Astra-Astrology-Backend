@@ -141,10 +141,94 @@ def default_trust_stats() -> list[TrustStatConfig]:
     ]
 
 
+class CinematicHeroSlideConfig(BaseModel):
+    id: str = Field(default="welcome", max_length=50)
+    photo: str = Field(default="/images/home-cinematic/hero-1.webp", max_length=1000)
+    position: str = Field(default="center 62%", max_length=100)
+    thumb: str = Field(default="/images/home-cinematic/rail-1.webp", max_length=1000)
+    layout: str = Field(default="one", max_length=10)
+    title_en: str = Field(default="WELCOME TO DIVINLINK", max_length=200)
+    title_bn: str = Field(default="ডিভাইনলিংকে স্বাগতম", max_length=200)
+    title_hi: str = Field(default="डिवाइनलिंक में स्वागत", max_length=200)
+    heading_en: str = Field(default="Discover DivinLink", max_length=200)
+    heading_bn: str = Field(default="ডিভাইনলিংক আবিষ্কার করুন", max_length=200)
+    heading_hi: str = Field(default="डिवाइनलिंक को जानें", max_length=200)
+    description_en: str = Field(
+        default="Verified Vedic astrologers, free kundli and daily guidance for you and your family",
+        max_length=500,
+    )
+    description_bn: str = Field(
+        default="যাচাই করা বৈদিক জ্যোতিষী, ফ্রি কুণ্ডলী ও প্রতিদিনের দিশা, আপনার ও আপনার পরিবারের জন্য",
+        max_length=500,
+    )
+    description_hi: str = Field(
+        default="सत्यापित वैदिक ज्योतिषी, मुफ़्त कुंडली और रोज़ का मार्गदर्शन, आपके और आपके परिवार के लिए",
+        max_length=500,
+    )
+
+
+def default_cinematic_hero_slides() -> list[CinematicHeroSlideConfig]:
+    return [
+        CinematicHeroSlideConfig(
+            id="welcome",
+            photo="/images/home-cinematic/hero-1.webp",
+            position="center 62%",
+            thumb="/images/home-cinematic/rail-1.webp",
+            layout="one",
+            title_en="WELCOME TO DIVINLINK",
+            title_bn="ডিভাইনলিংকে স্বাগতম",
+            title_hi="डिवाइनलिंक में स्वागत",
+            heading_en="Discover DivinLink",
+            heading_bn="ডিভাইনলিংক আবিষ্কার করুন",
+            heading_hi="ডিवाइनलिंक को जानें",
+            description_en="Verified Vedic astrologers, free kundli and daily guidance for you and your family",
+            description_bn="যাচাই করা বৈদিক জ্যোতিষী, ফ্রি কুণ্ডলী ও প্রতিদিনের দিশা, আপনার ও আপনার পরিবারের জন্য",
+            description_hi="सत्यापित वैदिक ज्योतिषी, मुफ़्त कुंडली और रोज़ का मार्गदर्शन, आपके और आपके परिवार के लिए",
+        ),
+        CinematicHeroSlideConfig(
+            id="guide",
+            photo="/images/home-cinematic/hero-2.webp",
+            position="center 55%",
+            thumb="/images/home-cinematic/rail-2.webp",
+            layout="one",
+            title_en="FIND YOUR GUIDE",
+            title_bn="আপনার গুরু খুঁজুন",
+            title_hi="अपना गुरु खोजें",
+            heading_en="Talk to experts",
+            heading_bn="বিশেষজ্ঞের সঙ্গে কথা বলুন",
+            heading_hi="विशेषज्ञों से बात करें",
+            description_en="Chat or call astrologers for love, career, marriage and health questions",
+            description_bn="প্রেম, কেরিয়ার, বিবাহ ও স্বাস্থ্যের প্রশ্নে জ্যোতিষীর সঙ্গে চ্যাট বা কল করুন",
+            description_hi="प्रेम, करियर, विवाह और स्वास्थ्य के सवालों पर ज्योतिषी से चैट या कॉल करें",
+        ),
+        CinematicHeroSlideConfig(
+            id="stars",
+            photo="/images/home-cinematic/hero-3.webp",
+            position="center 40%",
+            thumb="/images/home-cinematic/rail-3.webp",
+            layout="two",
+            title_en="EXPLORE\nTHE STARS",
+            title_bn="নক্ষত্রের\nসন্ধানে",
+            title_hi="सितारों को\nजानें",
+            heading_en="Read the stars",
+            heading_bn="নক্ষত্র পড়ুন",
+            heading_hi="सितारों को पढ़ें",
+            description_en="Explore your kundli, panchang and nakshatra through the eyes of Vedic tradition",
+            description_bn="বৈদিক ঐতিহ্যের চোখে আপনার কুণ্ডলী, পঞ্জিকা ও নক্ষত্র জানুন",
+            description_hi="वैदिक परंपरा की दृष्टि से अपनी कुंडली, पंचांग और नक्षत्र जानें",
+        ),
+    ]
+
+
 class HomePageCMS(TimestampedDocument):
     """Singleton document storing all customizable static texts & media on the homepage."""
 
     key: str = CMS_KEY_HOMEPAGE
+
+    # Cinematic Hero Slides (topmost full-bleed interactive hero)
+    cinematic_hero_slides: list[CinematicHeroSlideConfig] = Field(
+        default_factory=default_cinematic_hero_slides
+    )
 
     # Hero Slides (carousel banners)
     hero_slides: list[HeroSlideConfig] = Field(default_factory=default_hero_slides)
