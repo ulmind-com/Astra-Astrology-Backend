@@ -169,8 +169,10 @@ async def sweep() -> dict[str, int]:
 
 async def _publish(profile: Astrologer) -> None:
     """Push the change to anyone watching, without ever failing the request."""
+    from app.services import astrologer as astrologer_service
     from app.services import realtime
 
+    astrologer_service.invalidate_directory_cache()
     await realtime.publish_astrologer(profile)
 
 

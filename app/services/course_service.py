@@ -66,11 +66,19 @@ MIN_LESSON_SECONDS = 60
 COMPLETION_FRACTION = 0.90
 
 
+_COURSES_CACHE: dict[tuple[Any, ...], tuple[float, list[Course]]] = {}
+_COURSES_CACHE_TTL_SECONDS = 15.0
+
+
 class CourseService:
     # Staff may take part in the Q&A of a course they have not bought: an
     # acharya answering a student is the point of the forum. It does not and
     # must not imply access to the lessons — that still needs an enrollment.
     STAFF_ROLES = frozenset({UserRole.ASTROLOGER, UserRole.ADMIN, UserRole.SUPER_ADMIN})
+
+    @staticmethod
+    def invalidate_courses_cache() -> None:
+        _COURSES_CACHE.clear()
 
     @staticmethod
     def _is_staff(user: User) -> bool:
@@ -151,6 +159,12 @@ class CourseService:
         skip: int = 0,
     ) -> list[Course]:
         """Returns active, published courses with optional filtering."""
+        now = time.monotonic()
+        cache_key = (category or "", level or "", (search or "").strip(), limit, skip)
+        cached = _COURSES_CACHE.get(cache_key)
+        if cached is not None and (now - cached[0]) < _COURSES_CACHE_TTL_SECONDS:
+            return cached[1]
+
         query: dict[str, Any] = {"is_published": True, "is_deleted": False}
         if category and category != "all":
             query["category"] = category
@@ -163,13 +177,17 @@ class CourseService:
                 {"tags": {"$in": [search.lower()]}},
             ]
 
-        return (
+        courses = (
             await Course.find(query)
             .sort([("is_featured", -1), ("created_at", -1)])
             .skip(skip)
             .limit(limit)
             .to_list()
         )
+        if len(_COURSES_CACHE) >= 50:
+            _COURSES_CACHE.clear()
+        _COURSES_CACHE[cache_key] = (now, courses)
+        return courses
 
     @staticmethod
     async def get_course_by_slug(slug: str, user: User | None = None) -> dict[str, Any]:

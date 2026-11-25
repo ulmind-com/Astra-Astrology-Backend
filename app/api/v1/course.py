@@ -3,7 +3,7 @@
 from typing import Annotated, Any
 
 from beanie import PydanticObjectId
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from fastapi.responses import HTMLResponse
 
 from app.api.dependencies import SignedInOrAnonymous, get_current_user
@@ -36,6 +36,7 @@ router = APIRouter(prefix="/courses", tags=["courses"])
 
 @router.get("", response_model=ApiResponse[list[CourseListItemOut]])
 async def list_courses(
+    response: Response,
     category: Annotated[str | None, Query(description="Filter by category")] = None,
     level: Annotated[str | None, Query(description="Filter by level")] = None,
     search: Annotated[str | None, Query(description="Keyword search in title/tags")] = None,
@@ -99,6 +100,10 @@ async def list_courses(
                 user_progress_percent=user_progress_percent,
             )
         )
+    if user is None:
+        response.headers["Cache-Control"] = "public, max-age=60, s-maxage=300, stale-while-revalidate=600"
+    else:
+        response.headers["Cache-Control"] = "private, no-store"
     return ApiResponse(data=items)
 
 
