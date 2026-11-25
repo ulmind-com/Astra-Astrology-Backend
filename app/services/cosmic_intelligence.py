@@ -847,7 +847,7 @@ def generate_divya_paramarsha_certificate_data(
     now = utcnow()
     prescription = appointment.prescription or {}
     verify_url = f"https://astra-astrology-web.vercel.app/verify/prescription/{appointment.id}"
-    qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=260x260&data={verify_url.replace(':', '%3A').replace('/', '%2F')}&color=1a1306&bgcolor=fdf8ee"
+    qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=260x260&data={verify_url.replace(':', '%3A').replace('/', '%2F')}&color=1d1a1c&bgcolor=ffffff"
     verification_hash = hashlib.sha256(f"{cert_id}:{appointment.id}:{now.isoformat()}".encode()).hexdigest()
 
     return {
@@ -918,7 +918,7 @@ def generate_certificate_html(cert: dict[str, Any]) -> str:
     issued_date = cert.get("issued_at", "")[:10]
     verification_hash = cert.get("digital_seal", {}).get("verification_hash", "")[:32]
     verify_url = cert.get("verification_url", f"https://astra-astrology-web.vercel.app/verify/prescription/{cert_id}")
-    qr_url = cert.get("qr_code_url") or f"https://api.qrserver.com/v1/create-qr-code/?size=260x260&data={verify_url.replace(':', '%3A').replace('/', '%2F')}&color=1a1306&bgcolor=fdf8ee"
+    qr_url = cert.get("qr_code_url") or f"https://api.qrserver.com/v1/create-qr-code/?size=260x260&data={verify_url.replace(':', '%3A').replace('/', '%2F')}&color=1d1a1c&bgcolor=ffffff"
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -1197,17 +1197,18 @@ def generate_certificate_html(cert: dict[str, Any]) -> str:
       text-align: right;
     }}
     .qr-frame {{
-      background: #FDF8EE;
-      padding: 5px;
-      border-radius: 8px;
-      border: 1px solid #D4AF37;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+      background: #FFFFFF;
+      padding: 6px;
+      border-radius: 12px;
+      border: 1px solid #EADCD6;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
       display: inline-block;
     }}
     .qr-img {{
       width: 68px;
       height: 68px;
       display: block;
+      border-radius: 4px;
     }}
     .qr-label {{
       font-size: 8.5px;
