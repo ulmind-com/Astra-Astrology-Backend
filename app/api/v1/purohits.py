@@ -3,17 +3,21 @@
 import asyncio
 from typing import Annotated
 
-from fastapi import APIRouter, File, Query, UploadFile, status
+from fastapi import APIRouter, File, Header, Query, UploadFile, status
 
 from app.api.dependencies import CurrentUser
-from app.core.exceptions import ForbiddenError
-from app.models.enums import UserRole
+from app.core.config import settings
+from app.core.exceptions import ForbiddenError, UnauthorizedError
+from app.core.security import create_application_upload_token, verify_application_upload_token
+from app.models.enums import PujaPaymentStatus, UserRole
+from app.models.purohit import PujaBooking
 from app.models.purohit_application import PurohitApplication
 from app.models.user import User
 from app.schemas.common import ApiResponse, MessageResponse
 from app.schemas.purohit import (
     PujaBookingCreate,
     PujaBookingOut,
+    PujaPaymentVerifyRequest,
     PurohitAvailabilityUpdate,
     PurohitOut,
     PurohitPujaItemCreate,
@@ -83,13 +87,16 @@ async def send_application_otp(payload: PurohitApplicationSendOtpIn) -> ApiRespo
 
 @router.post(
     "/applications/verify-otp",
-    response_model=ApiResponse[dict[str, bool]],
+    response_model=ApiResponse[dict[str, bool | str]],
     summary="Verify applicant email OTP",
 )
-async def verify_application_otp(payload: PurohitApplicationVerifyOtpIn) -> ApiResponse[dict[str, bool]]:
+async def verify_application_otp(
+    payload: PurohitApplicationVerifyOtpIn,
+) -> ApiResponse[dict[str, bool | str]]:
     await purohit_application_service.verify_application_otp(payload.email, payload.code)
+    upload_token = create_application_upload_token(payload.email)
     return ApiResponse.ok(
-        data={"verified": True},
+        data={"verified": True, "upload_token": upload_token},
         message="Email OTP verified successfully.",
     )
 
@@ -101,7 +108,14 @@ async def verify_application_otp(payload: PurohitApplicationVerifyOtpIn) -> ApiR
 )
 async def upload_application_document(
     file: UploadFile = File(...),
+    x_upload_token: Annotated[str | None, Header(alias="X-Upload-Token")] = None,
 ) -> ApiResponse[dict[str, str]]:
+    if not x_upload_token:
+        raise UnauthorizedError(
+            "Email OTP verification is required before uploading application documents.",
+            error_code="upload_token_required",
+        )
+    verify_application_upload_token(x_upload_token)
     result = await upload_file(
         file,
         folder="purohit_applications",
@@ -388,6 +402,39 @@ async def complete_puja(booking_id: str, user: CurrentUser) -> ApiResponse[PujaB
     return ApiResponse(message="পূজা সম্পন্ন হিসেবে চিহ্নিত করা হয়েছে। আশীর্বাদ সর্বত্র বর্ষিত হোক!", data=out)
 
 
+def _booking_to_out(booking: PujaBooking, *, token: str | None = None) -> PujaBookingOut:
+    """Serialize PujaBooking into PujaBookingOut with Razorpay metadata when pending."""
+    amount_paise = max(100, int(round(booking.amount_inr * 100)))
+    is_pending_rzp = booking.payment_status != PujaPaymentStatus.PAID and bool(booking.razorpay_order_id)
+    return PujaBookingOut(
+        id=str(booking.id),
+        booking_number=booking.booking_number,
+        user_id=str(booking.user_id),
+        user_name=booking.user_name,
+        user_phone=booking.user_phone,
+        purohit_id=str(booking.purohit_id),
+        purohit_name=booking.purohit_name,
+        puja_item_id=booking.puja_item_id,
+        puja_name=booking.puja_name,
+        puja_duration_minutes=booking.puja_duration_minutes,
+        amount_inr=booking.amount_inr,
+        amount_paise=amount_paise,
+        sankalpa_name=booking.sankalpa_name,
+        sankalpa_gotra=booking.sankalpa_gotra,
+        sankalpa_nakshatra=booking.sankalpa_nakshatra,
+        sankalpa_wish=booking.sankalpa_wish,
+        room_id=booking.room_id,
+        zego_token=token,
+        razorpay_key_id=settings.RAZORPAY_KEY_ID if is_pending_rzp else None,
+        razorpay_order_id=booking.razorpay_order_id if is_pending_rzp else None,
+        status=booking.status,
+        payment_status=booking.payment_status,
+        started_at=booking.started_at,
+        completed_at=booking.completed_at,
+        created_at=booking.created_at,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Devotee Puja Booking & Video Room
 # ---------------------------------------------------------------------------
@@ -401,33 +448,29 @@ async def book_puja_session(
     payload: PujaBookingCreate, user: CurrentUser
 ) -> ApiResponse[PujaBookingOut]:
     booking, token = await purohit_service.book_puja(user, payload)
-    out = PujaBookingOut(
-        id=str(booking.id),
-        booking_number=booking.booking_number,
-        user_id=str(booking.user_id),
-        user_name=booking.user_name,
-        user_phone=booking.user_phone,
-        purohit_id=str(booking.purohit_id),
-        purohit_name=booking.purohit_name,
-        puja_item_id=booking.puja_item_id,
-        puja_name=booking.puja_name,
-        puja_duration_minutes=booking.puja_duration_minutes,
-        amount_inr=booking.amount_inr,
-        sankalpa_name=booking.sankalpa_name,
-        sankalpa_gotra=booking.sankalpa_gotra,
-        sankalpa_nakshatra=booking.sankalpa_nakshatra,
-        sankalpa_wish=booking.sankalpa_wish,
-        room_id=booking.room_id,
-        zego_token=token,
-        status=booking.status,
-        payment_status=booking.payment_status,
-        started_at=booking.started_at,
-        completed_at=booking.completed_at,
-        created_at=booking.created_at,
+    out = _booking_to_out(booking, token=token)
+    msg = (
+        f"পূজা সফলভাবে বুক করা হয়েছে (#{booking.booking_number})। পুরোহিতজীর সাথে এখনই যুক্ত হতে রুম ওপেন করুন।"
+        if booking.payment_status == PujaPaymentStatus.PAID
+        else f"বুকিং (#{booking.booking_number}) শুরু হয়েছে। অনুগ্রহ করে পেমেন্ট সম্পন্ন করুন।"
     )
+    return ApiResponse(message=msg, data=out)
+
+
+@router.post(
+    "/bookings/{booking_id}/verify-payment",
+    response_model=ApiResponse[PujaBookingOut],
+    summary="Verify Razorpay payment to confirm a pending puja booking",
+)
+async def verify_puja_booking_payment(
+    booking_id: str,
+    payload: PujaPaymentVerifyRequest,
+    user: CurrentUser,
+) -> ApiResponse[PujaBookingOut]:
+    booking, token = await purohit_service.verify_puja_payment(booking_id, user, payload)
     return ApiResponse(
-        message=f"পূজা সফলভাবে বুক করা হয়েছে (#{booking.booking_number})। পুরোহিতজীর সাথে এখনই যুক্ত হতে রুম ওপেন করুন।",
-        data=out,
+        message=f"পেমেন্ট সফল হয়েছে! পূজা বুকিং (#{booking.booking_number}) নিশ্চিত করা হয়েছে।",
+        data=_booking_to_out(booking, token=token),
     )
 
 
@@ -438,33 +481,7 @@ async def book_puja_session(
 )
 async def get_my_devotee_bookings(user: CurrentUser) -> ApiResponse[list[PujaBookingOut]]:
     bookings = await purohit_service.list_user_bookings(user.id)
-    out = [
-        PujaBookingOut(
-            id=str(b.id),
-            booking_number=b.booking_number,
-            user_id=str(b.user_id),
-            user_name=b.user_name,
-            user_phone=b.user_phone,
-            purohit_id=str(b.purohit_id),
-            purohit_name=b.purohit_name,
-            puja_item_id=b.puja_item_id,
-            puja_name=b.puja_name,
-            puja_duration_minutes=b.puja_duration_minutes,
-            amount_inr=b.amount_inr,
-            sankalpa_name=b.sankalpa_name,
-            sankalpa_gotra=b.sankalpa_gotra,
-            sankalpa_nakshatra=b.sankalpa_nakshatra,
-            sankalpa_wish=b.sankalpa_wish,
-            room_id=b.room_id,
-            status=b.status,
-            payment_status=b.payment_status,
-            started_at=b.started_at,
-            completed_at=b.completed_at,
-            created_at=b.created_at,
-        )
-        for b in bookings
-    ]
-    return ApiResponse(data=out)
+    return ApiResponse(data=[_booking_to_out(b) for b in bookings])
 
 
 @router.get(
@@ -475,30 +492,7 @@ async def get_my_devotee_bookings(user: CurrentUser) -> ApiResponse[list[PujaBoo
 async def get_single_booking_endpoint(booking_id: str, user: CurrentUser) -> ApiResponse[PujaBookingOut]:
     """Retrieves full details for a single puja booking for the devotee or the Purohit."""
     booking = await purohit_service.get_booking(booking_id, user)
-    out = PujaBookingOut(
-        id=str(booking.id),
-        booking_number=booking.booking_number,
-        user_id=str(booking.user_id),
-        user_name=booking.user_name,
-        user_phone=booking.user_phone,
-        purohit_id=str(booking.purohit_id),
-        purohit_name=booking.purohit_name,
-        puja_item_id=booking.puja_item_id,
-        puja_name=booking.puja_name,
-        puja_duration_minutes=booking.puja_duration_minutes,
-        amount_inr=booking.amount_inr,
-        sankalpa_name=booking.sankalpa_name,
-        sankalpa_gotra=booking.sankalpa_gotra,
-        sankalpa_nakshatra=booking.sankalpa_nakshatra,
-        sankalpa_wish=booking.sankalpa_wish,
-        room_id=booking.room_id,
-        status=booking.status,
-        payment_status=booking.payment_status,
-        started_at=booking.started_at,
-        completed_at=booking.completed_at,
-        created_at=booking.created_at,
-    )
-    return ApiResponse(data=out)
+    return ApiResponse(data=_booking_to_out(booking))
 
 
 @router.get(
@@ -508,28 +502,4 @@ async def get_single_booking_endpoint(booking_id: str, user: CurrentUser) -> Api
 )
 async def get_puja_room_token(booking_id: str, user: CurrentUser) -> ApiResponse[PujaBookingOut]:
     booking, token = await purohit_service.get_booking_token(booking_id, user)
-    out = PujaBookingOut(
-        id=str(booking.id),
-        booking_number=booking.booking_number,
-        user_id=str(booking.user_id),
-        user_name=booking.user_name,
-        user_phone=booking.user_phone,
-        purohit_id=str(booking.purohit_id),
-        purohit_name=booking.purohit_name,
-        puja_item_id=booking.puja_item_id,
-        puja_name=booking.puja_name,
-        puja_duration_minutes=booking.puja_duration_minutes,
-        amount_inr=booking.amount_inr,
-        sankalpa_name=booking.sankalpa_name,
-        sankalpa_gotra=booking.sankalpa_gotra,
-        sankalpa_nakshatra=booking.sankalpa_nakshatra,
-        sankalpa_wish=booking.sankalpa_wish,
-        room_id=booking.room_id,
-        zego_token=token,
-        status=booking.status,
-        payment_status=booking.payment_status,
-        started_at=booking.started_at,
-        completed_at=booking.completed_at,
-        created_at=booking.created_at,
-    )
-    return ApiResponse(data=out)
+    return ApiResponse(data=_booking_to_out(booking, token=token))

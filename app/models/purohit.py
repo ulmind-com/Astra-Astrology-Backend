@@ -101,9 +101,9 @@ class PujaBooking(TimestampedDocument):
     # ZEGOCLOUD Video Room ID
     room_id: str
 
-    status: PujaBookingStatus = PujaBookingStatus.CONFIRMED
-    payment_status: PujaPaymentStatus = PujaPaymentStatus.PAID
-    payment_method: str = "online"
+    status: PujaBookingStatus = PujaBookingStatus.PENDING
+    payment_status: PujaPaymentStatus = PujaPaymentStatus.PENDING
+    payment_method: str = "razorpay"
 
     razorpay_order_id: str | None = None
     razorpay_payment_id: str | None = None

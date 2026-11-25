@@ -1,6 +1,8 @@
 """Schemas for Purohit profile, personal puja catalog, and live puja booking."""
 
 from datetime import datetime
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.core.config import settings
@@ -127,6 +129,15 @@ class PujaBookingCreate(BaseModel):
     sankalpa_gotra: str = Field(default="Kashyapa", min_length=2, max_length=50)
     sankalpa_nakshatra: str | None = Field(default=None, max_length=50, description="Birth Nakshatra for Vedic Sankalpa")
     sankalpa_wish: str | None = Field(default=None, max_length=500, description="Special prayer wish or reason for puja")
+    payment_method: Literal["razorpay", "wallet"] = "razorpay"
+
+
+class PujaPaymentVerifyRequest(BaseModel):
+    """Razorpay callback payload to finalize a pending online puja booking."""
+
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
 
 
 class PujaBookingOut(BaseModel):
@@ -145,6 +156,7 @@ class PujaBookingOut(BaseModel):
     puja_name: str
     puja_duration_minutes: int
     amount_inr: float
+    amount_paise: int = 0
     sankalpa_name: str
     sankalpa_gotra: str
     sankalpa_nakshatra: str | None = None
@@ -152,6 +164,8 @@ class PujaBookingOut(BaseModel):
     room_id: str
     zego_app_id: int = Field(default_factory=lambda: settings.ZEGO_APP_ID)
     zego_token: str | None = None
+    razorpay_key_id: str | None = None
+    razorpay_order_id: str | None = None
     status: PujaBookingStatus
     payment_status: PujaPaymentStatus
     started_at: datetime | None = None

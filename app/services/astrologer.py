@@ -17,7 +17,7 @@ from slugify import slugify
 
 from app.core.exceptions import ConflictError, ForbiddenError
 from app.core.security import hash_password
-from app.models.astrologer import Astrologer
+from app.models.astrologer import Astrologer, GalleryImage
 from app.models.enums import AccountStatus, AuthProvider, ConsultationMode, UserRole
 from app.models.pending_registration import PendingRegistration
 from app.models.user import User

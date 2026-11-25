@@ -367,7 +367,7 @@ async def red_flag_call(
             logger.warning("Appointment red-flag delegation noted: {}", exc)
 
     # Terminate call session immediately
-    if req.terminate_call and session.status in (CallStatus.RINGING, CallStatus.ACCEPTED, CallStatus.ACTIVE):
+    if req.terminate_call and session.status in (CallStatus.RINGING, CallStatus.ACTIVE):
         await call_service._close(
             session,
             status=CallStatus.ENDED if session.started_at else CallStatus.MISSED,

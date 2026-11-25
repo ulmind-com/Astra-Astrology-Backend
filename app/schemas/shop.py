@@ -457,37 +457,6 @@ class CartItemInput(BaseModel):
     quantity: int = Field(default=1, ge=1, le=50)
 
 
-class CartItemOut(BaseModel):
-    product_id: str
-    title: str
-    slug: str
-    sku: str
-    featured_image: str
-    unit_mrp: float
-    unit_sale_price: float
-    quantity: int
-    line_total: float
-    in_stock: bool
-    stock_quantity: int
-    free_gift_title: str | None = None
-    free_gift_value: float | None = None
-    free_gift_badge: str | None = None
-    cashback_percent: int = 100
-
-
-class CartOut(BaseModel):
-    items: list[CartItemOut] = Field(default_factory=list)
-    subtotal: float = 0.0
-    discount_amount: float = 0.0
-    coupon_code: str | None = None
-    shipping_fee: float = 0.0
-    free_shipping_threshold: float = 499.0
-    free_shipping_remaining: float = 0.0
-    grand_total: float = 0.0
-    total_cashback_coins: int = 0
-    bundled_free_gifts: list[dict] = Field(default_factory=list)
-
-
 class CheckoutAddressInput(BaseModel):
     recipient_name: str = Field(min_length=2, max_length=100)
     phone_number: str = Field(min_length=10, max_length=15)

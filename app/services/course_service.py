@@ -22,6 +22,7 @@ from app.core.exceptions import (
     ServiceUnavailableError,
     UnauthorizedError,
 )
+from app.core.security import safe_regex_pattern
 from pymongo.errors import DuplicateKeyError
 
 from app.assets.certificate_template_b64 import CERTIFICATE_TEMPLATE_B64
@@ -169,18 +170,19 @@ class CourseService:
             query["category"] = category
         if level and level != "all":
             query["level"] = level
-        if search:
+        if search and search.strip():
+            pat = safe_regex_pattern(search)
             query["$or"] = [
-                {"title": {"$regex": search, "$options": "i"}},
-                {"subtitle": {"$regex": search, "$options": "i"}},
-                {"tags": {"$in": [search.lower()]}},
+                {"title": pat},
+                {"subtitle": pat},
+                {"tags": {"$in": [search.strip().lower()]}},
             ]
 
         courses = (
             await Course.find(query)
             .sort([("is_featured", -1), ("created_at", -1)])
-            .skip(skip)
-            .limit(limit)
+            .skip(max(0, skip))
+            .limit(min(max(1, limit), 100))
             .to_list()
         )
         if len(CourseService._courses_cache) >= 50:
@@ -1439,6 +1441,32 @@ class CourseService:
         }
 
     @staticmethod
+    async def _search_user_and_course_ids(
+        search: str, include_courses: bool = True
+    ) -> tuple[list[PydanticObjectId], list[PydanticObjectId]]:
+        pat = safe_regex_pattern(search)
+        users = (
+            await User.find(
+                {
+                    "$or": [
+                        {"email": pat},
+                        {"first_name": pat},
+                        {"last_name": pat},
+                        {"phone": pat},
+                    ]
+                }
+            )
+            .limit(200)
+            .to_list()
+        )
+        user_ids = [u.id for u in users]
+        course_ids: list[PydanticObjectId] = []
+        if include_courses:
+            courses = await Course.find({"title": pat}).limit(100).to_list()
+            course_ids = [c.id for c in courses]
+        return user_ids, course_ids
+
+    @staticmethod
     async def admin_list_course_orders(
         *,
         status_filter: str | None = None,
@@ -1448,40 +1476,44 @@ class CourseService:
         limit: int = 25,
     ) -> dict[str, Any]:
         """Lists course checkout orders for support & reconciliation."""
+        cap_limit = min(max(1, limit), 100)
+        safe_page = max(1, page)
         query: dict[str, Any] = {}
         if status_filter and status_filter != "all":
             query["status"] = status_filter
         if course_id is not None:
             query["course_id"] = course_id
 
-        orders = await CourseOrder.find(query).sort([("created_at", -1)]).to_list()
-        users_map, courses_map = await CourseService._enrich_users_and_courses(
-            [o.user_id for o in orders], [o.course_id for o in orders]
-        )
-
-        serialized = [
-            CourseService._serialize_admin_order(o, users_map, courses_map) for o in orders
-        ]
-
         if search and search.strip():
-            q = search.strip().lower()
-            serialized = [
-                item
-                for item in serialized
-                if (
-                    q in (item["razorpay_order_id"] or "").lower()
-                    or q in (item["razorpay_payment_id"] or "").lower()
-                    or q in (item["student_email"] or "").lower()
-                    or q in (item["student_name"] or "").lower()
-                    or q in (item["student_phone"] or "").lower()
-                    or q in (item["course_title"] or "").lower()
-                )
+            pat = safe_regex_pattern(search)
+            user_ids, course_ids = await CourseService._search_user_and_course_ids(search)
+            or_clauses: list[dict[str, Any]] = [
+                {"razorpay_order_id": pat},
+                {"razorpay_payment_id": pat},
             ]
+            if user_ids:
+                or_clauses.append({"user_id": {"$in": user_ids}})
+            if course_ids:
+                or_clauses.append({"course_id": {"$in": course_ids}})
+            query["$or"] = or_clauses
 
-        total = len(serialized)
-        pages = max(1, (total + limit - 1) // limit)
-        start = (page - 1) * limit
-        paged = serialized[start : start + limit]
+        cursor = CourseOrder.find(query)
+        total = await cursor.count()
+        pages = max(1, (total + cap_limit - 1) // cap_limit)
+        start = (safe_page - 1) * cap_limit
+        paged_orders = (
+            await cursor.sort([("created_at", -1)])
+            .skip(start)
+            .limit(cap_limit)
+            .to_list()
+        )
+        users_map, courses_map = await CourseService._enrich_users_and_courses(
+            [o.user_id for o in paged_orders], [o.course_id for o in paged_orders]
+        )
+        paged = [
+            CourseService._serialize_admin_order(o, users_map, courses_map)
+            for o in paged_orders
+        ]
 
         created_count = await CourseOrder.find(CourseOrder.status == PaymentOrderStatus.CREATED).count()
         paid_count = await CourseOrder.find(CourseOrder.status == PaymentOrderStatus.PAID).count()
@@ -1491,8 +1523,8 @@ class CourseService:
         return {
             "items": paged,
             "total": total,
-            "page": page,
-            "limit": limit,
+            "page": safe_page,
+            "limit": cap_limit,
             "pages": pages,
             "created_count": created_count,
             "paid_count": paid_count,
@@ -1546,12 +1578,34 @@ class CourseService:
         page: int = 1,
         limit: int = 25,
     ) -> dict[str, Any]:
+        cap_limit = min(max(1, limit), 100)
+        safe_page = max(1, page)
         query: dict[str, Any] = {}
         if course_id is not None:
             query["course_id"] = course_id
 
+        if search and search.strip():
+            pat = safe_regex_pattern(search)
+            user_ids, course_ids = await CourseService._search_user_and_course_ids(search)
+            or_clauses: list[dict[str, Any]] = [
+                {"payment_id": pat},
+                {"order_id": pat},
+            ]
+            if user_ids:
+                or_clauses.append({"user_id": {"$in": user_ids}})
+            if course_ids:
+                or_clauses.append({"course_id": {"$in": course_ids}})
+            query["$or"] = or_clauses
+
+        cursor = CourseEnrollment.find(query)
+        total = await cursor.count()
+        pages = max(1, (total + cap_limit - 1) // cap_limit)
+        start = (safe_page - 1) * cap_limit
         enrollments = (
-            await CourseEnrollment.find(query).sort([("enrolled_at", -1)]).to_list()
+            await cursor.sort([("enrolled_at", -1)])
+            .skip(start)
+            .limit(cap_limit)
+            .to_list()
         )
         users_map, courses_map = await CourseService._enrich_users_and_courses(
             [e.user_id for e in enrollments], [e.course_id for e in enrollments]
@@ -1598,29 +1652,11 @@ class CourseService:
                 }
             )
 
-        if search and search.strip():
-            q = search.strip().lower()
-            items = [
-                item
-                for item in items
-                if (
-                    q in (item["student_email"] or "").lower()
-                    or q in (item["student_name"] or "").lower()
-                    or q in (item["student_phone"] or "").lower()
-                    or q in (item["course_title"] or "").lower()
-                    or q in (item["payment_id"] or "").lower()
-                    or q in (item["order_id"] or "").lower()
-                )
-            ]
-
-        total = len(items)
-        pages = max(1, (total + limit - 1) // limit)
-        start = (page - 1) * limit
         return {
-            "items": items[start : start + limit],
+            "items": items,
             "total": total,
-            "page": page,
-            "limit": limit,
+            "page": safe_page,
+            "limit": cap_limit,
             "pages": pages,
         }
 
@@ -1638,43 +1674,118 @@ class CourseService:
         if not course:
             raise NotFoundError("Course not found.", error_code="course_not_found")
 
+        cap_limit = min(max(1, limit), 100)
+        safe_page = max(1, page)
         total_lessons_in_course = await CourseLesson.find(CourseLesson.course_id == course_id).count()
 
-        all_enrollments = (
-            await CourseEnrollment.find(CourseEnrollment.course_id == course_id).sort([("enrolled_at", -1)]).to_list()
-        )
+        # Summary stats aggregated directly in MongoDB (avoids loading all enrollments)
+        col = CourseEnrollment.get_pymongo_collection()
+        agg_cursor = await col.aggregate([
+            {"$match": {"course_id": course_id}},
+            {
+                "$group": {
+                    "_id": None,
+                    "total_enrolled": {"$sum": 1},
+                    "completed_count": {
+                        "$sum": {
+                            "$cond": [
+                                {
+                                    "$or": [
+                                        {"$gte": ["$progress_percent", 100]},
+                                        {"$eq": ["$certificate_issued", True]},
+                                    ]
+                                },
+                                1,
+                                0,
+                            ]
+                        }
+                    },
+                    "in_progress_count": {
+                        "$sum": {
+                            "$cond": [
+                                {
+                                    "$and": [
+                                        {"$gt": ["$progress_percent", 0]},
+                                        {"$lt": ["$progress_percent", 100]},
+                                        {"$ne": ["$certificate_issued", True]},
+                                    ]
+                                },
+                                1,
+                                0,
+                            ]
+                        }
+                    },
+                    "not_started_count": {
+                        "$sum": {"$cond": [{"$eq": ["$progress_percent", 0]}, 1, 0]}
+                    },
+                    "total_progress_sum": {"$sum": {"$ifNull": ["$progress_percent", 0]}},
+                    "total_revenue": {"$sum": {"$ifNull": ["$amount_paid", 0]}},
+                }
+            },
+        ])
+        agg_rows = [r async for r in agg_cursor]
+        stat_row = agg_rows[0] if agg_rows else {}
+        total_enrolled = int(stat_row.get("total_enrolled", 0) or 0)
+        completed_count = int(stat_row.get("completed_count", 0) or 0)
+        in_progress_count = int(stat_row.get("in_progress_count", 0) or 0)
+        not_started_count = int(stat_row.get("not_started_count", 0) or 0)
+        total_progress_sum = float(stat_row.get("total_progress_sum", 0.0) or 0.0)
+        total_revenue = float(stat_row.get("total_revenue", 0.0) or 0.0)
+        avg_progress = round(total_progress_sum / max(1, total_enrolled), 1)
 
-        user_ids = [e.user_id for e in all_enrollments]
-        users = await User.find({"_id": {"$in": user_ids}}).to_list() if user_ids else []
+        query: dict[str, Any] = {"course_id": course_id}
+        if search and search.strip():
+            pat = safe_regex_pattern(search)
+            user_ids, _ = await CourseService._search_user_and_course_ids(
+                search, include_courses=False
+            )
+            or_clauses: list[dict[str, Any]] = [
+                {"payment_id": pat},
+                {"order_id": pat},
+                {"certificate_id": pat},
+            ]
+            if user_ids:
+                or_clauses.append({"user_id": {"$in": user_ids}})
+            query["$or"] = or_clauses
+
+        now_utc = datetime.now(timezone.utc)
+        if progress_status and progress_status != "all":
+            if progress_status == "completed":
+                query["$and"] = query.get("$and", []) + [
+                    {"$or": [{"progress_percent": {"$gte": 100}}, {"certificate_issued": True}]}
+                ]
+            elif progress_status == "in_progress":
+                query["progress_percent"] = {"$gt": 0, "$lt": 100}
+                query["certificate_issued"] = {"$ne": True}
+            elif progress_status == "not_started":
+                query["progress_percent"] = 0
+            elif progress_status == "expired":
+                query["expires_at"] = {"$ne": None, "$lte": now_utc}
+
+        sort_spec = [("enrolled_at", -1)]
+        if sort_by == "enrolled_asc":
+            sort_spec = [("enrolled_at", 1)]
+        elif sort_by == "progress_desc":
+            sort_spec = [("progress_percent", -1)]
+        elif sort_by == "progress_asc":
+            sort_spec = [("progress_percent", 1)]
+        elif sort_by == "last_active_desc":
+            sort_spec = [("last_accessed_at", -1)]
+
+        cursor = CourseEnrollment.find(query)
+        total_filtered = await cursor.count()
+        pages = max(1, (total_filtered + cap_limit - 1) // cap_limit)
+        start = (safe_page - 1) * cap_limit
+        paged_enrollments = await cursor.sort(sort_spec).skip(start).limit(cap_limit).to_list()
+
+        page_user_ids = [e.user_id for e in paged_enrollments]
+        users = await User.find({"_id": {"$in": page_user_ids}}).to_list() if page_user_ids else []
         users_map = {str(u.id): u for u in users}
 
-        # Calculate overall summary stats across ALL enrolled learners in this course
-        total_enrolled = len(all_enrollments)
-        completed_count = 0
-        in_progress_count = 0
-        not_started_count = 0
-        total_progress_sum = 0.0
-        total_revenue = 0.0
-
         items: list[dict[str, Any]] = []
-
-        for e in all_enrollments:
+        for e in paged_enrollments:
             u = users_map.get(str(e.user_id))
-            is_completed = e.progress_percent >= 100 or bool(e.certificate_issued)
-            is_expired = bool(
-                e.expires_at and datetime.now(timezone.utc) >= _aware_utc(e.expires_at)
-            )
-
-            if is_completed:
-                completed_count += 1
-            elif e.progress_percent > 0:
-                in_progress_count += 1
-            else:
-                not_started_count += 1
-
-            total_progress_sum += e.progress_percent
-            total_revenue += e.amount_paid
-
+            is_expired = bool(e.expires_at and now_utc >= _aware_utc(e.expires_at))
             items.append({
                 "id": str(e.id),
                 "user_id": str(e.user_id),
@@ -1706,50 +1817,6 @@ class CourseService:
                 "last_accessed_at": e.last_accessed_at,
             })
 
-        avg_progress = round(total_progress_sum / max(1, total_enrolled), 1)
-
-        # Filtering
-        filtered_items = items
-        if search and search.strip():
-            q = search.strip().lower()
-            filtered_items = [
-                item for item in filtered_items
-                if (
-                    q in (item["student_email"] or "").lower()
-                    or q in (item["student_name"] or "").lower()
-                    or q in (item["student_phone"] or "").lower()
-                    or q in (item["payment_id"] or "").lower()
-                    or q in (item["order_id"] or "").lower()
-                    or q in (item["certificate_id"] or "").lower()
-                )
-            ]
-
-        if progress_status and progress_status != "all":
-            if progress_status == "completed":
-                filtered_items = [i for i in filtered_items if i["progress_percent"] >= 100 or i["certificate_issued"]]
-            elif progress_status == "in_progress":
-                filtered_items = [i for i in filtered_items if 0 < i["progress_percent"] < 100 and not i["certificate_issued"]]
-            elif progress_status == "not_started":
-                filtered_items = [i for i in filtered_items if i["progress_percent"] == 0]
-            elif progress_status == "expired":
-                filtered_items = [i for i in filtered_items if i["is_expired"]]
-
-        # Sorting
-        if sort_by == "enrolled_asc":
-            filtered_items.sort(key=lambda x: x["enrolled_at"])
-        elif sort_by == "progress_desc":
-            filtered_items.sort(key=lambda x: x["progress_percent"], reverse=True)
-        elif sort_by == "progress_asc":
-            filtered_items.sort(key=lambda x: x["progress_percent"])
-        elif sort_by == "last_active_desc":
-            filtered_items.sort(key=lambda x: x["last_accessed_at"], reverse=True)
-        else:
-            filtered_items.sort(key=lambda x: x["enrolled_at"], reverse=True)
-
-        total_filtered = len(filtered_items)
-        pages = max(1, (total_filtered + limit - 1) // limit)
-        start = (page - 1) * limit
-
         return {
             "course_id": str(course.id),
             "course_title": course.title,
@@ -1764,10 +1831,10 @@ class CourseService:
                 "total_revenue": total_revenue,
                 "total_lessons_in_course": total_lessons_in_course,
             },
-            "items": filtered_items[start : start + limit],
+            "items": items,
             "total": total_filtered,
-            "page": page,
-            "limit": limit,
+            "page": safe_page,
+            "limit": cap_limit,
             "pages": pages,
         }
 
@@ -2676,13 +2743,14 @@ class CourseService:
         else:
             query["is_hidden"] = {"$ne": True}
 
-        if search:
+        if search and search.strip():
+            pat = safe_regex_pattern(search)
             query["$or"] = [
-                {"title": {"$regex": search, "$options": "i"}},
-                {"content": {"$regex": search, "$options": "i"}},
-                {"user_name": {"$regex": search, "$options": "i"}},
-                {"user_email": {"$regex": search, "$options": "i"}},
-                {"user_phone": {"$regex": search, "$options": "i"}},
+                {"title": pat},
+                {"content": pat},
+                {"user_name": pat},
+                {"user_email": pat},
+                {"user_phone": pat},
             ]
 
         total = await CourseQuestion.find(query).count()

@@ -1,5 +1,7 @@
 """Regression test suite for audit remediation fixes (AUD-001, AUD-002, AUD-003, AUD-008)."""
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -52,45 +54,58 @@ async def test_auth_rate_limiting_enforcement():
     test_ip = "198.51.100.42"
     rate_limiter.reset_for_ip(test_ip)
 
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        headers = {"x-forwarded-for": test_ip}
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
 
-        # Route /api/v1/auth/forgot-password has rule: max 5 requests per 60s
-        status_codes = []
-        for _ in range(6):
-            resp = await client.post(
-                "/api/v1/auth/forgot-password",
+    now = datetime.now(UTC)
+    fake_otp = SimpleNamespace(
+        identifier="attacker@example.com",
+        expires_at=now,
+        resend_available_at=now,
+    )
+    transport = ASGITransport(app=app)
+    with patch(
+        "app.api.v1.auth.auth_service.request_password_reset",
+        AsyncMock(return_value=(fake_otp, "123456")),
+    ):
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            headers = {"x-forwarded-for": test_ip}
+
+            # Route /api/v1/auth/password/forgot has rule: max 5 requests per 60s
+            status_codes = []
+            for _ in range(6):
+                resp = await client.post(
+                    "/api/v1/auth/password/forgot",
+                    json={"email": "attacker@example.com"},
+                    headers=headers,
+                )
+                status_codes.append(resp.status_code)
+
+            # First 5 should not be 429 (they will be 404 or 200 depending on DB state)
+            assert status_codes[0] != 429
+            # The 6th request must be throttled with HTTP 429
+            assert status_codes[-1] == 429, f"6th request was {status_codes[-1]}, expected 429"
+
+            # Verify 429 response structure and headers
+            last_resp = await client.post(
+                "/api/v1/auth/password/forgot",
                 json={"email": "attacker@example.com"},
                 headers=headers,
             )
-            status_codes.append(resp.status_code)
+            assert last_resp.status_code == 429
+            assert "Retry-After" in last_resp.headers
+            data = last_resp.json()
+            assert data["success"] is False
+            assert data["error_code"] == "rate_limit_exceeded"
 
-        # First 5 should not be 429 (they will be 404 or 200 depending on DB state)
-        assert status_codes[0] != 429
-        # The 6th request must be throttled with HTTP 429
-        assert status_codes[-1] == 429, f"6th request was {status_codes[-1]}, expected 429"
-
-        # Verify 429 response structure and headers
-        last_resp = await client.post(
-            "/api/v1/auth/forgot-password",
-            json={"email": "attacker@example.com"},
-            headers=headers,
-        )
-        assert last_resp.status_code == 429
-        assert "Retry-After" in last_resp.headers
-        data = last_resp.json()
-        assert data["success"] is False
-        assert data["error_code"] == "rate_limit_exceeded"
-
-        # Test bypass header
-        bypass_headers = {"x-forwarded-for": test_ip, "x-bypass-rate-limit": "true"}
-        bypass_resp = await client.post(
-            "/api/v1/auth/forgot-password",
-            json={"email": "admin@example.com"},
-            headers=bypass_headers,
-        )
-        assert bypass_resp.status_code != 429, "x-bypass-rate-limit must allow bypass"
+            # Spoofed bypass header must NOT bypass rate limiting
+            bypass_headers = {"x-forwarded-for": test_ip, "x-bypass-rate-limit": "true"}
+            bypass_resp = await client.post(
+                "/api/v1/auth/password/forgot",
+                json={"email": "admin@example.com"},
+                headers=bypass_headers,
+            )
+            assert bypass_resp.status_code == 429, "x-bypass-rate-limit must never bypass rate limits"
 
     # Cleanup test IP
     rate_limiter.reset_for_ip(test_ip)

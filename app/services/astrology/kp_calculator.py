@@ -1490,9 +1490,9 @@ def calculate_kp(payload: KPCalculateRequest) -> KPCalculateResponse:
         )
     else:
         # Fallback pure-python calculations
-        A = int(calc_year / 100)
+        A = int(moment.year / 100)
         B = 2 - A + int(A / 4)
-        jd_dob = int(365.25 * (calc_year + 4716)) + int(30.6001 * (calc_month + 1)) + calc_day + B - 1524.5 + calc_hour_utc / 24.0
+        jd_dob = int(365.25 * (moment.year + 4716)) + int(30.6001 * (moment.month + 1)) + moment.day + B - 1524.5 + utc_hours / 24.0
         T = (jd_dob - 2451545.0) / 36525.0
         ayanamsa_deg = 23.823 + 1.397 * T
 

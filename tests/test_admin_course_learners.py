@@ -119,7 +119,36 @@ async def test_admin_course_learners_and_progress_logic():
         completed_at=datetime.now(timezone.utc),
     )
 
-    # Patch Course.get, CourseLesson.find().count(), CourseEnrollment.find().sort().to_list(), User.find().to_list()
+    class _AggCursor:
+        def __init__(self, rows):
+            self._rows = iter(rows)
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            try:
+                return next(self._rows)
+            except StopIteration:
+                raise StopAsyncIteration
+
+    fake_enroll_col = AsyncMock()
+    fake_enroll_col.aggregate = AsyncMock(
+        return_value=_AggCursor(
+            [
+                {
+                    "total_enrolled": 1,
+                    "completed_count": 0,
+                    "in_progress_count": 1,
+                    "not_started_count": 0,
+                    "total_progress_sum": 50.0,
+                    "total_revenue": 1999.0,
+                }
+            ]
+        )
+    )
+
+    # Patch Course.get, CourseLesson.find().count(), CourseEnrollment.find() + collection aggregate, User.find().to_list()
     with patch.object(Course, "get", new_callable=AsyncMock) as mock_course_get:
         mock_course_get.return_value = test_course
 
@@ -127,8 +156,14 @@ async def test_admin_course_learners_and_progress_logic():
             mock_lesson_find.return_value.count = AsyncMock(return_value=2)
             mock_lesson_find.return_value.sort.return_value.to_list = AsyncMock(return_value=[test_lesson1, test_lesson2])
 
-            with patch.object(CourseEnrollment, "find") as mock_enroll_find:
-                mock_enroll_find.return_value.sort.return_value.to_list = AsyncMock(return_value=[test_enrollment])
+            with (
+                patch.object(CourseEnrollment, "get_pymongo_collection", return_value=fake_enroll_col),
+                patch.object(CourseEnrollment, "find") as mock_enroll_find,
+            ):
+                mock_enroll_find.return_value.count = AsyncMock(return_value=1)
+                mock_enroll_find.return_value.sort.return_value.skip.return_value.limit.return_value.to_list = AsyncMock(
+                    return_value=[test_enrollment]
+                )
 
                 with patch.object(User, "find") as mock_user_find:
                     mock_user_find.return_value.to_list = AsyncMock(return_value=[test_user])

@@ -1,12 +1,16 @@
 """Astrology public endpoints: Rashi (Moon Sign) calculator and geocoding helper."""
 
-import httpx
+import asyncio
+import uuid
 from datetime import datetime, timezone
+
+import httpx
 from fastapi import APIRouter, Body, HTTPException, Query, Request, Response, status
 from loguru import logger
 
 from app.api.dependencies import OptionalUser
 from app.models.annual_report import AnnualReportRecord
+from app.models.enums import TransactionReason
 from app.models.user import User
 from app.schemas.astrology import (
     AnnualHoroscopeRequest,
@@ -312,9 +316,27 @@ async def download_kundli_pdf(
     )
 
     try:
-        pdf_bytes = generate_comprehensive_kundli_pdf(payload, user)
+        pdf_bytes = await asyncio.to_thread(generate_comprehensive_kundli_pdf, payload, user)
     except Exception as exc:
         logger.exception("Failed to generate comprehensive Kundli PDF: %s", exc)
+        if charged > 0 and user is not None:
+            from app.services import wallet as wallet_service
+
+            try:
+                await wallet_service.credit(
+                    user_id=user.id,
+                    amount_coins=charged,
+                    reason=TransactionReason.REFUND,
+                    idempotency_key=f"refund:kundli_pdf:{user.id}:{uuid.uuid4().hex}",
+                    note="Automatic refund for failed Kundli PDF generation",
+                )
+            except Exception as refund_exc:  # noqa: BLE001
+                logger.exception(
+                    "Failed to refund {} coins to user {} after Kundli PDF error: {}",
+                    charged,
+                    user.id,
+                    refund_exc,
+                )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to generate comprehensive Kundli PDF. Please try again.",

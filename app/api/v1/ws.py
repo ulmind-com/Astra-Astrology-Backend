@@ -60,6 +60,66 @@ async def _pump(connection: realtime.Connection) -> None:
         pass
 
 
+async def _verify_whiteboard_peer(user_id: str, to_user: str, call_id: str | None) -> bool:
+    """Confirm user_id and to_user share an active/scheduled consultation session."""
+    from beanie import PydanticObjectId
+
+    from app.models.appointment import Appointment
+    from app.models.call import CallSession
+    from app.models.chat import ChatSession
+    from app.models.enums import AppointmentStatus, CallStatus, ChatStatus
+
+    if not (PydanticObjectId.is_valid(user_id) and PydanticObjectId.is_valid(to_user)):
+        return False
+    if user_id == to_user:
+        return False
+
+    u1 = PydanticObjectId(user_id)
+    u2 = PydanticObjectId(to_user)
+    pair_filter = {
+        "$or": [
+            {"user_id": u1, "astrologer_user_id": u2},
+            {"user_id": u2, "astrologer_user_id": u1},
+        ]
+    }
+
+    if call_id and PydanticObjectId.is_valid(call_id):
+        cid = PydanticObjectId(call_id)
+        call = await CallSession.find_one(
+            {
+                "_id": cid,
+                "status": {"$in": [CallStatus.RINGING, CallStatus.ACTIVE]},
+                **pair_filter,
+            }
+        )
+        if call is not None:
+            return True
+        appt = await Appointment.find_one(
+            {
+                "_id": cid,
+                "status": AppointmentStatus.BOOKED,
+                **pair_filter,
+            }
+        )
+        return appt is not None
+
+    # Fallback when call_id is omitted: require an active call/chat or booked appointment
+    active_call = await CallSession.find_one(
+        {"status": {"$in": [CallStatus.RINGING, CallStatus.ACTIVE]}, **pair_filter}
+    )
+    if active_call is not None:
+        return True
+    active_chat = await ChatSession.find_one(
+        {"status": {"$in": [ChatStatus.REQUESTED, ChatStatus.ACTIVE]}, **pair_filter}
+    )
+    if active_chat is not None:
+        return True
+    booked_appt = await Appointment.find_one(
+        {"status": AppointmentStatus.BOOKED, **pair_filter}
+    )
+    return booked_appt is not None
+
+
 @router.websocket("/live")
 async def live(websocket: WebSocket, token: str | None = Query(default=None)) -> None:
     await websocket.accept()
@@ -67,6 +127,7 @@ async def live(websocket: WebSocket, token: str | None = Query(default=None)) ->
     user_id, role = await _identify(token)
     connection = realtime.Connection(websocket, user_id, role)
     realtime.register(connection)
+    verified_peers: set[tuple[str | None, str]] = set()
 
     # An astrologer holding this socket is an astrologer at their desk.
     astrologer_profile: Any = None
@@ -106,15 +167,24 @@ async def live(websocket: WebSocket, token: str | None = Query(default=None)) ->
                     msg = json.loads(raw_text)
                     event_type = msg.get("type") or msg.get("action")
                     if event_type in ("whiteboard_live", "whiteboard_event", "whiteboard_sync"):
+                        to_user_raw = msg.get("to_user")
+                        if not user_id or not to_user_raw:
+                            continue
+                        to_user_id = str(to_user_raw)
+                        raw_data = msg.get("data")
+                        msg_data = raw_data if isinstance(raw_data, dict) else {}
+                        raw_call_id = msg.get("call_id") or msg_data.get("call_id")
+                        call_id_str = str(raw_call_id) if raw_call_id else None
+                        peer_key = (call_id_str, to_user_id)
+                        if peer_key not in verified_peers:
+                            if not await _verify_whiteboard_peer(user_id, to_user_id, call_id_str):
+                                continue
+                            verified_peers.add(peer_key)
                         payload = {
                             "type": event_type,
-                            "data": msg.get("data", {}),
+                            "data": msg_data,
                         }
-                        to_user = msg.get("to_user")
-                        if to_user:
-                            realtime._broadcast(payload, to_user=str(to_user))
-                        else:
-                            realtime._broadcast(payload)
+                        realtime._broadcast(payload, to_user=to_user_id)
                 except Exception:
                     pass
 

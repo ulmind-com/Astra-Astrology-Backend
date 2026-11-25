@@ -12,6 +12,7 @@ from fastapi import APIRouter, Query
 from app.api.dependencies import AdminUser
 from app.api.v1.wallet import to_balance, to_transaction
 from app.core.exceptions import NotFoundError
+from app.core.security import safe_regex_pattern
 from app.models.enums import (
     PaymentOrderStatus,
     TransactionDirection,
@@ -55,16 +56,21 @@ async def list_wallets(
     if frozen is not None:
         query = query.find(Wallet.is_frozen == frozen)
 
-    if search:
-        matches = await User.find(
-            {
-                "$or": [
-                    {"email": {"$regex": search, "$options": "i"}},
-                    {"first_name": {"$regex": search, "$options": "i"}},
-                    {"last_name": {"$regex": search, "$options": "i"}},
-                ]
-            }
-        ).to_list()
+    if search and search.strip():
+        pat = safe_regex_pattern(search)
+        matches = (
+            await User.find(
+                {
+                    "$or": [
+                        {"email": pat},
+                        {"first_name": pat},
+                        {"last_name": pat},
+                    ]
+                }
+            )
+            .limit(500)
+            .to_list()
+        )
         query = query.find({"user_id": {"$in": [u.id for u in matches]}})
 
     total = await query.count()

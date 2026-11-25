@@ -91,13 +91,17 @@ def _check_config() -> None:
             )
 
         if settings.is_production:
+            if not settings.bunny_stream_configured:
+                warnings.append(
+                    "BUNNY_STREAM_LIBRARY_ID / BUNNY_STREAM_TOKEN_KEY not set — signed course video embeds are disabled."
+                )
             if not settings.sentry_configured:
                 warnings.append("SENTRY_DSN is not set — error tracking is inactive.")
             if not settings.loki_configured:
                 warnings.append("GRAFANA_LOKI_* is not set — logs will not reach Grafana Cloud.")
 
     if not settings.resend_configured:
-        warnings.append("RESEND_API_KEY is not set — emails will not be delivered.")
+        warnings.append("RESEND_¯¸API_KEY is not set — emails will not be delivered.")
     if not settings.cloudinary_configured:
         warnings.append("Cloudinary is not configured — uploads will fail.")
     if not settings.firebase_configured:

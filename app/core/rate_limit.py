@@ -17,13 +17,19 @@ class WindowRule(NamedTuple):
     window_seconds: int
 
 
-# Strict limits for sensitive authentication endpoints
+# Strict limits for sensitive authentication and onboarding endpoints
 ROUTE_RULES: dict[str, WindowRule] = {
     "/api/v1/auth/login": WindowRule(max_requests=15, window_seconds=60),
     "/api/v1/auth/register": WindowRule(max_requests=10, window_seconds=60),
-    "/api/v1/auth/forgot-password": WindowRule(max_requests=5, window_seconds=60),
-    "/api/v1/auth/reset-password": WindowRule(max_requests=5, window_seconds=60),
+    "/api/v1/auth/password/forgot": WindowRule(max_requests=5, window_seconds=60),
+    "/api/v1/auth/password/reset": WindowRule(max_requests=5, window_seconds=60),
     "/api/v1/auth/otp": WindowRule(max_requests=5, window_seconds=60),
+    "/api/v1/astrologers/applications/send-otp": WindowRule(max_requests=5, window_seconds=60),
+    "/api/v1/astrologers/applications/verify-otp": WindowRule(max_requests=10, window_seconds=60),
+    "/api/v1/astrologers/applications/upload-document": WindowRule(max_requests=5, window_seconds=60),
+    "/api/v1/purohits/applications/send-otp": WindowRule(max_requests=5, window_seconds=60),
+    "/api/v1/purohits/applications/verify-otp": WindowRule(max_requests=10, window_seconds=60),
+    "/api/v1/purohits/applications/upload-document": WindowRule(max_requests=5, window_seconds=60),
 }
 
 DEFAULT_AUTH_RULE = WindowRule(max_requests=30, window_seconds=60)
@@ -112,10 +118,7 @@ class RateLimitingMiddleware(BaseHTTPMiddleware):
         if not getattr(settings, "RATE_LIMIT_ENABLED", True):
             return await call_next(request)
 
-        # Allow test client or internal microservices to bypass via header
-        if request.headers.get("x-bypass-rate-limit") == "true":
-            return await call_next(request)
-
+        # Never honor spoofable client-supplied rate-limit bypass headers.
         client_ip = getattr(request.state, "client_ip", None)
         if not client_ip:
             client_ip = (

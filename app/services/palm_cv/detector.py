@@ -10,6 +10,7 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass
 
+import cv2
 import mediapipe as mp
 import numpy as np
 from loguru import logger

@@ -17,6 +17,7 @@ from beanie.operators import In, RegEx
 from loguru import logger
 
 from app.core.exceptions import BadRequestError, NotFoundError
+from app.core.security import safe_regex_pattern
 from app.models.enums import CouponDiscountType
 from app.models.cms import (
     CMS_KEY_SHOP,
@@ -332,7 +333,7 @@ async def list_products(
         except Exception:
             pass
     if ruling_planet:
-        filters.append(RegEx(Product.ruling_planet, f"^{ruling_planet}$", "i"))
+        filters.append(RegEx(Product.ruling_planet, f"^{re.escape(ruling_planet.strip())}$", "i"))
 
     if stock_status == "out_of_stock":
         filters.append(Product.stock_quantity == 0)
@@ -343,13 +344,13 @@ async def list_products(
         filters.append(Product.stock_quantity > 0)
 
     if search and search.strip():
-        term = search.strip()
+        pat = safe_regex_pattern(search)
         regex_filter = {
             "$or": [
-                {"title": {"$regex": term, "$options": "i"}},
-                {"sku": {"$regex": term, "$options": "i"}},
-                {"short_description": {"$regex": term, "$options": "i"}},
-                {"benefits": {"$regex": term, "$options": "i"}},
+                {"title": pat},
+                {"sku": pat},
+                {"short_description": pat},
+                {"benefits": pat},
             ]
         }
         filters.append(regex_filter)
@@ -753,24 +754,61 @@ async def update_stock(prod_id: str, payload: StockUpdatePayload) -> ProductOut:
 
 
 async def get_inventory_summary() -> InventorySummaryResponse:
-    """Computes real-time warehouse metrics, stock-out counts, and valuations for active inventory."""
-    all_prods = await Product.find({"is_deleted": False}).to_list()
-    total_products = len(all_prods)
-    out_of_stock = sum(1 for p in all_prods if p.stock_quantity == 0)
-    low_stock = sum(1 for p in all_prods if 0 < p.stock_quantity <= p.low_stock_threshold)
-    healthy_stock = sum(1 for p in all_prods if p.stock_quantity > p.low_stock_threshold)
-    total_units = sum(p.stock_quantity for p in all_prods)
-    valuation_mrp = sum(p.stock_quantity * p.mrp for p in all_prods)
-    valuation_cost = sum(p.stock_quantity * (p.cost_price or (p.sale_price * 0.6)) for p in all_prods)
-
+    """Computes real-time warehouse metrics, stock-out counts, and valuations via DB aggregation."""
+    col = Product.get_pymongo_collection()
+    cursor = await col.aggregate([
+        {"$match": {"is_deleted": False}},
+        {
+            "$group": {
+                "_id": None,
+                "total_products": {"$sum": 1},
+                "out_of_stock": {"$sum": {"$cond": [{"$eq": ["$stock_quantity", 0]}, 1, 0]}},
+                "low_stock": {
+                    "$sum": {
+                        "$cond": [
+                            {
+                                "$and": [
+                                    {"$gt": ["$stock_quantity", 0]},
+                                    {"$lte": ["$stock_quantity", {"$ifNull": ["$low_stock_threshold", 5]}]},
+                                ]
+                            },
+                            1,
+                            0,
+                        ]
+                    }
+                },
+                "healthy_stock": {
+                    "$sum": {
+                        "$cond": [
+                            {"$gt": ["$stock_quantity", {"$ifNull": ["$low_stock_threshold", 5]}]},
+                            1,
+                            0,
+                        ]
+                    }
+                },
+                "total_units": {"$sum": "$stock_quantity"},
+                "valuation_mrp": {"$sum": {"$multiply": ["$stock_quantity", {"$ifNull": ["$mrp", 0]}]}},
+                "valuation_cost": {
+                    "$sum": {
+                        "$multiply": [
+                            "$stock_quantity",
+                            {"$ifNull": ["$cost_price", {"$multiply": [{"$ifNull": ["$sale_price", 0]}, 0.6]}]},
+                        ]
+                    }
+                },
+            }
+        },
+    ])
+    rows = [r async for r in cursor]
+    row = rows[0] if rows else {}
     return InventorySummaryResponse(
-        total_products=total_products,
-        out_of_stock_count=out_of_stock,
-        low_stock_count=low_stock,
-        healthy_stock_count=healthy_stock,
-        total_stock_units=total_units,
-        total_inventory_valuation_mrp=round(valuation_mrp, 2),
-        total_inventory_valuation_cost=round(valuation_cost, 2),
+        total_products=int(row.get("total_products", 0) or 0),
+        out_of_stock_count=int(row.get("out_of_stock", 0) or 0),
+        low_stock_count=int(row.get("low_stock", 0) or 0),
+        healthy_stock_count=int(row.get("healthy_stock", 0) or 0),
+        total_stock_units=int(row.get("total_units", 0) or 0),
+        total_inventory_valuation_mrp=round(float(row.get("valuation_mrp", 0.0) or 0.0), 2),
+        total_inventory_valuation_cost=round(float(row.get("valuation_cost", 0.0) or 0.0), 2),
     )
 
 
@@ -1118,12 +1156,12 @@ async def list_coupons(
         filters.append(ShopCoupon.is_active == is_active)
 
     if search and search.strip():
-        term = search.strip()
+        pat = safe_regex_pattern(search)
         filters.append({
             "$or": [
-                {"code": {"$regex": term, "$options": "i"}},
-                {"title": {"$regex": term, "$options": "i"}},
-                {"description": {"$regex": term, "$options": "i"}},
+                {"code": pat},
+                {"title": pat},
+                {"description": pat},
             ]
         })
 

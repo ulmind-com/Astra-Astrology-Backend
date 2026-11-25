@@ -14,7 +14,7 @@ from loguru import logger
 from pymongo.errors import PyMongoError
 
 from app.core.config import settings
-from app.models.appointment import Appointment, AppointmentStatus
+from app.models.appointment import Appointment, AppointmentSlot, AppointmentStatus
 from app.models.astrologer import Astrologer
 from app.models.base import utcnow
 from app.models.user import User

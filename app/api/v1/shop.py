@@ -9,8 +9,9 @@ Endpoints:
 
 from fastapi import APIRouter, Body, File, Query, Response, UploadFile
 from fastapi.responses import HTMLResponse
+from loguru import logger
 
-from app.api.dependencies import CurrentUser, OptionalUser
+from app.api.dependencies import AdminUser, CurrentUser, OptionalUser
 from app.core.exceptions import BadRequestError
 from app.schemas.common import ApiResponse
 from app.schemas.shop import (
@@ -196,6 +197,7 @@ async def get_astrological_remedy_recommendations(
 )
 async def reserve_stock(
     payload: StockReservationRequest,
+    _admin: AdminUser,
 ) -> ApiResponse[StockReservationResponse]:
     success = await shop_admin.atomic_reserve_stock(payload.product_id, payload.quantity)
     message = (
@@ -221,6 +223,7 @@ async def reserve_stock(
 )
 async def release_stock(
     payload: StockReservationRequest,
+    _admin: AdminUser,
 ) -> ApiResponse[StockReservationResponse]:
     success = await shop_admin.atomic_release_stock(payload.product_id, payload.quantity)
     return ApiResponse.ok(
@@ -362,11 +365,11 @@ async def track_shop_order(
     )
     items_summary = [
         {
-            "product_name": it.product_name,
+            "product_name": it.title,
             "quantity": it.quantity,
-            "image_url": it.image_url,
-            "unit_price": it.unit_price,
-            "selected_option": it.selected_option,
+            "image_url": it.featured_image,
+            "unit_price": it.unit_sale_price,
+            "selected_option": None,
         }
         for it in order.items
     ]
@@ -405,15 +408,16 @@ async def upload_refund_qr_code(
     if file.content_type not in ALLOWED_IMAGE_TYPES:
         raise BadRequestError("Only JPEG, PNG, or WebP images are allowed.")
 
-    # Read and check size (max 5 MB)
+    # Check size (max 5 MB)
     contents = await file.read()
     if len(contents) > 5 * 1024 * 1024:
         raise BadRequestError("QR code image size must not exceed 5MB.")
+    await file.seek(0)
 
     result = await upload_file(
-        contents=contents,
-        filename=file.filename or "refund_qr.png",
+        file=file,
         folder="divinlink/shop/refund_qrs",
+        allowed_types=ALLOWED_IMAGE_TYPES,
     )
     return ApiResponse.ok(
         data={"url": result.secure_url, "public_id": result.public_id},
@@ -599,11 +603,12 @@ async def upload_review_photo(
     contents = await file.read()
     if len(contents) > 8 * 1024 * 1024:
         raise BadRequestError("Review image size must not exceed 8MB.")
+    await file.seek(0)
 
     result = await upload_file(
-        contents=contents,
-        filename=file.filename or "devotee_review.jpg",
+        file=file,
         folder="divinlink/shop/reviews",
+        allowed_types=ALLOWED_IMAGE_TYPES,
     )
     return ApiResponse.ok(
         data={"url": result.secure_url, "public_id": result.public_id},

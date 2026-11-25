@@ -25,6 +25,7 @@ from beanie.operators import GTE, LT, And, In, Or
 from loguru import logger
 from pymongo.errors import DuplicateKeyError
 
+from app.core.config import settings
 from app.core.exceptions import BadRequestError, ConflictError, ForbiddenError, NotFoundError
 from app.models.appointment import (
     SLOT_MINUTES,
@@ -37,6 +38,7 @@ from app.models.astrologer import Astrologer
 from app.models.base import utcnow
 from app.models.enums import AppointmentStatus, TransactionReason
 from app.models.user import User
+from app.services import settings as settings_service
 
 # Bookings that still hold their time. A cancelled one has given it back.
 LIVE_STATUSES = [AppointmentStatus.BOOKED, AppointmentStatus.COMPLETED]
@@ -1785,7 +1787,7 @@ async def reschedule(
     if new_starts_at <= now:
         raise BadRequestError("New appointment time must be in the future.", error_code="in_the_past")
 
-    platform = await settings_service.get_platform_settings()
+    platform = await settings_service.get_settings()
     horizon = now + timedelta(days=platform.appointment_booking_days_ahead)
     if new_starts_at > horizon:
         raise BadRequestError(
@@ -2392,7 +2394,7 @@ async def red_flag_appointment(
     if terminate_call and getattr(appointment, "call_session_id", None):
         try:
             call = await CallSession.get(appointment.call_session_id)
-            if call and call.status in (CallStatus.RINGING, CallStatus.ACCEPTED, CallStatus.ACTIVE):
+            if call and call.status in (CallStatus.RINGING, CallStatus.ACTIVE):
                 call.status = CallStatus.ENDED
                 call.ended_at = utcnow()
                 call.ended_by = CallParty.ASTROLOGER

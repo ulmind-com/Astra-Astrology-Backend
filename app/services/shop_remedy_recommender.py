@@ -5,9 +5,12 @@ Daily Horoscope Gochar, Sade Sati transits, Kundli & Milan Doshas) directly
 with authentic, consecrated AstroStore remedy products.
 """
 
+import re
 from typing import Any
 from beanie.operators import In, Or, RegEx
 from loguru import logger
+
+from app.core.security import safe_regex_pattern
 
 from app.models.enums import ProductCategoryType
 from app.models.shop import Product
@@ -232,17 +235,18 @@ async def get_shop_recommendations_for_astrology(
     # Build smart OR filter
     or_clauses: list[Any] = []
     if planet:
-        or_clauses.append(RegEx(Product.ruling_planet, f"^{planet}$", "i"))
+        or_clauses.append(RegEx(Product.ruling_planet, f"^{re.escape(planet.strip())}$", "i"))
 
     if rashi:
-        or_clauses.append(RegEx(Product.recommended_for_rashis, f"^{rashi}$", "i"))
+        or_clauses.append(RegEx(Product.recommended_for_rashis, f"^{re.escape(rashi.strip())}$", "i"))
 
     if life_pillar:
-        or_clauses.append(RegEx(Product.life_pillars, f"^{life_pillar}$", "i"))
+        or_clauses.append(RegEx(Product.life_pillars, f"^{re.escape(life_pillar.strip())}$", "i"))
 
     for kw in target_keywords[:4]:
-        or_clauses.append({"title": {"$regex": kw, "$options": "i"}})
-        or_clauses.append({"benefits": {"$regex": kw, "$options": "i"}})
+        pat = safe_regex_pattern(kw)
+        or_clauses.append({"title": pat})
+        or_clauses.append({"benefits": pat})
 
     if or_clauses:
         filters.append({"$or": or_clauses})

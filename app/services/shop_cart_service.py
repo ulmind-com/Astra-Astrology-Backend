@@ -112,6 +112,19 @@ async def enrich_cart(cart: Cart) -> CartOut:
         item_cashback = round(line_total * (cb_pct / 100.0))
         total_cashback_coins += item_cashback
 
+        # Free gift metadata
+        gift_title = product.free_gift_title
+        gift_val = float(product.free_gift_value) if product.free_gift_value is not None else None
+        gift_badge = product.free_gift_badge
+        if gift_title and gift_title not in seen_gift_titles:
+            seen_gift_titles.add(gift_title)
+            bundled_gifts.append({
+                "title": gift_title,
+                "value": gift_val,
+                "badge": gift_badge,
+                "image_url": product.free_gift_image_url,
+            })
+
         enriched_items.append(
             CartItemOut(
                 id=pid_str,

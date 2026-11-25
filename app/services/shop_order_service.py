@@ -19,6 +19,7 @@ from loguru import logger
 
 from app.core.config import settings
 from app.core.exceptions import BadRequestError, ForbiddenError, NotFoundError, ServiceUnavailableError
+from app.core.security import safe_regex_pattern
 from app.models.cms import CMS_KEY_SHOP, ShopCMS
 from app.models.enums import (
     ShopOrderStatus,
@@ -591,19 +592,23 @@ class ShopOrderService:
             return cls._order_to_out(order)
 
         # Signature check
-        if settings.razorpay_configured:
-            rzp_order_id = payload.razorpay_order_id or order.razorpay_order_id
-            if not rzp_order_id:
-                raise BadRequestError("Razorpay order ID is missing for verification.")
+        if not settings.razorpay_configured:
+            raise ServiceUnavailableError(
+                "Payment gateway is not configured to verify signatures.",
+                error_code="payments_unavailable",
+            )
+        rzp_order_id = payload.razorpay_order_id or order.razorpay_order_id
+        if not rzp_order_id:
+            raise BadRequestError("Razorpay order ID is missing for verification.")
 
-            expected = hmac.new(
-                settings.RAZORPAY_KEY_SECRET.encode(),
-                f"{rzp_order_id}|{payload.razorpay_payment_id}".encode(),
-                hashlib.sha256,
-            ).hexdigest()
-            if not hmac.compare_digest(expected, payload.razorpay_signature):
-                logger.warning("Invalid Razorpay signature for shop order '{}'", order.order_number)
-                raise BadRequestError("Payment verification failed: invalid signature.")
+        expected = hmac.new(
+            settings.RAZORPAY_KEY_SECRET.encode(),
+            f"{rzp_order_id}|{payload.razorpay_payment_id}".encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(expected, payload.razorpay_signature):
+            logger.warning("Invalid Razorpay signature for shop order '{}'", order.order_number)
+            raise BadRequestError("Payment verification failed: invalid signature.")
 
         # Handle late payment if order was swept by TTL background cleaner or cancelled in UI
         if order.order_status in (ShopOrderStatus.EXPIRED, ShopOrderStatus.CANCELLED) or order.is_stock_restored:
@@ -1554,14 +1559,14 @@ class ShopOrderService:
         if refund_status:
             filters.append(ShopOrder.refund_status == refund_status)
         if search and search.strip():
-            term = search.strip()
+            pat = safe_regex_pattern(search)
             filters.append({
                 "$or": [
-                    {"order_number": {"$regex": term, "$options": "i"}},
-                    {"user_email": {"$regex": term, "$options": "i"}},
-                    {"user_phone": {"$regex": term, "$options": "i"}},
-                    {"shipping_address.recipient_name": {"$regex": term, "$options": "i"}},
-                    {"sankalpa.devotee_name": {"$regex": term, "$options": "i"}},
+                    {"order_number": pat},
+                    {"user_email": pat},
+                    {"user_phone": pat},
+                    {"shipping_address.recipient_name": pat},
+                    {"sankalpa.devotee_name": pat},
                 ]
             })
 

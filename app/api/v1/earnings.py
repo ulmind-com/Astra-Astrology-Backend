@@ -14,6 +14,7 @@ from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 
 from app.api.dependencies import AdminUser, CurrentUser, ProfessionalUser
 from app.core.exceptions import BadRequestError, NotFoundError
+from app.core.security import safe_regex_pattern
 from app.models.astrologer import Astrologer
 from app.models.enums import ConsultationMode, PujaBookingStatus, PujaPaymentStatus, UserRole
 from app.models.payout import PayoutMethod, PayoutStatus
@@ -210,7 +211,7 @@ async def my_recent_earnings(
 async def my_paginated_earnings(
     user: ProfessionalUser,
     page: Annotated[int, Query(ge=1)] = 1,
-    limit: Annotated[int, Query(ge=1, le=200)] = 10,
+    limit: Annotated[int, Query(ge=1, le=100)] = 10,
     mode: Annotated[str | None, Query()] = None,
     search: Annotated[str | None, Query()] = None,
     window: Annotated[str | None, Query()] = None,
@@ -219,10 +220,11 @@ async def my_paginated_earnings(
 
     if b_type == "purohit":
         query_filter: dict = {"purohit_user_id": user.id}
-        if search:
+        if search and search.strip():
+            pat = safe_regex_pattern(search)
             query_filter["$or"] = [
-                {"puja_name": {"$regex": search, "$options": "i"}},
-                {"user_name": {"$regex": search, "$options": "i"}},
+                {"puja_name": pat},
+                {"user_name": pat},
             ]
         total = await PujaBooking.find(query_filter).count()
         bookings = (
@@ -487,7 +489,6 @@ async def upload_upi_qr(
     res = await upload_file(
         file=file,
         folder="upi_qr_codes",
-        resource_type="image",
         allowed_types=ALLOWED_IMAGE_TYPES,
     )
 

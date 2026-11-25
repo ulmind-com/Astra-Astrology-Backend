@@ -8,6 +8,7 @@ easiest way to lose a user's trust, and the hardest to argue with.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from typing import Any
 
@@ -218,7 +219,7 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[PalmScanRespo
             error_code="cv_dependencies_missing",
         ) from exc
 
-    result = execute_scan(raw, birth_details=birth_details)
+    result = await asyncio.to_thread(execute_scan, raw, birth_details=birth_details)
 
     # A rejected photo is a normal outcome, not an error, and it is free.
     if result.status != "ok":

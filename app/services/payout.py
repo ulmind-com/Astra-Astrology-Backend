@@ -54,7 +54,8 @@ async def get_astrologer_earnings_balance(
             },
             {"$group": {"_id": None, "total_inr": {"$sum": "$amount_inr"}}},
         ]
-        earn_res = [r async for r in PujaBooking.get_pymongo_collection().aggregate(earn_pipeline)]
+        earn_cursor = await PujaBooking.get_pymongo_collection().aggregate(earn_pipeline)
+        earn_res = [r async for r in earn_cursor]
         total_earned = int(round(earn_res[0]["total_inr"] * 100)) if earn_res else 0
     else:
         # Astrologer earnings from EarningEntry ledger
@@ -62,7 +63,8 @@ async def get_astrologer_earnings_balance(
             {"$match": {"astrologer_user_id": astrologer_user_id}},
             {"$group": {"_id": None, "total": {"$sum": "$earning_paise"}}},
         ]
-        earn_res = [r async for r in EarningEntry.get_pymongo_collection().aggregate(earn_pipeline)]
+        earn_cursor = await EarningEntry.get_pymongo_collection().aggregate(earn_pipeline)
+        earn_res = [r async for r in earn_cursor]
         total_earned = earn_res[0]["total"] if earn_res else 0
 
     # 2. Total settled payouts
@@ -70,7 +72,8 @@ async def get_astrologer_earnings_balance(
         {"$match": {"astrologer_user_id": astrologer_user_id, "status": PayoutStatus.SETTLED}},
         {"$group": {"_id": None, "total": {"$sum": "$amount_paise"}}},
     ]
-    settled_res = [r async for r in AstrologerPayout.get_pymongo_collection().aggregate(settled_pipeline)]
+    settled_cursor = await AstrologerPayout.get_pymongo_collection().aggregate(settled_pipeline)
+    settled_res = [r async for r in settled_cursor]
     total_settled = settled_res[0]["total"] if settled_res else 0
 
     # 3. Total pending/approved payouts (funds temporarily locked in transit)
@@ -83,7 +86,8 @@ async def get_astrologer_earnings_balance(
         },
         {"$group": {"_id": None, "total": {"$sum": "$amount_paise"}}},
     ]
-    pending_res = [r async for r in AstrologerPayout.get_pymongo_collection().aggregate(pending_pipeline)]
+    pending_cursor = await AstrologerPayout.get_pymongo_collection().aggregate(pending_pipeline)
+    pending_res = [r async for r in pending_cursor]
     total_pending = pending_res[0]["total"] if pending_res else 0
 
     withdrawable = max(0, total_earned - total_settled - total_pending)
@@ -381,7 +385,8 @@ async def get_payout_analytics_for_admin() -> dict[str, Any]:
             }
         }
     ]
-    rows = [r async for r in AstrologerPayout.get_pymongo_collection().aggregate(pipeline)]
+    cursor = await AstrologerPayout.get_pymongo_collection().aggregate(pipeline)
+    rows = [r async for r in cursor]
 
     total_volume = 0
     total_settled = 0
