@@ -3,7 +3,7 @@
 Provides public endpoints to read page customization and admin endpoints to update content.
 """
 
-from fastapi import APIRouter, File, UploadFile
+from fastapi import APIRouter, File, Request, Response, UploadFile
 
 from app.api.dependencies import AdminUser
 from app.schemas.cms import (
@@ -30,9 +30,13 @@ router = APIRouter(tags=["cms"])
     response_model=ApiResponse[HomePageCMSOut],
     summary="Get homepage CMS configuration (Admin)",
 )
-async def get_homepage_cms() -> ApiResponse[HomePageCMSOut]:
+async def get_homepage_cms(request: Request, response: Response) -> ApiResponse[HomePageCMSOut]:
     """Public and admin endpoint: fetches homepage text and image settings."""
     doc = await cms_service.get_or_create_homepage()
+    if "/admin/" in request.url.path:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    else:
+        response.headers["Cache-Control"] = "public, max-age=60, s-maxage=300, stale-while-revalidate=600"
     return ApiResponse(
         success=True,
         message="Homepage configuration loaded",

@@ -158,9 +158,10 @@ _charge_feature = charge_feature
     response_model=ApiResponse[dict[str, FeaturePricingItem]],
     summary="Get public coin pricing and status for all astrology features",
 )
-async def get_features_pricing() -> ApiResponse[dict[str, FeaturePricingItem]]:
+async def get_features_pricing(response: Response) -> ApiResponse[dict[str, FeaturePricingItem]]:
     from app.services import settings as settings_service
 
+    response.headers["Cache-Control"] = "public, max-age=60, s-maxage=300, stale-while-revalidate=600"
     platform = await settings_service.get_settings()
     pricing = {
         "daily_horoscope": FeaturePricingItem(
@@ -817,6 +818,7 @@ async def get_daily_horoscope_post(
     summary="Get 100% accurate Daily Horoscope by query parameters",
 )
 async def get_daily_horoscope_get(
+    response: Response,
     date: str | None = Query(
         default=None, description="Target date in YYYY-MM-DD or None for today"
     ),
@@ -829,6 +831,10 @@ async def get_daily_horoscope_get(
 ) -> ApiResponse[DailyHoroscopeResponse]:
     """Query parameter interface for Daily Horoscope (Moon Transit Gochar & Panchang)."""
     # Free, public feature — see get_daily_horoscope_post. No auth, no coins.
+    if user is None:
+        response.headers["Cache-Control"] = "public, max-age=300, s-maxage=1800, stale-while-revalidate=3600"
+    else:
+        response.headers["Cache-Control"] = "private, no-store"
     lang = language if language in {"en", "bn", "hi"} else "en"
     req = DailyHoroscopeRequest(
         date=date,

@@ -753,6 +753,7 @@ async def admin_delete_section(
         course.total_lessons = len(remaining)
         course.duration_hours = round(sum(l.duration_minutes for l in remaining) / 60.0, 1)
         await course.save()
+        CourseService.invalidate_courses_cache()
 
     return ApiResponse(data={"message": "Section and lessons deleted successfully"})
 
@@ -786,6 +787,7 @@ async def admin_create_lesson(
         notes_markdown=payload.notes_markdown,
         resources=[r.model_dump() for r in payload.resources] if payload.resources else [],
     )
+    CourseService.invalidate_courses_cache()
     return ApiResponse(data={"id": str(lesson.id), "title": lesson.title, "order": lesson.order})
 
 
@@ -829,6 +831,7 @@ async def admin_update_lesson(
             course.total_lessons = len(all_l)
             course.duration_hours = round(sum(l.duration_minutes for l in all_l) / 60.0, 1)
             await course.save()
+            CourseService.invalidate_courses_cache()
 
     return ApiResponse(data={"id": str(lesson.id), "title": lesson.title, "order": lesson.order})
 
@@ -861,6 +864,7 @@ async def admin_delete_lesson(
         course.total_lessons = len(remaining)
         course.duration_hours = round(sum(l.duration_minutes for l in remaining) / 60.0, 1)
         await course.save()
+        CourseService.invalidate_courses_cache()
 
     return ApiResponse(data={"message": "Lesson deleted successfully"})
 

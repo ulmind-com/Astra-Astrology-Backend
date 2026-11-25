@@ -7,7 +7,7 @@ path wins over the slug lookup.
 from typing import Annotated
 
 from beanie import PydanticObjectId
-from fastapi import APIRouter, File, Header, Query, UploadFile, status
+from fastapi import APIRouter, File, Header, Query, Response, UploadFile, status
 
 from app.api.dependencies import AstrologerUser, CurrentAstrologer, CurrentUser, OptionalUser
 from app.core.exceptions import NotFoundError
@@ -327,6 +327,7 @@ async def remove_gallery_image(
     summary="Browse astrologers — online first, then featured",
 )
 async def list_astrologers(
+    response: Response,
     search: Annotated[str | None, Query(description="Name, tagline or speciality")] = None,
     skill: Annotated[Skill | None, Query()] = None,
     language: Annotated[str | None, Query()] = None,
@@ -351,6 +352,7 @@ async def list_astrologers(
         max_coins_per_minute=max_coins_per_minute,
     )
     page_of = await astrologer_service.list_public(filters, page, limit)
+    response.headers["Cache-Control"] = "public, max-age=10, s-maxage=20, stale-while-revalidate=40"
     return ApiResponse(message=f"{page_of.meta.total} astrologer(s) found.", data=page_of)
 
 

@@ -7,7 +7,7 @@ Endpoints:
 - GET /api/v1/shop/banners: Fetch promotional hero carousel banners and announcement bar.
 """
 
-from fastapi import APIRouter, Body, File, Query, UploadFile
+from fastapi import APIRouter, Body, File, Query, Response, UploadFile
 from fastapi.responses import HTMLResponse
 
 from app.api.dependencies import CurrentUser, OptionalUser
@@ -55,8 +55,9 @@ router = APIRouter(prefix="/shop", tags=["shop"])
     response_model=ApiResponse[list[ProductCategoryOut]],
     summary="List active store categories",
 )
-async def get_public_categories() -> ApiResponse[list[ProductCategoryOut]]:
+async def get_public_categories(response: Response) -> ApiResponse[list[ProductCategoryOut]]:
     cats = await shop_admin.list_categories(include_inactive=False)
+    response.headers["Cache-Control"] = "public, max-age=60, s-maxage=300, stale-while-revalidate=600"
     return ApiResponse.ok(data=cats)
 
 
@@ -66,6 +67,7 @@ async def get_public_categories() -> ApiResponse[list[ProductCategoryOut]]:
     summary="Browse active remedy products",
 )
 async def get_public_products(
+    response: Response,
     search: str | None = Query(default=None),
     category_id: str | None = Query(default=None),
     ruling_planet: str | None = Query(default=None),
@@ -87,6 +89,7 @@ async def get_public_products(
         limit=limit,
         sort_by=sort_by,
     )
+    response.headers["Cache-Control"] = "public, max-age=20, s-maxage=60, stale-while-revalidate=180"
     return ApiResponse.ok(data=result)
 
 
@@ -95,8 +98,9 @@ async def get_public_products(
     response_model=ApiResponse[ProductOut],
     summary="Get remedy product by ID or slug",
 )
-async def get_public_product_detail(id_or_slug: str) -> ApiResponse[ProductOut]:
+async def get_public_product_detail(id_or_slug: str, response: Response) -> ApiResponse[ProductOut]:
     product = await shop_admin.get_product_by_id_or_slug(id_or_slug)
+    response.headers["Cache-Control"] = "public, max-age=30, s-maxage=120, stale-while-revalidate=300"
     return ApiResponse.ok(data=product)
 
 
@@ -105,7 +109,8 @@ async def get_public_product_detail(id_or_slug: str) -> ApiResponse[ProductOut]:
     response_model=ApiResponse[ShopBannerSettingsOut],
     summary="Get active store hero banners, announcements and reels",
 )
-async def get_public_banners() -> ApiResponse[ShopBannerSettingsOut]:
+async def get_public_banners(response: Response) -> ApiResponse[ShopBannerSettingsOut]:
+    response.headers["Cache-Control"] = "public, max-age=60, s-maxage=300, stale-while-revalidate=600"
     try:
         settings = await shop_admin.get_shop_banner_settings()
         active_banners = [b for b in settings.hero_banners if b.is_active]

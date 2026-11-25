@@ -142,7 +142,8 @@ class CourseService:
         return credited >= required
 
 
-    _courses_cache: dict[tuple, tuple[float, list[Course]]] = {}
+    _courses_cache: dict[tuple[Any, ...], tuple[float, list[Course]]] = {}
+    _COURSES_CACHE_TTL_SECONDS: float = 30.0
 
     @classmethod
     def invalidate_courses_cache(cls) -> None:
@@ -157,13 +158,11 @@ class CourseService:
         skip: int = 0,
     ) -> list[Course]:
         """Returns active, published courses with optional filtering and high-speed in-memory caching."""
-        cache_key = (category, level, (search.strip().lower() if search else None), limit, skip)
-        import time
-        now = time.time()
-        if cache_key in CourseService._courses_cache:
-            ts, cached_courses = CourseService._courses_cache[cache_key]
-            if now - ts < 120:  # 2 minute cache
-                return cached_courses
+        now = time.monotonic()
+        cache_key = (category or "", level or "", (search or "").strip().lower(), limit, skip)
+        cached = CourseService._courses_cache.get(cache_key)
+        if cached is not None and (now - cached[0]) < CourseService._COURSES_CACHE_TTL_SECONDS:
+            return cached[1]
 
         query: dict[str, Any] = {"is_published": True, "is_deleted": False}
         if category and category != "all":
@@ -177,15 +176,17 @@ class CourseService:
                 {"tags": {"$in": [search.lower()]}},
             ]
 
-        results = (
+        courses = (
             await Course.find(query)
             .sort([("is_featured", -1), ("created_at", -1)])
             .skip(skip)
             .limit(limit)
             .to_list()
         )
-        CourseService._courses_cache[cache_key] = (now, results)
-        return results
+        if len(CourseService._courses_cache) >= 50:
+            CourseService._courses_cache.clear()
+        CourseService._courses_cache[cache_key] = (now, courses)
+        return courses
 
     @staticmethod
     async def get_course_by_slug(slug: str, user: User | None = None) -> dict[str, Any]:

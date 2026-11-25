@@ -10,6 +10,7 @@ Handles:
 import asyncio
 from datetime import UTC, datetime, timedelta
 import re
+import time
 from typing import Any
 from beanie import PydanticObjectId
 from beanie.operators import In, RegEx
@@ -109,23 +110,43 @@ def _product_out(p: Product) -> ProductOut:
 # Category Management
 # ===========================================================================
 
+_CATEGORIES_CACHE: dict[bool, tuple[float, list[ProductCategoryOut]]] = {}
+_PUBLIC_PRODUCTS_CACHE: dict[tuple[Any, ...], tuple[float, ProductListResponse]] = {}
+_SHOP_CATALOG_CACHE_TTL_SECONDS = 25.0
+
+
+def invalidate_shop_catalog_cache() -> None:
+    """Invalidates cached category & product lists upon admin or inventory updates."""
+    _CATEGORIES_CACHE.clear()
+    _PUBLIC_PRODUCTS_CACHE.clear()
+
 
 async def list_categories(include_inactive: bool = True) -> list[ProductCategoryOut]:
     """Returns all categories with accurate product counts, excluding soft-deleted ones."""
+    now = time.monotonic()
+    cached = _CATEGORIES_CACHE.get(include_inactive)
+    if cached is not None and (now - cached[0]) < _SHOP_CATALOG_CACHE_TTL_SECONDS:
+        return cached[1]
+
     query: dict[str, Any] = {"is_deleted": False}
     if not include_inactive:
         query["is_active"] = True
-    cats = await ProductCategory.find(query).sort("+display_order", "+name").to_list()
 
-    # Aggregate product counts per category in one query (excluding soft-deleted products)
-    counts_cursor = Product.aggregate([
-        {"$match": {"is_deleted": False}},
-        {"$group": {"_id": "$category_id", "count": {"$sum": 1}}}
-    ])
-    counts_map: dict[str, int] = {}
-    async for row in counts_cursor:
-        if row.get("_id"):
-            counts_map[str(row["_id"])] = row["count"]
+    async def _fetch_counts() -> dict[str, int]:
+        counts_cursor = Product.aggregate([
+            {"$match": {"is_deleted": False}},
+            {"$group": {"_id": "$category_id", "count": {"$sum": 1}}},
+        ])
+        counts_map: dict[str, int] = {}
+        async for row in counts_cursor:
+            if row.get("_id"):
+                counts_map[str(row["_id"])] = row["count"]
+        return counts_map
+
+    cats, counts_map = await asyncio.gather(
+        ProductCategory.find(query).sort("+display_order", "+name").to_list(),
+        _fetch_counts(),
+    )
 
     res = []
     for c in cats:
@@ -149,6 +170,7 @@ async def list_categories(include_inactive: bool = True) -> list[ProductCategory
                 updated_at=c.updated_at,
             )
         )
+    _CATEGORIES_CACHE[include_inactive] = (now, res)
     return res
 
 
@@ -175,6 +197,7 @@ async def create_category(payload: ProductCategoryCreate) -> ProductCategoryOut:
         seo_description=payload.seo_description,
     )
     await cat.insert()
+    invalidate_shop_catalog_cache()
     logger.info("Created product category '{}' (id={})", cat.name, cat.id)
     return ProductCategoryOut(
         id=str(cat.id),
@@ -237,6 +260,7 @@ async def update_category(cat_id: str, payload: ProductCategoryUpdate) -> Produc
         cat.seo_description = payload.seo_description
 
     await cat.save()
+    invalidate_shop_catalog_cache()
     return cat
 
 
@@ -267,6 +291,7 @@ async def delete_category(cat_id: str) -> bool:
     cat.is_active = False
     cat.deleted_at = datetime.now(UTC)
     await cat.save()
+    invalidate_shop_catalog_cache()
     logger.info("Soft-deleted category '{}' (id={})", cat.name, cat.id)
     return True
 
@@ -329,17 +354,41 @@ async def list_products(
         }
         filters.append(regex_filter)
 
-    query = Product.find(*filters) if filters else Product.find_all()
-    total = await query.count()
-    items = await query.sort(sort_by).skip(skip).limit(limit).to_list()
+    is_public_catalog = is_active is True and not include_deleted and not archived_only
+    cache_key = (
+        search or "",
+        category_id or "",
+        ruling_planet or "",
+        stock_status or "",
+        is_featured,
+        page,
+        limit,
+        sort_by,
+    )
+    now = time.monotonic()
+    if is_public_catalog:
+        cached = _PUBLIC_PRODUCTS_CACHE.get(cache_key)
+        if cached is not None and (now - cached[0]) < _SHOP_CATALOG_CACHE_TTL_SECONDS:
+            return cached[1]
 
-    return ProductListResponse(
+    query = Product.find(*filters) if filters else Product.find_all()
+    total, items = await asyncio.gather(
+        query.count(),
+        query.sort(sort_by).skip(skip).limit(limit).to_list(),
+    )
+
+    result = ProductListResponse(
         items=[_product_out(p) for p in items],
         total=total,
         page=page,
         limit=limit,
         has_more=(skip + len(items)) < total,
     )
+    if is_public_catalog:
+        if len(_PUBLIC_PRODUCTS_CACHE) >= 100:
+            _PUBLIC_PRODUCTS_CACHE.clear()
+        _PUBLIC_PRODUCTS_CACHE[cache_key] = (now, result)
+    return result
 
 
 async def get_product_by_id_or_slug(id_or_slug: str) -> ProductOut:
@@ -422,6 +471,7 @@ async def create_product(payload: ProductCreate) -> ProductOut:
         is_energized=payload.is_energized,
     )
     await product.insert()
+    invalidate_shop_catalog_cache()
     logger.info("Created remedy product '{}' (SKU={}, id={})", product.title, product.sku, product.id)
     return _product_out(product)
 
@@ -528,6 +578,7 @@ async def update_product(prod_id: str, payload: ProductUpdate) -> ProductOut:
         product.is_energized = payload.is_energized
 
     await product.save()
+    invalidate_shop_catalog_cache()
 
     # Determine orphaned images that are no longer part of this product
     new_images = set(product.images or [])
@@ -567,6 +618,7 @@ async def delete_product(prod_id: str, hard_delete: bool = False) -> dict[str, A
         product.is_active = False
         product.deleted_at = datetime.now(UTC)
         await product.save()
+        invalidate_shop_catalog_cache()
         logger.info(
             "Soft-deleted product '{}' (id={}, had {} orders). Preserving Cloudinary images for order history.",
             product.title,
@@ -590,6 +642,7 @@ async def delete_product(prod_id: str, hard_delete: bool = False) -> dict[str, A
         await safe_delete_cloudinary_image(img_url)
 
     await product.delete()
+    invalidate_shop_catalog_cache()
     logger.info("Hard-deleted product '{}' and purged {} Cloudinary images", product.title, len(all_images))
     return {
         "deleted": True,
@@ -613,6 +666,7 @@ async def restore_product(prod_id: str) -> ProductOut:
     product.deleted_at = None
     product.is_active = True
     await product.save()
+    invalidate_shop_catalog_cache()
     logger.info("Restored product '{}' (id={})", product.title, product.id)
     return _product_out(product)
 
@@ -640,6 +694,8 @@ async def atomic_reserve_stock(prod_id: str | PydanticObjectId, quantity: int) -
         },
         {"$inc": {"stock_quantity": -quantity}},
     )
+    if res.modified_count > 0:
+        invalidate_shop_catalog_cache()
     return res.modified_count > 0
 
 
@@ -653,6 +709,8 @@ async def atomic_release_stock(prod_id: str | PydanticObjectId, quantity: int) -
         {"_id": oid},
         {"$inc": {"stock_quantity": quantity}},
     )
+    if res.modified_count > 0:
+        invalidate_shop_catalog_cache()
     return res.modified_count > 0
 
 
@@ -682,6 +740,7 @@ async def update_stock(prod_id: str, payload: StockUpdatePayload) -> ProductOut:
     if not updated_product:
         raise NotFoundError("Product not found.")
 
+    invalidate_shop_catalog_cache()
     logger.info(
         "Stock updated for '{}' (SKU={}): {} -> {} (reason: {})",
         updated_product.title,
