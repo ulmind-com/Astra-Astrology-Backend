@@ -684,9 +684,9 @@ async def _auto_provision_standard_windows(
             )
             await w2.insert()
 
-            # 3. VIP Tatkal Session: 08:00 PM IST to 09:30 PM IST (14:30 to 16:00 UTC)
+            # 3. VIP Tatkal Session: 08:00 PM IST to 11:30 PM IST (14:30 to 18:00 UTC)
             t_start = datetime(current_date.year, current_date.month, current_date.day, 14, 30, tzinfo=UTC)
-            t_end = datetime(current_date.year, current_date.month, current_date.day, 16, 0, tzinfo=UTC)
+            t_end = datetime(current_date.year, current_date.month, current_date.day, 18, 0, tzinfo=UTC)
             tatkal_mult = getattr(astrologer.appointment, "tatkal_default_multiplier", 1.5) or 1.5
             w3 = AvailabilityWindow(
                 astrologer_id=astrologer.id,

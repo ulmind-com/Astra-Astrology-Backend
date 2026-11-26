@@ -57,9 +57,9 @@ async def seed_windows_for_astrologer(astrologer: Astrologer, start_date: date, 
         await w_evening.insert()
         created_count += 1
         
-        # 3. VIP Tatkal Session: 08:00 PM IST to 09:30 PM IST (14:30 to 16:00 UTC)
+        # 3. VIP Tatkal Session: 08:00 PM IST to 11:30 PM IST (14:30 to 18:00 UTC)
         t_start = datetime(current_day.year, current_day.month, current_day.day, 14, 30, tzinfo=UTC)
-        t_end = datetime(current_day.year, current_day.month, current_day.day, 16, 0, tzinfo=UTC)
+        t_end = datetime(current_day.year, current_day.month, current_day.day, 18, 0, tzinfo=UTC)
         w_tatkal = AvailabilityWindow(
             astrologer_id=astrologer.id,
             day=current_day,
@@ -71,6 +71,17 @@ async def seed_windows_for_astrologer(astrologer: Astrologer, start_date: date, 
         )
         await w_tatkal.insert()
         created_count += 1
+
+    # Also update any existing Tatkal windows to extend to 18:00 UTC (11:30 PM IST)
+    tatkal_wins = await AvailabilityWindow.find({
+        "astrologer_id": astrologer.id,
+        "is_tatkal": True,
+    }).to_list()
+    for tw in tatkal_wins:
+        new_end = datetime(tw.day.year, tw.day.month, tw.day.day, 18, 0, tzinfo=UTC)
+        if tw.ends_at != new_end:
+            tw.ends_at = new_end
+            await tw.save()
 
     print(f"Successfully created {created_count} windows for {astrologer.display_name}.")
 
