@@ -725,9 +725,6 @@ async def day_view(
             include_private = True
 
     windows = await _windows_for(astrologer.id, day_start, day_end, include_private=include_private)
-    if not windows and getattr(astrologer, "is_listed", True) and getattr(astrologer.appointment, "enabled", False):
-        windows = await _auto_provision_standard_windows(astrologer, day_start, day_end)
-
     taken = await booked_between(astrologer.id, day_start, day_end)
 
     # Pre-calculate Vedic Muhurat ratings for windows
