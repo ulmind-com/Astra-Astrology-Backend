@@ -640,6 +640,73 @@ async def booked_between(
     )
 
 
+async def _auto_provision_standard_windows(
+    astrologer: Astrologer, day_start: datetime, day_end: datetime
+) -> list[AvailabilityWindow]:
+    """Self-healing availability engine: ensures listed astrologers with appointment booking enabled
+    always have active morning, evening, and tatkal consultation windows across their calendar."""
+    IST = ZoneInfo("Asia/Kolkata")
+    start_date = day_start.astimezone(IST).date()
+    end_date = day_end.astimezone(IST).date()
+
+    current_date = start_date
+    created_any = False
+
+    while current_date <= end_date:
+        existing = await AvailabilityWindow.find_one({
+            "astrologer_id": astrologer.id,
+            "day": current_date,
+        })
+        if not existing:
+            # 1. Morning Session: 10:00 AM IST to 01:30 PM IST (04:30 to 08:00 UTC)
+            m_start = datetime(current_date.year, current_date.month, current_date.day, 4, 30, tzinfo=UTC)
+            m_end = datetime(current_date.year, current_date.month, current_date.day, 8, 0, tzinfo=UTC)
+            w1 = AvailabilityWindow(
+                astrologer_id=astrologer.id,
+                day=current_date,
+                starts_at=m_start,
+                ends_at=m_end,
+                is_tatkal=False,
+                custom_title="Morning Vedic Consultation",
+            )
+            await w1.insert()
+
+            # 2. Evening Peak Session: 03:30 PM IST to 07:30 PM IST (10:00 to 14:00 UTC)
+            e_start = datetime(current_date.year, current_date.month, current_date.day, 10, 0, tzinfo=UTC)
+            e_end = datetime(current_date.year, current_date.month, current_date.day, 14, 0, tzinfo=UTC)
+            w2 = AvailabilityWindow(
+                astrologer_id=astrologer.id,
+                day=current_date,
+                starts_at=e_start,
+                ends_at=e_end,
+                is_tatkal=False,
+                custom_title="Evening Consultation Chamber",
+            )
+            await w2.insert()
+
+            # 3. VIP Tatkal Session: 08:00 PM IST to 09:30 PM IST (14:30 to 16:00 UTC)
+            t_start = datetime(current_date.year, current_date.month, current_date.day, 14, 30, tzinfo=UTC)
+            t_end = datetime(current_date.year, current_date.month, current_date.day, 16, 0, tzinfo=UTC)
+            tatkal_mult = getattr(astrologer.appointment, "tatkal_default_multiplier", 1.5) or 1.5
+            w3 = AvailabilityWindow(
+                astrologer_id=astrologer.id,
+                day=current_date,
+                starts_at=t_start,
+                ends_at=t_end,
+                is_tatkal=True,
+                tatkal_multiplier=tatkal_mult,
+                custom_title="VIP Tatkal Consultation",
+            )
+            await w3.insert()
+            created_any = True
+
+        current_date += timedelta(days=1)
+
+    if created_any:
+        return await _windows_for(astrologer.id, day_start, day_end, include_private=False)
+    return []
+
+
 async def day_view(
     *,
     astrologer: Astrologer,
@@ -658,6 +725,9 @@ async def day_view(
             include_private = True
 
     windows = await _windows_for(astrologer.id, day_start, day_end, include_private=include_private)
+    if not windows and getattr(astrologer, "is_listed", True) and getattr(astrologer.appointment, "enabled", False):
+        windows = await _auto_provision_standard_windows(astrologer, day_start, day_end)
+
     taken = await booked_between(astrologer.id, day_start, day_end)
 
     # Pre-calculate Vedic Muhurat ratings for windows
