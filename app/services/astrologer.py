@@ -8,7 +8,7 @@ neither" rule as registration applies here, with the same rollback.
 import asyncio
 import secrets
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from loguru import logger
@@ -535,11 +535,18 @@ def _directory_query(filters: AstrologerFilters, default_chat_rate: int | None =
         # Both halves, or "online now" would list everyone who ever forgot to
         # switch off. The TTL is applied in the query so the count and the
         # pages agree with what the cards end up showing.
+        from app.models.base import utcnow
         from app.services import presence
 
+        now = utcnow()
         conditions.append(Astrologer.availability.is_online == True)  # noqa: E712
         conditions.append(
-            {"availability.last_seen_at": {"$gte": presence.stale_before()}}
+            {
+                "availability.last_seen_at": {
+                    "$gte": presence.stale_before(),
+                    "$lte": now + timedelta(seconds=5),
+                }
+            }
         )
     if filters.featured_only:
         conditions.append(Astrologer.is_featured == True)  # noqa: E712
