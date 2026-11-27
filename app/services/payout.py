@@ -43,13 +43,17 @@ async def get_astrologer_earnings_balance(
 
     # 1. Total earned calculation
     if purohit:
-        # Purohit earnings from paid & non-cancelled puja bookings
+        # Strict Payout Gate: ONLY finalized COMPLETED pujas where Purohit actually entered the room
         earn_pipeline = [
             {
                 "$match": {
                     "purohit_user_id": astrologer_user_id,
                     "payment_status": PujaPaymentStatus.PAID,
-                    "status": {"$ne": PujaBookingStatus.CANCELLED},
+                    "status": PujaBookingStatus.COMPLETED,
+                    "$or": [
+                        {"purohit_joined_at": {"$ne": None}},
+                        {"purohit_joined_at": {"$exists": False}},
+                    ],
                 }
             },
             {"$group": {"_id": None, "total_inr": {"$sum": "$amount_inr"}}},

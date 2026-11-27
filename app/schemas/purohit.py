@@ -132,7 +132,7 @@ class PujaBookingCreate(BaseModel):
     sankalpa_gotra: str = Field(default="Kashyapa", min_length=2, max_length=50)
     sankalpa_nakshatra: str | None = Field(default=None, max_length=50, description="Birth Nakshatra for Vedic Sankalpa")
     sankalpa_wish: str | None = Field(default=None, max_length=500, description="Special prayer wish or reason for puja")
-    payment_method: Literal["razorpay", "wallet"] = "razorpay"
+    payment_method: Literal["deferred", "razorpay", "wallet"] = "deferred"
 
 
 class PujaPaymentVerifyRequest(BaseModel):
@@ -174,12 +174,18 @@ class PujaBookingOut(BaseModel):
     room_id: str
     zego_app_id: int = Field(default_factory=lambda: settings.ZEGO_APP_ID)
     zego_token: str | None = None
+    payment_method: str = "razorpay"
     razorpay_key_id: str | None = None
     razorpay_order_id: str | None = None
     status: PujaBookingStatus
     payment_status: PujaPaymentStatus
     started_at: datetime | None = None
     accepted_at: datetime | None = None
+    accept_expires_at: datetime | None = None
+    payment_expires_at: datetime | None = None
+    purohit_join_deadline_at: datetime | None = None
+    purohit_joined_at: datetime | None = None
+    devotee_joined_at: datetime | None = None
     expires_at: datetime | None = None
     completed_at: datetime | None = None
     declined_at: datetime | None = None

@@ -368,12 +368,17 @@ async def get_my_purohit_bookings(user: CurrentUser) -> ApiResponse[list[PujaBoo
 @router.post(
     "/bookings/{booking_id}/accept",
     response_model=ApiResponse[PujaBookingOut],
-    summary="Purohit accepts an incoming live puja request and starts the timed room",
+    summary="Purohit accepts an incoming live puja request",
 )
 async def accept_puja(booking_id: str, user: CurrentUser) -> ApiResponse[PujaBookingOut]:
     booking, token = await purohit_service.accept_puja_booking(booking_id, user)
+    msg = (
+        "পূজা অনুরোধ গ্রহণ করা হয়েছে! ভক্ত ৯০ সেকেন্ডের মধ্যে পেমেন্ট সম্পন্ন করে লাইভ রুমে যুক্ত হবেন।"
+        if booking.status == "awaiting_payment"
+        else f"পূজা অনুরোধ গ্রহণ করা হয়েছে! লাইভ রুম {booking.puja_duration_minutes} মিনিটের জন্য চালু হয়েছে।"
+    )
     return ApiResponse(
-        message=f"পূজা অনুরোধ গ্রহণ করা হয়েছে! লাইভ রুম {booking.puja_duration_minutes} মিনিটের জন্য চালু হয়েছে।",
+        message=msg,
         data=_booking_to_out(booking, token=token),
     )
 
@@ -434,12 +439,18 @@ def _booking_to_out(booking: PujaBooking, *, token: str | None = None) -> PujaBo
         sankalpa_wish=booking.sankalpa_wish,
         room_id=booking.room_id,
         zego_token=token,
+        payment_method=getattr(booking, "payment_method", "razorpay"),
         razorpay_key_id=settings.RAZORPAY_KEY_ID if is_pending_rzp else None,
         razorpay_order_id=booking.razorpay_order_id if is_pending_rzp else None,
         status=booking.status,
         payment_status=booking.payment_status,
         started_at=booking.started_at,
         accepted_at=getattr(booking, "accepted_at", None),
+        accept_expires_at=getattr(booking, "accept_expires_at", None),
+        payment_expires_at=getattr(booking, "payment_expires_at", None),
+        purohit_join_deadline_at=getattr(booking, "purohit_join_deadline_at", None),
+        purohit_joined_at=getattr(booking, "purohit_joined_at", None),
+        devotee_joined_at=getattr(booking, "devotee_joined_at", None),
         expires_at=getattr(booking, "expires_at", None),
         completed_at=booking.completed_at,
         declined_at=getattr(booking, "declined_at", None),
@@ -457,7 +468,7 @@ def _booking_to_out(booking: PujaBooking, *, token: str | None = None) -> PujaBo
     "/bookings",
     response_model=ApiResponse[PujaBookingOut],
     status_code=status.HTTP_201_CREATED,
-    summary="Book a live online puja with a verified Purohit",
+    summary="Send a Pay-After-Accept live puja request to an online Purohit",
 )
 async def book_puja_session(
     payload: PujaBookingCreate, user: CurrentUser
@@ -465,11 +476,55 @@ async def book_puja_session(
     booking, token = await purohit_service.book_puja(user, payload)
     out = _booking_to_out(booking, token=token)
     msg = (
-        f"পূজা সফলভাবে বুক করা হয়েছে (#{booking.booking_number})। পুরোহিতজীর সাথে এখনই যুক্ত হতে রুম ওপেন করুন।"
-        if booking.payment_status == PujaPaymentStatus.PAID
-        else f"বুকিং (#{booking.booking_number}) শুরু হয়েছে। অনুগ্রহ করে পেমেন্ট সম্পন্ন করুন।"
+        f"পুরোহিতজীকে অনুরোধ পাঠানো হয়েছে (#{booking.booking_number})। "
+        "তিনি গ্রহণ করলেই পেমেন্ট করে সরাসরি লাইভ রুমে প্রবেশ করতে পারবেন।"
     )
     return ApiResponse(message=msg, data=out)
+
+
+@router.post(
+    "/bookings/{booking_id}/create-payment-order",
+    response_model=ApiResponse[PujaBookingOut],
+    summary="Create Razorpay payment order after Purohit accepts within the 90s payment window",
+)
+async def create_puja_payment_order_endpoint(booking_id: str, user: CurrentUser) -> ApiResponse[PujaBookingOut]:
+    booking = await purohit_service.create_puja_razorpay_order(booking_id, user)
+    return ApiResponse(
+        message="পেমেন্ট অর্ডার প্রস্তুত। ৯০ সেকেন্ডের মধ্যে পেমেন্ট সম্পন্ন করুন।",
+        data=_booking_to_out(booking),
+    )
+
+
+@router.post(
+    "/bookings/{booking_id}/pay-wallet",
+    response_model=ApiResponse[PujaBookingOut],
+    summary="Pay for an accepted puja request using Wallet Coins and enter the live room",
+)
+async def pay_puja_wallet_endpoint(booking_id: str, user: CurrentUser) -> ApiResponse[PujaBookingOut]:
+    booking, token = await purohit_service.pay_puja_with_wallet(booking_id, user)
+    return ApiResponse(
+        message="ওয়ালেট পেমেন্ট সফল হয়েছে! লাইভ পূজা রুম শুরু হচ্ছে।",
+        data=_booking_to_out(booking, token=token),
+    )
+
+
+@router.post(
+    "/bookings/{booking_id}/cancel",
+    response_model=ApiResponse[PujaBookingOut],
+    summary="Devotee cancels an awaiting/waiting puja request and releases the Purohit",
+)
+async def cancel_puja_booking_endpoint(
+    booking_id: str,
+    user: CurrentUser,
+    payload: PujaDeclineRequest | None = None,
+) -> ApiResponse[PujaBookingOut]:
+    booking = await purohit_service.cancel_puja_booking(
+        booking_id, user, reason=payload.reason if payload else None
+    )
+    return ApiResponse(
+        message="অনুরোধ বাতিল করা হয়েছে।",
+        data=_booking_to_out(booking),
+    )
 
 
 @router.post(

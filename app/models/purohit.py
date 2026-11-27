@@ -67,6 +67,7 @@ class Purohit(TimestampedDocument):
 
     rating: float = Field(default=0.0, ge=0.0, le=5.0)
     total_pujas_performed: int = Field(default=0, ge=0)
+    consecutive_missed_pujas: int = Field(default=0, ge=0)
     bank: BankDetails = Field(default_factory=BankDetails)
 
     class Settings:
@@ -119,6 +120,11 @@ class PujaBooking(TimestampedDocument):
 
     started_at: datetime | None = None
     accepted_at: datetime | None = None
+    accept_expires_at: datetime | None = None
+    payment_expires_at: datetime | None = None
+    purohit_join_deadline_at: datetime | None = None
+    purohit_joined_at: datetime | None = None
+    devotee_joined_at: datetime | None = None
     expires_at: datetime | None = None
     completed_at: datetime | None = None
     declined_at: datetime | None = None

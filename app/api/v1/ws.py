@@ -267,12 +267,13 @@ async def _set_presence(entry: tuple[str, Any] | None, *, online: bool) -> None:
     kind, profile = entry
     try:
         if kind == "purohit":
-            from app.services import purohit_presence
+            from app.services import purohit_presence, purohit_service
 
             if online:
                 await purohit_presence.beat(profile, force_online=True)
             else:
                 await purohit_presence.go_offline(profile, reason="panel closed")
+                await purohit_service.cancel_unpaid_requests_for_offline_purohit(profile.id)
             return
 
         from app.services import presence
