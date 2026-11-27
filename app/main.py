@@ -171,11 +171,19 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     except Exception as e:
         logger.warning("Could not start Shop inventory TTL cleaner worker: {}", e)
 
+    # Start 30-second live Purohit presence & timed puja expiry worker
+    purohit_worker_task: asyncio.Task | None = None
+    try:
+        from app.services.purohit_service import live_puja_worker_loop
+        purohit_worker_task = asyncio.create_task(live_puja_worker_loop())
+    except Exception as e:
+        logger.warning("Could not start live Purohit worker: {}", e)
+
     logger.success("{} is ready on port {}.", settings.APP_NAME, settings.PORT)
     yield
 
     logger.info("Shutting down...")
-    for bg_task in (reminder_task, cloudinary_cleaner_task, inventory_cleaner_task):
+    for bg_task in (reminder_task, cloudinary_cleaner_task, inventory_cleaner_task, purohit_worker_task):
         if bg_task and not bg_task.done():
             bg_task.cancel()
             try:

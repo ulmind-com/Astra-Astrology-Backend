@@ -101,6 +101,9 @@ class PurohitOut(BaseModel):
     languages: list[str]
     is_online: bool
     is_verified: bool
+    is_busy: bool = False
+    last_seen_at: datetime | None = None
+    busy_booking_id: str | None = None
     available_days: list[str] = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
     available_slots: list[str] = ["brahma_muhurat", "morning", "afternoon", "evening"]
     weekly_schedule: dict[str, list[str]] = {}
@@ -140,6 +143,12 @@ class PujaPaymentVerifyRequest(BaseModel):
     razorpay_signature: str
 
 
+class PujaDeclineRequest(BaseModel):
+    """Optional note when a Purohit declines a live puja request."""
+
+    reason: str | None = Field(default=None, max_length=300)
+
+
 class PujaBookingOut(BaseModel):
     """Booking details returned to devotee and purohit, including video room access."""
 
@@ -169,5 +178,11 @@ class PujaBookingOut(BaseModel):
     status: PujaBookingStatus
     payment_status: PujaPaymentStatus
     started_at: datetime | None = None
+    accepted_at: datetime | None = None
+    expires_at: datetime | None = None
     completed_at: datetime | None = None
+    declined_at: datetime | None = None
+    cancel_reason: str | None = None
+    refund_id: str | None = None
+    refunded_at: datetime | None = None
     created_at: datetime

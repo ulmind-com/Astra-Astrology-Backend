@@ -375,3 +375,64 @@ async def publish_availability_event(astrologer_id: Any, day: str) -> None:
             },
         }
     )
+
+
+# --------------------------------------------------------------- purohits
+async def purohit_payload(purohit: Any) -> dict[str, Any]:
+    """Build JSON-safe Purohit snapshot for public directory live sync."""
+    from app.services import purohit_presence
+
+    active_prices = [p.price_inr for p in (purohit.pujas or []) if p.is_active]
+    starting_price = min(active_prices) if active_prices else 0.0
+    effectively_online = purohit_presence.is_effectively_online(purohit)
+    return {
+        "id": str(purohit.id),
+        "user_id": str(purohit.user_id),
+        "display_name": purohit.display_name,
+        "slug": purohit.slug,
+        "title": purohit.title,
+        "bio": purohit.bio,
+        "avatar_url": purohit.avatar_url,
+        "city": purohit.city,
+        "state": purohit.state,
+        "experience_years": purohit.experience_years,
+        "languages": list(purohit.languages or []),
+        "is_online": effectively_online,
+        "is_verified": bool(purohit.is_verified),
+        "is_busy": bool(getattr(purohit, "is_busy", False)),
+        "last_seen_at": purohit.last_seen_at.isoformat() if getattr(purohit, "last_seen_at", None) else None,
+        "busy_booking_id": str(purohit.busy_booking_id) if getattr(purohit, "busy_booking_id", None) else None,
+        "pujas": [p.model_dump() for p in (purohit.pujas or [])],
+        "rating": purohit.rating,
+        "total_pujas_performed": purohit.total_pujas_performed,
+        "starting_price_inr": starting_price,
+    }
+
+
+async def publish_purohit(purohit: Any) -> None:
+    """Broadcast updated Purohit presence/busy/catalog state to connected clients."""
+    try:
+        payload = await purohit_payload(purohit)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not build live purohit payload for {}: {}", getattr(purohit, "id", "?"), exc)
+        return
+    _broadcast({"type": "purohit", "data": payload})
+
+
+async def publish_puja_event(
+    user_id: Any,
+    purohit_user_id: Any,
+    event_type: str,
+    booking_data: dict[str, Any],
+) -> None:
+    """Broadcast real-time live puja lifecycle events to both devotee and Purohit."""
+    msg = {
+        "type": "puja_event",
+        "data": {
+            "event": event_type,
+            "booking": booking_data,
+        },
+    }
+    _broadcast(msg, to_user=str(user_id))
+    if str(purohit_user_id) != str(user_id):
+        _broadcast(msg, to_user=str(purohit_user_id))

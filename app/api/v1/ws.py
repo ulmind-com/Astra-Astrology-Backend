@@ -129,11 +129,9 @@ async def live(websocket: WebSocket, token: str | None = Query(default=None)) ->
     realtime.register(connection)
     verified_peers: set[tuple[str | None, str]] = set()
 
-    # An astrologer holding this socket is an astrologer at their desk.
-    astrologer_profile: Any = None
-    if role == "astrologer" and user_id:
-        astrologer_profile = await _profile_for(user_id, role)
-    await _set_presence(astrologer_profile, online=True)
+    # An astrologer or purohit holding this socket is live at their desk.
+    panel_profile = await _profile_for(user_id, role)
+    await _set_presence(panel_profile, online=True)
 
     sender = asyncio.create_task(_pump(connection))
     try:
@@ -158,7 +156,7 @@ async def live(websocket: WebSocket, token: str | None = Query(default=None)) ->
             # Nothing arriving for longer than the timeout means it is not.
             raw_text = await asyncio.wait_for(websocket.receive_text(), timeout=IDLE_TIMEOUT_SECONDS)
             connection.offer({"type": "pong"})
-            await _touch_presence(astrologer_profile)
+            await _touch_presence(panel_profile)
 
             # Handle live collaborative whiteboard broadcast frames if sent over websocket
             if raw_text and raw_text.startswith("{"):
@@ -197,30 +195,49 @@ async def live(websocket: WebSocket, token: str | None = Query(default=None)) ->
         with contextlib.suppress(asyncio.CancelledError, WebSocketDisconnect, Exception):
             await sender
         realtime.unregister(connection)
-        # Only the *last* tab closing takes them offline — an astrologer with
+        # Only the *last* tab closing takes them offline — a panel user with
         # the panel open twice is still at their desk.
         if not (user_id and realtime.is_connected(user_id)):
-            await _set_presence(astrologer_profile, online=False)
+            await _set_presence(panel_profile, online=False)
 
 
 # -------------------------------------------------------------- presence
-async def _profile_for(user_id: str | None, role: str | None) -> Any:
-    if not user_id or role != "astrologer":
+async def _profile_for(user_id: str | None, role: str | None) -> tuple[str, Any] | None:
+    if not user_id or role not in ("astrologer", "purohit"):
         return None
     from beanie import PydanticObjectId
 
-    from app.models.astrologer import Astrologer
-
     if not PydanticObjectId.is_valid(user_id):
         return None
-    return await Astrologer.find_one(Astrologer.user_id == PydanticObjectId(user_id))
+    oid = PydanticObjectId(user_id)
+
+    if role == "astrologer":
+        from app.models.astrologer import Astrologer
+
+        profile = await Astrologer.find_one(Astrologer.user_id == oid)
+        return ("astrologer", profile) if profile is not None else None
+
+    from app.models.purohit import Purohit
+
+    profile = await Purohit.find_one(Purohit.user_id == oid)
+    return ("purohit", profile) if profile is not None else None
 
 
-async def _set_presence(profile: Any, *, online: bool) -> None:
+async def _set_presence(entry: tuple[str, Any] | None, *, online: bool) -> None:
     """Opening the panel is going online; closing it is going offline."""
-    if profile is None:
+    if entry is None:
         return
+    kind, profile = entry
     try:
+        if kind == "purohit":
+            from app.services import purohit_presence
+
+            if online:
+                await purohit_presence.beat(profile, force_online=True)
+            else:
+                await purohit_presence.go_offline(profile, reason="panel closed")
+            return
+
         from app.services import presence
 
         if online:
@@ -228,18 +245,29 @@ async def _set_presence(profile: Any, *, online: bool) -> None:
         else:
             await presence.go_offline(profile, reason="panel closed")
     except Exception as exc:  # noqa: BLE001 - presence must never break the socket
-        logger.warning("Could not update presence: {}", exc)
+        logger.warning("Could not update presence ({}): {}", kind, exc)
 
 
-async def _touch_presence(profile: Any) -> None:
+async def _touch_presence(entry: tuple[str, Any] | None) -> None:
     """Refreshes the stamp, so the read-time TTL keeps agreeing they are here.
 
     Throttled to only write to MongoDB every 25 seconds instead of every ping.
     """
-    if profile is None:
+    if entry is None:
         return
+    kind, profile = entry
     try:
         from app.models.base import utcnow
+
+        if kind == "purohit":
+            from app.services import purohit_presence
+
+            last_seen = getattr(profile, "last_seen_at", None)
+            if last_seen and (utcnow() - purohit_presence._as_utc(last_seen)).total_seconds() < 25:
+                return
+            await purohit_presence.beat(profile, force_online=False)
+            return
+
         from app.services import presence
 
         last_seen = getattr(profile.availability, "last_seen_at", None)

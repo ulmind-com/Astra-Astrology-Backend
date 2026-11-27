@@ -272,7 +272,9 @@ class PujaBookingStatus(StrEnum):
     CONFIRMED = "confirmed"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
+    DECLINED = "declined"
     CANCELLED = "cancelled"
+    EXPIRED = "expired"
 
 
 class PujaPaymentStatus(StrEnum):
