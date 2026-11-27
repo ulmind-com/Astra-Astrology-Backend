@@ -109,6 +109,9 @@ class Settings(BaseSettings):
     # Set in the Razorpay dashboard under Settings -> Webhooks. Without it the
     # webhook cannot be trusted, so it is refused rather than processed.
     RAZORPAY_WEBHOOK_SECRET: str = ""
+    # Temporary UAT escape hatch: allow rzp_test_ keys when APP_ENV=production.
+    # Always set back to False (or remove) once live Razorpay keys are configured.
+    ALLOW_TEST_RAZORPAY: bool = False
 
     WALLET_CURRENCY: str = "INR"
     WALLET_MIN_RECHARGE_PAISE: int = 1_000  # Rs 10

@@ -57,3 +57,24 @@ async def test_health_reports_degraded_without_a_database(
     assert data["status"] == "degraded"
     assert data["database"] == "disconnected"
     assert data["services"]["mongodb"] is False
+
+
+def test_allow_test_razorpay_flag_in_production(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Production refuses rzp_test_ by default, unless ALLOW_TEST_RAZORPAY=True."""
+    from app.main import _check_config
+
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(settings, "OTP_DEV_MODE", False)
+    monkeypatch.setattr(settings, "SECRET_KEY", "a" * 32)
+    monkeypatch.setattr(settings, "JWT_SECRET_KEY", "b" * 32)
+    monkeypatch.setattr(settings, "MONGODB_URI", "mongodb://localhost:27017")
+    monkeypatch.setattr(settings, "FIREBASE_REQUIRED", False)
+    monkeypatch.setattr(settings, "RESEND_API_KEY", "re_dummy_key")
+    monkeypatch.setattr(settings, "RAZORPAY_KEY_ID", "rzp_test_123456")
+
+    monkeypatch.setattr(settings, "ALLOW_TEST_RAZORPAY", False)
+    with pytest.raises(RuntimeError, match="bad configuration value"):
+        _check_config()
+
+    monkeypatch.setattr(settings, "ALLOW_TEST_RAZORPAY", True)
+    _check_config()  # Should pass with warning only

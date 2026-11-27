@@ -80,10 +80,16 @@ def _check_config() -> None:
         if not settings.resend_configured:
             problems.append("RESEND_API_KEY is not set, so sign-up codes could not be delivered.")
         if settings.razorpay_is_test_key:
-            problems.append(
-                "RAZORPAY_KEY_ID is a test key (rzp_test_). Real recharges would never "
-                "reach the account. Use the live key."
-            )
+            if getattr(settings, "ALLOW_TEST_RAZORPAY", False):
+                warnings.append(
+                    "ALLOW_TEST_RAZORPAY is true in production — Razorpay is running in TEST "
+                    "mode (rzp_test_). Switch to live keys before accepting real customer payments."
+                )
+            else:
+                problems.append(
+                    "RAZORPAY_KEY_ID is a test key (rzp_test_). Real recharges would never "
+                    "reach the account. Use the live key (or set ALLOW_TEST_RAZORPAY=true for UAT)."
+                )
         if settings.razorpay_configured and not settings.razorpay_webhook_configured:
             warnings.append(
                 "RAZORPAY_WEBHOOK_SECRET is not set — webhooks will be rejected, so a "
