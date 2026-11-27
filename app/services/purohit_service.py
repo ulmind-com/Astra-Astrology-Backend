@@ -1054,10 +1054,13 @@ async def get_active_purohit_booking(purohit_user_id: PydanticObjectId) -> PujaB
 async def list_purohit_bookings(
     purohit_user_id: PydanticObjectId, limit: int = 100, offset: int = 0
 ) -> list[PujaBooking]:
-    """Lists bookings for the logged-in Purohit's dashboard."""
+    """Lists paid/processed bookings for the logged-in Purohit's dashboard (excludes abandoned checkouts)."""
     cap = min(max(1, limit), 100)
     return (
-        await PujaBooking.find(PujaBooking.purohit_user_id == purohit_user_id)
+        await PujaBooking.find(
+            PujaBooking.purohit_user_id == purohit_user_id,
+            PujaBooking.payment_status != PujaPaymentStatus.PENDING,
+        )
         .sort("-created_at")
         .skip(max(0, offset))
         .limit(cap)
