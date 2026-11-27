@@ -136,9 +136,17 @@ def register_exception_handlers(app: FastAPI) -> None:
             headers=_cors_headers(request),
         )
 
-    from pymongo.errors import PyMongoError, ServerSelectionTimeoutError, NetworkTimeout, AutoReconnect
+    from pymongo.errors import (
+        AutoReconnect,
+        ConnectionFailure,
+        NetworkTimeout,
+        PyMongoError,
+        ServerSelectionTimeoutError,
+        WaitQueueTimeoutError,
+    )
 
     _last_ping_time: float = 0.0
+    _ping_tasks: set[asyncio.Task[Any]] = set()
 
     @app.exception_handler(PyMongoError)
     async def _mongo_error_handler(request: Request, exc: PyMongoError) -> JSONResponse:
@@ -149,8 +157,17 @@ def register_exception_handlers(app: FastAPI) -> None:
         except Exception:
             pass
 
-        # Check if this is a transient replica set election / network reconnect
-        is_transient = isinstance(exc, (ServerSelectionTimeoutError, NetworkTimeout, AutoReconnect))
+        # Treat connection/pool/failover/timeout errors as transient 503s (warn, don't page Sentry).
+        is_transient = isinstance(
+            exc,
+            (
+                ConnectionFailure,
+                ServerSelectionTimeoutError,
+                NetworkTimeout,
+                AutoReconnect,
+                WaitQueueTimeoutError,
+            ),
+        )
         if is_transient:
             logger.warning(
                 "Transient database failover/reconnect on {} {}: {}",
@@ -163,7 +180,10 @@ def register_exception_handlers(app: FastAPI) -> None:
                 _last_ping_time = now
                 try:
                     from app.db.mongodb import ping
-                    asyncio.create_task(ping(timeout=5.0))
+
+                    task = asyncio.create_task(ping(timeout=5.0))
+                    _ping_tasks.add(task)
+                    task.add_done_callback(_ping_tasks.discard)
                 except Exception:
                     pass
         else:

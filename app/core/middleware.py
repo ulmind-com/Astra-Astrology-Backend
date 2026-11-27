@@ -96,7 +96,11 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         log = logger.bind(request_id=request_id, client_ip=client_ip)
         message = "{} {} from {} -> {} in {:.1f}ms"
         args = (request.method, request.url.path, client_ip, response.status_code, duration_ms)
-        if response.status_code >= 500:
+        if response.status_code == 503:
+            # 503 Service Unavailable (handled DB/timeout backoff) logs at WARNING so Sentry
+            # doesn't flood with duplicate crash alerts per route during transient Atlas elections.
+            log.warning(message, *args)
+        elif response.status_code >= 500:
             log.error(message, *args)
         elif response.status_code >= 400:
             log.warning(message, *args)

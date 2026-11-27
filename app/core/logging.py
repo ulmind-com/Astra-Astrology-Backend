@@ -63,6 +63,9 @@ def setup_logging() -> None:
         "pymongo",
         "pymongo.client",
         "pymongo.periodic_executor",
+        "pymongo.topology",
+        "pymongo.pool",
+        "pymongo.serverSelection",
     ):
         std_logger = logging.getLogger(name)
         std_logger.handlers = [_InterceptHandler()]

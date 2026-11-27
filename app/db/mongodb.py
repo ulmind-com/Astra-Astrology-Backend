@@ -7,13 +7,22 @@ next successful `ping()` finishes the Beanie setup.
 """
 
 import asyncio
-from typing import Any, Callable, Coroutine, TypeVar
+import random
+import time
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 from beanie import init_beanie
 from loguru import logger
 from pymongo import AsyncMongoClient
 from pymongo.asynchronous.database import AsyncDatabase
-from pymongo.errors import AutoReconnect, ConnectionFailure, NetworkTimeout, ServerSelectionTimeoutError
+from pymongo.errors import (
+    AutoReconnect,
+    ConnectionFailure,
+    NetworkTimeout,
+    ServerSelectionTimeoutError,
+    WaitQueueTimeoutError,
+)
 
 from app.core.config import settings
 from app.models import DOCUMENT_MODELS
@@ -22,59 +31,88 @@ _client: AsyncMongoClient | None = None
 _database: AsyncDatabase | None = None
 _beanie_ready = False
 _last_heal_time: float = 0.0
+_background_tasks: set[asyncio.Task[Any]] = set()
 
-T = TypeVar("T")
+
+def _track_task(coro: Coroutine[Any, Any, Any]) -> None:
+    """Schedule a background coroutine cleanly and retain a strong ref until completion."""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+
+async def _async_heal_topology(client: AsyncMongoClient) -> None:
+    """Safely triggers PyMongo SDAM checks while respecting topology._lock."""
+    try:
+        topology = getattr(client, "_topology", None)
+        if topology is None:
+            return
+        lock = getattr(topology, "_lock", None)
+        if lock is not None and hasattr(topology, "_request_check_all"):
+            async with lock:
+                topology._request_check_all()
+        elif hasattr(topology, "request_check_all"):
+            await topology.request_check_all(wait_time=1)
+    except (asyncio.CancelledError, Exception):
+        pass
 
 
 def heal_connection() -> None:
-    """Forces PyMongo SDAM to probe all replica set nodes immediately and unpause pool (debounced)."""
+    """Schedules a lock-safe PyMongo SDAM topology refresh (debounced every 10s)."""
     global _client, _last_heal_time
-    import time
 
     now = time.monotonic()
     if now - _last_heal_time < 10.0:
         return
     _last_heal_time = now
 
-    if _client is not None:
-        try:
-            topology = getattr(_client, "_topology", None)
-            if topology is not None and hasattr(topology, "_request_check_all"):
-                topology._request_check_all()
-        except Exception:
-            pass
+    client = _client
+    if client is None:
+        return
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    _track_task(_async_heal_topology(client))
 
 
-async def with_mongo_retry(
+async def with_mongo_retry[T](
     coro_fn: Callable[[], Coroutine[Any, Any, T]],
     max_retries: int = 2,
-    delay: float = 0.5,
+    delay: float = 0.35,
+    total_budget: float = 8.0,
 ) -> T:
-    """Executes an async DB operation with automatic retry on transient connection failures."""
+    """Executes an async DB operation with bounded-budget jittered retry on transient failures."""
     transient_errors = (
         ConnectionFailure,
         AutoReconnect,
         ServerSelectionTimeoutError,
         NetworkTimeout,
+        WaitQueueTimeoutError,
         TimeoutError,
         OSError,
     )
+    started = time.monotonic()
     for attempt in range(max_retries + 1):
         try:
             return await coro_fn()
         except transient_errors as exc:
             heal_connection()
-            if attempt < max_retries:
-                logger.warning(
-                    "Transient MongoDB disconnect on attempt {}/{}, retrying in {:.2f}s: {}",
-                    attempt + 1,
-                    max_retries + 1,
-                    delay,
-                    exc,
-                )
-                await asyncio.sleep(delay)
-            else:
+            elapsed = time.monotonic() - started
+            # Fail fast if we already burned the retry budget (prevents 80-210s cascading stalls).
+            if attempt >= max_retries or elapsed >= total_budget:
                 raise
+            backoff = min(1.5, delay * (2**attempt)) + random.uniform(0.0, 0.2)
+            logger.warning(
+                "Transient MongoDB disconnect attempt {}/{} ({:.2f}s elapsed), retry {:.2f}s: {}",
+                attempt + 1,
+                max_retries + 1,
+                elapsed,
+                backoff,
+                exc,
+            )
+            await asyncio.sleep(backoff)
+    raise RuntimeError("Unreachable")
 
 
 def get_client() -> AsyncMongoClient:
@@ -105,7 +143,7 @@ async def _init_models() -> None:
         )
     except Exception as exc:
         logger.warning(
-            "Standard index creation failed ({}); re-initializing with skip_indexes=True to ensure uninterrupted service...",
+            "Standard index creation failed ({}); re-initializing with skip_indexes=True...",
             exc,
         )
         await init_beanie(
@@ -129,18 +167,25 @@ async def connect_to_mongo() -> bool:
     try:
         from pymongo import ReadPreference
 
-        connect_timeout = int(getattr(settings, "MONGODB_CONNECT_TIMEOUT_MS", 10_000))
-        server_sel_timeout = int(getattr(settings, "MONGODB_SERVER_SELECTION_TIMEOUT_MS", 5_000))
-        socket_timeout = int(getattr(settings, "MONGODB_SOCKET_TIMEOUT_MS", 45_000))
-        max_idle_time = int(getattr(settings, "MONGODB_MAX_IDLE_TIME_MS", 300_000))
+        connect_timeout = min(int(getattr(settings, "MONGODB_CONNECT_TIMEOUT_MS", 5_000)), 6_000)
+        server_sel_timeout = min(
+            int(getattr(settings, "MONGODB_SERVER_SELECTION_TIMEOUT_MS", 5_000)), 5_000
+        )
+        socket_timeout = min(int(getattr(settings, "MONGODB_SOCKET_TIMEOUT_MS", 12_000)), 15_000)
+        max_idle_time = min(int(getattr(settings, "MONGODB_MAX_IDLE_TIME_MS", 45_000)), 60_000)
         heartbeat_freq = int(getattr(settings, "MONGODB_HEARTBEAT_FREQUENCY_MS", 10_000))
-        wait_queue_timeout = int(getattr(settings, "MONGODB_WAIT_QUEUE_TIMEOUT_MS", 5_000))
-        min_pool_size = max(10, int(getattr(settings, "MONGODB_MIN_POOL_SIZE", 10)))
+        wait_queue_timeout = min(
+            int(getattr(settings, "MONGODB_WAIT_QUEUE_TIMEOUT_MS", 5_000)), 5_000
+        )
+        # Keep minPoolSize at 0 by default so Render sleep/NAT never keeps half-open sockets
+        # or triggers PyMongo background remove_stale_sockets -> _OperationCancelled errors.
+        min_pool_size = max(0, int(getattr(settings, "MONGODB_MIN_POOL_SIZE", 0)))
+        max_pool_size = min(max(10, int(getattr(settings, "MONGODB_MAX_POOL_SIZE", 50))), 50)
 
         _client = AsyncMongoClient(
             settings.MONGODB_URI,
             readPreference="primary",
-            maxPoolSize=settings.MONGODB_MAX_POOL_SIZE,
+            maxPoolSize=max_pool_size,
             minPoolSize=min_pool_size,
             maxIdleTimeMS=max_idle_time,
             socketTimeoutMS=socket_timeout,

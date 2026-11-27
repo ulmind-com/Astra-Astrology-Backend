@@ -64,7 +64,14 @@ def _before_send(event: dict[str, Any], hint: dict[str, Any]) -> dict[str, Any] 
 
     # 3. Suppress PyMongo background pool maintenance / cancellation false alerts
     # (PyMongo background tasks recreate sockets on next tick, these are not fatal crashes)
-    if "MongoClient background task encountered an error" in message:
+    if (
+        "MongoClient background task encountered an error" in message
+        or "_OperationCancelled" in message
+        or "pymongo.network_layer" in message
+    ):
+        return None
+
+    if logger_name.startswith("pymongo"):
         return None
 
     if exc_info:
@@ -83,9 +90,15 @@ def _before_send(event: dict[str, Any], hint: dict[str, Any]) -> dict[str, Any] 
         exc_t = exc.get("type", "")
         exc_v = exc.get("value", "")
         module_name = exc.get("module", "")
-        if exc_t in ("_OperationCancelled", "OperationCancelled") or "pymongo.network_layer" in module_name:
+        if (
+            exc_t in ("_OperationCancelled", "OperationCancelled")
+            or "pymongo.network_layer" in module_name
+            or "pymongo.periodic_executor" in module_name
+        ):
             return None
-        if "MongoClient background task" in exc_v:
+        if "MongoClient background task" in exc_v or (
+            "operation cancelled" in exc_v.lower() and "pymongo" in module_name
+        ):
             return None
 
     # 4. Sanitize sensitive headers
