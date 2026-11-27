@@ -61,13 +61,14 @@ async def _pump(connection: realtime.Connection) -> None:
 
 
 async def _verify_whiteboard_peer(user_id: str, to_user: str, call_id: str | None) -> bool:
-    """Confirm user_id and to_user share an active/scheduled consultation session."""
+    """Confirm user_id and to_user share an active consultation or live puja session."""
     from beanie import PydanticObjectId
 
     from app.models.appointment import Appointment
     from app.models.call import CallSession
     from app.models.chat import ChatSession
-    from app.models.enums import AppointmentStatus, CallStatus, ChatStatus
+    from app.models.enums import AppointmentStatus, CallStatus, ChatStatus, PujaBookingStatus
+    from app.models.purohit import PujaBooking
 
     if not (PydanticObjectId.is_valid(user_id) and PydanticObjectId.is_valid(to_user)):
         return False
@@ -82,6 +83,12 @@ async def _verify_whiteboard_peer(user_id: str, to_user: str, call_id: str | Non
             {"user_id": u2, "astrologer_user_id": u1},
         ]
     }
+    puja_pair_filter = {
+        "$or": [
+            {"user_id": u1, "purohit_user_id": u2},
+            {"user_id": u2, "purohit_user_id": u1},
+        ]
+    }
 
     if call_id and PydanticObjectId.is_valid(call_id):
         cid = PydanticObjectId(call_id)
@@ -94,6 +101,15 @@ async def _verify_whiteboard_peer(user_id: str, to_user: str, call_id: str | Non
         )
         if call is not None:
             return True
+        puja = await PujaBooking.find_one(
+            {
+                "_id": cid,
+                "status": {"$in": [PujaBookingStatus.CONFIRMED, PujaBookingStatus.IN_PROGRESS]},
+                **puja_pair_filter,
+            }
+        )
+        if puja is not None:
+            return True
         appt = await Appointment.find_one(
             {
                 "_id": cid,
@@ -103,11 +119,16 @@ async def _verify_whiteboard_peer(user_id: str, to_user: str, call_id: str | Non
         )
         return appt is not None
 
-    # Fallback when call_id is omitted: require an active call/chat or booked appointment
+    # Fallback when call_id is omitted: require an active call/puja/chat or booked appointment
     active_call = await CallSession.find_one(
         {"status": {"$in": [CallStatus.RINGING, CallStatus.ACTIVE]}, **pair_filter}
     )
     if active_call is not None:
+        return True
+    active_puja = await PujaBooking.find_one(
+        {"status": {"$in": [PujaBookingStatus.CONFIRMED, PujaBookingStatus.IN_PROGRESS]}, **puja_pair_filter}
+    )
+    if active_puja is not None:
         return True
     active_chat = await ChatSession.find_one(
         {"status": {"$in": [ChatStatus.REQUESTED, ChatStatus.ACTIVE]}, **pair_filter}
@@ -164,7 +185,12 @@ async def live(websocket: WebSocket, token: str | None = Query(default=None)) ->
                     import json
                     msg = json.loads(raw_text)
                     event_type = msg.get("type") or msg.get("action")
-                    if event_type in ("whiteboard_live", "whiteboard_event", "whiteboard_sync"):
+                    if event_type in (
+                        "whiteboard_live",
+                        "whiteboard_event",
+                        "whiteboard_sync",
+                        "webrtc_signal",
+                    ):
                         to_user_raw = msg.get("to_user")
                         if not user_id or not to_user_raw:
                             continue
@@ -180,6 +206,7 @@ async def live(websocket: WebSocket, token: str | None = Query(default=None)) ->
                             verified_peers.add(peer_key)
                         payload = {
                             "type": event_type,
+                            "from_user": user_id,
                             "data": msg_data,
                         }
                         realtime._broadcast(payload, to_user=to_user_id)

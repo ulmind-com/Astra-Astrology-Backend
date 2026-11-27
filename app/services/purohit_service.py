@@ -100,6 +100,7 @@ def serialize_booking_event(booking: PujaBooking) -> dict:
         "user_name": booking.user_name,
         "user_phone": booking.user_phone,
         "purohit_id": str(booking.purohit_id),
+        "purohit_user_id": str(booking.purohit_user_id),
         "purohit_name": booking.purohit_name,
         "puja_item_id": booking.puja_item_id,
         "puja_name": booking.puja_name,

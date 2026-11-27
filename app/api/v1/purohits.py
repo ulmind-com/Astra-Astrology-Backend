@@ -421,6 +421,7 @@ def _booking_to_out(booking: PujaBooking, *, token: str | None = None) -> PujaBo
         user_name=booking.user_name,
         user_phone=booking.user_phone,
         purohit_id=str(booking.purohit_id),
+        purohit_user_id=str(booking.purohit_user_id),
         purohit_name=booking.purohit_name,
         puja_item_id=booking.puja_item_id,
         puja_name=booking.puja_name,

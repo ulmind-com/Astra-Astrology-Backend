@@ -160,6 +160,7 @@ class PujaBookingOut(BaseModel):
     user_name: str
     user_phone: str
     purohit_id: str
+    purohit_user_id: str | None = None
     purohit_name: str
     puja_item_id: str
     puja_name: str
