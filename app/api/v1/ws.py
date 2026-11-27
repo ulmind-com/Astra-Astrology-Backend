@@ -176,15 +176,16 @@ async def live(websocket: WebSocket, token: str | None = Query(default=None)) ->
             # The client pings; anything arriving proves the socket is alive.
             # Nothing arriving for longer than the timeout means it is not.
             raw_text = await asyncio.wait_for(websocket.receive_text(), timeout=IDLE_TIMEOUT_SECONDS)
-            connection.offer({"type": "pong"})
             await _touch_presence(panel_profile)
 
-            # Handle live collaborative whiteboard broadcast frames if sent over websocket
             if raw_text and raw_text.startswith("{"):
                 try:
                     import json
                     msg = json.loads(raw_text)
                     event_type = msg.get("type") or msg.get("action")
+                    if event_type == "ping":
+                        connection.offer({"type": "pong"})
+                        continue
                     if event_type in (
                         "whiteboard_live",
                         "whiteboard_event",
@@ -202,6 +203,13 @@ async def live(websocket: WebSocket, token: str | None = Query(default=None)) ->
                         peer_key = (call_id_str, to_user_id)
                         if peer_key not in verified_peers:
                             if not await _verify_whiteboard_peer(user_id, to_user_id, call_id_str):
+                                logger.debug(
+                                    "WS relay denied: type={} from={} to={} call_id={}",
+                                    event_type,
+                                    user_id,
+                                    to_user_id,
+                                    call_id_str,
+                                )
                                 continue
                             verified_peers.add(peer_key)
                         payload = {
@@ -212,6 +220,8 @@ async def live(websocket: WebSocket, token: str | None = Query(default=None)) ->
                         realtime._broadcast(payload, to_user=to_user_id)
                 except Exception:
                     pass
+            else:
+                connection.offer({"type": "pong"})
 
     except (TimeoutError, WebSocketDisconnect):
         pass
