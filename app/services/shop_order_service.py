@@ -19,6 +19,7 @@ from loguru import logger
 
 from app.core.config import settings
 from app.core.exceptions import BadRequestError, ForbiddenError, NotFoundError, ServiceUnavailableError
+from app.core.security import safe_regex_pattern
 from app.models.cms import CMS_KEY_SHOP, ShopCMS
 from app.models.enums import (
     ShopOrderStatus,
@@ -139,6 +140,9 @@ class ShopOrderService:
             refund_transaction_id=order.refund_transaction_id,
             refund_notes=order.refund_notes,
             status_history=history_out,
+            invoice_number=getattr(order, "invoice_number", None),
+            invoice_sent_at=getattr(order, "invoice_sent_at", None),
+            invoice_email_sent=getattr(order, "invoice_email_sent", False),
             created_at=order.created_at,
             updated_at=order.updated_at,
         )
@@ -274,21 +278,6 @@ class ShopOrderService:
             line_total = round(product.sale_price * line.quantity, 2)
             subtotal += line_total
 
-            # Product-specific bundled free gift or default
-            gift_title = product.free_gift_title or (getattr(cms, "free_gift_default_title", "Raw Selenite Plate") if cms else "Raw Selenite Plate")
-            gift_val = product.free_gift_value or (getattr(cms, "free_gift_default_value", 729.0) if cms else 729.0)
-            gift_badge = product.free_gift_badge or (getattr(cms, "free_gift_default_badge", "FREE Raw Selenite Plate worth ₹729") if cms else "FREE Raw Selenite Plate worth ₹729")
-
-            # Attach free gift record
-            if gift_title and not any(g.get("title") == gift_title for g in bundled_gifts):
-                bundled_gifts.append({
-                    "title": gift_title,
-                    "value": gift_val,
-                    "badge": gift_badge,
-                    "image_url": getattr(product, "free_gift_image_url", None) or (getattr(cms, "free_gift_default_image_url", None) if cms else None),
-                    "reason": f"Complimentary gift with {product.title}",
-                })
-
             item_snapshots.append(
                 OrderItemSnapshot(
                     product_id=product.id,
@@ -302,12 +291,15 @@ class ShopOrderService:
                     quantity=line.quantity,
                     line_total=line_total,
                     weight_grams=getattr(product, "weight_grams", 100.0) or 100.0,
-                    free_gift_title=gift_title,
-                    free_gift_value=gift_val,
+                    free_gift_title=product.free_gift_title,
+                    free_gift_value=product.free_gift_value,
                     lab_certified=getattr(product, "lab_certified", True),
                     lab_certificate_number=getattr(product, "lab_certificate_number", None),
                 )
             )
+
+        # Free gifts are disabled per business policy (no free gifts bundled on orders)
+        # bundled_gifts remains empty
 
         # 3. Coupons & Discounts (Strict Enforcement)
         discount_amount = 0.0
@@ -583,6 +575,10 @@ class ShopOrderService:
                 order = await ShopOrder.get(PydanticObjectId(payload.order_id))
             except Exception:
                 pass
+        if not order and payload.order_id:
+            order = await ShopOrder.find_one(ShopOrder.order_number == payload.order_id)
+        if not order and payload.order_id:
+            order = await ShopOrder.find_one(ShopOrder.razorpay_order_id == payload.order_id)
 
         if not order:
             raise NotFoundError("Order not found for verification.")
@@ -596,22 +592,26 @@ class ShopOrderService:
             return cls._order_to_out(order)
 
         # Signature check
-        if settings.razorpay_configured:
-            rzp_order_id = payload.razorpay_order_id or order.razorpay_order_id
-            if not rzp_order_id:
-                raise BadRequestError("Razorpay order ID is missing for verification.")
+        if not settings.razorpay_configured:
+            raise ServiceUnavailableError(
+                "Payment gateway is not configured to verify signatures.",
+                error_code="payments_unavailable",
+            )
+        rzp_order_id = payload.razorpay_order_id or order.razorpay_order_id
+        if not rzp_order_id:
+            raise BadRequestError("Razorpay order ID is missing for verification.")
 
-            expected = hmac.new(
-                settings.RAZORPAY_KEY_SECRET.encode(),
-                f"{rzp_order_id}|{payload.razorpay_payment_id}".encode(),
-                hashlib.sha256,
-            ).hexdigest()
-            if not hmac.compare_digest(expected, payload.razorpay_signature):
-                logger.warning("Invalid Razorpay signature for shop order '{}'", order.order_number)
-                raise BadRequestError("Payment verification failed: invalid signature.")
+        expected = hmac.new(
+            settings.RAZORPAY_KEY_SECRET.encode(),
+            f"{rzp_order_id}|{payload.razorpay_payment_id}".encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(expected, payload.razorpay_signature):
+            logger.warning("Invalid Razorpay signature for shop order '{}'", order.order_number)
+            raise BadRequestError("Payment verification failed: invalid signature.")
 
-        # Handle late payment if order was swept by TTL background cleaner
-        if order.order_status == ShopOrderStatus.EXPIRED or order.is_stock_restored:
+        # Handle late payment if order was swept by TTL background cleaner or cancelled in UI
+        if order.order_status in (ShopOrderStatus.EXPIRED, ShopOrderStatus.CANCELLED) or order.is_stock_restored:
             reclaimed_items: list[tuple[PydanticObjectId, int]] = []
             can_reclaim_all = True
             for it in order.items:
@@ -718,6 +718,22 @@ class ShopOrderService:
 
         await order.save()
 
+        # Dispatch official Tax Invoice & Order Bill email to customer (idempotent)
+        if order.payment_status == ShopPaymentStatus.PAID and not getattr(order, "invoice_email_sent", False):
+            from app.services.shop_invoice_service import ensure_order_invoice_number
+            await ensure_order_invoice_number(order)
+            order.invoice_email_sent = True
+            order.invoice_sent_at = datetime.now(UTC)
+            await order.save()
+
+            asyncio.create_task(
+                cls.dispatch_order_invoice_email(
+                    order=order,
+                    payment_id=payload.razorpay_payment_id,
+                    payment_method_display="Razorpay Online (UPI / Cards / NetBanking)",
+                )
+            )
+
         # Clear persistent server-side cart for user upon confirmed payment
         try:
             from app.services import shop_cart_service
@@ -823,6 +839,23 @@ class ShopOrderService:
 
         await order.save()
 
+        # Dispatch official Tax Invoice & Order Bill email to customer (idempotent)
+        if order.payment_status == ShopPaymentStatus.PAID and not getattr(order, "invoice_email_sent", False):
+            from app.services.shop_invoice_service import ensure_order_invoice_number
+            await ensure_order_invoice_number(order)
+            order.invoice_email_sent = True
+            order.invoice_sent_at = datetime.now(UTC)
+            await order.save()
+
+            method_display = (payment.get("method") or "Online / Razorpay").upper()
+            asyncio.create_task(
+                cls.dispatch_order_invoice_email(
+                    order=order,
+                    payment_id=payment_id,
+                    payment_method_display=f"Razorpay ({method_display})",
+                )
+            )
+
         # Clear server cart
         try:
             from app.services import shop_cart_service
@@ -831,6 +864,135 @@ class ShopOrderService:
             pass
 
         return "confirmed"
+
+    @classmethod
+    async def dispatch_order_invoice_email(
+        cls,
+        order: ShopOrder,
+        payment_id: str | None = None,
+        payment_method_display: str = "Online / Razorpay",
+    ) -> bool:
+        """Asynchronously dispatches the official tax invoice & bill email to the customer."""
+        try:
+            from app.models.cms import CMS_KEY_SHOP, ShopCMS
+            from app.models.user import User
+            from app.services.email import send_shop_order_invoice_email
+            from app.services.shop_invoice_service import ensure_order_invoice_number
+
+            inv_number = await ensure_order_invoice_number(order)
+
+            # Determine recipient email and name
+            recipient_email = order.user_email
+            recipient_name = (
+                order.shipping_address.recipient_name
+                if order.shipping_address and order.shipping_address.recipient_name
+                else None
+            )
+
+            if not recipient_email or not recipient_name:
+                user = await User.get(order.user_id)
+                if user:
+                    if not recipient_email:
+                        recipient_email = getattr(user, "email", None)
+                    if not recipient_name:
+                        recipient_name = (
+                            getattr(user, "full_name", None)
+                            or getattr(user, "name", None)
+                            or "Valued Devotee"
+                        )
+
+            if not recipient_email:
+                logger.warning(
+                    "No email address found for user {} on order {}. Invoice email skipped.",
+                    order.user_id,
+                    order.order_number,
+                )
+                return False
+
+            if not recipient_name:
+                recipient_name = "Valued Devotee"
+
+            cms = await ShopCMS.find_one({"$or": [{"key": CMS_KEY_SHOP}, {"key": "shop_cms"}]})
+            is_tax_invoice = bool(cms and getattr(cms, "company_gstin", None) and cms.company_gstin.strip())
+
+            frontend_base = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app").rstrip("/")
+            backend_base = getattr(settings, "BACKEND_URL", "https://api.divinlink.com").rstrip("/")
+
+            order_url = f"{frontend_base}/account/orders"
+            # Direct printable link with token protection
+            token_param = order.razorpay_payment_id or str(order.id)
+            invoice_url = f"{backend_base}/api/v1/shop/orders/{order.order_number}/invoice/html?token={token_param}&print=true"
+
+            formatted_date = (order.paid_at or order.created_at).strftime("%d %B %Y, %I:%M %p IST")
+            pay_id = payment_id or order.razorpay_payment_id or "PAID-VERIFIED"
+
+            items_list = [
+                {
+                    "title": it.title,
+                    "sku": it.sku,
+                    "category_name": it.category_name,
+                    "quantity": it.quantity,
+                    "unit_sale_price": it.unit_sale_price,
+                    "line_total": it.line_total,
+                    "free_gift_title": it.free_gift_title,
+                }
+                for it in order.items
+            ]
+
+            shipping_dict = (
+                order.shipping_address.model_dump()
+                if order.shipping_address
+                else {}
+            )
+            sankalpa_dict = (
+                order.sankalpa.model_dump()
+                if order.sankalpa
+                else None
+            )
+
+            support_phone = getattr(cms, "company_phone", "+91 91530 08182") if cms else "+91 91530 08182"
+            support_email = getattr(cms, "company_email", "support@divinlink.com") if cms else "support@divinlink.com"
+
+            success = await send_shop_order_invoice_email(
+                to=recipient_email,
+                user_name=recipient_name,
+                order_number=order.order_number,
+                invoice_number=inv_number,
+                payment_id=pay_id,
+                amount_inr=order.grand_total,
+                payment_method=payment_method_display,
+                purchase_date=formatted_date,
+                items=items_list,
+                free_gifts=order.free_gifts or [],
+                subtotal=order.subtotal,
+                discount_amount=order.discount_amount,
+                coupon_code=order.coupon_code,
+                shipping_fee=order.shipping_fee,
+                tax_amount=order.tax_amount,
+                is_tax_invoice=is_tax_invoice,
+                shipping_address=shipping_dict,
+                sankalpa=sankalpa_dict,
+                cashback_coins=order.cashback_coins_eligible,
+                order_url=order_url,
+                invoice_url=invoice_url,
+                support_phone=support_phone,
+                support_email=support_email,
+            )
+
+            if success:
+                logger.info(
+                    "Official Tax Invoice email successfully sent to {} for order {}",
+                    recipient_email,
+                    order.order_number,
+                )
+            return success
+        except Exception as exc:
+            logger.opt(exception=exc).warning(
+                "Failed to dispatch shop order invoice email for {}: {}",
+                order.order_number,
+                exc,
+            )
+            return False
 
     @classmethod
     async def handle_payment_failure_from_webhook(
@@ -1287,7 +1449,7 @@ class ShopOrderService:
         page: int = 1,
         limit: int = 20,
     ) -> ShopOrderListResponse:
-        """Lists orders placed by a devotee.
+        """Lists orders placed by a devotee with ultra-fast single-roundtrip execution.
 
         Only includes confirmed orders: either successfully paid prepaid orders (Razorpay)
         or valid Cash on Delivery (COD) orders. Unpaid abandoned checkouts are strictly excluded.
@@ -1297,13 +1459,25 @@ class ShopOrderService:
             ShopOrder.user_id == user_id,
             {
                 "$or": [
-                    {"payment_status": ShopPaymentStatus.PAID},
-                    {"payment_method": ShopPaymentMethod.COD},
+                    {"payment_status": ShopPaymentStatus.PAID.value},
+                    {"payment_method": ShopPaymentMethod.COD.value},
                 ]
             },
         )
-        total = await query.count()
-        orders = await query.sort("-created_at").skip(skip).limit(limit).to_list()
+
+        orders_task = query.sort("-created_at").skip(skip).limit(limit).to_list()
+
+        # Latency optimization: If on page 1, fetch orders first. If total returned items
+        # is less than limit, we know the exact total without executing an expensive count() query!
+        if page == 1:
+            orders = await orders_task
+            if len(orders) < limit:
+                total = len(orders)
+            else:
+                total = await query.count()
+        else:
+            total, orders = await asyncio.gather(query.count(), orders_task)
+
         pages = (total + limit - 1) // limit if total > 0 else 1
 
         return ShopOrderListResponse(
@@ -1385,14 +1559,14 @@ class ShopOrderService:
         if refund_status:
             filters.append(ShopOrder.refund_status == refund_status)
         if search and search.strip():
-            term = search.strip()
+            pat = safe_regex_pattern(search)
             filters.append({
                 "$or": [
-                    {"order_number": {"$regex": term, "$options": "i"}},
-                    {"user_email": {"$regex": term, "$options": "i"}},
-                    {"user_phone": {"$regex": term, "$options": "i"}},
-                    {"shipping_address.recipient_name": {"$regex": term, "$options": "i"}},
-                    {"sankalpa.devotee_name": {"$regex": term, "$options": "i"}},
+                    {"order_number": pat},
+                    {"user_email": pat},
+                    {"user_phone": pat},
+                    {"shipping_address.recipient_name": pat},
+                    {"sankalpa.devotee_name": pat},
                 ]
             })
 
@@ -1441,7 +1615,7 @@ class ShopOrderService:
             except Exception:
                 pass
         elif not store_cod_enabled:
-            cod_disabled_reason = "ক্যাশ অন ডেলিভারি (COD) বর্তমানে পুরো স্টোরে বন্ধ রয়েছে।"
+            cod_disabled_reason = "Cash on Delivery (COD) is temporarily disabled across the store. / ক্যাশ অন ডেলিভারি (COD) বর্তমানে পুরো স্টোরে বন্ধ রয়েছে।"
 
         prefix = clean[:2]
         state_map = {

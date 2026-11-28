@@ -1623,7 +1623,11 @@ def calculate_daily_horoscope(payload: DailyHoroscopeRequest) -> DailyHoroscopeR
         target_date = datetime.now(timezone(timedelta(hours=tz_offset)))
 
     target_date_str = target_date.strftime("%Y-%m-%d")
-    cache_key = f"{target_date_str}:{lang}:{round(payload.latitude or 22.5726, 2)}:{round(payload.longitude or 88.3639, 2)}:{payload.birth_date}:{payload.birth_rashi_index}:{payload.birth_lagna_index}"
+    cache_key = (
+        f"{target_date_str}:{lang}:{round(payload.latitude or 22.5726, 2)}:{round(payload.longitude or 88.3639, 2)}:"
+        f"{payload.sign}:{payload.birth_nakshatra_index}:{payload.birth_date}:{payload.birth_time}:"
+        f"{payload.birth_rashi_index}:{payload.birth_lagna_index}"
+    )
     if cache_key in _DAILY_HOROSCOPE_CACHE:
         return _DAILY_HOROSCOPE_CACHE[cache_key]
 

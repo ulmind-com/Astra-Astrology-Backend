@@ -8,11 +8,12 @@ from loguru import logger
 
 from app.api.dependencies import CurrentUser
 from app.core.config import settings
-from app.core.exceptions import ForbiddenError
+from app.core.exceptions import ForbiddenError, NotFoundError
 from app.models.astrologer import Astrologer
 from app.models.call import CallSession
 from app.models.enums import UserRole
 from app.models.user import User
+from app.schemas.appointment import RedFlagRequest
 from app.schemas.call import (
     ExtendRequest,
     ExtensionOfferInfo,
@@ -328,6 +329,83 @@ async def sweep_calls(
 
     result = await call_service.sweep()
     return ApiResponse(message="Swept.", data=SweepResult(**result))
+
+
+@router.post(
+    "/{session_id}/red-flag",
+    response_model=ApiResponse[CallOut],
+    summary="Red-flag a live call session for misconduct, capture compensation and blacklist client",
+)
+async def red_flag_call(
+    session_id: PydanticObjectId,
+    req: RedFlagRequest,
+    user: CurrentUser,
+) -> ApiResponse[CallOut]:
+    from app.models.abuse_report import AbuseReport
+    from app.models.enums import CallParty, CallStatus
+    from app.services import appointments as appointment_service
+
+    session = await CallSession.get(session_id)
+    if session is None:
+        raise NotFoundError("Call session not found.", error_code="call_not_found")
+
+    if user.id != session.astrologer_user_id and getattr(user, "role", None) != "admin":
+        raise ForbiddenError("Not authorized to red-flag this call session.")
+
+    # If linked to an appointment, delegate to appointment red-flag service
+    if session.appointment_id:
+        try:
+            await appointment_service.red_flag_appointment(
+                appointment_id=session.appointment_id,
+                by=user,
+                reason=req.reason,
+                notes=req.notes,
+                blacklist_client=req.blacklist_client,
+                terminate_call=req.terminate_call,
+            )
+        except Exception as exc:
+            logger.warning("Appointment red-flag delegation noted: {}", exc)
+
+    # Terminate call session immediately
+    if req.terminate_call and session.status in (CallStatus.RINGING, CallStatus.ACTIVE):
+        await call_service._close(
+            session,
+            status=CallStatus.ENDED if session.started_at else CallStatus.MISSED,
+            by=CallParty.ASTROLOGER,
+            reason=f"terminated_due_to_misconduct: {req.reason}",
+        )
+
+    # Blacklist client on the astrologer's profile
+    astrologer_prof = await Astrologer.get(session.astrologer_id)
+    if astrologer_prof and req.blacklist_client:
+        existing = getattr(astrologer_prof, "blacklisted_user_ids", None) or []
+        if session.user_id not in existing:
+            existing.append(session.user_id)
+            astrologer_prof.blacklisted_user_ids = existing
+            await astrologer_prof.save()
+            logger.info("Client {} blacklisted by astrologer {}", session.user_id, astrologer_prof.id)
+
+    # File an AbuseReport if not already filed via appointment
+    if not session.appointment_id:
+        try:
+            report = AbuseReport(
+                astrologer_id=session.astrologer_id,
+                astrologer_user_id=session.astrologer_user_id,
+                client_user_id=session.user_id,
+                call_id=session.id,
+                reason=req.reason,
+                notes=req.notes,
+                action_taken="blacklisted" if req.blacklist_client else "flagged_only",
+                status="pending",
+            )
+            await report.save()
+        except Exception as rep_err:
+            logger.error("Failed to log AbuseReport for call {}: {}", session.id, rep_err)
+
+    return ApiResponse(
+        message="Live session terminated and red-flagged. Escrow compensation captured and client blacklisted.",
+        data=await to_call(session, user),
+    )
 
 
 webhook_router = APIRouter(prefix="/webhooks", tags=["webhooks"])

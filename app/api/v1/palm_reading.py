@@ -8,16 +8,26 @@ easiest way to lose a user's trust, and the hardest to argue with.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from typing import Any
 
 from beanie import PydanticObjectId
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from loguru import logger
+from typing import Annotated
 
-from app.api.dependencies import CurrentUser, OptionalUser
+from app.api.dependencies import AdminUser, CurrentUser, OptionalUser
 from app.core.exceptions import BadRequestError, NotFoundError, ServiceUnavailableError
-from app.models.palm_reading import PalmReading, PalmRule
+from app.models.palm_reading import (
+    Condition,
+    FEATURE_LABELS,
+    PalmFeature,
+    PalmReading,
+    PalmRule,
+    Requirement,
+    UNAVAILABLE_REASONS,
+)
 from app.schemas.common import ApiResponse
 from app.schemas.palm_reading import (
     CreaseOut,
@@ -25,6 +35,7 @@ from app.schemas.palm_reading import (
     DualHandMatchResponse,
     PalmReadingAvailability,
     PalmReadingOut,
+    PalmRuleCreate,
     PalmRuleOut,
     PalmRuleUpdate,
     PalmScanResponse,
@@ -37,6 +48,7 @@ from app.services.palm_cv.dual_hand import calculate_dual_hand_synastry
 from app.services.palm_cv.timeline_1year import get_palm_timeline_for_age
 
 router = APIRouter(prefix="/palm-reading", tags=["palm-reading"])
+admin_router = APIRouter(prefix="/admin/palm-reading", tags=["admin: palm-reading"])
 
 #: Stated on the availability endpoint so the app can tell the user what makes a
 #: readable photo before they take one, rather than after it is rejected.
@@ -207,7 +219,7 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[PalmScanRespo
             error_code="cv_dependencies_missing",
         ) from exc
 
-    result = execute_scan(raw, birth_details=birth_details)
+    result = await asyncio.to_thread(execute_scan, raw, birth_details=birth_details)
 
     # A rejected photo is a normal outcome, not an error, and it is free.
     if result.status != "ok":
@@ -410,6 +422,32 @@ async def dual_match(
     left_dict = {"measurements": payload.left_hand_measurements or {}}
     right_dict = {"measurements": payload.right_hand_measurements or {}}
 
+    if payload.left_hand_image and not payload.left_hand_measurements:
+        try:
+            val = payload.left_hand_image
+            if "," in val:
+                val = val.split(",", 1)[1]
+            left_bytes = base64.b64decode(val)
+            from app.services.palm_cv import execute_scan
+            left_scan = execute_scan(left_bytes)
+            if left_scan and getattr(left_scan, "status", None) == "ok" and getattr(left_scan, "measurements", None):
+                left_dict["measurements"] = left_scan.measurements
+        except Exception as e:
+            logger.debug(f"Left hand image scan fallback in dual-match: {e}")
+
+    if payload.right_hand_image and not payload.right_hand_measurements:
+        try:
+            val = payload.right_hand_image
+            if "," in val:
+                val = val.split(",", 1)[1]
+            right_bytes = base64.b64decode(val)
+            from app.services.palm_cv import execute_scan
+            right_scan = execute_scan(right_bytes)
+            if right_scan and getattr(right_scan, "status", None) == "ok" and getattr(right_scan, "measurements", None):
+                right_dict["measurements"] = right_scan.measurements
+        except Exception as e:
+            logger.debug(f"Right hand image scan fallback in dual-match: {e}")
+
     res = calculate_dual_hand_synastry(
         left_hand_data=left_dict,
         right_hand_data=right_dict,
@@ -418,5 +456,223 @@ async def dual_match(
     return ApiResponse(
         message="Bilateral dual-hand synastry completed successfully",
         data=DualHandMatchResponse(**res),
+    )
+
+
+def _palm_rule_out(r: PalmRule) -> PalmRuleOut:
+    return PalmRuleOut(
+        id=str(r.id),
+        feature=r.feature,
+        option=r.option,
+        label=r.label,
+        meaning=r.meaning,
+        area=r.area,
+        source=r.source,
+        requires=r.requires or [],
+        conditions=[c.model_dump() for c in r.conditions],
+        priority=r.priority,
+        is_default=r.is_default,
+        enabled=r.enabled,
+        reviewed=r.reviewed,
+    )
+
+
+# -------------------------------------------------------------------- admin
+@admin_router.get(
+    "/rules",
+    response_model=ApiResponse[list[PalmRuleOut]],
+    summary="List all palm reading rules with optional filters",
+)
+async def list_palm_rules(
+    admin: AdminUser,
+    feature: Annotated[str | None, Query()] = None,
+    area: Annotated[str | None, Query()] = None,
+    enabled: Annotated[bool | None, Query()] = None,
+    reviewed: Annotated[bool | None, Query()] = None,
+    search: Annotated[str | None, Query()] = None,
+) -> ApiResponse[list[PalmRuleOut]]:
+    """List palm reading rules for admin inspection, filtering and tuning."""
+    count = await PalmRule.count()
+    if count == 0:
+        await palm_service.load_rules()
+
+    query_filters: list[Any] = []
+    if feature:
+        query_filters.append(PalmRule.feature == feature)
+    if area:
+        query_filters.append(PalmRule.area == area)
+    if enabled is not None:
+        query_filters.append(PalmRule.enabled == enabled)
+    if reviewed is not None:
+        query_filters.append(PalmRule.reviewed == reviewed)
+
+    if query_filters:
+        rules_query = PalmRule.find(*query_filters)
+    else:
+        rules_query = PalmRule.find_all()
+
+    rules = await rules_query.sort(+PalmRule.feature, -PalmRule.priority, +PalmRule.option).to_list()
+
+    if search:
+        search_lower = search.strip().lower()
+        rules = [
+            r for r in rules
+            if search_lower in r.label.lower()
+            or search_lower in r.option.lower()
+            or search_lower in r.meaning.lower()
+            or (r.area and search_lower in r.area.lower())
+            or any(search_lower in c.metric.lower() for c in r.conditions)
+        ]
+
+    return ApiResponse(
+        message=f"{len(rules)} rule(s) fetched.",
+        data=[_palm_rule_out(r) for r in rules],
+    )
+
+
+@admin_router.get(
+    "/meta",
+    response_model=ApiResponse[dict[str, Any]],
+    summary="Palm rules taxonomy: features, requirements, and categories",
+)
+async def palm_rules_meta(admin: AdminUser) -> ApiResponse[dict[str, Any]]:
+    features = [
+        {"value": f.value, "label": FEATURE_LABELS.get(f, f.value.replace("_", " ").title())}
+        for f in PalmFeature
+    ]
+    requirements = [
+        {"value": r.value, "label": r.value.replace("_", " ").title(), "reason": UNAVAILABLE_REASONS.get(r, "")}
+        for r in Requirement
+    ]
+    distinct_areas = await PalmRule.distinct("area")
+    valid_areas = sorted([a for a in distinct_areas if a])
+
+    return ApiResponse(
+        message="Palm rules metadata fetched.",
+        data={
+            "features": features,
+            "feature_labels": {f.value: FEATURE_LABELS.get(f, f.value) for f in PalmFeature},
+            "requirements": requirements,
+            "areas": valid_areas,
+        },
+    )
+
+
+@admin_router.post(
+    "/rules",
+    response_model=ApiResponse[PalmRuleOut],
+    summary="Create a new custom palm reading rule",
+)
+async def create_palm_rule(
+    payload: PalmRuleCreate,
+    admin: AdminUser,
+) -> ApiResponse[PalmRuleOut]:
+    existing = await PalmRule.find_one(
+        PalmRule.feature == payload.feature,
+        PalmRule.option == payload.option,
+    )
+    if existing is not None:
+        raise BadRequestError(
+            f"Rule for feature '{payload.feature}' with option '{payload.option}' already exists.",
+            error_code="rule_already_exists",
+        )
+
+    conditions = [Condition(**c) for c in payload.conditions]
+    rule = PalmRule(
+        feature=payload.feature,
+        option=payload.option,
+        label=payload.label,
+        meaning=payload.meaning,
+        area=payload.area,
+        source=payload.source,
+        requires=payload.requires or [Requirement.GEOMETRY.value],
+        conditions=conditions,
+        priority=payload.priority,
+        is_default=payload.is_default,
+        enabled=payload.enabled,
+        reviewed=payload.reviewed,
+    )
+    await rule.insert()
+    return ApiResponse(
+        message="Palm reading rule created successfully.",
+        data=_palm_rule_out(rule),
+    )
+
+
+@admin_router.get(
+    "/rules/{rule_id}",
+    response_model=ApiResponse[PalmRuleOut],
+    summary="Get single palm rule by ID",
+)
+async def get_palm_rule(
+    rule_id: PydanticObjectId,
+    admin: AdminUser,
+) -> ApiResponse[PalmRuleOut]:
+    rule = await PalmRule.get(rule_id)
+    if rule is None:
+        raise NotFoundError("Rule not found.", error_code="rule_not_found")
+    return ApiResponse(message="Rule fetched.", data=_palm_rule_out(rule))
+
+
+@admin_router.patch(
+    "/rules/{rule_id}",
+    response_model=ApiResponse[PalmRuleOut],
+    summary="Update palm rule wording, thresholds, or settings",
+)
+async def update_palm_rule(
+    rule_id: PydanticObjectId,
+    payload: PalmRuleUpdate,
+    admin: AdminUser,
+) -> ApiResponse[PalmRuleOut]:
+    rule = await PalmRule.get(rule_id)
+    if rule is None:
+        raise NotFoundError("Rule not found.", error_code="rule_not_found")
+
+    changes = payload.model_dump(exclude_unset=True)
+    if "conditions" in changes and changes["conditions"] is not None:
+        rule.conditions = [Condition(**c) for c in changes.pop("conditions")]
+    else:
+        changes.pop("conditions", None)
+
+    for field, value in changes.items():
+        if value is not None:
+            setattr(rule, field, value)
+
+    await rule.save()
+    return ApiResponse(message="Palm rule updated successfully.", data=_palm_rule_out(rule))
+
+
+@admin_router.delete(
+    "/rules/{rule_id}",
+    response_model=ApiResponse[dict[str, Any]],
+    summary="Delete a palm rule",
+)
+async def delete_palm_rule(
+    rule_id: PydanticObjectId,
+    admin: AdminUser,
+) -> ApiResponse[dict[str, Any]]:
+    rule = await PalmRule.get(rule_id)
+    if rule is None:
+        raise NotFoundError("Rule not found.", error_code="rule_not_found")
+    await rule.delete()
+    return ApiResponse(
+        message="Palm rule deleted successfully.",
+        data={"id": str(rule_id), "deleted": True},
+    )
+
+
+@admin_router.post(
+    "/rules/seed",
+    response_model=ApiResponse[dict[str, Any]],
+    summary="Seed or synchronize default Vedic chirology rules",
+)
+async def seed_palm_rules(
+    admin: AdminUser,
+    force: bool = False,
+) -> ApiResponse[dict[str, Any]]:
+    stats = await palm_service.seed_rules(force=force)
+    return ApiResponse(
+        message=f"Seeded: {stats['created']} created, {stats['updated']} updated, {stats['skipped']} skipped.",
+        data=stats,
     )
 

@@ -7,10 +7,11 @@ path wins over the slug lookup.
 from typing import Annotated
 
 from beanie import PydanticObjectId
-from fastapi import APIRouter, File, Header, Query, UploadFile, status
+from fastapi import APIRouter, File, Header, Query, Response, UploadFile, status
 
 from app.api.dependencies import AstrologerUser, CurrentAstrologer, CurrentUser, OptionalUser
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, UnauthorizedError
+from app.core.security import create_application_upload_token, verify_application_upload_token
 from app.models.astrologer import Astrologer
 from app.models.astrologer_application import AstrologerApplication
 from app.models.enums import ConsultationMode, Skill
@@ -99,13 +100,16 @@ async def send_application_otp(payload: AstrologerApplicationSendOtpIn) -> ApiRe
 
 @router.post(
     "/applications/verify-otp",
-    response_model=ApiResponse[dict[str, bool]],
+    response_model=ApiResponse[dict[str, bool | str]],
     summary="Verify applicant email OTP",
 )
-async def verify_application_otp(payload: AstrologerApplicationVerifyOtpIn) -> ApiResponse[dict[str, bool]]:
+async def verify_application_otp(
+    payload: AstrologerApplicationVerifyOtpIn,
+) -> ApiResponse[dict[str, bool | str]]:
     await astrologer_application_service.verify_application_otp(payload.email, payload.code)
+    upload_token = create_application_upload_token(payload.email)
     return ApiResponse.ok(
-        data={"verified": True},
+        data={"verified": True, "upload_token": upload_token},
         message="Email OTP verified successfully.",
     )
 
@@ -117,7 +121,14 @@ async def verify_application_otp(payload: AstrologerApplicationVerifyOtpIn) -> A
 )
 async def upload_application_document(
     file: UploadFile = File(...),
+    x_upload_token: Annotated[str | None, Header(alias="X-Upload-Token")] = None,
 ) -> ApiResponse[dict[str, str]]:
+    if not x_upload_token:
+        raise UnauthorizedError(
+            "Email OTP verification is required before uploading application documents.",
+            error_code="upload_token_required",
+        )
+    verify_application_upload_token(x_upload_token)
     result = await upload_file(
         file,
         folder="astrologer_applications",
@@ -327,6 +338,7 @@ async def remove_gallery_image(
     summary="Browse astrologers — online first, then featured",
 )
 async def list_astrologers(
+    response: Response,
     search: Annotated[str | None, Query(description="Name, tagline or speciality")] = None,
     skill: Annotated[Skill | None, Query()] = None,
     language: Annotated[str | None, Query()] = None,
@@ -351,6 +363,7 @@ async def list_astrologers(
         max_coins_per_minute=max_coins_per_minute,
     )
     page_of = await astrologer_service.list_public(filters, page, limit)
+    response.headers["Cache-Control"] = "public, max-age=10, s-maxage=20, stale-while-revalidate=40"
     return ApiResponse(message=f"{page_of.meta.total} astrologer(s) found.", data=page_of)
 
 

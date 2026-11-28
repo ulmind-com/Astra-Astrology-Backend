@@ -7,9 +7,11 @@ from app.models.cms import (
     HeroSlideConfig,
     HeroCardConfig,
     TrustStatConfig,
+    CinematicHeroSlideConfig,
     default_hero_slides,
     default_hero_cards,
     default_trust_stats,
+    default_cinematic_hero_slides,
 )
 from app.schemas.cms import (
     HomePageCMSOut,
@@ -17,11 +19,31 @@ from app.schemas.cms import (
     HeroSlideItem,
     HeroCardItem,
     TrustStatItem,
+    CinematicHeroSlideItem,
 )
 
 
 def to_homepage_out(doc: HomePageCMS) -> HomePageCMSOut:
     return HomePageCMSOut(
+        cinematic_hero_slides=[
+            CinematicHeroSlideItem(
+                id=s.id,
+                photo=s.photo,
+                position=s.position,
+                thumb=s.thumb,
+                layout=s.layout,
+                title_en=s.title_en,
+                title_bn=s.title_bn,
+                title_hi=s.title_hi,
+                heading_en=s.heading_en,
+                heading_bn=s.heading_bn,
+                heading_hi=s.heading_hi,
+                description_en=s.description_en,
+                description_bn=s.description_bn,
+                description_hi=s.description_hi,
+            )
+            for s in (doc.cinematic_hero_slides or default_cinematic_hero_slides())
+        ],
         hero_slides=[
             HeroSlideItem(
                 id=s.id,
@@ -87,20 +109,42 @@ def to_homepage_out(doc: HomePageCMS) -> HomePageCMSOut:
     )
 
 
-async def get_or_create_homepage() -> HomePageCMS:
+import time
+
+_cached_homepage: HomePageCMS | None = None
+_cached_homepage_time: float = 0.0
+_HOMEPAGE_CACHE_TTL_SECONDS: float = 120.0
+
+
+def invalidate_homepage_cache() -> None:
+    """Invalidates the in-memory homepage CMS cache upon admin updates."""
+    global _cached_homepage, _cached_homepage_time
+    _cached_homepage = None
+    _cached_homepage_time = 0.0
+
+
+async def get_or_create_homepage(force_refresh: bool = False) -> HomePageCMS:
+    global _cached_homepage, _cached_homepage_time
+
+    now = time.monotonic()
+    if not force_refresh and _cached_homepage is not None and (now - _cached_homepage_time < _HOMEPAGE_CACHE_TTL_SECONDS):
+        return _cached_homepage
+
     try:
         doc = await HomePageCMS.find_one(HomePageCMS.key == CMS_KEY_HOMEPAGE)
         if doc is None:
             doc = HomePageCMS()
             await doc.insert()
+        _cached_homepage = doc
+        _cached_homepage_time = now
         return doc
     except Exception as exc:
         logger.warning("Could not load homepage CMS from database ({}). Returning memory defaults.", exc)
-        return HomePageCMS()
+        return _cached_homepage or HomePageCMS()
 
 
 async def update_homepage(payload: HomePageCMSUpdate) -> HomePageCMS:
-    doc = await get_or_create_homepage()
+    doc = await get_or_create_homepage(force_refresh=True)
     update_data = payload.model_dump(exclude_unset=True)
 
     for field, val in update_data.items():
@@ -108,6 +152,11 @@ async def update_homepage(payload: HomePageCMSUpdate) -> HomePageCMS:
             continue
         if field == "hero_slides":
             doc.hero_slides = [HeroSlideConfig(**item) if isinstance(item, dict) else HeroSlideConfig(**item.model_dump()) for item in val]
+        elif field == "cinematic_hero_slides":
+            doc.cinematic_hero_slides = [
+                CinematicHeroSlideConfig(**item) if isinstance(item, dict) else CinematicHeroSlideConfig(**item.model_dump())
+                for item in val
+            ]
         elif field == "hero_cards":
             doc.hero_cards = [HeroCardConfig(**item) if isinstance(item, dict) else HeroCardConfig(**item.model_dump()) for item in val]
         elif field == "trust_stats":
@@ -117,6 +166,7 @@ async def update_homepage(payload: HomePageCMSUpdate) -> HomePageCMS:
 
     try:
         await doc.save()
+        invalidate_homepage_cache()
     except Exception as exc:
         logger.error("Failed to save homepage CMS doc: {}", exc)
         raise
@@ -125,7 +175,7 @@ async def update_homepage(payload: HomePageCMSUpdate) -> HomePageCMS:
 
 
 async def reset_homepage() -> HomePageCMS:
-    doc = await get_or_create_homepage()
+    doc = await get_or_create_homepage(force_refresh=True)
     defaults = HomePageCMS()
 
     for field in defaults.model_fields.keys():
@@ -135,6 +185,7 @@ async def reset_homepage() -> HomePageCMS:
 
     try:
         await doc.save()
+        invalidate_homepage_cache()
     except Exception as exc:
         logger.error("Failed to reset homepage CMS doc: {}", exc)
         raise

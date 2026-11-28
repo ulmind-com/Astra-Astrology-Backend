@@ -217,6 +217,7 @@ class AppointmentOut(BaseModel):
 
     # Complimentary Follow-up Pass
     follow_up_pass_enabled: bool = False
+    follow_up_pass_active: bool = False
     follow_up_window_days: int = 7
     follow_up_expires_at: datetime | None = None
     follow_up_max_messages: int = 3
@@ -254,7 +255,7 @@ class NoShowRequest(BaseModel):
 
 
 class BrahmaPauseRequest(BaseModel):
-    duration_hours: int = Field(default=3, ge=1, le=48)
+    duration_hours: float = Field(default=3.0, ge=0.5, le=48.0)
     reason: str | None = Field(default=None, max_length=200)
 
 
@@ -292,7 +293,7 @@ class UpdateBTRRequest(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     timezone_offset: float | None = None
-    notes: str | None = Field(default=None, max_length=500)
+    notes: str | None = Field(default=None, max_length=2000)
 
 
 class BlacklistedClientOut(BaseModel):
@@ -330,8 +331,9 @@ class ExtensionActionRequest(BaseModel):
 
 
 class IssueFollowUpPassRequest(BaseModel):
-    window_days: int = Field(default=7, ge=1, le=30)
-    max_messages: int = Field(default=3, ge=1, le=20)
+    window_days: int = Field(default=1, ge=1, le=30)
+    window_hours: int | None = Field(default=None, ge=1, le=720)
+    max_messages: int = Field(default=2, ge=1, le=20)
     notes: str | None = Field(default=None, max_length=500)
 
 

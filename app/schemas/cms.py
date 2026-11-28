@@ -30,7 +30,27 @@ class TrustStatItem(BaseModel):
     label: str = Field(..., max_length=100)
 
 
+class CinematicHeroSlideItem(BaseModel):
+    id: Optional[str] = None
+    photo: str = Field(..., max_length=1000)
+    position: Optional[str] = Field("center 50%", max_length=100)
+    thumb: Optional[str] = Field(None, max_length=1000)
+    layout: Optional[str] = Field("one", max_length=10)
+    title_en: str = Field(..., max_length=200)
+    title_bn: str = Field(..., max_length=200)
+    title_hi: str = Field(..., max_length=200)
+    heading_en: Optional[str] = Field("", max_length=200)
+    heading_bn: Optional[str] = Field("", max_length=200)
+    heading_hi: Optional[str] = Field("", max_length=200)
+    description_en: Optional[str] = Field("", max_length=500)
+    description_bn: Optional[str] = Field("", max_length=500)
+    description_hi: Optional[str] = Field("", max_length=500)
+
+
 class HomePageCMSOut(BaseModel):
+    # Cinematic Hero Slides
+    cinematic_hero_slides: list[CinematicHeroSlideItem] = Field(default_factory=list)
+
     # Hero Slides
     hero_slides: list[HeroSlideItem]
 
@@ -80,6 +100,9 @@ class HomePageCMSOut(BaseModel):
 
 
 class HomePageCMSUpdate(BaseModel):
+    # Cinematic Hero Slides
+    cinematic_hero_slides: Optional[list[CinematicHeroSlideItem]] = None
+
     # Hero Slides
     hero_slides: Optional[list[HeroSlideItem]] = None
 

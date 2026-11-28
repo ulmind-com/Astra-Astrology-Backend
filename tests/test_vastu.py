@@ -98,6 +98,17 @@ def test_ayadi_shadvarga_calculation():
     assert res.aaya_name is not None
     assert res.structure_longevity_years > 0
     assert res.building_nakshatra_number >= 1
+    assert 1 <= res.yoni_number <= 8
+    assert res.varna_name_bn != ""
+    assert res.tithi_name_bn != ""
+    assert res.vara_name_bn != ""
+    assert res.shadvarga_score > 0
+    assert len(res.rectification_suggestions_bn) > 0
+
+    # Test hasta units (1 hasta = 1.5 feet)
+    res_hasta = calculate_ayadi_shadvarga(length=20.0, width=15.0, unit="hasta")
+    assert res_hasta.length == 20.0
+    assert res_hasta.area_sqft == (20.0 * 1.5) * (15.0 * 1.5)
 
 
 def test_medical_vastu_catalog():

@@ -187,3 +187,26 @@ async def refresh(payload: RefreshRequest) -> ApiResponse[TokenPair]:
 @router.get("/me", response_model=ApiResponse[UserPublic], summary="The signed-in user")
 async def me(user: CurrentUser) -> ApiResponse[UserPublic]:
     return ApiResponse(message="Current user.", data=UserPublic.model_validate(user))
+
+
+@router.post("/logout", response_model=MessageResponse, summary="Sign out and mark live partner offline immediately")
+async def logout(user: CurrentUser) -> MessageResponse:
+    """Takes live providers (Purohit / Astrologer) offline immediately on explicit sign-out."""
+    from app.models.enums import UserRole
+
+    if user.role == UserRole.PUROHIT:
+        from app.models.purohit import Purohit
+        from app.services import purohit_presence
+
+        profile = await Purohit.find_one(Purohit.user_id == user.id)
+        if profile is not None:
+            await purohit_presence.go_offline(profile, reason="logged out")
+    elif user.role == UserRole.ASTROLOGER:
+        from app.models.astrologer import Astrologer
+        from app.services import presence
+
+        profile = await Astrologer.find_one(Astrologer.user_id == user.id)
+        if profile is not None:
+            await presence.go_offline(profile, reason="logged out")
+
+    return MessageResponse(message="Signed out.")

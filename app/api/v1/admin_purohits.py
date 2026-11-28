@@ -8,6 +8,7 @@ from fastapi import APIRouter, File, Form, Query, UploadFile, status
 
 from app.api.dependencies import AdminUser
 from app.core.exceptions import NotFoundError
+from app.models.enums import AccountStatus
 from app.models.purohit import Purohit
 from app.models.purohit_application import PurohitApplication
 from app.models.user import User
@@ -407,7 +408,7 @@ async def delete_purohit(purohit_id: PydanticObjectId, admin: AdminUser) -> Mess
 
     user = await User.get(profile.user_id)
     if user:
-        user.is_active = False
+        user.status = AccountStatus.SUSPENDED
         await user.save()
 
     profile.is_verified = False

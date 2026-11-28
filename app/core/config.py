@@ -31,15 +31,20 @@ class Settings(BaseSettings):
     # parsed by the validator below, not as JSON).
     ALLOWED_ORIGINS: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["*"])
 
+    # --------------------------------------------------------- rate limiting
+    RATE_LIMIT_ENABLED: bool = True
+
     # ------------------------------------------------------------- mongodb
     MONGODB_URI: str = "mongodb://localhost:27017"
     MONGODB_DB_NAME: str = "astra_astrology"
-    MONGODB_MAX_POOL_SIZE: int = 100
+    MONGODB_MAX_POOL_SIZE: int = 50
     MONGODB_MIN_POOL_SIZE: int = 0
-    MONGODB_CONNECT_TIMEOUT_MS: int = 10_000
-    MONGODB_SERVER_SELECTION_TIMEOUT_MS: int = 15_000
-    MONGODB_SOCKET_TIMEOUT_MS: int = 20_000
+    MONGODB_CONNECT_TIMEOUT_MS: int = 5_000
+    MONGODB_SERVER_SELECTION_TIMEOUT_MS: int = 5_000
+    MONGODB_SOCKET_TIMEOUT_MS: int = 12_000
     MONGODB_MAX_IDLE_TIME_MS: int = 45_000
+    MONGODB_HEARTBEAT_FREQUENCY_MS: int = 10_000
+    MONGODB_WAIT_QUEUE_TIMEOUT_MS: int = 5_000
 
     # ------------------------------------------------------------- health
     # Keep the health check fast so uptime monitors never time out on it.
@@ -99,11 +104,14 @@ class Settings(BaseSettings):
 
     # ------------------------------------------------------------ razorpay
     # Money is held in integer paise everywhere; rupees appear only in the UI.
-    RAZORPAY_KEY_ID: str = "rzp_test_TBRo7AUeaKIhKB"
+    RAZORPAY_KEY_ID: str = ""
     RAZORPAY_KEY_SECRET: str = ""
     # Set in the Razorpay dashboard under Settings -> Webhooks. Without it the
     # webhook cannot be trusted, so it is refused rather than processed.
     RAZORPAY_WEBHOOK_SECRET: str = ""
+    # Temporary UAT escape hatch: allow rzp_test_ keys when APP_ENV=production.
+    # Always set back to False (or remove) once live Razorpay keys are configured.
+    ALLOW_TEST_RAZORPAY: bool = False
 
     WALLET_CURRENCY: str = "INR"
     WALLET_MIN_RECHARGE_PAISE: int = 1_000  # Rs 10
@@ -159,18 +167,17 @@ class Settings(BaseSettings):
         return bool(self.GROQ_API_KEY)
 
     # ------------------------------------------------------------- bunny stream (lms)
-    # Resilient defaults guarantee tokenized HMAC-SHA256 URL generation in production
-    # even when Render environment variables are unpopulated or delayed.
+    # Secrets must be supplied via runtime environment variables — never committed in source.
     BUNNY_STREAM_LIBRARY_ID: str = "803267"
-    BUNNY_STREAM_API_KEY: str = "1c3cab37-2ae3-4527-8592090e78bb-f243-4cf9"
-    BUNNY_STREAM_READONLY_API_KEY: str = "3f9b4689-ebab-4661-a622b0001495-91aa-4868"
-    BUNNY_STREAM_TOKEN_KEY: str = "1892c150-2ee8-4e64-8839-87dc10cf8a34"
+    BUNNY_STREAM_API_KEY: str = ""
+    BUNNY_STREAM_READONLY_API_KEY: str = ""
+    BUNNY_STREAM_TOKEN_KEY: str = ""
     BUNNY_STREAM_CDN_HOSTNAME: str = "vz-70a46f7e-43a.b-cdn.net"
     # How long a signed embed URL stays usable (12 hours). Bunny serves its own 403
     # page the moment this passes, inside the player, so it has to outlast
     # any realistic sitting — a long lesson, a pause, lunch.
     BUNNY_EMBED_TOKEN_TTL_SECONDS: int = 12 * 60 * 60
-    BUNNY_ACCOUNT_API_KEY: str = "37448981-ab27-429a-8e73-b2af29444f8efdfd2b3c-179a-4fcf-ac5c-42ed51dad72a"
+    BUNNY_ACCOUNT_API_KEY: str = ""
 
     @property
     def bunny_stream_configured(self) -> bool:
@@ -207,6 +214,15 @@ class Settings(BaseSettings):
             if v.strip() == "*":
                 return ["*"]
             return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
+
+    @field_validator("DEBUG", mode="after")
+    @classmethod
+    def _validate_debug_for_prod(cls, v: bool, info) -> bool:
+        env = info.data.get("APP_ENV")
+        if env == "production" and v is True:
+            # Force safety in production to avoid leaking internal exception details
+            return False
         return v
 
     @property

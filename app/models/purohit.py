@@ -8,6 +8,7 @@ import pymongo
 from beanie import PydanticObjectId
 from pydantic import BaseModel, Field
 
+from app.models.astrologer import BankDetails
 from app.models.base import TimestampedDocument
 from app.models.enums import PujaBookingStatus, PujaPaymentStatus
 
@@ -43,15 +44,31 @@ class Purohit(TimestampedDocument):
     experience_years: int = Field(default=5, ge=0, le=70)
     languages: list[str] = Field(default_factory=lambda: ["Bengali", "Sanskrit"])
     
-    # Toggle availability: when True, devotee can see the Purohit online & available for immediate puja
+    # Live presence + busy lock for Uber-style on-demand puja routing
     is_online: bool = False
     is_verified: bool = True
+    last_seen_at: datetime | None = None
+    last_online_at: datetime | None = None
+    is_busy: bool = False
+    busy_booking_id: PydanticObjectId | None = None
+    busy_since: datetime | None = None
+
+    # Legacy schedule fields retained only for backwards DB schema compatibility
+    available_days: list[str] = Field(
+        default_factory=lambda: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    )
+    available_slots: list[str] = Field(
+        default_factory=lambda: ["brahma_muhurat", "morning", "afternoon", "evening"]
+    )
+    weekly_schedule: dict[str, list[str]] = Field(default_factory=dict)
 
     # Purohit's personal customizable puja & price catalog
     pujas: list[PurohitPujaItem] = Field(default_factory=list)
 
     rating: float = Field(default=0.0, ge=0.0, le=5.0)
     total_pujas_performed: int = Field(default=0, ge=0)
+    consecutive_missed_pujas: int = Field(default=0, ge=0)
+    bank: BankDetails = Field(default_factory=BankDetails)
 
     class Settings:
         name = "purohits"
@@ -59,6 +76,10 @@ class Purohit(TimestampedDocument):
             pymongo.IndexModel([("user_id", pymongo.ASCENDING)], unique=True, name="purohit_user_id_uniq"),
             pymongo.IndexModel([("slug", pymongo.ASCENDING)], unique=True, name="purohit_slug_uniq"),
             pymongo.IndexModel([("is_online", pymongo.ASCENDING), ("is_verified", pymongo.ASCENDING)], name="purohit_avail_idx"),
+            pymongo.IndexModel(
+                [("is_online", pymongo.ASCENDING), ("is_busy", pymongo.ASCENDING), ("is_verified", pymongo.ASCENDING)],
+                name="purohit_live_pool_idx",
+            ),
             pymongo.IndexModel([("city", pymongo.ASCENDING)], name="purohit_city_idx"),
         ]
 
@@ -84,20 +105,32 @@ class PujaBooking(TimestampedDocument):
     # Vedic Sankalpa
     sankalpa_name: str
     sankalpa_gotra: str = "Kashyapa"
+    sankalpa_nakshatra: str | None = None
     sankalpa_wish: str | None = None
 
     # ZEGOCLOUD Video Room ID
     room_id: str
 
-    status: PujaBookingStatus = PujaBookingStatus.CONFIRMED
-    payment_status: PujaPaymentStatus = PujaPaymentStatus.PAID
-    payment_method: str = "online"
+    status: PujaBookingStatus = PujaBookingStatus.PENDING
+    payment_status: PujaPaymentStatus = PujaPaymentStatus.PENDING
+    payment_method: str = "razorpay"
 
     razorpay_order_id: str | None = None
     razorpay_payment_id: str | None = None
 
     started_at: datetime | None = None
+    accepted_at: datetime | None = None
+    accept_expires_at: datetime | None = None
+    payment_expires_at: datetime | None = None
+    purohit_join_deadline_at: datetime | None = None
+    purohit_joined_at: datetime | None = None
+    devotee_joined_at: datetime | None = None
+    expires_at: datetime | None = None
     completed_at: datetime | None = None
+    declined_at: datetime | None = None
+    cancel_reason: str | None = None
+    refund_id: str | None = None
+    refunded_at: datetime | None = None
 
     class Settings:
         name = "puja_bookings"

@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.models.enums import CallParty, ChatStatus
-from app.schemas.call import CallPeer, SessionBilling
+from app.schemas.call import CallPeer, ExtensionOfferInfo, SessionBilling
 
 
 class StartChatRequest(BaseModel):
@@ -32,6 +32,8 @@ class ChatOut(BaseModel):
     end_reason: str | None = None
     created_at: datetime
     billing: SessionBilling | None = None
+    appointment_id: str | None = None
+    extension_offer: ExtensionOfferInfo | None = None
 
 
 class ChatSessionOut(BaseModel):

@@ -13,7 +13,7 @@ from loguru import logger
 from slugify import slugify
 
 from app.core.exceptions import BadRequestError, ConflictError, NotFoundError
-from app.core.security import hash_password
+from app.core.security import hash_password, safe_regex_pattern
 from app.models.enums import AuthProvider, OtpPurpose, UserRole
 from app.models.purohit import Purohit, PurohitPujaItem
 from app.models.purohit_application import PurohitApplication
@@ -238,7 +238,7 @@ async def list_applications(
         query["status"] = status.lower()
 
     if search and search.strip():
-        q_regex = {"$regex": search.strip(), "$options": "i"}
+        q_regex = safe_regex_pattern(search)
         query["$or"] = [
             {"full_name": q_regex},
             {"email": q_regex},
@@ -247,12 +247,13 @@ async def list_applications(
             {"application_number": q_regex},
         ]
 
+    cap_limit = min(max(1, limit), 100)
     total = await PurohitApplication.find(query).count()
     items = (
         await PurohitApplication.find(query)
         .sort("-created_at")
-        .skip(offset)
-        .limit(limit)
+        .skip(max(0, offset))
+        .limit(cap_limit)
         .to_list()
     )
     return items, total

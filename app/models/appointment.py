@@ -163,6 +163,7 @@ class Appointment(TimestampedDocument):
 
     # Dedicated CallSession ID for video chamber
     call_session_id: PydanticObjectId | None = None
+    chat_session_id: PydanticObjectId | None = None
 
     # Brahma Pause Seeker Auto-Rescue Engine
     brahma_pause_affected: bool = False
@@ -194,6 +195,7 @@ class Appointment(TimestampedDocument):
 
     # Complimentary Follow-up / Remedy Clarification Pass
     follow_up_pass_enabled: bool = False
+    follow_up_pass_active: bool = False
     follow_up_window_days: int = 7
     follow_up_expires_at: datetime | None = None
     follow_up_max_messages: int = 3
@@ -227,6 +229,14 @@ class Appointment(TimestampedDocument):
             pymongo.IndexModel(
                 [("user_id", pymongo.ASCENDING), ("starts_at", pymongo.DESCENDING)],
                 name="appointment_user_recent",
+            ),
+            pymongo.IndexModel(
+                [("user_id", pymongo.ASCENDING), ("status", pymongo.ASCENDING), ("held_status", pymongo.ASCENDING)],
+                name="appointment_user_status_held",
+            ),
+            pymongo.IndexModel(
+                [("user_id", pymongo.ASCENDING), ("status", pymongo.ASCENDING), ("starts_at", pymongo.DESCENDING)],
+                name="appointment_user_status_starts",
             ),
             pymongo.IndexModel([("status", pymongo.ASCENDING)], name="appointment_status"),
             pymongo.IndexModel(

@@ -80,10 +80,16 @@ def _check_config() -> None:
         if not settings.resend_configured:
             problems.append("RESEND_API_KEY is not set, so sign-up codes could not be delivered.")
         if settings.razorpay_is_test_key:
-            problems.append(
-                "RAZORPAY_KEY_ID is a test key (rzp_test_). Real recharges would never "
-                "reach the account. Use the live key."
-            )
+            if getattr(settings, "ALLOW_TEST_RAZORPAY", False):
+                warnings.append(
+                    "ALLOW_TEST_RAZORPAY is true in production — Razorpay is running in TEST "
+                    "mode (rzp_test_). Switch to live keys before accepting real customer payments."
+                )
+            else:
+                problems.append(
+                    "RAZORPAY_KEY_ID is a test key (rzp_test_). Real recharges would never "
+                    "reach the account. Use the live key (or set ALLOW_TEST_RAZORPAY=true for UAT)."
+                )
         if settings.razorpay_configured and not settings.razorpay_webhook_configured:
             warnings.append(
                 "RAZORPAY_WEBHOOK_SECRET is not set — webhooks will be rejected, so a "
@@ -91,13 +97,17 @@ def _check_config() -> None:
             )
 
         if settings.is_production:
+            if not settings.bunny_stream_configured:
+                warnings.append(
+                    "BUNNY_STREAM_LIBRARY_ID / BUNNY_STREAM_TOKEN_KEY not set — signed course video embeds are disabled."
+                )
             if not settings.sentry_configured:
                 warnings.append("SENTRY_DSN is not set — error tracking is inactive.")
             if not settings.loki_configured:
                 warnings.append("GRAFANA_LOKI_* is not set — logs will not reach Grafana Cloud.")
 
     if not settings.resend_configured:
-        warnings.append("RESEND_API_KEY is not set — emails will not be delivered.")
+        warnings.append("RESEND_¯¸API_KEY is not set — emails will not be delivered.")
     if not settings.cloudinary_configured:
         warnings.append("Cloudinary is not configured — uploads will fail.")
     if not settings.firebase_configured:
@@ -161,11 +171,19 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     except Exception as e:
         logger.warning("Could not start Shop inventory TTL cleaner worker: {}", e)
 
+    # Start 30-second live Purohit presence & timed puja expiry worker
+    purohit_worker_task: asyncio.Task | None = None
+    try:
+        from app.services.purohit_service import live_puja_worker_loop
+        purohit_worker_task = asyncio.create_task(live_puja_worker_loop())
+    except Exception as e:
+        logger.warning("Could not start live Purohit worker: {}", e)
+
     logger.success("{} is ready on port {}.", settings.APP_NAME, settings.PORT)
     yield
 
     logger.info("Shutting down...")
-    for bg_task in (reminder_task, cloudinary_cleaner_task, inventory_cleaner_task):
+    for bg_task in (reminder_task, cloudinary_cleaner_task, inventory_cleaner_task, purohit_worker_task):
         if bg_task and not bg_task.done():
             bg_task.cancel()
             try:

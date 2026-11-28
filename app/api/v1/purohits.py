@@ -3,17 +3,22 @@
 import asyncio
 from typing import Annotated
 
-from fastapi import APIRouter, File, Query, UploadFile, status
+from fastapi import APIRouter, File, Header, Query, UploadFile, status
 
 from app.api.dependencies import CurrentUser
-from app.core.exceptions import ForbiddenError
-from app.models.enums import UserRole
+from app.core.config import settings
+from app.core.exceptions import UnauthorizedError
+from app.core.security import create_application_upload_token, verify_application_upload_token
+from app.models.enums import PujaBookingStatus, PujaPaymentStatus
+from app.models.purohit import PujaBooking
 from app.models.purohit_application import PurohitApplication
 from app.models.user import User
 from app.schemas.common import ApiResponse, MessageResponse
 from app.schemas.purohit import (
     PujaBookingCreate,
     PujaBookingOut,
+    PujaDeclineRequest,
+    PujaPaymentVerifyRequest,
     PurohitAvailabilityUpdate,
     PurohitOut,
     PurohitPujaItemCreate,
@@ -27,7 +32,12 @@ from app.schemas.purohit_application import (
     PurohitApplicationVerifyOtpIn,
 )
 from app.services import purohit_application_service, purohit_service
-from app.services.storage import ALLOWED_DOC_TYPES, ALLOWED_IMAGE_TYPES, safe_delete_cloudinary_image, upload_file
+from app.services.storage import (
+    ALLOWED_DOC_TYPES,
+    ALLOWED_IMAGE_TYPES,
+    safe_delete_cloudinary_image,
+    upload_file,
+)
 
 router = APIRouter(prefix="/purohits", tags=["purohits"])
 
@@ -83,13 +93,16 @@ async def send_application_otp(payload: PurohitApplicationSendOtpIn) -> ApiRespo
 
 @router.post(
     "/applications/verify-otp",
-    response_model=ApiResponse[dict[str, bool]],
+    response_model=ApiResponse[dict[str, bool | str]],
     summary="Verify applicant email OTP",
 )
-async def verify_application_otp(payload: PurohitApplicationVerifyOtpIn) -> ApiResponse[dict[str, bool]]:
+async def verify_application_otp(
+    payload: PurohitApplicationVerifyOtpIn,
+) -> ApiResponse[dict[str, bool | str]]:
     await purohit_application_service.verify_application_otp(payload.email, payload.code)
+    upload_token = create_application_upload_token(payload.email)
     return ApiResponse.ok(
-        data={"verified": True},
+        data={"verified": True, "upload_token": upload_token},
         message="Email OTP verified successfully.",
     )
 
@@ -101,7 +114,14 @@ async def verify_application_otp(payload: PurohitApplicationVerifyOtpIn) -> ApiR
 )
 async def upload_application_document(
     file: UploadFile = File(...),
+    x_upload_token: Annotated[str | None, Header(alias="X-Upload-Token")] = None,
 ) -> ApiResponse[dict[str, str]]:
+    if not x_upload_token:
+        raise UnauthorizedError(
+            "Email OTP verification is required before uploading application documents.",
+            error_code="upload_token_required",
+        )
+    verify_application_upload_token(x_upload_token)
     result = await upload_file(
         file,
         folder="purohit_applications",
@@ -140,17 +160,19 @@ async def submit_purohit_application(
 @router.get(
     "",
     response_model=ApiResponse[list[PurohitOut]],
-    summary="List verified Purohits with optional online filter and search by puja name",
+    summary="List live available Purohits with optional search by puja name",
 )
 async def list_purohits(
-    online_only: Annotated[bool, Query(description="Only show Purohits currently online and available")] = False,
-    search_puja: Annotated[str | None, Query(description="Search by specific Puja name (e.g. Lakshmi, Satyanarayan)")] = None,
+    online_only: Annotated[bool, Query(description="Only show currently online and free Purohits")] = True,
+    exclude_busy: Annotated[bool, Query(description="Exclude Purohits currently in another live puja")] = True,
+    search_puja: Annotated[str | None, Query(description="Search by specific Puja name (e.g. Lakshmi, Durga)")] = None,
     language: Annotated[str | None, Query(description="Filter by language, e.g. Bengali")] = None,
     limit: Annotated[int, Query(ge=1, le=50)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> ApiResponse[list[PurohitOut]]:
-    items, total = await purohit_service.list_purohits(
+    items, _ = await purohit_service.list_purohits(
         is_online_only=online_only,
+        exclude_busy=exclude_busy,
         search_puja=search_puja,
         language=language,
         limit=limit,
@@ -169,6 +191,19 @@ async def get_purohit_profile(identifier: str) -> ApiResponse[PurohitOut]:
     return ApiResponse(data=PurohitOut(**data))
 
 
+@router.get(
+    "/{identifier}/catalog",
+    response_model=ApiResponse[list[PurohitPujaItemOut]],
+    summary="Get the dedicated puja catalog of a specific Purohit by ID or slug",
+)
+async def get_purohit_catalog(identifier: str) -> ApiResponse[list[PurohitPujaItemOut]]:
+    """Retrieves verified pujas offered by the given Purohit."""
+    data = await purohit_service.get_purohit_by_id_or_slug(identifier)
+    pujas = data.get("pujas") or []
+    out = [PurohitPujaItemOut(**p) for p in pujas if p.get("is_active", True)]
+    return ApiResponse(data=out)
+
+
 # ---------------------------------------------------------------------------
 # Purohit Dashboard (Protected: Purohit role)
 # ---------------------------------------------------------------------------
@@ -179,11 +214,7 @@ async def get_purohit_profile(identifier: str) -> ApiResponse[PurohitOut]:
 )
 async def get_my_purohit_profile(user: CurrentUser) -> ApiResponse[PurohitOut]:
     profile = await purohit_service.get_purohit_by_user_id(user.id)
-    data = profile.model_dump()
-    data["id"] = str(profile.id)
-    data["user_id"] = str(profile.user_id)
-    data["starting_price_inr"] = purohit_service._get_starting_price(profile)
-    return ApiResponse(data=PurohitOut(**data))
+    return ApiResponse(data=PurohitOut(**purohit_service.serialize_purohit(profile)))
 
 
 @router.post(
@@ -233,20 +264,57 @@ async def upload_my_purohit_avatar(
 @router.put(
     "/me/availability",
     response_model=ApiResponse[PurohitOut],
-    summary="Toggle online/offline presence for live puja calls",
+    summary="Toggle live online/offline presence for immediate puja calls",
 )
 async def update_my_availability(
     payload: PurohitAvailabilityUpdate, user: CurrentUser
 ) -> ApiResponse[PurohitOut]:
     profile = await purohit_service.get_purohit_by_user_id(user.id)
-    updated = await purohit_service.update_purohit_availability(profile, payload.is_online)
-    data = updated.model_dump()
-    data["id"] = str(updated.id)
-    data["user_id"] = str(updated.user_id)
-    data["starting_price_inr"] = purohit_service._get_starting_price(updated)
+    updated = await purohit_service.update_purohit_availability(
+        profile,
+        is_online=payload.is_online,
+        available_days=payload.available_days,
+        available_slots=payload.available_slots,
+        weekly_schedule=payload.weekly_schedule,
+    )
+    status_str = "অনলাইন (লাইভ পূজার জন্য উপলব্ধ)" if payload.is_online else "অফলাইন"
+    return ApiResponse(
+        message=f"আপনার উপস্থিতি স্ট্যাটাস সফলভাবে {status_str} করা হয়েছে।",
+        data=PurohitOut(**purohit_service.serialize_purohit(updated)),
+    )
 
-    status_str = "অনলাইন (পূজার জন্য উপলব্ধ)" if payload.is_online else "অফলাইন"
-    return ApiResponse(message=f"আপনার উপস্থিতি স্ট্যাটাস সফলভাবে {status_str} করা হয়েছে।", data=PurohitOut(**data))
+
+@router.get(
+    "/me/availability",
+    response_model=ApiResponse[PurohitOut],
+    summary="Get current Purohit live availability and busy status",
+)
+async def get_my_availability(user: CurrentUser) -> ApiResponse[PurohitOut]:
+    profile = await purohit_service.get_purohit_by_user_id(user.id)
+    return ApiResponse(data=PurohitOut(**purohit_service.serialize_purohit(profile)))
+
+
+@router.post(
+    "/me/presence/offline",
+    response_model=MessageResponse,
+    summary="Explicitly mark Purohit offline (for logout / tab close)",
+)
+async def mark_my_presence_offline(user: CurrentUser) -> MessageResponse:
+    from app.services import purohit_presence
+
+    profile = await purohit_service.get_purohit_by_user_id(user.id)
+    await purohit_presence.go_offline(profile, reason="explicit offline")
+    return MessageResponse(message="Marked offline.")
+
+
+@router.get(
+    "/me/bookings/active",
+    response_model=ApiResponse[PujaBookingOut | None],
+    summary="Get any currently ringing or in-progress live puja for this Purohit",
+)
+async def get_my_active_purohit_booking(user: CurrentUser) -> ApiResponse[PujaBookingOut | None]:
+    booking = await purohit_service.get_active_purohit_booking(user.id)
+    return ApiResponse(data=_booking_to_out(booking) if booking else None)
 
 
 @router.post(
@@ -294,32 +362,44 @@ async def delete_puja_from_my_catalog(puja_id: str, user: CurrentUser) -> Messag
 )
 async def get_my_purohit_bookings(user: CurrentUser) -> ApiResponse[list[PujaBookingOut]]:
     bookings = await purohit_service.list_purohit_bookings(user.id)
-    out = [
-        PujaBookingOut(
-            id=str(b.id),
-            booking_number=b.booking_number,
-            user_id=str(b.user_id),
-            user_name=b.user_name,
-            user_phone=b.user_phone,
-            purohit_id=str(b.purohit_id),
-            purohit_name=b.purohit_name,
-            puja_item_id=b.puja_item_id,
-            puja_name=b.puja_name,
-            puja_duration_minutes=b.puja_duration_minutes,
-            amount_inr=b.amount_inr,
-            sankalpa_name=b.sankalpa_name,
-            sankalpa_gotra=b.sankalpa_gotra,
-            sankalpa_wish=b.sankalpa_wish,
-            room_id=b.room_id,
-            status=b.status,
-            payment_status=b.payment_status,
-            started_at=b.started_at,
-            completed_at=b.completed_at,
-            created_at=b.created_at,
-        )
-        for b in bookings
-    ]
-    return ApiResponse(data=out)
+    return ApiResponse(data=[_booking_to_out(b) for b in bookings])
+
+
+@router.post(
+    "/bookings/{booking_id}/accept",
+    response_model=ApiResponse[PujaBookingOut],
+    summary="Purohit accepts an incoming live puja request",
+)
+async def accept_puja(booking_id: str, user: CurrentUser) -> ApiResponse[PujaBookingOut]:
+    booking, token = await purohit_service.accept_puja_booking(booking_id, user)
+    msg = (
+        "পূজা অনুরোধ গ্রহণ করা হয়েছে! ভক্ত ৯০ সেকেন্ডের মধ্যে পেমেন্ট সম্পন্ন করে লাইভ রুমে যুক্ত হবেন।"
+        if booking.status == "awaiting_payment"
+        else f"পূজা অনুরোধ গ্রহণ করা হয়েছে! লাইভ রুম {booking.puja_duration_minutes} মিনিটের জন্য চালু হয়েছে।"
+    )
+    return ApiResponse(
+        message=msg,
+        data=_booking_to_out(booking, token=token),
+    )
+
+
+@router.post(
+    "/bookings/{booking_id}/decline",
+    response_model=ApiResponse[PujaBookingOut],
+    summary="Purohit declines a live puja request (triggers automatic 100% refund)",
+)
+async def decline_puja(
+    booking_id: str,
+    user: CurrentUser,
+    payload: PujaDeclineRequest | None = None,
+) -> ApiResponse[PujaBookingOut]:
+    booking = await purohit_service.decline_puja_booking(
+        booking_id, user, reason=payload.reason if payload else None
+    )
+    return ApiResponse(
+        message="পূজা অনুরোধ প্রত্যাখ্যান করা হয়েছে এবং ভক্তকে সম্পূর্ণ অর্থ ফেরত পাঠানো হয়েছে।",
+        data=_booking_to_out(booking),
+    )
 
 
 @router.post(
@@ -329,29 +409,56 @@ async def get_my_purohit_bookings(user: CurrentUser) -> ApiResponse[list[PujaBoo
 )
 async def complete_puja(booking_id: str, user: CurrentUser) -> ApiResponse[PujaBookingOut]:
     b = await purohit_service.complete_puja_session(booking_id, user)
-    out = PujaBookingOut(
-        id=str(b.id),
-        booking_number=b.booking_number,
-        user_id=str(b.user_id),
-        user_name=b.user_name,
-        user_phone=b.user_phone,
-        purohit_id=str(b.purohit_id),
-        purohit_name=b.purohit_name,
-        puja_item_id=b.puja_item_id,
-        puja_name=b.puja_name,
-        puja_duration_minutes=b.puja_duration_minutes,
-        amount_inr=b.amount_inr,
-        sankalpa_name=b.sankalpa_name,
-        sankalpa_gotra=b.sankalpa_gotra,
-        sankalpa_wish=b.sankalpa_wish,
-        room_id=b.room_id,
-        status=b.status,
-        payment_status=b.payment_status,
-        started_at=b.started_at,
-        completed_at=b.completed_at,
-        created_at=b.created_at,
+    return ApiResponse(
+        message="পূজা সম্পন্ন হিসেবে চিহ্নিত করা হয়েছে। আশীর্বাদ সর্বত্র বর্ষিত হোক!",
+        data=_booking_to_out(b),
     )
-    return ApiResponse(message="পূজা সম্পন্ন হিসেবে চিহ্নিত করা হয়েছে। আশীর্বাদ সর্বত্র বর্ষিত হোক!", data=out)
+
+
+def _booking_to_out(booking: PujaBooking, *, token: str | None = None) -> PujaBookingOut:
+    """Serialize PujaBooking into PujaBookingOut with Razorpay metadata when pending."""
+    amount_paise = max(100, int(round(booking.amount_inr * 100)))
+    is_pending_rzp = booking.payment_status != PujaPaymentStatus.PAID and bool(booking.razorpay_order_id)
+    return PujaBookingOut(
+        id=str(booking.id),
+        booking_number=booking.booking_number,
+        user_id=str(booking.user_id),
+        user_name=booking.user_name,
+        user_phone=booking.user_phone,
+        purohit_id=str(booking.purohit_id),
+        purohit_user_id=str(booking.purohit_user_id),
+        purohit_name=booking.purohit_name,
+        puja_item_id=booking.puja_item_id,
+        puja_name=booking.puja_name,
+        puja_duration_minutes=booking.puja_duration_minutes,
+        amount_inr=booking.amount_inr,
+        amount_paise=amount_paise,
+        sankalpa_name=booking.sankalpa_name,
+        sankalpa_gotra=booking.sankalpa_gotra,
+        sankalpa_nakshatra=booking.sankalpa_nakshatra,
+        sankalpa_wish=booking.sankalpa_wish,
+        room_id=booking.room_id,
+        zego_token=token,
+        payment_method=getattr(booking, "payment_method", "razorpay"),
+        razorpay_key_id=settings.RAZORPAY_KEY_ID if is_pending_rzp else None,
+        razorpay_order_id=booking.razorpay_order_id if is_pending_rzp else None,
+        status=booking.status,
+        payment_status=booking.payment_status,
+        started_at=booking.started_at,
+        accepted_at=getattr(booking, "accepted_at", None),
+        accept_expires_at=getattr(booking, "accept_expires_at", None),
+        payment_expires_at=getattr(booking, "payment_expires_at", None),
+        purohit_join_deadline_at=getattr(booking, "purohit_join_deadline_at", None),
+        purohit_joined_at=getattr(booking, "purohit_joined_at", None),
+        devotee_joined_at=getattr(booking, "devotee_joined_at", None),
+        expires_at=getattr(booking, "expires_at", None),
+        completed_at=booking.completed_at,
+        declined_at=getattr(booking, "declined_at", None),
+        cancel_reason=getattr(booking, "cancel_reason", None),
+        refund_id=getattr(booking, "refund_id", None),
+        refunded_at=getattr(booking, "refunded_at", None),
+        created_at=booking.created_at,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -361,38 +468,84 @@ async def complete_puja(booking_id: str, user: CurrentUser) -> ApiResponse[PujaB
     "/bookings",
     response_model=ApiResponse[PujaBookingOut],
     status_code=status.HTTP_201_CREATED,
-    summary="Book a live online puja with a verified Purohit",
+    summary="Send a Pay-After-Accept live puja request to an online Purohit",
 )
 async def book_puja_session(
     payload: PujaBookingCreate, user: CurrentUser
 ) -> ApiResponse[PujaBookingOut]:
     booking, token = await purohit_service.book_puja(user, payload)
-    out = PujaBookingOut(
-        id=str(booking.id),
-        booking_number=booking.booking_number,
-        user_id=str(booking.user_id),
-        user_name=booking.user_name,
-        user_phone=booking.user_phone,
-        purohit_id=str(booking.purohit_id),
-        purohit_name=booking.purohit_name,
-        puja_item_id=booking.puja_item_id,
-        puja_name=booking.puja_name,
-        puja_duration_minutes=booking.puja_duration_minutes,
-        amount_inr=booking.amount_inr,
-        sankalpa_name=booking.sankalpa_name,
-        sankalpa_gotra=booking.sankalpa_gotra,
-        sankalpa_wish=booking.sankalpa_wish,
-        room_id=booking.room_id,
-        zego_token=token,
-        status=booking.status,
-        payment_status=booking.payment_status,
-        started_at=booking.started_at,
-        completed_at=booking.completed_at,
-        created_at=booking.created_at,
+    out = _booking_to_out(booking, token=token)
+    msg = (
+        f"পুরোহিতজীকে অনুরোধ পাঠানো হয়েছে (#{booking.booking_number})। "
+        "তিনি গ্রহণ করলেই পেমেন্ট করে সরাসরি লাইভ রুমে প্রবেশ করতে পারবেন।"
+    )
+    return ApiResponse(message=msg, data=out)
+
+
+@router.post(
+    "/bookings/{booking_id}/create-payment-order",
+    response_model=ApiResponse[PujaBookingOut],
+    summary="Create Razorpay payment order after Purohit accepts within the 90s payment window",
+)
+async def create_puja_payment_order_endpoint(booking_id: str, user: CurrentUser) -> ApiResponse[PujaBookingOut]:
+    booking = await purohit_service.create_puja_razorpay_order(booking_id, user)
+    return ApiResponse(
+        message="পেমেন্ট অর্ডার প্রস্তুত। ৯০ সেকেন্ডের মধ্যে পেমেন্ট সম্পন্ন করুন।",
+        data=_booking_to_out(booking),
+    )
+
+
+@router.post(
+    "/bookings/{booking_id}/pay-wallet",
+    response_model=ApiResponse[PujaBookingOut],
+    summary="Pay for an accepted puja request using Wallet Coins and enter the live room",
+)
+async def pay_puja_wallet_endpoint(booking_id: str, user: CurrentUser) -> ApiResponse[PujaBookingOut]:
+    booking, token = await purohit_service.pay_puja_with_wallet(booking_id, user)
+    return ApiResponse(
+        message="ওয়ালেট পেমেন্ট সফল হয়েছে! লাইভ পূজা রুম শুরু হচ্ছে।",
+        data=_booking_to_out(booking, token=token),
+    )
+
+
+@router.post(
+    "/bookings/{booking_id}/cancel",
+    response_model=ApiResponse[PujaBookingOut],
+    summary="Devotee cancels an awaiting/waiting puja request and releases the Purohit",
+)
+async def cancel_puja_booking_endpoint(
+    booking_id: str,
+    user: CurrentUser,
+    payload: PujaDeclineRequest | None = None,
+) -> ApiResponse[PujaBookingOut]:
+    booking = await purohit_service.cancel_puja_booking(
+        booking_id, user, reason=payload.reason if payload else None
     )
     return ApiResponse(
-        message=f"পূজা সফলভাবে বুক করা হয়েছে (#{booking.booking_number})। পুরোহিতজীর সাথে এখনই যুক্ত হতে রুম ওপেন করুন।",
-        data=out,
+        message="অনুরোধ বাতিল করা হয়েছে।",
+        data=_booking_to_out(booking),
+    )
+
+
+@router.post(
+    "/bookings/{booking_id}/verify-payment",
+    response_model=ApiResponse[PujaBookingOut],
+    summary="Verify Razorpay payment to confirm a pending puja booking",
+)
+async def verify_puja_booking_payment(
+    booking_id: str,
+    payload: PujaPaymentVerifyRequest,
+    user: CurrentUser,
+) -> ApiResponse[PujaBookingOut]:
+    booking, token = await purohit_service.verify_puja_payment(booking_id, user, payload)
+    if booking.status == PujaBookingStatus.CANCELLED or booking.payment_status == PujaPaymentStatus.REFUNDED:
+        return ApiResponse(
+            message=booking.cancel_reason or "Purohit became busy before payment finished — 100% refund initiated.",
+            data=_booking_to_out(booking),
+        )
+    return ApiResponse(
+        message=f"পেমেন্ট সফল হয়েছে! পূজা বুকিং (#{booking.booking_number}) নিশ্চিত করা হয়েছে।",
+        data=_booking_to_out(booking, token=token),
     )
 
 
@@ -403,32 +556,18 @@ async def book_puja_session(
 )
 async def get_my_devotee_bookings(user: CurrentUser) -> ApiResponse[list[PujaBookingOut]]:
     bookings = await purohit_service.list_user_bookings(user.id)
-    out = [
-        PujaBookingOut(
-            id=str(b.id),
-            booking_number=b.booking_number,
-            user_id=str(b.user_id),
-            user_name=b.user_name,
-            user_phone=b.user_phone,
-            purohit_id=str(b.purohit_id),
-            purohit_name=b.purohit_name,
-            puja_item_id=b.puja_item_id,
-            puja_name=b.puja_name,
-            puja_duration_minutes=b.puja_duration_minutes,
-            amount_inr=b.amount_inr,
-            sankalpa_name=b.sankalpa_name,
-            sankalpa_gotra=b.sankalpa_gotra,
-            sankalpa_wish=b.sankalpa_wish,
-            room_id=b.room_id,
-            status=b.status,
-            payment_status=b.payment_status,
-            started_at=b.started_at,
-            completed_at=b.completed_at,
-            created_at=b.created_at,
-        )
-        for b in bookings
-    ]
-    return ApiResponse(data=out)
+    return ApiResponse(data=[_booking_to_out(b) for b in bookings])
+
+
+@router.get(
+    "/bookings/{booking_id}",
+    response_model=ApiResponse[PujaBookingOut],
+    summary="Fetch full details for a single puja booking by ID or booking number",
+)
+async def get_single_booking_endpoint(booking_id: str, user: CurrentUser) -> ApiResponse[PujaBookingOut]:
+    """Retrieves full details for a single puja booking for the devotee or the Purohit."""
+    booking = await purohit_service.get_booking(booking_id, user)
+    return ApiResponse(data=_booking_to_out(booking))
 
 
 @router.get(
@@ -438,27 +577,4 @@ async def get_my_devotee_bookings(user: CurrentUser) -> ApiResponse[list[PujaBoo
 )
 async def get_puja_room_token(booking_id: str, user: CurrentUser) -> ApiResponse[PujaBookingOut]:
     booking, token = await purohit_service.get_booking_token(booking_id, user)
-    out = PujaBookingOut(
-        id=str(booking.id),
-        booking_number=booking.booking_number,
-        user_id=str(booking.user_id),
-        user_name=booking.user_name,
-        user_phone=booking.user_phone,
-        purohit_id=str(booking.purohit_id),
-        purohit_name=booking.purohit_name,
-        puja_item_id=booking.puja_item_id,
-        puja_name=booking.puja_name,
-        puja_duration_minutes=booking.puja_duration_minutes,
-        amount_inr=booking.amount_inr,
-        sankalpa_name=booking.sankalpa_name,
-        sankalpa_gotra=booking.sankalpa_gotra,
-        sankalpa_wish=booking.sankalpa_wish,
-        room_id=booking.room_id,
-        zego_token=token,
-        status=booking.status,
-        payment_status=booking.payment_status,
-        started_at=booking.started_at,
-        completed_at=booking.completed_at,
-        created_at=booking.created_at,
-    )
-    return ApiResponse(data=out)
+    return ApiResponse(data=_booking_to_out(booking, token=token))

@@ -19,6 +19,8 @@ from beanie import PydanticObjectId
 from fastapi import HTTPException, status
 from pymongo.errors import DuplicateKeyError
 
+from app.core.security import safe_regex_pattern
+
 from app.models.enums import ShopOrderStatus
 from app.models.shop import Product, ProductReview, ShopOrder
 from app.models.user import User
@@ -395,11 +397,12 @@ async def admin_list_reviews(
     if product_id and PydanticObjectId.is_valid(product_id):
         query_filters["product_id"] = PydanticObjectId(product_id)
 
-    if search:
+    if search and search.strip():
+        pat = safe_regex_pattern(search)
         query_filters["$or"] = [
-            {"author_name": {"$regex": search, "$options": "i"}},
-            {"comment": {"$regex": search, "$options": "i"}},
-            {"title": {"$regex": search, "$options": "i"}},
+            {"author_name": pat},
+            {"comment": pat},
+            {"title": pat},
         ]
 
     query = ProductReview.find(query_filters).sort("-created_at")

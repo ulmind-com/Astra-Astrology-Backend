@@ -88,8 +88,10 @@ async def _publish(doc: PlatformSettings, *, reprice: bool) -> None:
     global _in_memory_settings
     _in_memory_settings = doc
 
+    from app.services import astrologer as astrologer_service
     from app.services import realtime
 
+    astrologer_service.invalidate_directory_cache()
     await realtime.publish_settings(doc)
     if reprice:
         await realtime.publish_all_astrologers()

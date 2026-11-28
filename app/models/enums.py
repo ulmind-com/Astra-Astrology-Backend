@@ -269,10 +269,14 @@ class PujaBookingStatus(StrEnum):
     """Lifecycle states of an online Purohit puja booking."""
 
     PENDING = "pending"
+    AWAITING_ACCEPTANCE = "awaiting_acceptance"
+    AWAITING_PAYMENT = "awaiting_payment"
     CONFIRMED = "confirmed"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
+    DECLINED = "declined"
     CANCELLED = "cancelled"
+    EXPIRED = "expired"
 
 
 class PujaPaymentStatus(StrEnum):

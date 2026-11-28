@@ -555,9 +555,9 @@ async def _execute_local_tool(
                 year=int(arguments["year"]),
                 hour=int(arguments.get("hour", 12)),
                 minute=int(arguments.get("minute", 0)),
-                lat=float(arguments.get("lat") or 22.5726),
-                lon=float(arguments.get("lon") or 88.3639),
-                tzone=5.5,
+                latitude=float(arguments.get("lat") or 22.5726),
+                longitude=float(arguments.get("lon") or 88.3639),
+                timezone=5.5,
                 place=arguments.get("place") or "Kolkata",
             )
             resp = calculate_kundli(req)
@@ -645,14 +645,15 @@ async def _execute_local_tool(
             return json.dumps(summary, ensure_ascii=False), tool_citations
 
         elif func_name == "get_daily_horoscope_tool":
-            req = DailyHoroscopeRequest(
-                rashi_index=int(arguments["rashi_index"]),
-                nakshatra_index=arguments.get("nakshatra_index"),
-                lang="bn",
-            )
-            resp = calculate_daily_horoscope(req)
             r_idx = int(arguments["rashi_index"])
-            horo = resp.signs[r_idx] if 0 <= r_idx < len(resp.signs) else resp.signs[0]
+            n_idx = arguments.get("nakshatra_index")
+            h_req = DailyHoroscopeRequest(
+                birth_rashi_index=r_idx,
+                birth_nakshatra_index=int(n_idx) if n_idx is not None else None,
+                language="bn",
+            )
+            h_resp = calculate_daily_horoscope(h_req)
+            horo = h_resp.signs[r_idx] if 0 <= r_idx < len(h_resp.signs) else h_resp.signs[0]
             now_ist_tool = datetime.now(timezone(timedelta(hours=5, minutes=30)))
             summary = {
                 "date": now_ist_tool.strftime("%Y-%m-%d"),
@@ -665,7 +666,7 @@ async def _execute_local_tool(
                 "sade_sati": horo.sade_sati_status,
                 "beej_mantra": horo.beej_mantra,
                 "remedy": horo.remedy,
-                "current_active_hora": resp.panchang.horas[0].planet_bn if resp.panchang.horas else None,
+                "current_active_hora": h_resp.panchang.horas[0].planet_bn if h_resp.panchang.horas else None,
             }
             tool_citations.append({
                 "source": f"দৈনিক গোচর ও হোরা কালকুলেটর ({horo.sign_name})",
@@ -721,10 +722,9 @@ async def _execute_local_tool(
         elif func_name == "calculate_matchmaking_tool":
             b_hour = int(arguments.get("boy_hour", 12))
             g_hour = int(arguments.get("girl_hour", 12))
-            req = KundliMatchingRequest(
+            m_req = KundliMatchingRequest(
                 groom=KundliMatchingPersonInput(
                     name=arguments.get("boy_name") or "Boy",
-                    gender="male",
                     day=int(arguments["boy_day"]),
                     month=int(arguments["boy_month"]),
                     year=int(arguments["boy_year"]),
@@ -739,7 +739,6 @@ async def _execute_local_tool(
                 ),
                 bride=KundliMatchingPersonInput(
                     name=arguments.get("girl_name") or "Girl",
-                    gender="female",
                     day=int(arguments["girl_day"]),
                     month=int(arguments["girl_month"]),
                     year=int(arguments["girl_year"]),
@@ -754,11 +753,12 @@ async def _execute_local_tool(
                 ),
                 language="bn",
             )
-            match_resp = calculate_kundli_matching(req)
-            summary = {
+            match_resp = calculate_kundli_matching(m_req)
+            match_pct = round((match_resp.total_received / max(1.0, match_resp.total_out_of)) * 100.0, 1)
+            m_summary: dict[str, Any] = {
                 "total_score": match_resp.total_received,
                 "max_score": match_resp.total_out_of,
-                "percentage": match_resp.total_percentage,
+                "percentage": match_pct,
                 "verdict_bn": match_resp.verdict,
                 "marital_harmony": match_resp.forecast.marital_harmony_verdict if match_resp.forecast else None,
                 "financial_prosperity": match_resp.forecast.financial_prosperity_verdict if match_resp.forecast else None,
@@ -766,9 +766,9 @@ async def _execute_local_tool(
             tool_citations.append({
                 "source": "৩৬ গুণ অষ্টকূট বিবাহ মেলাক এনজিন",
                 "category": "matchmaking",
-                "snippet": f"প্রাপ্ত গুণ: {match_resp.total_received}/{match_resp.total_out_of} ({match_resp.total_percentage}%) — {match_resp.verdict}",
+                "snippet": f"প্রাপ্ত গুণ: {match_resp.total_received}/{match_resp.total_out_of} ({match_pct}%) — {match_resp.verdict}",
             })
-            return json.dumps(summary, ensure_ascii=False), tool_citations
+            return json.dumps(m_summary, ensure_ascii=False), tool_citations
 
         elif func_name == "find_astrologer_tool":
             from app.schemas.astrologer import AstrologerFilters
@@ -834,21 +834,21 @@ async def _execute_local_tool(
             topic = (arguments.get("topic") or "").strip()
             feature = product_guide.find(topic) if topic else None
             if feature is None:
-                payload: dict[str, Any] = {
+                guide_payload: dict[str, Any] = {
                     "features": product_guide.index(platform),
                     "wallet_balance_coins": balance,
                 }
                 if balance is None:
-                    payload["wallet"] = "not signed in"
+                    guide_payload["wallet"] = "not signed in"
             else:
-                payload = product_guide.describe(feature, platform, balance)
+                guide_payload = product_guide.describe(feature, platform, balance)
 
             tool_citations.append({
                 "source": "Astra Astrology — how the app works",
                 "category": "app_guide",
-                "snippet": payload.get("what_it_does", "Feature guide and wallet status."),
+                "snippet": str(guide_payload.get("what_it_does", "Feature guide and wallet status.")),
             })
-            return json.dumps(payload, ensure_ascii=False), tool_citations
+            return json.dumps(guide_payload, ensure_ascii=False), tool_citations
 
         elif func_name == "search_vedic_rules_tool":
             query = arguments.get("query", "")
@@ -971,9 +971,9 @@ async def _local_astrological_fallback(
                 year=int(user_birth_details["year"]),
                 hour=int(user_birth_details.get("hour", 12)),
                 minute=int(user_birth_details.get("minute", 0)),
-                lat=float(user_birth_details.get("lat") or 22.5726),
-                lon=float(user_birth_details.get("lon") or 88.3639),
-                tzone=5.5,
+                latitude=float(user_birth_details.get("lat") or 22.5726),
+                longitude=float(user_birth_details.get("lon") or 88.3639),
+                timezone=5.5,
                 place=user_birth_details.get("place", "Kolkata"),
             )
             kundli = calculate_kundli(req)

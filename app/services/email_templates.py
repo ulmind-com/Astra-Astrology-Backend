@@ -1392,5 +1392,426 @@ def shop_order_refund_email_html(
     )
 
 
+def course_purchase_invoice_email_html(
+    user_name: str,
+    user_email: str,
+    course_title: str,
+    invoice_number: str,
+    order_id: str,
+    payment_id: str,
+    amount_inr: float,
+    payment_method: str = "Online / Razorpay",
+    purchase_date: str = "",
+    course_url: str = "",
+    invoice_url: str = "",
+    instructor_name: str = "Pt. Acharya Rahul Sharma",
+    access_type: str = "Lifetime Access",
+) -> str:
+    """Official, luxury Tax Invoice & Enrollment Receipt email template for Gurukul course purchases."""
+    app_name = "DivinLink Gurukul"
+    headline = "🧾 Tax Invoice & Gurukul Enrollment Receipt"
+    formatted_amount = f"₹{amount_inr:,.2f}".replace(".00", "")
+
+    lead_text = (
+        f"Dear <strong>{user_name}</strong>, thank you for embarking on your sacred learning journey. "
+        f"Your payment of <strong>{formatted_amount}</strong> for <strong>{course_title}</strong> has been "
+        f"successfully verified and your complete student curriculum is now officially consecrated and unlocked."
+    )
+
+    frontend_base = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app").rstrip("/")
+    if not course_url:
+        course_url = f"{frontend_base}/account/courses"
+    if not invoice_url:
+        invoice_url = f"{frontend_base}/account/courses"
+
+    content = f"""
+      <!-- Official Invoice Card -->
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 24px;background:#FFFFFF;border:2px solid #C89B3C;border-radius:18px;overflow:hidden;box-shadow:0 6px 24px rgba(200,155,60,0.15);">
+        <!-- Top Golden Header Banner -->
+        <tr>
+          <td style="background:linear-gradient(135deg,#FFFDF7 0%,#FDF6E2 100%);padding:24px 20px;text-align:center;border-bottom:1px solid #E5D5A5;">
+            <div style="font-size:30px;line-height:1;margin-bottom:6px;color:#8B6508;">ॐ</div>
+            <div style="font-size:11px;font-weight:800;letter-spacing:2px;color:#8B6508;text-transform:uppercase;margin-bottom:4px;">
+              DivinLink Gurukul • বিশ্ব জ্যোতিষ বিদ্যাপীঠ
+            </div>
+            <div style="font-size:17px;font-family:Georgia,serif;font-weight:700;color:#1F2937;">
+              Official Tax Invoice &amp; Consecrated Enrollment Bill
+            </div>
+          </td>
+        </tr>
+
+        <!-- Invoice & Payment Metadata Grid -->
+        <tr>
+          <td style="padding:22px 24px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="font-size:13px;border-bottom:1px solid #F1F5F9;padding-bottom:16px;">
+              <tr>
+                <td style="padding:5px 0;color:#64748B;font-weight:600;width:40%;">Invoice Number:</td>
+                <td style="padding:5px 0;color:#0F172A;font-family:monospace;font-weight:700;">#{invoice_number}</td>
+              </tr>
+              <tr>
+                <td style="padding:5px 0;color:#64748B;font-weight:600;">Date of Issuance:</td>
+                <td style="padding:5px 0;color:#0F172A;">{purchase_date}</td>
+              </tr>
+              <tr>
+                <td style="padding:5px 0;color:#64748B;font-weight:600;">Razorpay Payment ID:</td>
+                <td style="padding:5px 0;color:#0F172A;font-family:monospace;font-weight:600;">{payment_id}</td>
+              </tr>
+              <tr>
+                <td style="padding:5px 0;color:#64748B;font-weight:600;">Order Reference:</td>
+                <td style="padding:5px 0;color:#0F172A;font-family:monospace;">{order_id}</td>
+              </tr>
+              <tr>
+                <td style="padding:5px 0;color:#64748B;font-weight:600;">Payment Mode:</td>
+                <td style="padding:5px 0;color:#0F172A;font-weight:600;">{payment_method}</td>
+              </tr>
+              <tr>
+                <td style="padding:5px 0;color:#64748B;font-weight:600;">Payment Status:</td>
+                <td style="padding:5px 0;">
+                  <span style="display:inline-block;padding:2px 8px;background:#ECFDF5;color:#059669;border-radius:9999px;font-size:11px;font-weight:700;border:1px solid #A7F3D0;">
+                    ✓ PAID &amp; CAPTURED
+                  </span>
+                </td>
+              </tr>
+            </table>
+
+            <!-- Course Line Item Box -->
+            <div style="margin:18px 0;padding:16px;background:#FAF8F5;border:1px solid #E2E8F0;border-radius:12px;">
+              <div style="font-size:11px;font-weight:800;color:#8B6508;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">
+                ENROLLED GURUKUL MASTERCLASS
+              </div>
+              <div style="font-size:16px;font-family:Georgia,serif;font-weight:700;color:#0F172A;line-height:1.4;margin-bottom:6px;">
+                {course_title}
+              </div>
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="font-size:12px;color:#475569;margin-top:6px;">
+                <tr>
+                  <td style="padding:3px 0;">• Faculty / Master:</td>
+                  <td style="padding:3px 0;text-align:right;font-weight:600;color:#1F2937;">{instructor_name}</td>
+                </tr>
+                <tr>
+                  <td style="padding:3px 0;">• Course Access:</td>
+                  <td style="padding:3px 0;text-align:right;font-weight:600;color:#059669;">{access_type}</td>
+                </tr>
+                <tr>
+                  <td style="padding:3px 0;">• Service Classification (SAC):</td>
+                  <td style="padding:3px 0;text-align:right;font-family:monospace;">999293 (Coaching/Training)</td>
+                </tr>
+                <tr>
+                  <td style="padding:3px 0;">• Certification:</td>
+                  <td style="padding:3px 0;text-align:right;font-weight:600;color:#D97706;">Official Gurukul Certificate Included</td>
+                </tr>
+              </table>
+            </div>
+
+            <!-- Grand Total Box -->
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:12px;padding:12px 14px;background:#F8FAFC;border-radius:10px;">
+              <tr>
+                <td style="font-size:14px;font-weight:700;color:#0F172A;">Total Net Amount Paid:</td>
+                <td style="font-size:18px;font-weight:800;color:#B45309;text-align:right;">{formatted_amount}</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Two Action Buttons (CTA) -->
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 auto 16px;">
+        <tr>
+          <td align="center" style="padding:4px 0;">
+            <a href="{course_url}" target="_blank" class="cta-button" style="display:inline-block;background:linear-gradient(135deg,#D97706 0%,#B45309 100%);color:#ffffff;font-size:15px;font-weight:700;padding:15px 36px;border-radius:9999px;text-decoration:none;text-align:center;box-shadow:0 6px 18px rgba(217,119,6,0.35);margin:4px 6px;">
+              🚀 Start Learning Course Now
+            </a>
+            <a href="{invoice_url}" target="_blank" style="display:inline-block;background:#F1F5F9;color:#334155;font-size:13px;font-weight:700;padding:14px 24px;border-radius:9999px;text-decoration:none;text-align:center;border:1px solid #CBD5E1;margin:4px 6px;">
+              🧾 View &amp; Print Official Invoice
+            </a>
+          </td>
+        </tr>
+      </table>
+
+      <div style="text-align:center;font-size:12px;color:#64748B;line-height:1.6;margin-top:20px;">
+        This is a computer-generated tax invoice &amp; enrollment bill issued under the Central Goods &amp; Services Tax Act, 2017.<br>
+        For curriculum queries or support, email <a href="mailto:support@divinlink.com" style="color:#B45309;font-weight:600;">support@divinlink.com</a> or WhatsApp +91 91530 08182.
+      </div>
+    """
+
+    return render_email(
+        title=f"Tax Invoice & Enrollment Receipt — {course_title}",
+        content_html=content,
+        preheader=f"Your official invoice #{invoice_number} and access for {course_title} are confirmed.",
+        headline=headline,
+        lead_text=lead_text,
+    )
+
+
+def shop_order_invoice_email_html(
+    user_name: str,
+    user_email: str,
+    order_number: str,
+    invoice_number: str,
+    payment_id: str,
+    amount_inr: float,
+    payment_method: str = "Online / Razorpay",
+    purchase_date: str = "",
+    items: list[dict] | None = None,
+    free_gifts: list[dict] | None = None,
+    subtotal: float = 0.0,
+    discount_amount: float = 0.0,
+    coupon_code: str | None = None,
+    shipping_fee: float = 0.0,
+    tax_amount: float = 0.0,
+    is_tax_invoice: bool = False,
+    shipping_address: dict | None = None,
+    sankalpa: dict | None = None,
+    cashback_coins: int = 0,
+    order_url: str = "",
+    invoice_url: str = "",
+    support_phone: str = "+91 91530 08182",
+    support_email: str = "support@divinlink.com",
+) -> str:
+    """Official, luxury Tax Invoice & Sacred Order Receipt email template for physical AstroStore purchases."""
+    app_name = "DivinLink Sacred AstroStore"
+    headline = "🧾 Tax Invoice & Order Receipt"
+    formatted_amount = f"₹{amount_inr:,.2f}".replace(".00", "")
+
+    lead_text = (
+        f"Dear <strong>{user_name}</strong>, thank you for welcoming consecrated Vedic remedies into your sacred home. "
+        f"Your payment of <strong>{formatted_amount}</strong> for Order <strong>#{order_number}</strong> has been "
+        f"successfully verified and confirmed. Your holy items are now queued for auspicious Vedic consecration (Prana Pratishtha) in Varanasi."
+    )
+
+    frontend_base = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app").rstrip("/")
+    if not order_url:
+        order_url = f"{frontend_base}/account/orders"
+    if not invoice_url:
+        invoice_url = f"{frontend_base}/account/orders"
+
+    # Line item rows
+    item_rows_html = ""
+    for it in (items or []):
+        t = it.get("title", "Consecrated Sacred Remedy")
+        sku = it.get("sku", "SKU")
+        cat = it.get("category_name", "Vedic Remedy")
+        qty = it.get("quantity", 1)
+        unit_p = f"₹{float(it.get('unit_sale_price', 0)):,.2f}".replace(".00", "")
+        line_t = f"₹{float(it.get('line_total', 0)):,.2f}".replace(".00", "")
+        gift_note = ""
+        if it.get("free_gift_title"):
+            gift_note = f"<div style='font-size:11px;color:#B45309;font-weight:600;margin-top:2px;'>🎁 Free Gift: {it['free_gift_title']}</div>"
+
+        item_rows_html += f"""
+        <tr>
+          <td style="padding:10px 8px;border-bottom:1px solid #F1F5F9;vertical-align:top;">
+            <div style="font-weight:700;color:#0F172A;font-size:13px;">{t}</div>
+            <div style="font-size:11px;color:#64748B;font-family:monospace;margin-top:1px;">SKU: {sku} • {cat}</div>
+            {gift_note}
+          </td>
+          <td style="padding:10px 8px;border-bottom:1px solid #F1F5F9;text-align:center;color:#334155;font-size:12px;vertical-align:top;font-weight:600;">
+            {qty}
+          </td>
+          <td style="padding:10px 8px;border-bottom:1px solid #F1F5F9;text-align:right;color:#334155;font-size:12px;vertical-align:top;">
+            {unit_p}
+          </td>
+          <td style="padding:10px 8px;border-bottom:1px solid #F1F5F9;text-align:right;font-weight:700;color:#0F172A;font-size:13px;vertical-align:top;">
+            {line_t}
+          </td>
+        </tr>
+        """
+
+    # Free gifts rows
+    for g in (free_gifts or []):
+        g_title = g.get("title", "Complimentary Sacred Vedic Blessing Gift")
+        item_rows_html += f"""
+        <tr style="background:#FFFDF7;">
+          <td style="padding:10px 8px;border-bottom:1px solid #F1F5F9;vertical-align:top;">
+            <div style="font-weight:700;color:#B45309;font-size:12px;">🎁 {g_title}</div>
+            <div style="font-size:10px;color:#64748B;">Complimentary Vedic Blessing with Order</div>
+          </td>
+          <td style="padding:10px 8px;border-bottom:1px solid #F1F5F9;text-align:center;color:#059669;font-size:12px;vertical-align:top;font-weight:700;">1</td>
+          <td style="padding:10px 8px;border-bottom:1px solid #F1F5F9;text-align:right;color:#059669;font-size:12px;vertical-align:top;font-weight:600;">FREE</td>
+          <td style="padding:10px 8px;border-bottom:1px solid #F1F5F9;text-align:right;font-weight:700;color:#059669;font-size:12px;vertical-align:top;">₹0</td>
+        </tr>
+        """
+
+    # Address block
+    addr_html = ""
+    if shipping_address:
+        recip = shipping_address.get("recipient_name") or user_name
+        phone = shipping_address.get("phone_number") or ""
+        a1 = shipping_address.get("address_line1") or ""
+        a2 = shipping_address.get("address_line2") or ""
+        city = shipping_address.get("city") or ""
+        st = shipping_address.get("state") or ""
+        pin = shipping_address.get("pincode") or ""
+        addr_html = f"<strong>{recip}</strong> • {phone}<br>{a1}"
+        if a2:
+            addr_html += f", {a2}"
+        addr_html += f"<br>{city}, {st} - {pin}, India"
+
+    # Sankalpa block
+    sankalpa_html = ""
+    if sankalpa and (sankalpa.get("devotee_name") or sankalpa.get("gotra")):
+        d_name = sankalpa.get("devotee_name") or user_name
+        g_name = sankalpa.get("gotra") or "Kashyap"
+        sankalpa_html = f"""
+        <div style="margin-top:12px;padding:10px 14px;background:#FFFBEB;border:1px dashed #FDE68A;border-radius:10px;font-size:12px;color:#92400E;">
+          🕉️ <strong>পবিত্র সংকল্প (Energization Sankalpa):</strong> Devotee: <strong>{d_name}</strong> • Gotra: <strong>{g_name}</strong>
+        </div>
+        """
+
+    # Financial rows
+    subtotal_str = f"₹{subtotal:,.2f}".replace(".00", "")
+    discount_str = f"- ₹{discount_amount:,.2f}".replace(".00", "") if discount_amount > 0 else ""
+    shipping_str = "FREE" if shipping_fee == 0 else f"₹{shipping_fee:,.2f}".replace(".00", "")
+    tax_str = f"₹{tax_amount:,.2f}".replace(".00", "") if is_tax_invoice else "₹0 (Exempt / Bill of Supply)"
+
+    content = f"""
+      <!-- Official Invoice Card -->
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 24px;background:#FFFFFF;border:2px solid #C89B3C;border-radius:18px;overflow:hidden;box-shadow:0 6px 24px rgba(200,155,60,0.15);">
+        <!-- Top Golden Header Banner -->
+        <tr>
+          <td style="background:linear-gradient(135deg,#FFFDF7 0%,#FDF6E2 100%);padding:24px 20px;text-align:center;border-bottom:1px solid #E5D5A5;">
+            <div style="font-size:30px;line-height:1;margin-bottom:6px;color:#8B6508;">ॐ</div>
+            <div style="font-size:11px;font-weight:800;letter-spacing:2px;color:#8B6508;text-transform:uppercase;margin-bottom:4px;">
+              DivinLink Sacred AstroStore • বিশ্ব প্রতিকার বিতান
+            </div>
+            <div style="font-size:17px;font-family:Georgia,serif;font-weight:700;color:#1F2937;">
+              Official Tax Invoice &amp; Consecrated Order Bill
+            </div>
+          </td>
+        </tr>
+
+        <!-- Invoice & Payment Metadata Grid -->
+        <tr>
+          <td style="padding:22px 24px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="font-size:13px;border-bottom:1px solid #F1F5F9;padding-bottom:16px;">
+              <tr>
+                <td style="padding:4px 0;color:#64748B;font-weight:600;width:40%;">Invoice Number:</td>
+                <td style="padding:4px 0;color:#0F172A;font-family:monospace;font-weight:700;">#{invoice_number}</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 0;color:#64748B;font-weight:600;">Order Reference:</td>
+                <td style="padding:4px 0;color:#0F172A;font-family:monospace;font-weight:700;">#{order_number}</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 0;color:#64748B;font-weight:600;">Date of Issuance:</td>
+                <td style="padding:4px 0;color:#0F172A;">{purchase_date}</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 0;color:#64748B;font-weight:600;">Razorpay Payment ID:</td>
+                <td style="padding:4px 0;color:#0F172A;font-family:monospace;font-weight:600;">{payment_id}</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 0;color:#64748B;font-weight:600;">Payment Mode:</td>
+                <td style="padding:4px 0;color:#0F172A;font-weight:600;">{payment_method}</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 0;color:#64748B;font-weight:600;">Payment Status:</td>
+                <td style="padding:4px 0;">
+                  <span style="display:inline-block;padding:2px 8px;background:#ECFDF5;color:#059669;border-radius:9999px;font-size:11px;font-weight:700;border:1px solid #A7F3D0;">
+                    ✓ PAID &amp; CAPTURED
+                  </span>
+                </td>
+              </tr>
+            </table>
+
+            <!-- Shipping Address Block -->
+            {f'''
+            <div style="margin:16px 0;padding:14px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;">
+              <div style="font-size:11px;font-weight:800;color:#64748B;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">
+                DELIVERY / SHIPPING ADDRESS
+              </div>
+              <div style="font-size:12px;color:#334155;line-height:1.5;">
+                {addr_html}
+              </div>
+              {sankalpa_html}
+            </div>
+            ''' if addr_html else ''}
+
+            <!-- Ordered Line Items Table -->
+            <div style="margin:18px 0;">
+              <div style="font-size:11px;font-weight:800;color:#8B6508;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;">
+                ORDERED REMEDIES &amp; ITEMS
+              </div>
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="font-size:12px;border-collapse:collapse;">
+                <thead>
+                  <tr style="background:#F1F5F9;color:#475569;font-size:11px;text-transform:uppercase;font-weight:700;">
+                    <th align="left" style="padding:8px;border-bottom:2px solid #CBD5E1;">Item Details</th>
+                    <th align="center" style="padding:8px;border-bottom:2px solid #CBD5E1;width:12%;">Qty</th>
+                    <th align="right" style="padding:8px;border-bottom:2px solid #CBD5E1;width:20%;">Price</th>
+                    <th align="right" style="padding:8px;border-bottom:2px solid #CBD5E1;width:20%;">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {item_rows_html}
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Financial Calculation Table -->
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:10px;font-size:12px;color:#475569;">
+              <tr>
+                <td style="padding:4px 0;">Subtotal:</td>
+                <td style="padding:4px 0;text-align:right;font-weight:600;color:#0F172A;">{subtotal_str}</td>
+              </tr>
+              {f'''
+              <tr>
+                <td style="padding:4px 0;color:#059669;">Coupon Discount ({coupon_code or 'PROMO'}):</td>
+                <td style="padding:4px 0;text-align:right;font-weight:600;color:#059669;">{discount_str}</td>
+              </tr>
+              ''' if discount_str else ''}
+              <tr>
+                <td style="padding:4px 0;">Sacred Packing &amp; Doorstep Delivery:</td>
+                <td style="padding:4px 0;text-align:right;font-weight:600;color:#0F172A;">{shipping_str}</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 0;">Taxes / GST:</td>
+                <td style="padding:4px 0;text-align:right;font-weight:600;color:#0F172A;">{tax_str}</td>
+              </tr>
+              <tr style="border-top:2px solid #E2E8F0;">
+                <td style="padding:10px 0;font-size:14px;font-weight:700;color:#0F172A;">Net Grand Total Paid:</td>
+                <td style="padding:10px 0;font-size:18px;font-weight:800;color:#B45309;text-align:right;">{formatted_amount}</td>
+              </tr>
+            </table>
+
+            <!-- 100% Cashback Reward Box -->
+            {f'''
+            <div style="margin-top:14px;padding:12px 14px;background:linear-gradient(135deg,#ECFDF5 0%,#D1FAE5 100%);border:1px solid #A7F3D0;border-radius:12px;font-size:12px;color:#065F46;display:flex;align-items:center;">
+              🪙 <strong>100% Cashback Benefit:</strong> {cashback_coins} Astra Coins reserved for your DivinLink Wallet upon doorstep delivery.
+            </div>
+            ''' if cashback_coins > 0 else ''}
+          </td>
+        </tr>
+      </table>
+
+      <!-- Two Action Buttons (CTA) -->
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 auto 16px;">
+        <tr>
+          <td align="center" style="padding:4px 0;">
+            <a href="{invoice_url}" target="_blank" style="display:inline-block;background:linear-gradient(135deg,#D97706 0%,#B45309 100%);color:#ffffff;font-size:14px;font-weight:700;padding:14px 32px;border-radius:9999px;text-decoration:none;text-align:center;box-shadow:0 6px 18px rgba(217,119,6,0.35);margin:4px 6px;">
+              🧾 View &amp; Print Official Tax Invoice
+            </a>
+            <a href="{order_url}" target="_blank" style="display:inline-block;background:#F1F5F9;color:#334155;font-size:13px;font-weight:700;padding:14px 24px;border-radius:9999px;text-decoration:none;text-align:center;border:1px solid #CBD5E1;margin:4px 6px;">
+              📦 Track My Order
+            </a>
+          </td>
+        </tr>
+      </table>
+
+      <div style="text-align:center;font-size:12px;color:#64748B;line-height:1.6;margin-top:20px;">
+        This is a computer-generated tax invoice &amp; sacred bill of supply issued under the Central Goods &amp; Services Tax Act, 2017.<br>
+        For courier tracking queries or assistance, email <a href="mailto:{support_email}" style="color:#B45309;font-weight:600;">{support_email}</a> or WhatsApp {support_phone}.
+      </div>
+    """
+
+    return render_email(
+        title=f"Tax Invoice & Order Receipt — #{order_number}",
+        content_html=content,
+        preheader=f"Your official tax invoice #{invoice_number} for Order #{order_number} is confirmed.",
+        headline=headline,
+        lead_text=lead_text,
+    )
+
+
+
+
 
 

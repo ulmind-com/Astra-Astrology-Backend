@@ -279,8 +279,8 @@ def test_course_certificate_generation_and_html():
     assert "Samiran Samanta" in html
     assert "Vedic Astrology Foundation Masterclass" in html
     assert "ASTRA-CERT-SAMIRAN-TEST" in html
-    assert "DivinLink Gurukul" in html
-    assert "HMAC-SHA256" in html
+    assert "DIVINLINK" in html
+    assert "DIGITAL SIGNATURE" in html
 
     # Check QR code contains properly percent-encoded verification link
     import urllib.parse
@@ -700,8 +700,8 @@ def test_certificate_numbers_are_random_not_derived():
     assert len(minted) == 500, "certificate numbers collided"
 
     for number in list(minted)[:20]:
-        assert number.startswith("ASTRA-CERT-")
-        suffix = number.removeprefix("ASTRA-CERT-")
+        assert number.startswith("DIVINLINK-CERT-") or number.startswith("ASTRA-CERT-")
+        suffix = number.split("-")[-1]
         assert len(suffix) == 16, suffix
         assert all(c in "0123456789ABCDEF" for c in suffix), suffix
 
@@ -1146,5 +1146,74 @@ async def test_admin_delete_course_blocked_when_active_enrollments():
         assert existing_course.is_deleted is True
         assert existing_course.is_published is False
         assert existing_course.save.called
+
+
+@pytest.mark.asyncio
+async def test_admin_update_enrollment_validity_lifecycle():
+    """Validates extending and altering learner validity (lifetime, set_days, extend_days)."""
+    from datetime import datetime, timedelta, timezone
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, patch
+    from beanie import PydanticObjectId
+    from app.schemas.course import AdminCourseEnrollmentValidityUpdateRequest
+    from app.services.course_service import CourseService
+
+    enrollment_id = PydanticObjectId()
+    course_id = PydanticObjectId()
+    user_id = PydanticObjectId()
+
+    now = datetime.now(timezone.utc)
+    mock_enrollment = SimpleNamespace(
+        id=enrollment_id,
+        course_id=course_id,
+        user_id=user_id,
+        payment_id="pay_test123",
+        order_id="order_test123",
+        amount_paid=1999.0,
+        currency="INR",
+        progress_percent=25.0,
+        certificate_issued=False,
+        enrolled_at=now - timedelta(days=10),
+        expires_at=now + timedelta(days=20),
+        last_accessed_at=now,
+        save=AsyncMock(),
+    )
+    mock_course = SimpleNamespace(
+        id=course_id,
+        title="Vedic Foundations",
+        slug="vedic-foundations",
+        access_duration_days=30,
+    )
+    mock_student = SimpleNamespace(
+        id=user_id,
+        full_name="Arjun Sharma",
+        email="arjun@example.com",
+        phone="+919876543210",
+    )
+
+    with patch.object(CourseEnrollment, "find_one", AsyncMock(return_value=mock_enrollment)), \
+         patch.object(Course, "find_one", AsyncMock(return_value=mock_course)), \
+         patch.object(User, "find_one", AsyncMock(return_value=mock_student)):
+
+        # 1. Extend by 30 days
+        req = AdminCourseEnrollmentValidityUpdateRequest(mode="extend_days", days=30)
+        res = await CourseService.admin_update_enrollment_validity(
+            enrollment_id=enrollment_id,
+            mode=req.mode,
+            days=req.days,
+        )
+        assert mock_enrollment.save.called
+        assert res["is_expired"] is False
+        assert res["expires_at"] > now + timedelta(days=40)
+
+        # 2. Set to Lifetime
+        req_lifetime = AdminCourseEnrollmentValidityUpdateRequest(mode="lifetime")
+        res_lifetime = await CourseService.admin_update_enrollment_validity(
+            enrollment_id=enrollment_id,
+            mode=req_lifetime.mode,
+        )
+        assert mock_enrollment.expires_at is None
+        assert res_lifetime["expires_at"] is None
+        assert res_lifetime["is_expired"] is False
 
 

@@ -23,8 +23,21 @@ async def sweep_abandoned_shop_checkouts() -> int:
     now = datetime.now(UTC)
 
     # Fetch configured reservation window from CMS (default 20 mins)
-    cms = await ShopCMS.find_one({"$or": [{"key": CMS_KEY_SHOP}, {"key": "shop_cms"}]})
-    default_reservation_mins = getattr(cms, "checkout_reservation_minutes", 20) or 20
+    default_reservation_mins = 20
+    try:
+        cms = await ShopCMS.find_one({"$or": [{"key": CMS_KEY_SHOP}, {"key": "shop_cms"}]})
+        if cms:
+            default_reservation_mins = getattr(cms, "checkout_reservation_minutes", 20) or 20
+    except PyMongoError as db_err:
+        try:
+            from app.db.mongodb import heal_connection
+            heal_connection()
+        except Exception:
+            pass
+        logger.debug("Could not read ShopCMS reservation config due to transient DB error: {}", db_err)
+    except Exception as e:
+        logger.debug("Could not read ShopCMS reservation config, using fallback {}m: {}", default_reservation_mins, e)
+
     fallback_threshold = now - timedelta(minutes=default_reservation_mins)
 
     # Query criteria:
@@ -34,9 +47,9 @@ async def sweep_abandoned_shop_checkouts() -> int:
     # 4. Stock has not already been restored
     # 5. EITHER stock_reserved_until <= now, OR created_at <= fallback_threshold
     query = {
-        "payment_method": ShopPaymentMethod.RAZORPAY,
-        "payment_status": ShopPaymentStatus.PENDING,
-        "order_status": ShopOrderStatus.PLACED,
+        "payment_method": ShopPaymentMethod.RAZORPAY.value,
+        "payment_status": ShopPaymentStatus.PENDING.value,
+        "order_status": ShopOrderStatus.PLACED.value,
         "is_stock_restored": {"$ne": True},
         "$or": [
             {"stock_reserved_until": {"$lte": now}},
@@ -49,6 +62,17 @@ async def sweep_abandoned_shop_checkouts() -> int:
 
     try:
         expired_orders = await ShopOrder.find(query).to_list()
+    except PyMongoError as db_err:
+        try:
+            from app.db.mongodb import heal_connection
+            heal_connection()
+        except Exception:
+            pass
+        logger.warning(
+            "Shop inventory sweep skipped (MongoDB replica set failover or transient timeout): {}",
+            db_err,
+        )
+        return 0
     except Exception as exc:
         logger.opt(exception=exc).error("Failed to query expired abandoned orders: {}", exc)
         return 0
@@ -104,6 +128,12 @@ async def sweep_abandoned_shop_checkouts() -> int:
                 order.order_number,
                 len(order.items),
             )
+        except PyMongoError as db_err:
+            logger.warning(
+                "Database error releasing inventory for expired order {} (will retry next sweep): {}",
+                order.order_number,
+                db_err,
+            )
         except Exception as exc:
             logger.opt(exception=exc).error(
                 "Error releasing inventory for expired order {}: {}", order.order_number, exc
@@ -139,7 +169,12 @@ async def periodic_shop_inventory_cleanup_loop(interval_seconds: int = 300) -> N
         except asyncio.CancelledError:
             logger.info("Shop inventory TTL cleaner received cancellation signal. Stopping.")
             break
-        except PyMongoError as db_err:
+        except (PyMongoError, TimeoutError, OSError) as db_err:
+            try:
+                from app.db.mongodb import heal_connection
+                heal_connection()
+            except Exception:
+                pass
             logger.warning(
                 "MongoDB temporarily unavailable in shop inventory cleaner loop (will retry next cycle): {}",
                 db_err,

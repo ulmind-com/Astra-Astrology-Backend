@@ -1,6 +1,7 @@
+import asyncio
 import base64
 import json
-from typing import Annotated
+from typing import Annotated, Any
 
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Query, Request, status
@@ -195,7 +196,7 @@ async def scan(user: CurrentUser, request: Request) -> ApiResponse[FaceScanRespo
         )
 
     try:
-        cv_result = execute_scan_pipeline(raw_bytes)
+        cv_result = await asyncio.to_thread(execute_scan_pipeline, raw_bytes)
     except ValueError as e:
         raise BadRequestError(str(e), error_code="invalid_image")
     except Exception as e:
@@ -388,7 +389,7 @@ async def couple_match(
                 val_a = val_a.split(",", 1)[1]
             raw_a = base64.b64decode(val_a)
             from app.services.face_cv import execute_scan_pipeline
-            res_a = execute_scan_pipeline(raw_a)
+            res_a = await asyncio.to_thread(execute_scan_pipeline, raw_a)
             if res_a.measurements:
                 m_a = res_a.measurements
         except Exception as e:
@@ -401,7 +402,7 @@ async def couple_match(
                 val_b = val_b.split(",", 1)[1]
             raw_b = base64.b64decode(val_b)
             from app.services.face_cv import execute_scan_pipeline
-            res_b = execute_scan_pipeline(raw_b)
+            res_b = await asyncio.to_thread(execute_scan_pipeline, raw_b)
             if res_b.measurements:
                 m_b = res_b.measurements
         except Exception as e:

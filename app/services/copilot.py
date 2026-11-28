@@ -461,15 +461,16 @@ async def summary_for_call(
     if session is None:
         raise NotFoundError("Call not found.", error_code="call_not_found")
 
-    # The client's chart is theirs. Only the astrologer they are speaking to
-    # (or platform admin) sees it, and only for as long as the call is live.
+    # The client's chart is theirs. Either party in the consultation
+    # (astrologer, client) or platform admin sees it, and only for as long as the call is live.
     is_authorized = (
         viewer.id == session.astrologer_user_id
+        or viewer.id == session.user_id
         or viewer.role in (UserRole.ADMIN, UserRole.SUPER_ADMIN)
     )
     if not is_authorized:
         raise ForbiddenError(
-            "Only this call's astrologer can open the Co-Pilot.",
+            "Only participants in this call can open the Co-Pilot.",
             error_code="not_your_call",
         )
     if session.status not in LIVE_STATUSES:
@@ -510,11 +511,12 @@ async def update_client_birth_details(
 
     is_authorized = (
         viewer.id == session.astrologer_user_id
+        or viewer.id == session.user_id
         or viewer.role in (UserRole.ADMIN, UserRole.SUPER_ADMIN)
     )
     if not is_authorized:
         raise ForbiddenError(
-            "Only this call's astrologer can update client birth details.",
+            "Only participants in this call can update client birth details.",
             error_code="not_your_call",
         )
     if session.status not in LIVE_STATUSES:

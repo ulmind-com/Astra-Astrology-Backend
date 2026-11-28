@@ -54,11 +54,54 @@ def _before_send(event: dict[str, Any], hint: dict[str, Any]) -> dict[str, Any] 
         return None
 
     log_entry = event.get("logentry", {})
-    message = log_entry.get("message", "") or log_entry.get("formatted", "") or ""
+    message = (
+        log_entry.get("message", "")
+        or log_entry.get("formatted", "")
+        or str(event.get("message", ""))
+    )
     if "Failed to export metrics batch" in message:
         return None
 
-    # 3. Sanitize sensitive headers
+    # 3. Suppress PyMongo background pool maintenance / cancellation false alerts
+    # (PyMongo background tasks recreate sockets on next tick, these are not fatal crashes)
+    if (
+        "MongoClient background task encountered an error" in message
+        or "_OperationCancelled" in message
+        or "pymongo.network_layer" in message
+    ):
+        return None
+
+    if logger_name.startswith("pymongo"):
+        return None
+
+    if exc_info:
+        exc_type, exc_val, _ = exc_info
+        type_name = getattr(exc_type, "__name__", "")
+        val_str = str(exc_val)
+        if type_name in ("_OperationCancelled", "OperationCancelled"):
+            return None
+        if "operation cancelled" in val_str.lower() and (
+            "pymongo" in str(hint) or "network_layer" in str(hint) or "network" in str(hint)
+        ):
+            return None
+
+    exceptions = event.get("exception", {}).get("values", [])
+    for exc in exceptions:
+        exc_t = exc.get("type", "")
+        exc_v = exc.get("value", "")
+        module_name = exc.get("module", "")
+        if (
+            exc_t in ("_OperationCancelled", "OperationCancelled")
+            or "pymongo.network_layer" in module_name
+            or "pymongo.periodic_executor" in module_name
+        ):
+            return None
+        if "MongoClient background task" in exc_v or (
+            "operation cancelled" in exc_v.lower() and "pymongo" in module_name
+        ):
+            return None
+
+    # 4. Sanitize sensitive headers
     request = event.get("request", {})
     headers = request.get("headers", {})
     if isinstance(headers, dict):

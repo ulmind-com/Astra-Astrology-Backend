@@ -42,3 +42,27 @@ def test_earnings_windows_at_5am_ist():
     # Both must have the identical 'today' start boundary because they are both on Nov 8 IST!
     assert windows_520["today"] == windows_540["today"], "IST day boundary must not jump at 5:30 AM IST"
 
+
+@pytest.mark.asyncio
+async def test_astrologer_payout_request_validation():
+    from beanie import PydanticObjectId
+    from unittest.mock import AsyncMock, patch
+    from app.core.exceptions import BadRequestError, NotFoundError
+    from app.models.payout import PayoutMethod
+    from app.services.payout import request_payout
+
+    dummy_user_id = PydanticObjectId()
+
+    # 1. Less than minimum withdrawal amount (50,000 paise / ₹500)
+    with pytest.raises(BadRequestError) as exc_info:
+        await request_payout(dummy_user_id, amount_paise=10000)
+    assert exc_info.value.error_code == "min_payout_limit"
+
+    # 2. Professional profile not found
+    with patch("app.models.astrologer.Astrologer.find_one", AsyncMock(return_value=None)), \
+         patch("app.models.purohit.Purohit.find_one", AsyncMock(return_value=None)):
+        with pytest.raises(NotFoundError) as exc_info:
+            await request_payout(dummy_user_id, amount_paise=60000)
+        assert exc_info.value.error_code == "professional_profile_not_found"
+
+

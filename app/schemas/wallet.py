@@ -221,6 +221,9 @@ class PlatformSettingsOut(BaseModel):
     kundli_coins: int = 20
     kundli_enabled: bool = True
 
+    kundli_pdf_coins: int = 50
+    kundli_pdf_enabled: bool = True
+
     kundli_matching_coins: int = 20
     kundli_matching_enabled: bool = True
 
@@ -269,6 +272,9 @@ class FeaturePricingUpdate(BaseModel):
 
     kundli_coins: int | None = Field(default=None, ge=0, le=1_000_000)
     kundli_enabled: bool | None = None
+
+    kundli_pdf_coins: int | None = Field(default=None, ge=0, le=1_000_000)
+    kundli_pdf_enabled: bool | None = None
 
     kundli_matching_coins: int | None = Field(default=None, ge=0, le=1_000_000)
     kundli_matching_enabled: bool | None = None
@@ -427,8 +433,12 @@ class AstrologerEarningsBalanceOut(BaseModel):
     account_number_last4: str | None = None
     ifsc: str | None = None
     upi_id: str | None = None
+    upi_qr_url: str | None = None
+    upi_qr_public_id: str | None = None
     pan_card: str | None = None
     has_bank_details: bool = False
+    beneficiary_type: str = "astrologer"
+    beneficiary_name: str | None = None
 
 
 class PayoutRequestIn(BaseModel):
@@ -443,7 +453,10 @@ class PayoutRequestIn(BaseModel):
 
 class PayoutOut(BaseModel):
     id: str
-    astrologer_id: str
+    astrologer_id: str | None = None
+    purohit_id: str | None = None
+    beneficiary_type: str = "astrologer"
+    beneficiary_name: str | None = None
     astrologer_name: str | None = None
     amount_paise: int
     tds_percent: float = 0.0
@@ -456,6 +469,7 @@ class PayoutOut(BaseModel):
     account_number_masked: str | None = None
     ifsc: str | None = None
     upi_id: str | None = None
+    upi_qr_url: str | None = None
     status: str
     utr_number: str | None = None
     admin_notes: str | None = None
@@ -481,5 +495,39 @@ class BankDetailsUpdateIn(BaseModel):
     ifsc: str | None = None
     bank_name: str | None = None
     upi_id: str | None = None
+    upi_qr_url: str | None = None
     pan_card: str | None = None
+
+
+class PayoutAnalyticsOut(BaseModel):
+    total_payouts_volume_paise: int = 0
+    total_settled_volume_paise: int = 0
+    total_pending_volume_paise: int = 0
+    astrologer_settled_volume_paise: int = 0
+    purohit_settled_volume_paise: int = 0
+    pending_count: int = 0
+    settled_count: int = 0
+    rejected_count: int = 0
+
+
+class BeneficiaryBreakdownItem(BaseModel):
+    id: str
+    title: str
+    service_type: str  # "consultation" | "puja"
+    user_name: str | None = None
+    duration_label: str | None = None
+    gross_paise: int
+    earning_paise: int
+    created_at: datetime
+    status: str
+
+
+class BeneficiaryBreakdownResponse(BaseModel):
+    user_id: str
+    beneficiary_name: str
+    beneficiary_type: str
+    total_earnings_paise: int
+    pending_payout_paise: int
+    settled_payout_paise: int
+    items: list[BeneficiaryBreakdownItem] = Field(default_factory=list)
 

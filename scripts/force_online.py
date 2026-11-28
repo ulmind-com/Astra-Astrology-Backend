@@ -25,7 +25,12 @@ async def main(db_name: str, offline: bool) -> int:
     db = client[db_name]
 
     if offline:
-        update = {"$set": {"availability.is_online": False}}
+        update = {
+            "$set": {
+                "availability.is_online": False,
+                "availability.last_seen_at": None,
+            }
+        }
     else:
         future = datetime.now(timezone.utc) + timedelta(days=3650)
         update = {

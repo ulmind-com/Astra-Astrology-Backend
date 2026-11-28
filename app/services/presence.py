@@ -24,7 +24,7 @@ flag so that anything reading MongoDB directly agrees with what the site shows
 
 from datetime import timedelta
 
-from beanie.operators import LT, And
+from beanie.operators import GT, LT, And, Or
 from loguru import logger
 
 from app.models.astrologer import Astrologer, Availability
@@ -43,7 +43,9 @@ def is_fresh(availability: Availability) -> bool:
     seen = availability.last_seen_at
     if seen is None:
         return False
-    return (utcnow() - seen).total_seconds() <= TTL_SECONDS
+    diff = (utcnow() - seen).total_seconds()
+    # Must have reported in within TTL_SECONDS and never in the future (allowing max 5s clock skew)
+    return -5 <= diff <= TTL_SECONDS
 
 
 def is_effectively_online(availability: Availability) -> bool:
@@ -143,14 +145,17 @@ async def sweep() -> dict[str, int]:
     but it keeps MongoDB agreeing with the site, and it pushes one last update
     to anyone subscribed to the live mirror.
     """
+    now = utcnow()
     cutoff = stale_before()
+    future_cutoff = now + timedelta(seconds=5)
+
     stale = await Astrologer.find(
         And(
             Astrologer.availability.is_online == True,  # noqa: E712
-            # `$lt` against a date never matches null, so this finds only those
-            # who heartbeated at some point and then stopped. The ones who
-            # never heartbeated at all are collected separately below.
-            LT(Astrologer.availability.last_seen_at, cutoff),
+            Or(
+                LT(Astrologer.availability.last_seen_at, cutoff),
+                GT(Astrologer.availability.last_seen_at, future_cutoff),
+            ),
         )
     ).to_list()
 
@@ -169,8 +174,10 @@ async def sweep() -> dict[str, int]:
 
 async def _publish(profile: Astrologer) -> None:
     """Push the change to anyone watching, without ever failing the request."""
+    from app.services import astrologer as astrologer_service
     from app.services import realtime
 
+    astrologer_service.invalidate_directory_cache()
     await realtime.publish_astrologer(profile)
 
 

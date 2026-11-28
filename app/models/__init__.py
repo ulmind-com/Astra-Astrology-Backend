@@ -56,6 +56,7 @@ from app.models.course import (
 from app.models.purohit import Purohit, PujaBooking
 from app.models.purohit_application import PurohitApplication
 from app.models.astrologer_application import AstrologerApplication
+from app.models.annual_report import AnnualReportRecord
 
 DOCUMENT_MODELS: list[type[Document]] = [
     User,
@@ -116,10 +117,12 @@ DOCUMENT_MODELS: list[type[Document]] = [
     PujaBooking,
     PurohitApplication,
     AstrologerApplication,
+    AnnualReportRecord,
 ]
 
 __all__ = [
     "DOCUMENT_MODELS",
+    "AnnualReportRecord",
     "AbuseReport",
     "SupportTicket",
     "AIKnowledgeDoc",

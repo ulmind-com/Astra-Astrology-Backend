@@ -1,11 +1,14 @@
 """Request-id tagging, access logging and CORS."""
 
+import asyncio
 import time
 import uuid
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from loguru import logger
+from pymongo.errors import PyMongoError
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
 from app.core.config import settings
@@ -44,9 +47,48 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         except Exception:
             pass
 
-        started = time.perf_counter()
-        response = await call_next(request)
-        duration_ms = (time.perf_counter() - started) * 1000
+        try:
+            started = time.perf_counter()
+            response = await call_next(request)
+            duration_ms = (time.perf_counter() - started) * 1000
+        except asyncio.CancelledError:
+            # Client disconnected before response was completed
+            logger.debug("Client disconnected early on {} {}", request.method, request.url.path)
+            return Response(status_code=499)
+        except Exception as exc:
+            is_db_err = isinstance(exc, (PyMongoError, TimeoutError, OSError))
+            if is_db_err:
+                try:
+                    from app.db.mongodb import heal_connection
+                    heal_connection()
+                except Exception:
+                    pass
+                logger.warning(
+                    "Database network issue intercepted in middleware on {} {}: {}",
+                    request.method,
+                    request.url.path,
+                    exc,
+                )
+                headers = {
+                    "X-Request-ID": request_id,
+                    "Retry-After": "2",
+                }
+                origin = request.headers.get("origin")
+                if origin and (origin in settings.ALLOWED_ORIGINS or "*" in settings.ALLOWED_ORIGINS):
+                    headers["Access-Control-Allow-Origin"] = origin
+                    headers["Access-Control-Allow-Credentials"] = "true"
+                    headers["Access-Control-Allow-Methods"] = "*"
+                    headers["Access-Control-Allow-Headers"] = "*"
+                return JSONResponse(
+                    status_code=503,
+                    content={
+                        "success": False,
+                        "error_code": "database_unavailable",
+                        "message": "Database temporarily unavailable. Please retry in a few seconds.",
+                    },
+                    headers=headers,
+                )
+            raise
 
         response.headers["X-Request-ID"] = request_id
         response.headers["X-Response-Time-ms"] = f"{duration_ms:.1f}"
@@ -54,7 +96,11 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         log = logger.bind(request_id=request_id, client_ip=client_ip)
         message = "{} {} from {} -> {} in {:.1f}ms"
         args = (request.method, request.url.path, client_ip, response.status_code, duration_ms)
-        if response.status_code >= 500:
+        if response.status_code == 503:
+            # 503 Service Unavailable (handled DB/timeout backoff) logs at WARNING so Sentry
+            # doesn't flood with duplicate crash alerts per route during transient Atlas elections.
+            log.warning(message, *args)
+        elif response.status_code >= 500:
             log.error(message, *args)
         elif response.status_code >= 400:
             log.warning(message, *args)
@@ -65,13 +111,18 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 
 
 def register_middleware(app: FastAPI) -> None:
-    # Added last = outermost, so CORS headers apply to every response.
+    from app.core.rate_limit import RateLimitingMiddleware
+
+    # Innermost: Rate limiting
+    app.add_middleware(RateLimitingMiddleware)
+    # Middle: Request context & IP extraction
     app.add_middleware(RequestContextMiddleware)
+    # Outermost: CORS headers apply to every response (including 429 and errors)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.ALLOWED_ORIGINS,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=["X-Request-ID", "X-Response-Time-ms"],
+        expose_headers=["X-Request-ID", "X-Response-Time-ms", "X-RateLimit-Remaining"],
     )

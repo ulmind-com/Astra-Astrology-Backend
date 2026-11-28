@@ -84,6 +84,9 @@ class PlatformSettings(TimestampedDocument):
     kundli_coins: int = Field(default=20, ge=0, le=1_000_000)
     kundli_enabled: bool = True
 
+    kundli_pdf_coins: int = Field(default=50, ge=0, le=1_000_000)
+    kundli_pdf_enabled: bool = True
+
     kundli_matching_coins: int = Field(default=20, ge=0, le=1_000_000)
     kundli_matching_enabled: bool = True
 

@@ -312,10 +312,12 @@ class ShopBannerSettingsUpdate(BaseModel):
     cancellation_grace_hours: int = Field(default=24, ge=1, le=168)
     refund_sla_days: int = Field(default=3, ge=1, le=14)
 
-    # Free Gift Defaults
-    free_gift_default_title: str = "Raw Selenite Charging Plate"
-    free_gift_default_value: float = 729.0
-    free_gift_default_badge: str = "FREE Raw Selenite Plate worth ₹729"
+    # Free Gift (threshold-based, admin configurable)
+    free_gift_enabled: bool = False
+    free_gift_min_cart_value: float = 0.0
+    free_gift_default_title: str | None = None
+    free_gift_default_value: float = 0.0
+    free_gift_default_badge: str | None = None
     free_gift_default_image_url: str | None = None
 
     # Logistics
@@ -361,10 +363,12 @@ class ShopBannerSettingsOut(BaseModel):
     cancellation_grace_hours: int = 24
     refund_sla_days: int = 3
 
-    # Free Gift Defaults
-    free_gift_default_title: str = "Raw Selenite Charging Plate"
-    free_gift_default_value: float = 729.0
-    free_gift_default_badge: str = "FREE Raw Selenite Plate worth ₹729"
+    # Free Gift (threshold-based, admin configurable)
+    free_gift_enabled: bool = False
+    free_gift_min_cart_value: float = 0.0
+    free_gift_default_title: str | None = None
+    free_gift_default_value: float = 0.0
+    free_gift_default_badge: str | None = None
     free_gift_default_image_url: str | None = None
 
     # Logistics & Anti-Abuse
@@ -451,37 +455,6 @@ class StockReservationResponse(BaseModel):
 class CartItemInput(BaseModel):
     product_id: str
     quantity: int = Field(default=1, ge=1, le=50)
-
-
-class CartItemOut(BaseModel):
-    product_id: str
-    title: str
-    slug: str
-    sku: str
-    featured_image: str
-    unit_mrp: float
-    unit_sale_price: float
-    quantity: int
-    line_total: float
-    in_stock: bool
-    stock_quantity: int
-    free_gift_title: str | None = None
-    free_gift_value: float | None = None
-    free_gift_badge: str | None = None
-    cashback_percent: int = 100
-
-
-class CartOut(BaseModel):
-    items: list[CartItemOut] = Field(default_factory=list)
-    subtotal: float = 0.0
-    discount_amount: float = 0.0
-    coupon_code: str | None = None
-    shipping_fee: float = 0.0
-    free_shipping_threshold: float = 499.0
-    free_shipping_remaining: float = 0.0
-    grand_total: float = 0.0
-    total_cashback_coins: int = 0
-    bundled_free_gifts: list[dict] = Field(default_factory=list)
 
 
 class CheckoutAddressInput(BaseModel):
@@ -592,6 +565,9 @@ class ShopOrderOut(BaseModel):
     estimated_delivery_date: datetime | None = None
     delivered_at: datetime | None = None
     consecration_certificate_url: str | None = None
+    invoice_number: str | None = None
+    invoice_sent_at: datetime | None = None
+    invoice_email_sent: bool = False
     stock_reserved_until: datetime | None = None
     is_stock_restored: bool = False
     rto_at: datetime | None = None
@@ -607,6 +583,24 @@ class ShopOrderOut(BaseModel):
     refund_transaction_id: str | None = None
     refund_notes: str | None = None
     status_history: list[ShopOrderStatusLogOut] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class ShopOrderTrackingOut(BaseModel):
+    order_id: str
+    order_number: str
+    order_status: ShopOrderStatus
+    courier_partner: str | None = None
+    tracking_id: str | None = None
+    tracking_url: str | None = None
+    estimated_delivery_date: datetime | None = None
+    delivered_at: datetime | None = None
+    shipping_address: dict
+    items_count: int
+    items_summary: list[dict]
+    status_history: list[ShopOrderStatusLogOut] = Field(default_factory=list)
+    consecration_certificate_url: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -770,14 +764,14 @@ class ShopCouponRecommendationsResponse(BaseModel):
 class ProductReviewCreate(BaseModel):
     rating: int = Field(ge=1, le=5, description="Devotee rating from 1 to 5 stars")
     title: str | None = Field(default=None, max_length=150, description="Short headline")
-    comment: str = Field(min_length=5, max_length=3000, description="Detailed review text")
+    comment: str = Field(default="", max_length=3000, description="Optional detailed review text")
     images: list[str] = Field(default_factory=list, max_length=5, description="Image URLs of delivered remedy/prasadi")
 
 
 class ProductReviewUpdate(BaseModel):
     rating: int | None = Field(default=None, ge=1, le=5)
     title: str | None = Field(default=None, max_length=150)
-    comment: str | None = Field(default=None, min_length=5, max_length=3000)
+    comment: str | None = Field(default=None, max_length=3000)
     images: list[str] | None = Field(default=None, max_length=5)
 
 

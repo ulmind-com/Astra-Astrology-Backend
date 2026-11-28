@@ -80,6 +80,19 @@ class Course(Document):
             [("is_featured", pymongo.ASCENDING)],
             [("is_deleted", pymongo.ASCENDING)],
             [("created_at", pymongo.DESCENDING)],
+            [
+                ("is_published", pymongo.ASCENDING),
+                ("is_deleted", pymongo.ASCENDING),
+                ("is_featured", pymongo.DESCENDING),
+                ("created_at", pymongo.DESCENDING),
+            ],
+            [
+                ("category", pymongo.ASCENDING),
+                ("is_published", pymongo.ASCENDING),
+                ("is_deleted", pymongo.ASCENDING),
+                ("is_featured", pymongo.DESCENDING),
+                ("created_at", pymongo.DESCENDING),
+            ],
         ]
 
 
@@ -166,6 +179,9 @@ class CourseEnrollment(Document):
     certificate_signature: str | None = None
     certificate_canonical_hash: str | None = None
 
+    # Official Billing & Invoicing
+    invoice_number: str | None = None
+
     class Settings:
         name = "course_enrollments"
         indexes = [
@@ -224,6 +240,13 @@ class CourseOrder(Document):
     # Which path confirmed it: the browser callback, or the webhook.
     verified_via: str | None = None
     paid_at: datetime | None = None
+
+    # Official Billing & Invoicing
+    invoice_number: str | None = None
+    invoice_sent_at: datetime | None = None
+    invoice_email_sent: bool = Field(default=False)
+    student_name: str | None = None
+    student_email: str | None = None
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

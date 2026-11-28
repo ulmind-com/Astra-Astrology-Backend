@@ -168,6 +168,59 @@ async def test_brahma_pause_rescue_action_refund():
 
 
 @pytest.mark.asyncio
+async def test_brahma_pause_rescue_action_reschedule():
+    """Verify seeker can choose 1-click free reschedule during Brahma Pause."""
+    from datetime import datetime, timezone, timedelta
+    from app.models.astrologer import Astrologer
+
+    user_id = PydanticObjectId()
+    astro_id = PydanticObjectId()
+    user = SimpleNamespace(id=user_id, role="user")
+    now = datetime.now(timezone.utc)
+    new_starts_at = (now + timedelta(days=1)).replace(hour=14, minute=0, second=0, microsecond=0)
+
+    appointment = SimpleNamespace(
+        id=PydanticObjectId(),
+        user_id=user_id,
+        astrologer_id=astro_id,
+        astrologer_user_id=PydanticObjectId(),
+        status=AppointmentStatus.BOOKED,
+        brahma_pause_affected=True,
+        starts_at=now + timedelta(hours=2),
+        ends_at=now + timedelta(hours=2, minutes=30),
+        minutes=30,
+        rescheduled_count=0,
+        save=AsyncMock(),
+    )
+
+    mock_astro = SimpleNamespace(
+        id=astro_id,
+        brahma_pause_until=None,
+        appointment=SimpleNamespace(buffer_minutes=0),
+    )
+
+    mock_slot_query = MagicMock()
+    mock_slot_query.to_list = AsyncMock(return_value=[])
+    mock_slot_query.delete = AsyncMock(return_value=None)
+
+    with patch.object(Astrologer, "get", AsyncMock(return_value=mock_astro)):
+        with patch("app.services.appointments._windows_for", AsyncMock(return_value=[SimpleNamespace(starts_at=new_starts_at - timedelta(hours=1), ends_at=new_starts_at + timedelta(hours=2))])):
+            with patch.object(AppointmentSlot, "find", return_value=mock_slot_query):
+                with patch.object(AppointmentSlot, "__init__", return_value=None):
+                    with patch.object(AppointmentSlot, "insert", AsyncMock(return_value=None)):
+                        updated = await service.handle_brahma_pause_rescue_action(
+                            appointment=appointment,
+                            user=user,
+                            action="reschedule",
+                            new_starts_at=new_starts_at,
+                            reason="Seeker complimentary reschedule during Brahma Pause",
+                        )
+                        assert updated.brahma_pause_affected is False
+                        assert updated.starts_at == new_starts_at
+                        assert updated.rescheduled_count == 1
+
+
+@pytest.mark.asyncio
 async def test_red_flag_appointment_and_blacklist():
     """Astrologer can red-flag an abusive client, capture escrow fee, and blacklist client."""
     from app.models.abuse_report import AbuseReport
@@ -663,6 +716,111 @@ async def test_vip_tatkal_and_private_invite_links():
         assert window.tatkal_multiplier == 2.0
         assert window.custom_title == "Instant VIP Emergency"
         mock_win_insert.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_birth_time_rectification_request_and_update_flow():
+    """Birth Time Rectification (BTR): Astrologer requests BTR, and Seeker submits rectified birth parameters."""
+    now = datetime.now(UTC)
+    starts = now + timedelta(days=2)
+    ends = starts + timedelta(minutes=30)
+    appt_id = PydanticObjectId()
+    astro_id = PydanticObjectId()
+    astro_user_id = PydanticObjectId()
+    client_id = PydanticObjectId()
+
+    appointment = SimpleNamespace(
+        id=appt_id,
+        astrologer_id=astro_id,
+        astrologer_user_id=astro_user_id,
+        user_id=client_id,
+        starts_at=starts,
+        ends_at=ends,
+        minutes=30,
+        status=AppointmentStatus.BOOKED,
+        btr_requested=False,
+        btr_request_note=None,
+        btr_requested_at=None,
+        btr_fulfilled=False,
+        btr_updated_at=None,
+        birth_details={"date_of_birth": "1995-10-24", "time_of_birth": "12:00", "place_of_birth": "Kolkata"},
+        save=AsyncMock(),
+    )
+
+    astrologer_user = SimpleNamespace(id=astro_user_id, role="astrologer")
+    client_user = SimpleNamespace(id=client_id, role="user", full_name="Seeker Deb", email="seeker@example.com")
+    stranger_user = SimpleNamespace(id=PydanticObjectId(), role="user")
+
+    astrologer_profile = SimpleNamespace(
+        id=astro_id,
+        user_id=astro_user_id,
+        display_name="Acharya Vashishtha",
+    )
+
+    # 1. Unauthorized user cannot request BTR
+    with patch("app.models.appointment.Appointment.get", AsyncMock(return_value=appointment)):
+        with pytest.raises(ForbiddenError):
+            await service.request_birth_time_rectification(
+                appointment_id=appt_id,
+                by=stranger_user,
+                note="Please verify birth minute",
+            )
+
+    # 2. Astrologer requests BTR successfully
+    with patch("app.models.appointment.Appointment.get", AsyncMock(return_value=appointment)), \
+         patch("app.models.user.User.get", AsyncMock(return_value=client_user)), \
+         patch("app.models.astrologer.Astrologer.get", AsyncMock(return_value=astrologer_profile)), \
+         patch("app.services.email.send_email", AsyncMock()) as mock_mail, \
+         patch("app.services.realtime.publish_appointment_event", AsyncMock()) as mock_rt:
+
+        updated_appt = await service.request_birth_time_rectification(
+            appointment_id=appt_id,
+            by=astrologer_user,
+            note="Lagna cusp check: Please submit verified hospital slip time and key historical life events.",
+        )
+
+        assert updated_appt.btr_requested is True
+        assert "Lagna cusp check" in (updated_appt.btr_request_note or "")
+        assert updated_appt.btr_fulfilled is False
+        assert updated_appt.btr_requested_at is not None
+        mock_mail.assert_awaited_once()
+        mock_rt.assert_awaited_once()
+
+    # 3. Unauthorized user cannot submit rectified BTR
+    with patch("app.models.appointment.Appointment.get", AsyncMock(return_value=appointment)):
+        with pytest.raises(ForbiddenError):
+            await service.update_birth_time_rectification(
+                appointment_id=appt_id,
+                by=stranger_user,
+                birth_date="1995-10-24",
+                birth_time="12:14 PM",
+                birth_place="Kolkata, WB, India",
+            )
+
+    # 4. Seeker submits rectified birth parameters and historical life events
+    with patch("app.models.appointment.Appointment.get", AsyncMock(return_value=appointment)), \
+         patch("app.models.user.User.get", AsyncMock(return_value=client_user)), \
+         patch("app.models.astrologer.Astrologer.get", AsyncMock(return_value=astrologer_profile)), \
+         patch("app.services.email.send_email", AsyncMock()) as mock_mail_updated, \
+         patch("app.services.realtime.publish_appointment_event", AsyncMock()) as mock_rt_updated, \
+         patch("app.services.astrology.geocoder.geocode_place", AsyncMock(return_value=[{"latitude": 22.5726, "longitude": 88.3639, "timezone": 5.5}])):
+
+        btr_notes = "[BTR Life Events]\n• বিবাহ/সম্পর্ক: 2021\n• প্রথম চাকরি/ক্যারিয়ার: 2019"
+        fulfilled_appt = await service.update_birth_time_rectification(
+            appointment_id=appt_id,
+            by=client_user,
+            birth_date="1995-10-24",
+            birth_time="12:14 PM",
+            birth_place="Kolkata, WB, India",
+            notes=btr_notes,
+        )
+
+        assert fulfilled_appt.btr_fulfilled is True
+        assert fulfilled_appt.btr_updated_at is not None
+        assert fulfilled_appt.birth_details["time_of_birth"] == "12:14 PM"
+        assert fulfilled_appt.birth_details["rectified_by_client"] is True
+        assert fulfilled_appt.birth_details["client_btr_notes"] == btr_notes
+
 
 
 

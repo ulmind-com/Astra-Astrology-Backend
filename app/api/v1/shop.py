@@ -7,10 +7,11 @@ Endpoints:
 - GET /api/v1/shop/banners: Fetch promotional hero carousel banners and announcement bar.
 """
 
-from fastapi import APIRouter, Body, File, Query, UploadFile
+from fastapi import APIRouter, Body, File, Query, Response, UploadFile
 from fastapi.responses import HTMLResponse
+from loguru import logger
 
-from app.api.dependencies import CurrentUser, OptionalUser
+from app.api.dependencies import AdminUser, CurrentUser, OptionalUser
 from app.core.exceptions import BadRequestError
 from app.schemas.common import ApiResponse
 from app.schemas.shop import (
@@ -38,6 +39,7 @@ from app.schemas.shop import (
     ShopCouponValidateResponse,
     ShopOrderListResponse,
     ShopOrderOut,
+    ShopOrderTrackingOut,
     ShopPaymentVerifyRequest,
     ShopProductRecommendationOut,
     StockReservationRequest,
@@ -54,8 +56,9 @@ router = APIRouter(prefix="/shop", tags=["shop"])
     response_model=ApiResponse[list[ProductCategoryOut]],
     summary="List active store categories",
 )
-async def get_public_categories() -> ApiResponse[list[ProductCategoryOut]]:
+async def get_public_categories(response: Response) -> ApiResponse[list[ProductCategoryOut]]:
     cats = await shop_admin.list_categories(include_inactive=False)
+    response.headers["Cache-Control"] = "public, max-age=60, s-maxage=300, stale-while-revalidate=600"
     return ApiResponse.ok(data=cats)
 
 
@@ -65,6 +68,7 @@ async def get_public_categories() -> ApiResponse[list[ProductCategoryOut]]:
     summary="Browse active remedy products",
 )
 async def get_public_products(
+    response: Response,
     search: str | None = Query(default=None),
     category_id: str | None = Query(default=None),
     ruling_planet: str | None = Query(default=None),
@@ -86,6 +90,7 @@ async def get_public_products(
         limit=limit,
         sort_by=sort_by,
     )
+    response.headers["Cache-Control"] = "public, max-age=20, s-maxage=60, stale-while-revalidate=180"
     return ApiResponse.ok(data=result)
 
 
@@ -94,8 +99,9 @@ async def get_public_products(
     response_model=ApiResponse[ProductOut],
     summary="Get remedy product by ID or slug",
 )
-async def get_public_product_detail(id_or_slug: str) -> ApiResponse[ProductOut]:
+async def get_public_product_detail(id_or_slug: str, response: Response) -> ApiResponse[ProductOut]:
     product = await shop_admin.get_product_by_id_or_slug(id_or_slug)
+    response.headers["Cache-Control"] = "public, max-age=30, s-maxage=120, stale-while-revalidate=300"
     return ApiResponse.ok(data=product)
 
 
@@ -104,27 +110,60 @@ async def get_public_product_detail(id_or_slug: str) -> ApiResponse[ProductOut]:
     response_model=ApiResponse[ShopBannerSettingsOut],
     summary="Get active store hero banners, announcements and reels",
 )
-async def get_public_banners() -> ApiResponse[ShopBannerSettingsOut]:
-    settings = await shop_admin.get_shop_banner_settings()
-    active_banners = [b for b in settings.hero_banners if b.is_active]
-    active_reels = [r for r in settings.reels if r.is_active]
-    return ApiResponse.ok(
-        data=ShopBannerSettingsOut(
-            announcement_bar_text=settings.announcement_bar_text if settings.announcement_bar_active else None,
-            announcement_bar_link=settings.announcement_bar_link if settings.announcement_bar_active else None,
-            announcement_bar_active=settings.announcement_bar_active,
-            hero_banners=active_banners,
-            reels=active_reels,
-            cashback_enabled=settings.cashback_enabled,
-            cashback_percent=settings.cashback_percent,
-            cashback_credit_timing=settings.cashback_credit_timing,
-            allow_user_cancellation=settings.allow_user_cancellation,
-            cancellation_grace_hours=settings.cancellation_grace_hours,
-            cod_enabled=settings.cod_enabled,
-            free_shipping_threshold=settings.free_shipping_threshold,
-            standard_shipping_fee=settings.standard_shipping_fee,
+async def get_public_banners(response: Response) -> ApiResponse[ShopBannerSettingsOut]:
+    response.headers["Cache-Control"] = "public, max-age=60, s-maxage=300, stale-while-revalidate=600"
+    try:
+        settings = await shop_admin.get_shop_banner_settings()
+        active_banners = [b for b in settings.hero_banners if b.is_active]
+        active_reels = [r for r in settings.reels if r.is_active]
+        return ApiResponse.ok(
+            data=ShopBannerSettingsOut(
+                announcement_bar_text=settings.announcement_bar_text if settings.announcement_bar_active else None,
+                announcement_bar_link=settings.announcement_bar_link if settings.announcement_bar_active else None,
+                announcement_bar_active=settings.announcement_bar_active,
+                hero_banners=active_banners,
+                reels=active_reels,
+                cashback_enabled=settings.cashback_enabled,
+                cashback_percent=settings.cashback_percent,
+                cashback_credit_timing=settings.cashback_credit_timing,
+                allow_user_cancellation=settings.allow_user_cancellation,
+                cancellation_grace_hours=settings.cancellation_grace_hours,
+                cod_enabled=settings.cod_enabled,
+                free_shipping_threshold=settings.free_shipping_threshold,
+                standard_shipping_fee=settings.standard_shipping_fee,
+                free_gift_enabled=getattr(settings, "free_gift_enabled", False),
+                free_gift_min_cart_value=getattr(settings, "free_gift_min_cart_value", 0.0),
+                free_gift_default_title=getattr(settings, "free_gift_default_title", None),
+                free_gift_default_value=getattr(settings, "free_gift_default_value", 0.0),
+                free_gift_default_badge=getattr(settings, "free_gift_default_badge", None),
+                free_gift_default_image_url=getattr(settings, "free_gift_default_image_url", None),
+            )
         )
-    )
+    except Exception as exc:
+        logger.warning("MongoDB read failed for banners ({}); serving default fallback banners.", exc)
+        return ApiResponse.ok(
+            data=ShopBannerSettingsOut(
+                announcement_bar_text=None,
+                announcement_bar_link=None,
+                announcement_bar_active=False,
+                hero_banners=shop_admin.default_shop_hero_banners(),
+                reels=shop_admin.default_shop_reels(),
+                cashback_enabled=True,
+                cashback_percent=100,
+                cashback_credit_timing="on_delivery",
+                allow_user_cancellation=True,
+                cancellation_grace_hours=24,
+                cod_enabled=True,
+                free_shipping_threshold=499.0,
+                standard_shipping_fee=70.0,
+                free_gift_enabled=False,
+                free_gift_min_cart_value=0.0,
+                free_gift_default_title=None,
+                free_gift_default_value=0.0,
+                free_gift_default_badge=None,
+                free_gift_default_image_url=None,
+            )
+        )
 
 
 @router.get(
@@ -158,6 +197,7 @@ async def get_astrological_remedy_recommendations(
 )
 async def reserve_stock(
     payload: StockReservationRequest,
+    _admin: AdminUser,
 ) -> ApiResponse[StockReservationResponse]:
     success = await shop_admin.atomic_reserve_stock(payload.product_id, payload.quantity)
     message = (
@@ -183,6 +223,7 @@ async def reserve_stock(
 )
 async def release_stock(
     payload: StockReservationRequest,
+    _admin: AdminUser,
 ) -> ApiResponse[StockReservationResponse]:
     success = await shop_admin.atomic_release_stock(payload.product_id, payload.quantity)
     return ApiResponse.ok(
@@ -308,6 +349,50 @@ async def get_shop_order_detail(
     return ApiResponse.ok(data=order)
 
 
+@router.get(
+    "/orders/{order_key}/track",
+    response_model=ApiResponse[ShopOrderTrackingOut],
+    summary="Track delivery status, carrier timeline and consecration status for a remedy order",
+)
+async def track_shop_order(
+    order_key: str,
+    user: OptionalUser = None,
+) -> ApiResponse[ShopOrderTrackingOut]:
+    """Retrieves dedicated tracking events, courier AWB and status history for the order."""
+    order = await ShopOrderService.get_order_by_number_or_id(
+        order_key=order_key,
+        user_id=user.id if user else None,
+    )
+    items_summary = [
+        {
+            "product_name": it.title,
+            "quantity": it.quantity,
+            "image_url": it.featured_image,
+            "unit_price": it.unit_sale_price,
+            "selected_option": None,
+        }
+        for it in order.items
+    ]
+    data = ShopOrderTrackingOut(
+        order_id=order.id,
+        order_number=order.order_number,
+        order_status=order.order_status,
+        courier_partner=order.courier_partner,
+        tracking_id=order.tracking_id,
+        tracking_url=order.tracking_url,
+        estimated_delivery_date=order.estimated_delivery_date,
+        delivered_at=order.delivered_at,
+        shipping_address=order.shipping_address,
+        items_count=len(order.items),
+        items_summary=items_summary,
+        status_history=order.status_history,
+        consecration_certificate_url=order.consecration_certificate_url,
+        created_at=order.created_at,
+        updated_at=order.updated_at,
+    )
+    return ApiResponse.ok(data=data, message="Order tracking status retrieved successfully.")
+
+
 @router.post(
     "/upload-refund-qr",
     response_model=ApiResponse[dict[str, str]],
@@ -323,15 +408,16 @@ async def upload_refund_qr_code(
     if file.content_type not in ALLOWED_IMAGE_TYPES:
         raise BadRequestError("Only JPEG, PNG, or WebP images are allowed.")
 
-    # Read and check size (max 5 MB)
+    # Check size (max 5 MB)
     contents = await file.read()
     if len(contents) > 5 * 1024 * 1024:
         raise BadRequestError("QR code image size must not exceed 5MB.")
+    await file.seek(0)
 
     result = await upload_file(
-        contents=contents,
-        filename=file.filename or "refund_qr.png",
+        file=file,
         folder="divinlink/shop/refund_qrs",
+        allowed_types=ALLOWED_IMAGE_TYPES,
     )
     return ApiResponse.ok(
         data={"url": result.secure_url, "public_id": result.public_id},
@@ -517,11 +603,12 @@ async def upload_review_photo(
     contents = await file.read()
     if len(contents) > 8 * 1024 * 1024:
         raise BadRequestError("Review image size must not exceed 8MB.")
+    await file.seek(0)
 
     result = await upload_file(
-        contents=contents,
-        filename=file.filename or "devotee_review.jpg",
+        file=file,
         folder="divinlink/shop/reviews",
+        allowed_types=ALLOWED_IMAGE_TYPES,
     )
     return ApiResponse.ok(
         data={"url": result.secure_url, "public_id": result.public_id},
@@ -559,12 +646,14 @@ async def get_order_invoice(
 async def get_order_invoice_html(
     order_key: str,
     auto_print: bool = Query(default=False, alias="print"),
+    token: str | None = Query(default=None),
     user: OptionalUser = None,
 ) -> HTMLResponse:
     data = await shop_invoice_service.get_or_create_invoice_data(
         order_key=order_key,
         user_id=user.id if user else None,
         is_admin=bool(user and getattr(user, "role", None) in ("admin", "super_admin")),
+        access_token=token,
     )
     html_content = shop_invoice_service.generate_invoice_html(data, auto_print=auto_print)
     return HTMLResponse(content=html_content)

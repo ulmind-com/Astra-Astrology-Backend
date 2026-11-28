@@ -22,7 +22,11 @@ from app.core.exceptions import (
     ServiceUnavailableError,
     UnauthorizedError,
 )
+from app.core.security import safe_regex_pattern
 from pymongo.errors import DuplicateKeyError
+
+from app.assets.certificate_template_b64 import CERTIFICATE_TEMPLATE_B64
+from app.assets.signature_b64 import SIGNATURE_B64
 
 from app.models.course import (
     Course,
@@ -93,18 +97,12 @@ class CourseService:
 
     @staticmethod
     def mint_certificate_id() -> str:
-        """A fresh, unguessable credential number.
+        """A fresh, unguessable credential number for DivinLink Gurukul.
 
-        These used to be built from the ids they belonged to —
-        `ASTRA-CERT-{user_id[-6:]}-{course_id[-4:]}` — which made them both
-        guessable from a student's id and able to collide: two students whose
-        ObjectIds happen to end the same way, on the same course, were issued
-        the same certificate number.
-
-        Existing numbers are left alone, so every certificate already in
-        circulation keeps verifying.
+        Existing numbers (including legacy ASTRA-CERT-*) are left alone, so every
+        certificate already in circulation keeps verifying seamlessly.
         """
-        return f"ASTRA-CERT-{secrets.token_hex(8).upper()}"
+        return f"DIVINLINK-CERT-{secrets.token_hex(8).upper()}"
 
     @staticmethod
     def format_certificate_issued_iso(dt: datetime | None) -> str:
@@ -145,6 +143,13 @@ class CourseService:
         return credited >= required
 
 
+    _courses_cache: dict[tuple[Any, ...], tuple[float, list[Course]]] = {}
+    _COURSES_CACHE_TTL_SECONDS: float = 30.0
+
+    @classmethod
+    def invalidate_courses_cache(cls) -> None:
+        cls._courses_cache.clear()
+
     @staticmethod
     async def list_courses(
         category: str | None = None,
@@ -153,26 +158,37 @@ class CourseService:
         limit: int = 20,
         skip: int = 0,
     ) -> list[Course]:
-        """Returns active, published courses with optional filtering."""
+        """Returns active, published courses with optional filtering and high-speed in-memory caching."""
+        now = time.monotonic()
+        cache_key = (category or "", level or "", (search or "").strip().lower(), limit, skip)
+        cached = CourseService._courses_cache.get(cache_key)
+        if cached is not None and (now - cached[0]) < CourseService._COURSES_CACHE_TTL_SECONDS:
+            return cached[1]
+
         query: dict[str, Any] = {"is_published": True, "is_deleted": False}
         if category and category != "all":
             query["category"] = category
         if level and level != "all":
             query["level"] = level
-        if search:
+        if search and search.strip():
+            pat = safe_regex_pattern(search)
             query["$or"] = [
-                {"title": {"$regex": search, "$options": "i"}},
-                {"subtitle": {"$regex": search, "$options": "i"}},
-                {"tags": {"$in": [search.lower()]}},
+                {"title": pat},
+                {"subtitle": pat},
+                {"tags": {"$in": [search.strip().lower()]}},
             ]
 
-        return (
+        courses = (
             await Course.find(query)
             .sort([("is_featured", -1), ("created_at", -1)])
-            .skip(skip)
-            .limit(limit)
+            .skip(max(0, skip))
+            .limit(min(max(1, limit), 100))
             .to_list()
         )
+        if len(CourseService._courses_cache) >= 50:
+            CourseService._courses_cache.clear()
+        CourseService._courses_cache[cache_key] = (now, courses)
+        return courses
 
     @staticmethod
     async def get_course_by_slug(slug: str, user: User | None = None) -> dict[str, Any]:
@@ -1155,6 +1171,19 @@ class CourseService:
                 expires_at,
             )
 
+        # Ensure persistent legal invoice number is generated
+        if not order.invoice_number:
+            prefix = "DIVIN-CRS-INV"
+            year = now.year
+            raw_key = order.razorpay_order_id or str(order.id)
+            clean_key = raw_key.replace("order_", "").replace("crs_", "").replace("-", "")
+            suffix = clean_key[-6:].upper() if len(clean_key) >= 6 else str(order.user_id)[-6:].upper()
+            order.invoice_number = f"{prefix}-{year}-{suffix}"
+
+        if not getattr(enrollment, "invoice_number", None):
+            enrollment.invoice_number = order.invoice_number
+            await enrollment.save()
+
         if order.status is not PaymentOrderStatus.PAID:
             order.status = PaymentOrderStatus.PAID
             order.razorpay_payment_id = payment_id
@@ -1162,6 +1191,61 @@ class CourseService:
             order.verified_via = via
             order.paid_at = datetime.now(timezone.utc)
             await order.save()
+
+        # Dispatch official Tax Invoice & Consecrated Enrollment Bill to student's email
+        if not getattr(order, "invoice_email_sent", False):
+            order.invoice_email_sent = True
+            order.invoice_sent_at = datetime.now(timezone.utc)
+            await order.save()
+
+            async def _dispatch_course_invoice_email_task() -> None:
+                try:
+                    from app.services.email import send_course_purchase_invoice_email
+
+                    student_user = await User.get(order.user_id)
+                    if not student_user or not student_user.email:
+                        logger.warning("No valid email address for student {} to send course invoice.", order.user_id)
+                        return
+
+                    student_name = (
+                        getattr(student_user, "full_name", None)
+                        or getattr(student_user, "name", None)
+                        or "Valued Scholar"
+                    )
+                    frontend_base = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app").rstrip("/")
+                    course_url = f"{frontend_base}/courses/{course.slug or str(course.id)}"
+                    invoice_url = f"{frontend_base}/account/courses"
+
+                    access_type = "Lifetime Access"
+                    if course.access_duration_days and course.access_duration_days > 0:
+                        access_type = f"{course.access_duration_days} Days Access"
+
+                    formatted_date = (order.paid_at or datetime.now(timezone.utc)).strftime("%d %B %Y, %I:%M %p IST")
+                    method_display = (payment.get("method") or "Online / Razorpay").upper()
+                    inv_num = order.invoice_number or f"DIVIN-CRS-{str(order.id)[-6:].upper()}"
+
+                    await send_course_purchase_invoice_email(
+                        to=student_user.email,
+                        user_name=student_name,
+                        course_title=course.title,
+                        invoice_number=inv_num,
+                        order_id=order.razorpay_order_id,
+                        payment_id=payment_id,
+                        amount_inr=float(amount_paise / 100.0),
+                        payment_method=method_display,
+                        purchase_date=formatted_date,
+                        course_url=course_url,
+                        invoice_url=invoice_url,
+                        instructor_name=course.instructor_name or "Pt. Acharya Rahul Sharma",
+                        access_type=access_type,
+                    )
+                    logger.info("Official Course Purchase Invoice successfully dispatched to {} for course {}", student_user.email, course.title)
+                except Exception as exc:
+                    logger.opt(exception=exc).warning(
+                        "Failed to dispatch course purchase invoice email for order {}: {}", order.id, exc
+                    )
+
+            asyncio.create_task(_dispatch_course_invoice_email_task())
 
         return enrollment
 
@@ -1351,8 +1435,36 @@ class CourseService:
             "failure_reason": order.failure_reason,
             "verified_via": order.verified_via,
             "paid_at": order.paid_at,
+            "invoice_number": getattr(order, "invoice_number", None),
+            "invoice_email_sent": getattr(order, "invoice_email_sent", False),
             "created_at": order.created_at,
         }
+
+    @staticmethod
+    async def _search_user_and_course_ids(
+        search: str, include_courses: bool = True
+    ) -> tuple[list[PydanticObjectId], list[PydanticObjectId]]:
+        pat = safe_regex_pattern(search)
+        users = (
+            await User.find(
+                {
+                    "$or": [
+                        {"email": pat},
+                        {"first_name": pat},
+                        {"last_name": pat},
+                        {"phone": pat},
+                    ]
+                }
+            )
+            .limit(200)
+            .to_list()
+        )
+        user_ids = [u.id for u in users]
+        course_ids: list[PydanticObjectId] = []
+        if include_courses:
+            courses = await Course.find({"title": pat}).limit(100).to_list()
+            course_ids = [c.id for c in courses]
+        return user_ids, course_ids
 
     @staticmethod
     async def admin_list_course_orders(
@@ -1364,40 +1476,44 @@ class CourseService:
         limit: int = 25,
     ) -> dict[str, Any]:
         """Lists course checkout orders for support & reconciliation."""
+        cap_limit = min(max(1, limit), 100)
+        safe_page = max(1, page)
         query: dict[str, Any] = {}
         if status_filter and status_filter != "all":
             query["status"] = status_filter
         if course_id is not None:
             query["course_id"] = course_id
 
-        orders = await CourseOrder.find(query).sort([("created_at", -1)]).to_list()
-        users_map, courses_map = await CourseService._enrich_users_and_courses(
-            [o.user_id for o in orders], [o.course_id for o in orders]
-        )
-
-        serialized = [
-            CourseService._serialize_admin_order(o, users_map, courses_map) for o in orders
-        ]
-
         if search and search.strip():
-            q = search.strip().lower()
-            serialized = [
-                item
-                for item in serialized
-                if (
-                    q in (item["razorpay_order_id"] or "").lower()
-                    or q in (item["razorpay_payment_id"] or "").lower()
-                    or q in (item["student_email"] or "").lower()
-                    or q in (item["student_name"] or "").lower()
-                    or q in (item["student_phone"] or "").lower()
-                    or q in (item["course_title"] or "").lower()
-                )
+            pat = safe_regex_pattern(search)
+            user_ids, course_ids = await CourseService._search_user_and_course_ids(search)
+            or_clauses: list[dict[str, Any]] = [
+                {"razorpay_order_id": pat},
+                {"razorpay_payment_id": pat},
             ]
+            if user_ids:
+                or_clauses.append({"user_id": {"$in": user_ids}})
+            if course_ids:
+                or_clauses.append({"course_id": {"$in": course_ids}})
+            query["$or"] = or_clauses
 
-        total = len(serialized)
-        pages = max(1, (total + limit - 1) // limit)
-        start = (page - 1) * limit
-        paged = serialized[start : start + limit]
+        cursor = CourseOrder.find(query)
+        total = await cursor.count()
+        pages = max(1, (total + cap_limit - 1) // cap_limit)
+        start = (safe_page - 1) * cap_limit
+        paged_orders = (
+            await cursor.sort([("created_at", -1)])
+            .skip(start)
+            .limit(cap_limit)
+            .to_list()
+        )
+        users_map, courses_map = await CourseService._enrich_users_and_courses(
+            [o.user_id for o in paged_orders], [o.course_id for o in paged_orders]
+        )
+        paged = [
+            CourseService._serialize_admin_order(o, users_map, courses_map)
+            for o in paged_orders
+        ]
 
         created_count = await CourseOrder.find(CourseOrder.status == PaymentOrderStatus.CREATED).count()
         paid_count = await CourseOrder.find(CourseOrder.status == PaymentOrderStatus.PAID).count()
@@ -1407,8 +1523,8 @@ class CourseService:
         return {
             "items": paged,
             "total": total,
-            "page": page,
-            "limit": limit,
+            "page": safe_page,
+            "limit": cap_limit,
             "pages": pages,
             "created_count": created_count,
             "paid_count": paid_count,
@@ -1462,12 +1578,34 @@ class CourseService:
         page: int = 1,
         limit: int = 25,
     ) -> dict[str, Any]:
+        cap_limit = min(max(1, limit), 100)
+        safe_page = max(1, page)
         query: dict[str, Any] = {}
         if course_id is not None:
             query["course_id"] = course_id
 
+        if search and search.strip():
+            pat = safe_regex_pattern(search)
+            user_ids, course_ids = await CourseService._search_user_and_course_ids(search)
+            or_clauses: list[dict[str, Any]] = [
+                {"payment_id": pat},
+                {"order_id": pat},
+            ]
+            if user_ids:
+                or_clauses.append({"user_id": {"$in": user_ids}})
+            if course_ids:
+                or_clauses.append({"course_id": {"$in": course_ids}})
+            query["$or"] = or_clauses
+
+        cursor = CourseEnrollment.find(query)
+        total = await cursor.count()
+        pages = max(1, (total + cap_limit - 1) // cap_limit)
+        start = (safe_page - 1) * cap_limit
         enrollments = (
-            await CourseEnrollment.find(query).sort([("enrolled_at", -1)]).to_list()
+            await cursor.sort([("enrolled_at", -1)])
+            .skip(start)
+            .limit(cap_limit)
+            .to_list()
         )
         users_map, courses_map = await CourseService._enrich_users_and_courses(
             [e.user_id for e in enrollments], [e.course_id for e in enrollments]
@@ -1503,6 +1641,7 @@ class CourseService:
                     "certificate_id": e.certificate_id,
                     "certificate_url": e.certificate_url,
                     "certificate_issued_at": e.certificate_issued_at,
+                    "invoice_number": getattr(e, "invoice_number", None),
                     "enrolled_at": e.enrolled_at,
                     "expires_at": e.expires_at,
                     "is_expired": bool(
@@ -1513,29 +1652,11 @@ class CourseService:
                 }
             )
 
-        if search and search.strip():
-            q = search.strip().lower()
-            items = [
-                item
-                for item in items
-                if (
-                    q in (item["student_email"] or "").lower()
-                    or q in (item["student_name"] or "").lower()
-                    or q in (item["student_phone"] or "").lower()
-                    or q in (item["course_title"] or "").lower()
-                    or q in (item["payment_id"] or "").lower()
-                    or q in (item["order_id"] or "").lower()
-                )
-            ]
-
-        total = len(items)
-        pages = max(1, (total + limit - 1) // limit)
-        start = (page - 1) * limit
         return {
-            "items": items[start : start + limit],
+            "items": items,
             "total": total,
-            "page": page,
-            "limit": limit,
+            "page": safe_page,
+            "limit": cap_limit,
             "pages": pages,
         }
 
@@ -1553,43 +1674,118 @@ class CourseService:
         if not course:
             raise NotFoundError("Course not found.", error_code="course_not_found")
 
+        cap_limit = min(max(1, limit), 100)
+        safe_page = max(1, page)
         total_lessons_in_course = await CourseLesson.find(CourseLesson.course_id == course_id).count()
 
-        all_enrollments = (
-            await CourseEnrollment.find(CourseEnrollment.course_id == course_id).sort([("enrolled_at", -1)]).to_list()
-        )
+        # Summary stats aggregated directly in MongoDB (avoids loading all enrollments)
+        col = CourseEnrollment.get_pymongo_collection()
+        agg_cursor = await col.aggregate([
+            {"$match": {"course_id": course_id}},
+            {
+                "$group": {
+                    "_id": None,
+                    "total_enrolled": {"$sum": 1},
+                    "completed_count": {
+                        "$sum": {
+                            "$cond": [
+                                {
+                                    "$or": [
+                                        {"$gte": ["$progress_percent", 100]},
+                                        {"$eq": ["$certificate_issued", True]},
+                                    ]
+                                },
+                                1,
+                                0,
+                            ]
+                        }
+                    },
+                    "in_progress_count": {
+                        "$sum": {
+                            "$cond": [
+                                {
+                                    "$and": [
+                                        {"$gt": ["$progress_percent", 0]},
+                                        {"$lt": ["$progress_percent", 100]},
+                                        {"$ne": ["$certificate_issued", True]},
+                                    ]
+                                },
+                                1,
+                                0,
+                            ]
+                        }
+                    },
+                    "not_started_count": {
+                        "$sum": {"$cond": [{"$eq": ["$progress_percent", 0]}, 1, 0]}
+                    },
+                    "total_progress_sum": {"$sum": {"$ifNull": ["$progress_percent", 0]}},
+                    "total_revenue": {"$sum": {"$ifNull": ["$amount_paid", 0]}},
+                }
+            },
+        ])
+        agg_rows = [r async for r in agg_cursor]
+        stat_row = agg_rows[0] if agg_rows else {}
+        total_enrolled = int(stat_row.get("total_enrolled", 0) or 0)
+        completed_count = int(stat_row.get("completed_count", 0) or 0)
+        in_progress_count = int(stat_row.get("in_progress_count", 0) or 0)
+        not_started_count = int(stat_row.get("not_started_count", 0) or 0)
+        total_progress_sum = float(stat_row.get("total_progress_sum", 0.0) or 0.0)
+        total_revenue = float(stat_row.get("total_revenue", 0.0) or 0.0)
+        avg_progress = round(total_progress_sum / max(1, total_enrolled), 1)
 
-        user_ids = [e.user_id for e in all_enrollments]
-        users = await User.find({"_id": {"$in": user_ids}}).to_list() if user_ids else []
+        query: dict[str, Any] = {"course_id": course_id}
+        if search and search.strip():
+            pat = safe_regex_pattern(search)
+            user_ids, _ = await CourseService._search_user_and_course_ids(
+                search, include_courses=False
+            )
+            or_clauses: list[dict[str, Any]] = [
+                {"payment_id": pat},
+                {"order_id": pat},
+                {"certificate_id": pat},
+            ]
+            if user_ids:
+                or_clauses.append({"user_id": {"$in": user_ids}})
+            query["$or"] = or_clauses
+
+        now_utc = datetime.now(timezone.utc)
+        if progress_status and progress_status != "all":
+            if progress_status == "completed":
+                query["$and"] = query.get("$and", []) + [
+                    {"$or": [{"progress_percent": {"$gte": 100}}, {"certificate_issued": True}]}
+                ]
+            elif progress_status == "in_progress":
+                query["progress_percent"] = {"$gt": 0, "$lt": 100}
+                query["certificate_issued"] = {"$ne": True}
+            elif progress_status == "not_started":
+                query["progress_percent"] = 0
+            elif progress_status == "expired":
+                query["expires_at"] = {"$ne": None, "$lte": now_utc}
+
+        sort_spec = [("enrolled_at", -1)]
+        if sort_by == "enrolled_asc":
+            sort_spec = [("enrolled_at", 1)]
+        elif sort_by == "progress_desc":
+            sort_spec = [("progress_percent", -1)]
+        elif sort_by == "progress_asc":
+            sort_spec = [("progress_percent", 1)]
+        elif sort_by == "last_active_desc":
+            sort_spec = [("last_accessed_at", -1)]
+
+        cursor = CourseEnrollment.find(query)
+        total_filtered = await cursor.count()
+        pages = max(1, (total_filtered + cap_limit - 1) // cap_limit)
+        start = (safe_page - 1) * cap_limit
+        paged_enrollments = await cursor.sort(sort_spec).skip(start).limit(cap_limit).to_list()
+
+        page_user_ids = [e.user_id for e in paged_enrollments]
+        users = await User.find({"_id": {"$in": page_user_ids}}).to_list() if page_user_ids else []
         users_map = {str(u.id): u for u in users}
 
-        # Calculate overall summary stats across ALL enrolled learners in this course
-        total_enrolled = len(all_enrollments)
-        completed_count = 0
-        in_progress_count = 0
-        not_started_count = 0
-        total_progress_sum = 0.0
-        total_revenue = 0.0
-
         items: list[dict[str, Any]] = []
-
-        for e in all_enrollments:
+        for e in paged_enrollments:
             u = users_map.get(str(e.user_id))
-            is_completed = e.progress_percent >= 100 or bool(e.certificate_issued)
-            is_expired = bool(
-                e.expires_at and datetime.now(timezone.utc) >= _aware_utc(e.expires_at)
-            )
-
-            if is_completed:
-                completed_count += 1
-            elif e.progress_percent > 0:
-                in_progress_count += 1
-            else:
-                not_started_count += 1
-
-            total_progress_sum += e.progress_percent
-            total_revenue += e.amount_paid
-
+            is_expired = bool(e.expires_at and now_utc >= _aware_utc(e.expires_at))
             items.append({
                 "id": str(e.id),
                 "user_id": str(e.user_id),
@@ -1621,50 +1817,6 @@ class CourseService:
                 "last_accessed_at": e.last_accessed_at,
             })
 
-        avg_progress = round(total_progress_sum / max(1, total_enrolled), 1)
-
-        # Filtering
-        filtered_items = items
-        if search and search.strip():
-            q = search.strip().lower()
-            filtered_items = [
-                item for item in filtered_items
-                if (
-                    q in (item["student_email"] or "").lower()
-                    or q in (item["student_name"] or "").lower()
-                    or q in (item["student_phone"] or "").lower()
-                    or q in (item["payment_id"] or "").lower()
-                    or q in (item["order_id"] or "").lower()
-                    or q in (item["certificate_id"] or "").lower()
-                )
-            ]
-
-        if progress_status and progress_status != "all":
-            if progress_status == "completed":
-                filtered_items = [i for i in filtered_items if i["progress_percent"] >= 100 or i["certificate_issued"]]
-            elif progress_status == "in_progress":
-                filtered_items = [i for i in filtered_items if 0 < i["progress_percent"] < 100 and not i["certificate_issued"]]
-            elif progress_status == "not_started":
-                filtered_items = [i for i in filtered_items if i["progress_percent"] == 0]
-            elif progress_status == "expired":
-                filtered_items = [i for i in filtered_items if i["is_expired"]]
-
-        # Sorting
-        if sort_by == "enrolled_asc":
-            filtered_items.sort(key=lambda x: x["enrolled_at"])
-        elif sort_by == "progress_desc":
-            filtered_items.sort(key=lambda x: x["progress_percent"], reverse=True)
-        elif sort_by == "progress_asc":
-            filtered_items.sort(key=lambda x: x["progress_percent"])
-        elif sort_by == "last_active_desc":
-            filtered_items.sort(key=lambda x: x["last_accessed_at"], reverse=True)
-        else:
-            filtered_items.sort(key=lambda x: x["enrolled_at"], reverse=True)
-
-        total_filtered = len(filtered_items)
-        pages = max(1, (total_filtered + limit - 1) // limit)
-        start = (page - 1) * limit
-
         return {
             "course_id": str(course.id),
             "course_title": course.title,
@@ -1679,10 +1831,10 @@ class CourseService:
                 "total_revenue": total_revenue,
                 "total_lessons_in_course": total_lessons_in_course,
             },
-            "items": filtered_items[start : start + limit],
+            "items": items,
             "total": total_filtered,
-            "page": page,
-            "limit": limit,
+            "page": safe_page,
+            "limit": cap_limit,
             "pages": pages,
         }
 
@@ -1957,6 +2109,89 @@ class CourseService:
         ).update({"$inc": {"total_students": -1}})
 
     @staticmethod
+    async def admin_update_enrollment_validity(
+        *,
+        enrollment_id: PydanticObjectId,
+        course_id: PydanticObjectId | None = None,
+        mode: str = "set_days",
+        days: int | None = None,
+        expires_at: datetime | None = None,
+        note: str | None = None,
+    ) -> dict[str, Any]:
+        """Updates or extends the access validity duration for an enrolled student."""
+        query = [CourseEnrollment.id == enrollment_id]
+        if course_id:
+            query.append(CourseEnrollment.course_id == course_id)
+
+        enrollment = await CourseEnrollment.find_one(*query)
+        if enrollment is None:
+            raise NotFoundError("Enrollment not found.")
+
+        course = await Course.find_one(Course.id == enrollment.course_id)
+        student = await User.find_one(User.id == enrollment.user_id)
+        now = datetime.now(timezone.utc)
+
+        target_expires_at: datetime | None = None
+
+        if mode == "lifetime":
+            target_expires_at = None
+        elif mode == "set_days":
+            if not days or days <= 0:
+                raise BadRequestError("Number of days must be at least 1.")
+            target_expires_at = now + timedelta(days=days)
+        elif mode == "extend_days":
+            if not days or days <= 0:
+                raise BadRequestError("Number of days to extend must be at least 1.")
+            base_time = now
+            if enrollment.expires_at:
+                aware_exp = _aware_utc(enrollment.expires_at)
+                if aware_exp > now:
+                    base_time = aware_exp
+            target_expires_at = base_time + timedelta(days=days)
+        elif mode == "set_date":
+            if not expires_at:
+                raise BadRequestError("An expiration date must be provided.")
+            target_expires_at = _aware_utc(expires_at)
+            if target_expires_at <= now:
+                raise BadRequestError("Expiration date must be in the future.")
+        else:
+            raise BadRequestError(f"Unsupported validity mode: {mode}")
+
+        enrollment.expires_at = target_expires_at
+        await enrollment.save()
+
+        logger.info(
+            f"Admin updated validity for enrollment {enrollment_id} (Student: {student.email if student else enrollment.user_id}) "
+            f"mode '{mode}', new expires_at: {target_expires_at}. Note: {note}"
+        )
+
+        return {
+            "id": str(enrollment.id),
+            "user_id": str(enrollment.user_id),
+            "student_name": getattr(student, "full_name", None) if student else None,
+            "student_email": getattr(student, "email", None) if student else None,
+            "student_phone": (
+                (getattr(student, "phone", None) or getattr(student, "mobile_number", None)) if student else None
+            ),
+            "course_id": str(enrollment.course_id),
+            "course_title": course.title if course else None,
+            "course_slug": course.slug if course else None,
+            "payment_id": enrollment.payment_id,
+            "order_id": enrollment.order_id,
+            "amount_paid": enrollment.amount_paid,
+            "currency": enrollment.currency,
+            "progress_percent": enrollment.progress_percent,
+            "certificate_issued": enrollment.certificate_issued,
+            "enrolled_at": enrollment.enrolled_at,
+            "expires_at": enrollment.expires_at,
+            "is_expired": bool(
+                enrollment.expires_at
+                and datetime.now(timezone.utc) >= _aware_utc(enrollment.expires_at)
+            ),
+            "last_accessed_at": enrollment.last_accessed_at,
+        }
+
+    @staticmethod
     async def get_user_enrollments_with_details(user: User) -> list[dict[str, Any]]:
         """Returns all purchased courses enriched with course metadata."""
         enrollments = (
@@ -1969,29 +2204,44 @@ class CourseService:
             course = await Course.find_one(Course.id == e.course_id)
             if course:
                 web_url = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app")
-                if e.progress_percent >= 100:
+                
+                # Check if student completed all published lessons even if progress_percent is lagging
+                if e.progress_percent < 100.0:
+                    total_published = await CourseLesson.find(
+                        CourseLesson.course_id == e.course_id,
+                        {"is_published": {"$ne": False}},
+                    ).count()
+                    if total_published > 0 and len(e.completed_lesson_ids or []) >= total_published:
+                        e.progress_percent = 100.0
+
+                if e.progress_percent >= 100.0 or bool(e.certificate_issued):
                     e.certificate_issued = True
                     if not e.certificate_id:
                         e.certificate_id = CourseService.mint_certificate_id()
                     if not e.certificate_issued_at:
                         e.certificate_issued_at = datetime.now(timezone.utc).replace(microsecond=0)
 
-                    # Ensure certificate signature and signed verification URL are always present
-                    if not e.certificate_signature or not e.certificate_url or "?sig=" not in e.certificate_url:
-                        student_name = getattr(user, "full_name", None) or "DivinLink Gurukul Scholar"
-                        issued_iso = CourseService.format_certificate_issued_iso(e.certificate_issued_at)
-                        c_hash, c_sig = CourseService.compute_certificate_crypto(
-                            cert_id=e.certificate_id,
-                            user_id=str(user.id),
-                            student_name=student_name,
-                            course_id=str(course.id),
-                            course_title=course.title,
-                            issued_iso=issued_iso,
-                        )
+                    # Ensure certificate signature and signed verification URL are always fresh and valid
+                    student_name = getattr(user, "full_name", None) or "DivinLink Gurukul Scholar"
+                    issued_iso = CourseService.format_certificate_issued_iso(e.certificate_issued_at)
+                    c_hash, c_sig = CourseService.compute_certificate_crypto(
+                        cert_id=e.certificate_id,
+                        user_id=str(user.id),
+                        student_name=student_name,
+                        course_id=str(course.id),
+                        course_title=course.title,
+                        issued_iso=issued_iso,
+                    )
+                    expected_url = f"{web_url}/verify/certificate/{e.certificate_id}?sig={c_sig[:32]}"
+                    if (
+                        e.certificate_signature != c_sig
+                        or e.certificate_canonical_hash != c_hash
+                        or e.certificate_url != expected_url
+                    ):
                         e.certificate_canonical_hash = c_hash
                         e.certificate_signature = c_sig
-                        e.certificate_url = f"{web_url}/verify/certificate/{e.certificate_id}?sig={c_sig[:32]}"
-                    await e.save()
+                        e.certificate_url = expected_url
+                        await e.save()
 
                 result.append(
                     {
@@ -2013,6 +2263,8 @@ class CourseService:
                         "certificate_issued": e.certificate_issued,
                         "certificate_id": e.certificate_id,
                         "certificate_url": e.certificate_url,
+                        "invoice_number": getattr(e, "invoice_number", None),
+                        "invoice_url": f"/api/v1/courses/{course.id}/invoice/html",
                     }
                 )
         return result
@@ -2491,13 +2743,14 @@ class CourseService:
         else:
             query["is_hidden"] = {"$ne": True}
 
-        if search:
+        if search and search.strip():
+            pat = safe_regex_pattern(search)
             query["$or"] = [
-                {"title": {"$regex": search, "$options": "i"}},
-                {"content": {"$regex": search, "$options": "i"}},
-                {"user_name": {"$regex": search, "$options": "i"}},
-                {"user_email": {"$regex": search, "$options": "i"}},
-                {"user_phone": {"$regex": search, "$options": "i"}},
+                {"title": pat},
+                {"content": pat},
+                {"user_name": pat},
+                {"user_email": pat},
+                {"user_phone": pat},
             ]
 
         total = await CourseQuestion.find(query).count()
@@ -2862,752 +3115,391 @@ class CourseService:
 
     @staticmethod
     def generate_course_certificate_html(cert: dict[str, Any]) -> str:
-        """Generates an ultra-luxurious, production-level printable A4 Landscape graduation certificate."""
+        """Generates an exact-match printable A4 Landscape certificate matching the client DivinLink specification."""
         canonical_hash = cert.get("canonical_hash") or cert.get("digital_seal", {}).get("verification_hash", "")
         crypto_sig = cert.get("cryptographic_signature", "")
-        instructor = cert.get("instructor_name", "Pt. Acharya Rahul Sharma")
-        instructor_title = cert.get("instructor_title", "Senior Vedic Jyotishacharya")
-        issued_date = cert.get("issued_at_formatted", "")
-        distinction = cert.get("distinction", "Vidya Parangata (Summa Cum Laude)")
-        total_lessons = cert.get("total_lessons_completed", 0)
+        student_name = cert.get("student_name", "Scholar")
+        course_title = cert.get("course_title", "Bhrigunandi Naadi Jyotish")
+        instructor = cert.get("instructor_name", "Rahul Sharma")
+        if "Rahul" in instructor:
+            instructor_display = "RAHUL SHARMA"
+            instructor_clean = "Rahul Sharma"
+        else:
+            instructor_display = instructor.upper()
+            instructor_clean = instructor
+
+        issued_dt = cert.get("issued_at")
+        if isinstance(issued_dt, datetime):
+            month_name = issued_dt.strftime("%B")
+            year_val = issued_dt.strftime("%Y")
+        elif isinstance(issued_dt, str) and len(issued_dt) >= 7:
+            try:
+                dt_obj = datetime.fromisoformat(issued_dt.replace("Z", "+00:00"))
+                month_name = dt_obj.strftime("%B")
+                year_val = dt_obj.strftime("%Y")
+            except Exception:
+                month_name = "June"
+                year_val = "2026"
+        else:
+            month_name = "June"
+            year_val = "2026"
+
+        held_line = f"that held in {month_name} year of {year_val}"
         web_url = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app")
         encoded_verify_url = urllib.parse.quote(cert.get("verification_url", ""), safe="")
         qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={encoded_verify_url}"
+        cert_id = cert.get("certificate_id", "ASTRA-CERT-VERIFIED")
+        sig_short = crypto_sig[:24] + "..." if crypto_sig else "HMAC-SHA256"
+
+        is_rahul = "rahul" in instructor.lower()
+        if is_rahul:
+            sig_element = f'<img src="{SIGNATURE_B64}" alt="Rahul Sharma Signature" class="sig-img" />'
+        else:
+            sig_element = f'<div class="sig-cursive">{instructor_clean}</div>'
+
+        main_title = f"PARTICIPATION OF {course_title.upper()}"
+        subtitle = "BASIC AND ADVANCE LEVEL ONLINE COURSE ON ZOOM"
 
         return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DivinLink Gurukul Certificate — {cert['student_name']} — {cert['course_title']}</title>
+  <meta name="viewport" content="width=1000, initial-scale=1.0" />
+  <title>Participation Certificate — {student_name} — {course_title}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Alex+Brush&family=Cinzel:wght@600;700;800;900&family=Playfair+Display:ital,wght@0,600;0,700;0,900;1,400;1,600&family=Marcellus&family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Alex+Brush&family=Cinzel:wght@600;700;800;900&family=Playfair+Display:ital,wght@0,600;0,700;0,800;0,900;1,400;1,600&family=Marcellus&family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
-    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    @page {{
+      size: landscape;
+      margin: 0;
+    }}
+    * {{
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }}
     body {{
-      background: #14110E;
+      background: #0B121E;
       color: #1A1816;
-      font-family: 'Marcellus', 'Georgia', serif;
+      font-family: 'Cinzel', 'Playfair Display', Georgia, serif;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 30px 15px;
+      padding: 24px 12px;
     }}
     .actions-bar {{
-      width: 100%;
-      max-width: 1060px;
+      width: 1000px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 20px;
+      margin-bottom: 16px;
     }}
     .action-btn {{
-      background: linear-gradient(135deg, #D4AF37 0%, #AA771C 100%);
-      color: #000;
+      background: linear-gradient(135deg, #DEBA70 0%, #A57B2F 100%);
+      color: #0B1B36;
       border: none;
-      padding: 12px 24px;
+      padding: 10px 22px;
       border-radius: 9999px;
       font-weight: 700;
-      font-size: 14px;
+      font-size: 13px;
       cursor: pointer;
-      box-shadow: 0 4px 18px rgba(212, 175, 55, 0.4);
+      box-shadow: 0 4px 18px rgba(197, 155, 78, 0.4);
       transition: all 0.2s ease;
       text-decoration: none;
       display: inline-flex;
       align-items: center;
       gap: 8px;
+      font-family: 'Montserrat', sans-serif;
     }}
     .action-btn:hover {{
       transform: translateY(-2px);
-      box-shadow: 0 6px 22px rgba(212, 175, 55, 0.6);
+      box-shadow: 0 6px 22px rgba(197, 155, 78, 0.6);
     }}
     .back-btn {{
       background: rgba(255, 255, 255, 0.08);
       color: #E5E7EB;
       border: 1px solid rgba(255, 255, 255, 0.15);
-      padding: 10px 20px;
+      padding: 9px 18px;
       border-radius: 9999px;
-      font-size: 13px;
+      font-size: 12.5px;
       font-weight: 600;
       cursor: pointer;
       text-decoration: none;
+      font-family: 'Montserrat', sans-serif;
     }}
-
-    .cert-container {{
-      width: 1060px;
-      height: 680px;
-      background: #FAF8F3;
+    .cert-outer {{
+      width: 1000px;
+      height: 523px;
+      min-width: 1000px;
+      max-width: 1000px;
+      min-height: 523px;
+      max-height: 523px;
       position: relative;
       overflow: hidden;
-      border-radius: 12px;
-      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7);
+      border-radius: 8px;
+      background-color: #FAF8F5;
+      background-image: url('{CERTIFICATE_TEMPLATE_B64}');
+      background-repeat: no-repeat;
+      background-position: center center;
+      background-size: 100% 100%;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.75);
+      user-select: none;
+    }}
+    .cert-content {{
+      position: absolute;
+      inset: 0;
       display: flex;
-      border: 1px solid rgba(209, 178, 111, 0.4);
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      z-index: 5;
     }}
-
-    .guilloche-bg {{
+    .cert-main-title {{
       position: absolute;
-      top: 50%;
-      left: 33%;
-      transform: translate(-50%, -50%);
-      width: 580px;
-      height: 580px;
-      pointer-events: none;
-      opacity: 0.038;
-      z-index: 1;
+      top: 136px;
+      left: 140px;
+      right: 140px;
+      font-family: 'Cinzel', serif;
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: 0.10em;
+      color: #0E2042;
+      text-transform: uppercase;
+      line-height: 1.2;
     }}
-
-    .microtext-band {{
+    .cert-sub-title {{
       position: absolute;
+      top: 166px;
+      left: 140px;
+      right: 140px;
+      font-family: 'Cinzel', 'Montserrat', serif;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      color: #9E7730;
+      text-transform: uppercase;
+    }}
+    .cert-divider {{
+      position: absolute;
+      top: 188px;
+      left: 0;
+      right: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      color: #B88E3E;
+      letter-spacing: 4px;
+    }}
+    .cert-certify-line {{
+      position: absolute;
+      top: 212px;
+      left: 0;
+      right: 0;
+      font-family: 'Playfair Display', Georgia, serif;
+      font-style: italic;
+      font-size: 15.5px;
+      color: #374151;
+      letter-spacing: 0.02em;
+    }}
+    .cert-student-name {{
+      position: absolute;
+      top: 236px;
+      left: 140px;
+      right: 140px;
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 38px;
+      font-weight: 800;
+      color: #0B1B36;
+      line-height: 1.1;
+      letter-spacing: 0.02em;
+    }}
+    .cert-body-line-1 {{
+      position: absolute;
+      top: 294px;
+      left: 140px;
+      right: 140px;
+      font-family: 'Marcellus', Georgia, serif;
+      font-size: 14px;
+      color: #1F2937;
+    }}
+    .cert-body-line-2 {{
+      position: absolute;
+      top: 314px;
+      left: 140px;
+      right: 140px;
+      font-family: 'Marcellus', Georgia, serif;
+      font-size: 14px;
+      color: #1F2937;
+    }}
+    .cert-signatory-wrap {{
+      position: absolute;
+      top: 356px;
+      left: 210px;
+      right: 210px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }}
+    .sig-top-name {{
+      font-family: 'Montserrat', sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      color: #0B1B36;
+      text-transform: uppercase;
+    }}
+    .sig-wishes {{
+      font-family: 'Playfair Display', Georgia, serif;
+      font-style: italic;
+      font-size: 12.5px;
+      color: #4B5563;
+      margin-top: 1px;
+    }}
+    .sig-img {{
+      height: 38px;
+      object-fit: contain;
+      margin: 1px 0;
+    }}
+    .sig-cursive {{
+      font-family: 'Alex Brush', cursive;
+      font-size: 34px;
+      color: #1A2538;
+      line-height: 1;
+      margin: 2px 0;
+    }}
+    .sig-line {{
+      width: 200px;
+      height: 1px;
+      background: #CBD5E1;
+      margin: 2px auto 4px auto;
+    }}
+    .sig-bottom-name {{
+      font-family: 'Cinzel', 'Montserrat', sans-serif;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.10em;
+      color: #0B1B36;
+      text-transform: uppercase;
+    }}
+    .sig-bottom-org {{
+      font-family: 'Cinzel', 'Montserrat', sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.16em;
+      color: #64748B;
+      text-transform: uppercase;
+      margin-top: 1px;
+    }}
+    .cert-qr-container {{
+      position: absolute;
+      bottom: 24px;
+      right: 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-decoration: none;
+      z-index: 10;
+      opacity: 0.9;
+      transition: opacity 0.2s;
+    }}
+    .cert-qr-container:hover {{
+      opacity: 1;
+    }}
+    .cert-qr-img {{
+      width: 44px;
+      height: 44px;
+      border-radius: 4px;
+      border: 1px solid rgba(197, 155, 78, 0.4);
+      background: #FFFFFF;
+      padding: 2px;
+    }}
+    .cert-qr-label {{
+      font-family: 'Montserrat', sans-serif;
+      font-size: 6.5px;
+      font-weight: 700;
+      color: #9E7730;
+      letter-spacing: 0.5px;
+      margin-top: 2px;
+      text-transform: uppercase;
+    }}
+    .cert-security-bar {{
+      position: absolute;
+      bottom: 6px;
       left: 20px;
       right: 20px;
       display: flex;
+      align-items: center;
       justify-content: space-between;
       font-family: monospace;
-      font-size: 6px;
-      letter-spacing: 1.5px;
-      color: rgba(140, 122, 98, 0.5);
-      text-transform: uppercase;
-      pointer-events: none;
-      z-index: 25;
-    }}
-    .micro-top {{ top: 6px; }}
-    .micro-bot {{ bottom: 6px; }}
-
-    .cert-left {{
-      width: 66%;
-      height: 100%;
-      padding: 40px 24px 32px 48px;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      position: relative;
-      z-index: 10;
-    }}
-
-    .brand-header {{
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }}
-    .brand-logo-frame {{
-      width: 50px;
-      height: 50px;
-      border-radius: 50%;
-      border: 2px solid #C59B27;
-      background: #FFFFFF;
-      padding: 3px;
-      box-shadow: 0 2px 8px rgba(197, 155, 39, 0.2);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-    }}
-    .brand-logo-img {{
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-    }}
-    .brand-title-wrap {{
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }}
-    .brand-name {{
-      font-family: 'Cinzel', serif;
-      font-size: 16px;
-      font-weight: 900;
-      letter-spacing: 2.5px;
-      color: #1A1816;
-      line-height: 1.1;
-      text-transform: uppercase;
-    }}
-    .brand-estd {{
-      background: rgba(197, 155, 39, 0.15);
-      border: 1px solid rgba(197, 155, 39, 0.35);
-      color: #8C6514;
-      font-size: 8px;
-      font-weight: 700;
-      padding: 2px 6px;
-      border-radius: 4px;
-      letter-spacing: 1px;
-    }}
-    .brand-sub {{
-      font-family: 'Montserrat', sans-serif;
-      font-size: 8.5px;
-      font-weight: 700;
-      letter-spacing: 2px;
-      color: #7A6C58;
-      text-transform: uppercase;
-      margin-top: 3px;
-    }}
-
-    .title-block {{
-      margin-top: 10px;
-    }}
-    .cert-main-title {{
-      font-family: 'Playfair Display', Georgia, serif;
-      font-size: 52px;
-      font-weight: 900;
-      color: #1A1816;
-      line-height: 1;
-      letter-spacing: 0.5px;
-    }}
-    .cert-sub-banner {{
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-top: 5px;
-      max-width: 360px;
-    }}
-    .sub-line {{
-      flex: 1;
-      height: 1px;
-      background: #8C7A62;
-    }}
-    .sub-text {{
-      font-family: 'Montserrat', sans-serif;
-      font-size: 9.5px;
-      font-weight: 700;
-      letter-spacing: 2.5px;
-      color: #6E604E;
-      text-transform: uppercase;
-      white-space: nowrap;
-    }}
-
-    .consecration-label {{
-      font-family: 'Montserrat', sans-serif;
-      font-size: 9px;
-      font-weight: 700;
-      letter-spacing: 2px;
-      color: #7A6C58;
-      text-transform: uppercase;
-      margin-top: 12px;
-    }}
-
-    .recipient-name {{
-      font-family: 'Alex Brush', cursive;
-      font-size: 48px;
-      color: #1A1816;
-      line-height: 1.1;
-      padding-left: 4px;
-      margin-top: 2px;
-    }}
-    .recipient-underline-wrap {{
-      position: relative;
-      width: 100%;
-      height: 1.5px;
-      background: linear-gradient(90deg, transparent 0%, #8C7A62 20%, #8C7A62 80%, transparent 100%);
-      margin-top: 2px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }}
-    .underline-diamond {{
-      background: #FAF8F3;
-      padding: 0 6px;
-      color: #C59B27;
-      font-size: 11px;
-      line-height: 1;
-    }}
-
-    .distinction-pill {{
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 3px 14px;
-      border-radius: 9999px;
-      background: linear-gradient(90deg, rgba(197, 155, 39, 0.12) 0%, rgba(255, 235, 160, 0.3) 50%, rgba(197, 155, 39, 0.12) 100%);
-      border: 1px solid rgba(197, 155, 39, 0.4);
-      font-size: 9.5px;
-      font-weight: 700;
-      color: #78350F;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      margin-top: 8px;
-      width: fit-content;
-    }}
-
-    .citation-block {{
-      margin-top: 8px;
-      max-width: 500px;
-    }}
-    .citation-paragraph {{
-      font-family: 'Marcellus', 'Georgia', serif;
-      font-size: 11.5px;
-      line-height: 1.55;
-      color: #4A4237;
-    }}
-    .course-plaque {{
-      margin-top: 6px;
-      padding: 6px 14px;
-      background: #FFFDF7;
-      border: 1px solid rgba(197, 155, 39, 0.35);
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }}
-    .course-title {{
-      font-family: 'Playfair Display', Georgia, serif;
-      font-size: 14px;
-      font-weight: 700;
-      color: #1A1816;
-    }}
-    .course-meta {{
-      font-family: 'Montserrat', sans-serif;
-      font-size: 8px;
-      color: #7A6C58;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      margin-top: 2px;
-    }}
-    .course-badge {{
-      background: #D1FAE5;
-      color: #065F46;
-      border: 1px solid #A7F3D0;
-      font-size: 8.5px;
-      font-weight: 700;
-      padding: 2px 8px;
-      border-radius: 4px;
-      letter-spacing: 0.5px;
-    }}
-
-    .citation-shloka {{
-      font-family: 'Playfair Display', serif;
-      font-style: italic;
-      font-size: 10px;
-      color: #7A5D28;
-      margin-top: 5px;
-    }}
-
-    .footer-row {{
-      display: flex;
-      align-items: flex-end;
-      justify-content: space-between;
-      margin-top: 14px;
-      padding-right: 18px;
-    }}
-    .date-col, .sig-col {{
-      width: 140px;
-      text-align: center;
-    }}
-    .col-val {{
-      font-family: 'Playfair Display', serif;
-      font-size: 12px;
-      font-weight: 600;
-      color: #1A1816;
-      margin-bottom: 5px;
-      min-height: 22px;
-      display: flex;
-      align-items: flex-end;
-      justify-content: center;
-    }}
-    .sig-script {{
-      font-family: 'Alex Brush', cursive;
-      font-size: 22px;
-      color: #1A1816;
-    }}
-    .col-line {{
-      width: 100%;
-      height: 1px;
-      background: #8C7A62;
-      margin-bottom: 4px;
-    }}
-    .col-label {{
-      font-family: 'Montserrat', sans-serif;
-      font-size: 8.5px;
-      font-weight: 600;
-      letter-spacing: 1px;
-      color: #7A6C58;
-      text-transform: uppercase;
-    }}
-    .col-sublabel {{
-      font-family: 'Montserrat', sans-serif;
-      font-size: 7px;
+      font-size: 6.5px;
       color: #8C7A62;
-      letter-spacing: 0.5px;
+      opacity: 0.65;
+      letter-spacing: 1px;
       text-transform: uppercase;
-    }}
-
-    .qr-col {{
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-align: center;
-    }}
-    .qr-frame {{
-      width: 48px;
-      height: 48px;
-      background: #FFF;
-      border: 1.5px solid #C59B27;
-      border-radius: 6px;
-      padding: 3px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
-    }}
-    .qr-img {{
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-    }}
-    .qr-label {{
-      font-family: 'Montserrat', sans-serif;
-      font-size: 7px;
-      font-weight: 700;
-      color: #7A6C58;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-      margin-top: 3px;
-    }}
-
-    /* Right Side Art-Deco Lattice */
-    .cert-right {{
-      position: absolute;
-      right: 0;
-      top: 0;
-      bottom: 0;
-      width: 34%;
-      overflow: hidden;
       pointer-events: none;
     }}
-    .cert-right svg {{
-      width: 100%;
-      height: 100%;
-      display: block;
-    }}
-
-    /* Gold Ribbon Medal Badge with DIVINLINK GURUKUL */
-    .seal-wrapper {{
-      position: absolute;
-      right: 28%;
-      top: 12%;
-      z-index: 20;
-      pointer-events: none;
-      filter: drop-shadow(0 8px 16px rgba(0,0,0,0.35));
-    }}
-
     @media print {{
-      @page {{
-        size: A4 landscape;
-        margin: 0 !important;
-      }}
-      *, *::before, *::after {{
-        box-sizing: border-box !important;
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-      }}
-      html, body {{
-        width: 297mm !important;
-        height: 210mm !important;
-        max-height: 210mm !important;
-        margin: 0 !important;
+      body {{
+        background: transparent !important;
         padding: 0 !important;
-        background: #ffffff !important;
-        color: #000000 !important;
-        overflow: hidden !important;
       }}
-      .actions-bar {{ display: none !important; }}
-      body * {{
-        visibility: hidden !important;
+      .actions-bar {{
+        display: none !important;
       }}
-      .cert-container, .cert-container * {{
-        visibility: visible !important;
-      }}
-      .cert-container {{
-        position: fixed !important;
-        left: 0 !important;
-        top: 0 !important;
-        width: 297mm !important;
-        height: 210mm !important;
-        max-height: 210mm !important;
-        border: none !important;
-        border-radius: 0 !important;
+      .cert-outer {{
         box-shadow: none !important;
-        overflow: hidden !important;
-        page-break-after: avoid !important;
+        border-radius: 0 !important;
+        width: 100% !important;
+        height: 100vh !important;
         page-break-inside: avoid !important;
         break-inside: avoid !important;
-        break-after: avoid !important;
-      }}
-      .cert-left {{
-        width: 66% !important;
-        height: 210mm !important;
-        max-height: 210mm !important;
-        padding: 10mm 8mm 8mm 14mm !important;
-        box-sizing: border-box !important;
-      }}
-      .cert-right {{
-        width: 34% !important;
-        height: 210mm !important;
-      }}
-      .seal-wrapper {{
-        right: 27% !important;
-        top: 10% !important;
-        transform: scale(0.9) !important;
-      }}
-      .cert-main-title {{
-        font-size: 38px !important;
-      }}
-      .recipient-name {{
-        font-size: 36px !important;
       }}
     }}
   </style>
 </head>
 <body>
   <div class="actions-bar">
-    <a href="{cert['verification_url']}" class="back-btn">← Back to Portal</a>
-    <button class="action-btn" onclick="window.print()">
-      <span>🖨️</span> Print & Save Official PDF
-    </button>
+    <a href="{web_url}/account/courses" class="back-btn">← Back to My Courses</a>
+    <button onclick="window.print()" class="action-btn">🖨️ Print / Save PDF</button>
   </div>
 
-  <div class="cert-container">
-    <!-- Guilloche Background Rosette Watermark -->
-    <div class="guilloche-bg">
-      <svg viewBox="0 0 600 600" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="300" cy="300" r="270" fill="none" stroke="#C59B27" stroke-width="1.5" stroke-dasharray="5,5"/>
-        <circle cx="300" cy="300" r="230" fill="none" stroke="#C59B27" stroke-width="1"/>
-        <circle cx="300" cy="300" r="180" fill="none" stroke="#C59B27" stroke-width="1.2" stroke-dasharray="3,3"/>
-        <circle cx="300" cy="300" r="130" fill="none" stroke="#C59B27" stroke-width="0.8"/>
-        <g stroke="#C59B27" stroke-width="0.75" fill="none">
-          <ellipse cx="300" cy="300" rx="260" ry="50" transform="rotate(0 300 300)"/>
-          <ellipse cx="300" cy="300" rx="260" ry="50" transform="rotate(20 300 300)"/>
-          <ellipse cx="300" cy="300" rx="260" ry="50" transform="rotate(40 300 300)"/>
-          <ellipse cx="300" cy="300" rx="260" ry="50" transform="rotate(60 300 300)"/>
-          <ellipse cx="300" cy="300" rx="260" ry="50" transform="rotate(80 300 300)"/>
-          <ellipse cx="300" cy="300" rx="260" ry="50" transform="rotate(100 300 300)"/>
-          <ellipse cx="300" cy="300" rx="260" ry="50" transform="rotate(120 300 300)"/>
-          <ellipse cx="300" cy="300" rx="260" ry="50" transform="rotate(140 300 300)"/>
-          <ellipse cx="300" cy="300" rx="260" ry="50" transform="rotate(160 300 300)"/>
-        </g>
-        <text x="300" y="325" fill="#C59B27" font-size="80" font-family="'Playfair Display', serif" font-weight="bold" text-anchor="middle" opacity="0.35">ॐ</text>
-      </svg>
-    </div>
+  <div class="cert-outer">
+    <div class="cert-content">
+      <div class="cert-main-title">{main_title}</div>
+      <div class="cert-sub-title">{subtitle}</div>
+      <div class="cert-divider">———— ◆ ————</div>
+      <div class="cert-certify-line">This is to certify that</div>
+      <div class="cert-student-name">{student_name}</div>
+      <div class="cert-body-line-1">Has successfully completed online course of {course_title}</div>
+      <div class="cert-body-line-2">{held_line}</div>
 
-    <!-- Micro-Text Security Perimeter Bands -->
-    <div class="microtext-band micro-top">
-      <span>DIVINLINK GURUKUL CELESTIAL CREDENTIALS • OFFICIALLY CONSECRATED • CANONICAL HASH VERIFIED</span>
-      <span>HMAC-SHA256 DIGITAL SECURITY SEAL • MATHEMATICALLY TAMPER-PROOF • VERIFIABLE AT ASTRAGURUKUL.COM</span>
-    </div>
-    <div class="microtext-band micro-bot">
-      <span>ID: {cert['certificate_id']} • LEDGER RECORD CONSECRATED</span>
-      <span>SIG: {crypto_sig[:24]}... (HMAC-SHA256)</span>
-    </div>
-
-    <div class="cert-left">
-      <!-- Brand Header with Official Logo -->
-      <div class="brand-header">
-        <div class="brand-logo-frame">
-          <img src="{web_url}/logo.png" alt="DivinLink Gurukul" class="brand-logo-img" onerror="this.src='/logo.png'"/>
-        </div>
-        <div>
-          <div class="brand-title-wrap">
-            <span class="brand-name">DivinLink Gurukul</span>
-            <span class="brand-estd">ESTD. 2026</span>
-          </div>
-          <div class="brand-sub">Council of Vedic Astrological Sciences & Celestial Arts</div>
-        </div>
-      </div>
-
-      <!-- Title Block -->
-      <div class="title-block">
-        <h1 class="cert-main-title">Certificate</h1>
-        <div class="cert-sub-banner">
-          <div class="sub-line"></div>
-          <span class="sub-text">✦ OF SCHOLARLY ACHIEVEMENT ✦</span>
-          <div class="sub-line"></div>
-        </div>
-      </div>
-
-      <!-- Consecration Label -->
-      <div class="consecration-label">
-        This is to solemnly certify & consecrate that
-      </div>
-
-      <!-- Recipient Scholar Name -->
-      <div>
-        <div class="recipient-name">{cert['student_name']}</div>
-        <div class="recipient-underline-wrap">
-          <span class="underline-diamond">✦</span>
-        </div>
-      </div>
-
-      <!-- Distinction Ribbon -->
-      <div class="distinction-pill">
-        ★ {distinction} ★
-      </div>
-
-      <!-- Citation Body & Course Plaque -->
-      <div class="citation-block">
-        <div class="citation-paragraph">
-          has thoroughly mastered the sacred principles, astronomical calculations, predictive methodologies, and remedial canon prescribed in the curriculum of
-        </div>
-        <div class="course-plaque">
-          <div>
-            <div class="course-title">{cert['course_title']}</div>
-            <div class="course-meta">Completed 100% Curriculum ({total_lessons} Lessons & Practicums)</div>
-          </div>
-          <span class="course-badge">PASSED</span>
-        </div>
-        <div class="citation-shloka">
-          « विद्या ददाति विनयं विनयाद्याति पात्रताम् • True knowledge bestows humility, worthiness, and supreme fulfillment »
-        </div>
-      </div>
-
-      <!-- Footer Row: Date, Live QR Code, Dual Signatures -->
-      <div class="footer-row">
-        <div class="date-col">
-          <div class="col-val">{issued_date}</div>
-          <div class="col-line"></div>
-          <div class="col-label">Date Consecrated</div>
-        </div>
-
-        <div class="qr-col">
-          <div class="qr-frame">
-            <img src="{qr_url}" alt="Verification QR Code" class="qr-img"/>
-          </div>
-          <div class="qr-label">Scan to Verify</div>
-        </div>
-
-        <div class="sig-col">
-          <div class="col-val sig-script">{instructor}</div>
-          <div class="col-line"></div>
-          <div class="col-label">{instructor_title}</div>
-          <div class="col-sublabel">Council Registrar</div>
-        </div>
+      <div class="cert-signatory-wrap">
+        <div class="sig-top-name">{instructor_display}</div>
+        <div class="sig-wishes">wishes him/her all the best for future</div>
+        {sig_element}
+        <div class="sig-line"></div>
+        <div class="sig-bottom-name">{instructor_display}</div>
+        <div class="sig-bottom-org">DIVINLINK</div>
       </div>
     </div>
 
-    <!-- Gold Ribbon Medal Badge with DIVINLINK GURUKUL -->
-    <div class="seal-wrapper">
-      <svg viewBox="0 0 160 200" width="134" height="168" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="ribbonL" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#D8B467"/>
-            <stop offset="50%" stop-color="#AA8237"/>
-            <stop offset="100%" stop-color="#6C4F18"/>
-          </linearGradient>
-          <linearGradient id="ribbonR" x1="100%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stop-color="#E8CA83"/>
-            <stop offset="50%" stop-color="#BA9245"/>
-            <stop offset="100%" stop-color="#78581F"/>
-          </linearGradient>
-          <radialGradient id="goldPlate" cx="40%" cy="35%" r="65%">
-            <stop offset="0%" stop-color="#FFF0B8"/>
-            <stop offset="40%" stop-color="#D4AF37"/>
-            <stop offset="80%" stop-color="#9A7424"/>
-            <stop offset="100%" stop-color="#64470C"/>
-          </radialGradient>
-          <radialGradient id="darkDisc" cx="50%" cy="45%" r="50%">
-            <stop offset="0%" stop-color="#2C2114"/>
-            <stop offset="80%" stop-color="#151009"/>
-            <stop offset="100%" stop-color="#0C0905"/>
-          </radialGradient>
-        </defs>
+    <!-- Official Tamper-Proof Cryptographic Verification QR Code -->
+    <a href="{cert.get('verification_url', '')}" target="_blank" rel="noopener noreferrer" class="cert-qr-container" title="Verify authenticity online">
+      <img src="{qr_url}" alt="Certificate QR" class="cert-qr-img" />
+      <span class="cert-qr-label">Verify Credential</span>
+    </a>
 
-        <path d="M 66,105 L 56,175 L 68,162 L 80,175 L 75,105 Z" fill="url(#ribbonL)"/>
-        <path d="M 66,105 L 68,162 L 56,175 Z" fill="rgba(0,0,0,0.18)"/>
-
-        <path d="M 85,105 L 80,175 L 92,162 L 104,175 L 94,105 Z" fill="url(#ribbonR)"/>
-        <path d="M 94,105 L 92,162 L 104,175 Z" fill="rgba(0,0,0,0.12)"/>
-
-        <polygon
-          points="123.63,80.00 120.35,85.25 120.91,91.43 116.14,95.42 114.99,101.51 109.11,103.54 106.37,109.11 99.85,108.97 95.86,113.74 89.28,111.45 84.49,114.99 78.40,110.51 73.15,112.54 67.97,106.37 63.18,106.77 59.19,99.28 55.44,97.94 53.03,89.51 51.00,86.77 50.44,78.28 50.21,74.29 51.68,66.07 53.24,61.03 56.65,53.63 60.15,49.89 65.40,43.63 70.58,41.22 77.00,36.37 83.00,35.51 90.00,32.26 96.37,33.00 103.23,31.45 109.11,33.54 114.99,35.51 119.85,40.11 123.63,44.75 126.97,51.03 128.91,57.28 130.44,64.29 128.68,71.07 127.24,76.03"
-          fill="url(#goldPlate)"
-          stroke="#8B6508"
-          stroke-width="0.8"
-        />
-
-        <circle cx="80" cy="80" r="38" fill="none" stroke="#FFEBA0" stroke-width="1.2"/>
-        <circle cx="80" cy="80" r="35" fill="none" stroke="#8B6508" stroke-width="0.8"/>
-        <circle cx="80" cy="80" r="32.5" fill="none" stroke="#FFEBA0" stroke-width="0.7" stroke-dasharray="1.5,1.5"/>
-        <circle cx="80" cy="80" r="30" fill="none" stroke="#64470C" stroke-width="1.2"/>
-
-        <circle cx="80" cy="80" r="28.5" fill="url(#darkDisc)"/>
-        <circle cx="80" cy="80" r="27" fill="none" stroke="#D4AF37" stroke-width="0.6"/>
-
-        <text x="80" y="65" fill="#FFE89E" font-family="sans-serif" font-size="5" font-weight="bold" text-anchor="middle" letter-spacing="1.5">★ ★ ★</text>
-        <text x="80" y="74" fill="#FFF3CA" font-family="'Cinzel', serif" font-size="7" font-weight="900" text-anchor="middle" letter-spacing="1">DIVINLINK</text>
-        <text x="80" y="81" fill="#E5C370" font-family="'Cinzel', serif" font-size="6" font-weight="800" text-anchor="middle" letter-spacing="1.2">GURUKUL</text>
-        <path d="M 59,84 L 64,84 M 96,84 L 101,84" stroke="#D4AF37" stroke-width="0.5"/>
-        <text x="80" y="87" fill="#E5C370" font-family="sans-serif" font-size="4.5" font-weight="800" text-anchor="middle" letter-spacing="1.2">EXCELLENCE</text>
-        <text x="80" y="95" fill="#FFF3CA" font-family="'Cinzel', serif" font-size="7" font-weight="700" text-anchor="middle" letter-spacing="1">2026</text>
-      </svg>
-    </div>
-
-    <!-- Right Column: Geometric Art-Deco Gold Lattice Pattern -->
-    <div class="cert-right">
-      <svg viewBox="0 0 320 640" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="patGoldMetal" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#D1B26F"/>
-            <stop offset="30%" stop-color="#A68444"/>
-            <stop offset="70%" stop-color="#DDC385"/>
-            <stop offset="100%" stop-color="#8E6C2E"/>
-          </linearGradient>
-          <linearGradient id="patGoldLight" x1="0%" y1="100%" x2="100%" y2="0%">
-            <stop offset="0%" stop-color="#A68444"/>
-            <stop offset="50%" stop-color="#F0DCA0"/>
-            <stop offset="100%" stop-color="#BD9C59"/>
-          </linearGradient>
-
-          <g id="patDiamondCross">
-            <path d="M-160,-160 L160,160 M160,-160 L-160,160" stroke="url(#patGoldMetal)" stroke-width="16" fill="none"/>
-            
-            <polygon points="0,-110 110,0 0,110 -110,0" fill="none" stroke="url(#patGoldMetal)" stroke-width="14"/>
-            <polygon points="0,-96 96,0 0,96 -96,0" fill="none" stroke="#FAF8F3" stroke-width="4"/>
-            <polygon points="0,-90 90,0 0,90 -90,0" fill="none" stroke="url(#patGoldLight)" stroke-width="3"/>
-
-            <path d="M-28,-28 L-28,-80 L0,-100 L28,-80 L28,-28 Z" fill="url(#patGoldMetal)"/>
-            <path d="M-20,-28 L-20,-75 L0,-90 L20,-75 L20,-28 Z" fill="#FAF8F3"/>
-            <path d="M-12,-28 L-12,-70 L0,-80 L12,-70 L12,-28 Z" fill="url(#patGoldLight)"/>
-
-            <path d="M-28,28 L-28,80 L0,100 L28,80 L28,28 Z" fill="url(#patGoldMetal)"/>
-            <path d="M-20,28 L-20,75 L0,90 L20,75 L20,28 Z" fill="#FAF8F3"/>
-            <path d="M-12,28 L-12,70 L0,80 L12,70 L12,28 Z" fill="url(#patGoldLight)"/>
-
-            <path d="M-28,-28 L-80,-28 L-100,0 L-80,28 L-28,28 Z" fill="url(#patGoldMetal)"/>
-            <path d="M-28,-20 L-75,-20 L-90,0 L-75,20 L-28,20 Z" fill="#FAF8F3"/>
-            <path d="M-28,-12 L-70,-12 L-80,0 L-70,12 L-28,12 Z" fill="url(#patGoldLight)"/>
-
-            <path d="M28,-28 L80,-28 L100,0 L80,28 L28,28 Z" fill="url(#patGoldMetal)"/>
-            <path d="M28,-20 L75,-20 L90,0 L75,20 L28,20 Z" fill="#FAF8F3"/>
-            <path d="M28,-12 L70,-12 L80,0 L70,12 L28,12 Z" fill="url(#patGoldLight)"/>
-
-            <polygon points="0,-28 28,0 0,28 -28,0" fill="url(#patGoldMetal)"/>
-            <polygon points="0,-20 20,0 0,20 -20,0" fill="#FAF8F3"/>
-            <polygon points="0,-12 12,0 0,12 -12,0" fill="url(#patGoldLight)"/>
-            <polygon points="0,-5 5,0 0,5 -5,0" fill="url(#patGoldMetal)"/>
-
-            <path d="M38,-38 L55,-55 M46,-38 L63,-55 M54,-38 L71,-55" stroke="url(#patGoldMetal)" stroke-width="3" fill="none"/>
-            <path d="M38,38 L55,55 M46,38 L63,55 M54,38 L71,55" stroke="url(#patGoldMetal)" stroke-width="3" fill="none"/>
-            <path d="M-38,38 L-55,55 M-46,38 L-63,55 M-54,38 L-71,55" stroke="url(#patGoldMetal)" stroke-width="3" fill="none"/>
-            <path d="M-38,-38 L-55,-55 M-46,-38 L-63,-55 M-54,-38 L-71,-55" stroke="url(#patGoldMetal)" stroke-width="3" fill="none"/>
-          </g>
-        </defs>
-
-        <rect width="320" height="640" fill="#FAF8F3"/>
-
-        <g transform="translate(160, -30)"><use href="#patDiamondCross"/></g>
-        <g transform="translate(160, 210)"><use href="#patDiamondCross"/></g>
-        <g transform="translate(160, 450)"><use href="#patDiamondCross"/></g>
-        <g transform="translate(160, 690)"><use href="#patDiamondCross"/></g>
-
-        <g transform="translate(0, 90)"><use href="#patDiamondCross"/></g>
-        <g transform="translate(0, 330)"><use href="#patDiamondCross"/></g>
-        <g transform="translate(0, 570)"><use href="#patDiamondCross"/></g>
-
-        <g transform="translate(320, 90)"><use href="#patDiamondCross"/></g>
-        <g transform="translate(320, 330)"><use href="#patDiamondCross"/></g>
-        <g transform="translate(320, 570)"><use href="#patDiamondCross"/></g>
-      </svg>
+    <!-- Anti-Fraud Security Bar -->
+    <div class="cert-security-bar">
+      <span>ID: {cert_id} • CANONICAL HASH: {canonical_hash[:20]}...</span>
+      <span>DIGITAL SIGNATURE: {sig_short} • OFFICIALLY CONSECRATED</span>
     </div>
   </div>
 </body>
@@ -3654,15 +3546,20 @@ class CourseService:
         enrollment.certificate_issued = True
 
         cert_data = CourseService.generate_course_certificate_data(enrollment, course, user)
-        if not enrollment.certificate_signature or not enrollment.certificate_canonical_hash:
-            enrollment.certificate_signature = cert_data.get("cryptographic_signature")
-            enrollment.certificate_canonical_hash = cert_data.get("canonical_hash")
-
         expected_cert_url = cert_data.get("verification_url")
-        if not enrollment.certificate_url or "?sig=" not in enrollment.certificate_url:
-            enrollment.certificate_url = expected_cert_url
+        crypto_sig = cert_data.get("cryptographic_signature")
+        c_hash = cert_data.get("canonical_hash")
 
-        await enrollment.save()
+        if (
+            enrollment.certificate_signature != crypto_sig
+            or enrollment.certificate_canonical_hash != c_hash
+            or enrollment.certificate_url != expected_cert_url
+        ):
+            enrollment.certificate_signature = crypto_sig
+            enrollment.certificate_canonical_hash = c_hash
+            enrollment.certificate_url = expected_cert_url
+            await enrollment.save()
+
         return cert_data
 
     @staticmethod
@@ -3673,6 +3570,14 @@ class CourseService:
         """Publicly verifies an issued Astra Gurukul Certificate ID with tamper detection."""
         clean_id = certificate_id.strip().upper()
         enrollment = await CourseEnrollment.find_one(CourseEnrollment.certificate_id == clean_id)
+        if not enrollment:
+            # Cross-compatibility between ASTRA-CERT- and DIVINLINK-CERT-
+            if clean_id.startswith("ASTRA-CERT-"):
+                divinlink_id = clean_id.replace("ASTRA-CERT-", "DIVINLINK-CERT-")
+                enrollment = await CourseEnrollment.find_one(CourseEnrollment.certificate_id == divinlink_id)
+            elif clean_id.startswith("DIVINLINK-CERT-"):
+                astra_id = clean_id.replace("DIVINLINK-CERT-", "ASTRA-CERT-")
+                enrollment = await CourseEnrollment.find_one(CourseEnrollment.certificate_id == astra_id)
         if not enrollment:
             # Fallback by enrollment ObjectId if someone passed enrollment id
             if len(clean_id) == 24 and PydanticObjectId.is_valid(clean_id):
@@ -3700,4 +3605,122 @@ class CourseService:
             signature_token=signature_token,
             is_public_verification=True,
         )
+
+    @staticmethod
+    async def reconcile_all_completed_certificates() -> dict[str, Any]:
+        """Scans all course enrollments across the entire system.
+
+        For every student who completed 100% of a course (or completed all published lessons):
+        1. Ensures progress_percent is 100.0 and certificate_issued is True.
+        2. Mints a certificate_id if not present.
+        3. Updates certificate_issued_at if not present.
+        4. Recomputes deterministic canonical hash and HMAC-SHA256 signature with latest DivinLink authority.
+        5. Updates certificate_signature, certificate_canonical_hash, and certificate_url.
+        6. Saves updated enrollment back to database.
+        Returns a summary of total enrollments checked, completed, and updated.
+        """
+        web_url = getattr(settings, "FRONTEND_URL", "https://astra-astrology-web.vercel.app")
+        all_enrollments = await CourseEnrollment.find_all().to_list()
+        courses_cache: dict[str, Course] = {}
+        users_cache: dict[str, User] = {}
+
+        total_checked = len(all_enrollments)
+        completed_found = 0
+        updated_count = 0
+
+        for enrollment in all_enrollments:
+            course_id_str = str(enrollment.course_id)
+            if course_id_str not in courses_cache:
+                c = await Course.find_one(Course.id == enrollment.course_id)
+                if c:
+                    courses_cache[course_id_str] = c
+            course = courses_cache.get(course_id_str)
+            if not course:
+                continue
+
+            user_id_str = str(enrollment.user_id)
+            if user_id_str not in users_cache:
+                u = await User.find_one(User.id == enrollment.user_id)
+                if u:
+                    users_cache[user_id_str] = u
+            user = users_cache.get(user_id_str)
+            if not user:
+                continue
+
+            # Determine completion
+            total_published = await CourseLesson.find(
+                CourseLesson.course_id == enrollment.course_id,
+                {"is_published": {"$ne": False}},
+            ).count()
+
+            is_completed = (
+                enrollment.progress_percent >= 100.0
+                or (total_published > 0 and len(enrollment.completed_lesson_ids or []) >= total_published)
+                or enrollment.certificate_issued
+            )
+
+            if not is_completed:
+                continue
+
+            completed_found += 1
+            changed = False
+
+            if enrollment.progress_percent < 100.0:
+                enrollment.progress_percent = 100.0
+                changed = True
+
+            if not enrollment.certificate_issued:
+                enrollment.certificate_issued = True
+                changed = True
+
+            if not enrollment.certificate_id:
+                enrollment.certificate_id = CourseService.mint_certificate_id()
+                changed = True
+
+            if not enrollment.certificate_issued_at:
+                enrollment.certificate_issued_at = datetime.now(timezone.utc).replace(microsecond=0)
+                changed = True
+
+            student_name = getattr(user, "full_name", None) or "DivinLink Gurukul Scholar"
+            issued_iso = CourseService.format_certificate_issued_iso(enrollment.certificate_issued_at)
+
+            canonical_hash, signature = CourseService.compute_certificate_crypto(
+                cert_id=enrollment.certificate_id,
+                user_id=str(user.id),
+                student_name=student_name,
+                course_id=str(course.id),
+                course_title=course.title,
+                issued_iso=issued_iso,
+            )
+
+            expected_url = f"{web_url}/verify/certificate/{enrollment.certificate_id}?sig={signature[:32]}"
+
+            if enrollment.certificate_canonical_hash != canonical_hash:
+                enrollment.certificate_canonical_hash = canonical_hash
+                changed = True
+
+            if enrollment.certificate_signature != signature:
+                enrollment.certificate_signature = signature
+                changed = True
+
+            if enrollment.certificate_url != expected_url:
+                enrollment.certificate_url = expected_url
+                changed = True
+
+            if changed:
+                await enrollment.save()
+                updated_count += 1
+                logger.info(
+                    "Reconciled certificate for user {} ({}) on course {}: cert_id={}",
+                    user.id,
+                    student_name,
+                    course.title,
+                    enrollment.certificate_id,
+                )
+
+        return {
+            "total_enrollments_checked": total_checked,
+            "completed_enrollments": completed_found,
+            "certificates_reconciled_and_updated": updated_count,
+        }
 

@@ -17,12 +17,25 @@ class _InterceptHandler(logging.Handler):
         except ValueError:
             level = record.levelno
 
+        msg = record.getMessage()
+
+        # Demote internal PyMongo background pool maintenance / cancellation logs
+        # PyMongo handles these internally by reconnecting on the next tick; logging them
+        # as ERROR causes false-positive Sentry crash alerts.
+        if (
+            record.name.startswith("pymongo")
+            or "MongoClient background task encountered an error" in msg
+            or "_OperationCancelled" in msg
+        ):
+            if level in ("ERROR", "CRITICAL", 40, 50):
+                level = "WARNING"
+
         frame, depth = logging.currentframe(), 2
         while frame and frame.f_code.co_filename == logging.__file__:
             frame = frame.f_back
             depth += 1
 
-        logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
+        logger.opt(depth=depth, exception=record.exc_info).log(level, msg)
 
 
 def setup_logging() -> None:
@@ -42,10 +55,23 @@ def setup_logging() -> None:
     )
 
     logging.basicConfig(handlers=[_InterceptHandler()], level=0, force=True)
-    for name in ("uvicorn", "uvicorn.access", "uvicorn.error", "fastapi", "pymongo"):
+    for name in (
+        "uvicorn",
+        "uvicorn.access",
+        "uvicorn.error",
+        "fastapi",
+        "pymongo",
+        "pymongo.client",
+        "pymongo.periodic_executor",
+        "pymongo.topology",
+        "pymongo.pool",
+        "pymongo.serverSelection",
+    ):
         std_logger = logging.getLogger(name)
         std_logger.handlers = [_InterceptHandler()]
         std_logger.propagate = False
+        if name.startswith("pymongo"):
+            std_logger.setLevel(logging.WARNING)
 
     if settings.loki_configured:
         try:

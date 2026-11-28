@@ -1,5 +1,7 @@
 """Domain exceptions + the handlers that turn them into a uniform JSON shape."""
 
+import asyncio
+import time
 from typing import Any
 
 from fastapi import FastAPI, Request, status
@@ -132,6 +134,90 @@ def register_exception_handlers(app: FastAPI) -> None:
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content=_error_body("Validation failed.", "validation_error", details),
             headers=_cors_headers(request),
+        )
+
+    from pymongo.errors import (
+        AutoReconnect,
+        ConnectionFailure,
+        NetworkTimeout,
+        PyMongoError,
+        ServerSelectionTimeoutError,
+        WaitQueueTimeoutError,
+    )
+
+    _last_ping_time: float = 0.0
+    _ping_tasks: set[asyncio.Task[Any]] = set()
+
+    @app.exception_handler(PyMongoError)
+    async def _mongo_error_handler(request: Request, exc: PyMongoError) -> JSONResponse:
+        nonlocal _last_ping_time
+        try:
+            from app.db.mongodb import heal_connection
+            heal_connection()
+        except Exception:
+            pass
+
+        # Treat connection/pool/failover/timeout errors as transient 503s (warn, don't page Sentry).
+        is_transient = isinstance(
+            exc,
+            (
+                ConnectionFailure,
+                ServerSelectionTimeoutError,
+                NetworkTimeout,
+                AutoReconnect,
+                WaitQueueTimeoutError,
+            ),
+        )
+        if is_transient:
+            logger.warning(
+                "Transient database failover/reconnect on {} {}: {}",
+                request.method,
+                request.url.path,
+                exc,
+            )
+            now = time.monotonic()
+            if now - _last_ping_time > 10.0:
+                _last_ping_time = now
+                try:
+                    from app.db.mongodb import ping
+
+                    task = asyncio.create_task(ping(timeout=5.0))
+                    _ping_tasks.add(task)
+                    task.add_done_callback(_ping_tasks.discard)
+                except Exception:
+                    pass
+        else:
+            logger.error("Database error on {} {}: {}", request.method, request.url.path, exc)
+
+        headers = _cors_headers(request)
+        headers["Retry-After"] = "2"
+
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content=_error_body(
+                "Database temporarily unavailable. Please retry in a few seconds.",
+                "database_unavailable",
+            ),
+            headers=headers,
+        )
+
+    @app.exception_handler(TimeoutError)
+    async def _timeout_error_handler(request: Request, exc: TimeoutError) -> JSONResponse:
+        try:
+            from app.db.mongodb import heal_connection
+            heal_connection()
+        except Exception:
+            pass
+        logger.warning("Operation timeout on {} {}: {}", request.method, request.url.path, exc)
+        headers = _cors_headers(request)
+        headers["Retry-After"] = "2"
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content=_error_body(
+                "Operation timed out. Please retry in a few seconds.",
+                "operation_timeout",
+            ),
+            headers=headers,
         )
 
     @app.exception_handler(Exception)

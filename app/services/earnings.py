@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 from beanie import PydanticObjectId
 
+from app.core.security import safe_regex_pattern
 from app.models.earning import EarningEntry
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -140,12 +141,13 @@ async def _build_search_match(search: str | None) -> dict[str, Any]:
     try:
         from app.models.user import User
 
+        pat = safe_regex_pattern(q)
         matched_users = await User.find(
             {
                 "$or": [
-                    {"first_name": {"$regex": q, "$options": "i"}},
-                    {"last_name": {"$regex": q, "$options": "i"}},
-                    {"email": {"$regex": q, "$options": "i"}},
+                    {"first_name": pat},
+                    {"last_name": pat},
+                    {"email": pat},
                 ]
             }
         ).limit(100).to_list()

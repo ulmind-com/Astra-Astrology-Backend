@@ -19,6 +19,8 @@ nudging a stored average up and down — drifts the first time anything is
 hidden or retried.
 """
 
+import asyncio
+
 from beanie import PydanticObjectId
 from beanie.operators import And, In
 from loguru import logger
@@ -217,33 +219,39 @@ async def existing_for(
 async def pending_for(user: User) -> list[dict]:
     """Consultations this user finished but has not reviewed yet.
 
+    Optimized with asyncio.gather() and batch astrologer lookup to eliminate N+1 queries.
     This is what the prompt is built from. Looked up rather than remembered on
     the session, so a review written on one device stops the prompt appearing
     on another.
     """
     done: list[tuple[ReviewKind, PydanticObjectId, object, str]] = []
 
-    chats = await ChatSession.find(
+    chats_task = ChatSession.find(
         And(ChatSession.user_id == user.id, ChatSession.status == ChatStatus.ENDED)
     ).sort(-ChatSession.ended_at).limit(10).to_list()
-    for chat in chats:
-        if chat.started_at and chat.id:
-            done.append((ReviewKind.CHAT, chat.id, chat.astrologer_id, "chat"))
 
-    calls = await CallSession.find(
+    calls_task = CallSession.find(
         And(CallSession.user_id == user.id, CallSession.status == CallStatus.ENDED)
     ).sort(-CallSession.ended_at).limit(10).to_list()
-    for call in calls:
-        if call.started_at and call.id:
-            kind = ReviewKind.VIDEO if call.mode is ConsultationMode.VIDEO else ReviewKind.CALL
-            done.append((kind, call.id, call.astrologer_id, kind.value))
 
-    appointments = await Appointment.find(
+    appointments_task = Appointment.find(
         And(
             Appointment.user_id == user.id,
             In(Appointment.status, [AppointmentStatus.BOOKED, AppointmentStatus.COMPLETED]),
         )
     ).sort(-Appointment.starts_at).limit(10).to_list()
+
+    chats, calls, appointments = await asyncio.gather(chats_task, calls_task, appointments_task)
+
+    for chat in chats:
+        if chat.started_at and chat.id:
+            done.append((ReviewKind.CHAT, chat.id, chat.astrologer_id, "chat"))
+
+    for call in calls:
+        if call.started_at and call.id:
+            kind = ReviewKind.VIDEO if call.mode is ConsultationMode.VIDEO else ReviewKind.CALL
+            done.append((kind, call.id, call.astrologer_id, kind.value))
+
     now = utcnow()
     for appointment in appointments:
         if appointment.ends_at <= now and appointment.id:
@@ -265,11 +273,20 @@ async def pending_for(user: User) -> list[dict]:
         ).to_list()
     }
 
+    # Filter unreviewed items and batch-fetch astrologer profiles (eliminates N+1 query loop)
+    unreviewed_done = [item for item in done if (item[0], item[1]) not in reviewed]
+    if not unreviewed_done:
+        return []
+
+    needed_astro_ids = list({astrologer_id for _, _, astrologer_id, _ in unreviewed_done if astrologer_id})
+    astro_map: dict[str, Astrologer] = {}
+    if needed_astro_ids:
+        profiles = await Astrologer.find({"_id": {"$in": needed_astro_ids}}).to_list()
+        astro_map = {str(p.id): p for p in profiles}
+
     pending = []
-    for kind, session_id, astrologer_id, label in done:
-        if (kind, session_id) in reviewed:
-            continue
-        profile = await Astrologer.get(astrologer_id)
+    for kind, session_id, astrologer_id, label in unreviewed_done:
+        profile = astro_map.get(str(astrologer_id))
         if profile is None:
             continue
         pending.append(

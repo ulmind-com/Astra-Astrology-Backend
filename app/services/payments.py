@@ -33,9 +33,8 @@ from app.core.exceptions import (
     TooManyRequestsError,
     UnauthorizedError,
 )
-from app.models.enums import PaymentOrderStatus, TransactionReason
+from app.models.enums import PaymentOrderStatus, TransactionDirection, TransactionReason
 from app.models.user import User
-from app.models.enums import TransactionDirection
 from app.models.wallet import (
     PaymentOrder,
     TransactionRef,
@@ -426,7 +425,25 @@ async def _dispatch(event: str, body: dict[str, Any]) -> str:
                 logger.info("Shop order {} processed from webhook with result: {}", shop_order.order_number, result)
                 return f"shop_order_{result}"
 
-            # 2. Check if it is a course purchase
+            # 2. Check if it is a live Puja booking
+            from app.models.purohit import PujaBooking
+
+            puja_booking = await PujaBooking.find_one(PujaBooking.razorpay_order_id == order_id)
+            if puja_booking is not None:
+                if payment.get("status") != "captured":
+                    return "awaiting_capture"
+                payment_id = payment.get("id") or f"webhook_{order_id}"
+                from app.services import purohit_service
+
+                puja_result = await purohit_service.confirm_puja_from_webhook(
+                    booking=puja_booking,
+                    payment_id=payment_id,
+                    payment=payment,
+                )
+                logger.info("Puja booking {} processed from webhook: {}", puja_booking.booking_number, puja_result)
+                return f"puja_{puja_result}"
+
+            # 3. Check if it is a course purchase
             from app.services.course_service import CourseService
 
             if payment.get("status") != "captured":
@@ -465,7 +482,17 @@ async def _dispatch(event: str, body: dict[str, Any]) -> str:
                 )
                 return "shop_order_marked_failed"
 
-            # 2. A course purchase that failed
+            # 2. Check if it is a live Puja booking failure
+            from app.models.purohit import PujaBooking
+
+            puja_booking = await PujaBooking.find_one(PujaBooking.razorpay_order_id == order_id)
+            if puja_booking is not None:
+                from app.services import purohit_service
+
+                await purohit_service.mark_puja_payment_failed_from_webhook(booking=puja_booking)
+                return "puja_payment_marked_failed"
+
+            # 3. A course purchase that failed
             from app.services.course_service import CourseService
 
             return await CourseService.fail_course_order(

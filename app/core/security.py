@@ -1,6 +1,7 @@
 """Password hashing and JWT token helpers."""
 
 import hashlib
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
@@ -11,7 +12,7 @@ import jwt
 from app.core.config import settings
 from app.core.exceptions import BadRequestError, UnauthorizedError
 
-TokenType = Literal["access", "refresh"]
+TokenType = Literal["access", "refresh", "application_upload"]
 
 # bcrypt silently truncates anything past 72 bytes, so reject it instead.
 MAX_PASSWORD_BYTES = 72
@@ -74,6 +75,28 @@ def create_refresh_token(
     )
 
 
+def create_application_upload_token(
+    email: str,
+    expires_minutes: int = 30,
+) -> str:
+    """Short-lived token issued after OTP verification to authorize document uploads."""
+    token, _ = _create_token(
+        email.strip().lower(),
+        "application_upload",
+        timedelta(minutes=expires_minutes),
+    )
+    return token
+
+
+def verify_application_upload_token(token: str) -> str:
+    """Validates an onboarding upload token and returns the verified email subject."""
+    payload = decode_token(token, expected_type="application_upload")
+    sub = payload.get("sub")
+    if not isinstance(sub, str) or not sub:
+        raise UnauthorizedError("Invalid upload token.", error_code="invalid_token")
+    return sub
+
+
 def decode_token(token: str, expected_type: TokenType | None = None) -> dict[str, Any]:
     try:
         payload: dict[str, Any] = jwt.decode(
@@ -94,3 +117,9 @@ def decode_token(token: str, expected_type: TokenType | None = None) -> dict[str
 def hash_token(token: str) -> str:
     """SHA-256 of a token, for storing it without storing the token itself."""
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def safe_regex_pattern(term: str, max_len: int = 120) -> dict[str, str]:
+    """Escapes untrusted user input for safe, bounded case-insensitive MongoDB $regex."""
+    cleaned = term.strip()[:max_len]
+    return {"$regex": re.escape(cleaned), "$options": "i"}

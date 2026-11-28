@@ -10,12 +10,14 @@ Handles:
 import asyncio
 from datetime import UTC, datetime, timedelta
 import re
+import time
 from typing import Any
 from beanie import PydanticObjectId
 from beanie.operators import In, RegEx
 from loguru import logger
 
 from app.core.exceptions import BadRequestError, NotFoundError
+from app.core.security import safe_regex_pattern
 from app.models.enums import CouponDiscountType
 from app.models.cms import (
     CMS_KEY_SHOP,
@@ -109,23 +111,43 @@ def _product_out(p: Product) -> ProductOut:
 # Category Management
 # ===========================================================================
 
+_CATEGORIES_CACHE: dict[bool, tuple[float, list[ProductCategoryOut]]] = {}
+_PUBLIC_PRODUCTS_CACHE: dict[tuple[Any, ...], tuple[float, ProductListResponse]] = {}
+_SHOP_CATALOG_CACHE_TTL_SECONDS = 25.0
+
+
+def invalidate_shop_catalog_cache() -> None:
+    """Invalidates cached category & product lists upon admin or inventory updates."""
+    _CATEGORIES_CACHE.clear()
+    _PUBLIC_PRODUCTS_CACHE.clear()
+
 
 async def list_categories(include_inactive: bool = True) -> list[ProductCategoryOut]:
     """Returns all categories with accurate product counts, excluding soft-deleted ones."""
+    now = time.monotonic()
+    cached = _CATEGORIES_CACHE.get(include_inactive)
+    if cached is not None and (now - cached[0]) < _SHOP_CATALOG_CACHE_TTL_SECONDS:
+        return cached[1]
+
     query: dict[str, Any] = {"is_deleted": False}
     if not include_inactive:
         query["is_active"] = True
-    cats = await ProductCategory.find(query).sort("+display_order", "+name").to_list()
 
-    # Aggregate product counts per category in one query (excluding soft-deleted products)
-    counts_cursor = Product.aggregate([
-        {"$match": {"is_deleted": False}},
-        {"$group": {"_id": "$category_id", "count": {"$sum": 1}}}
-    ])
-    counts_map: dict[str, int] = {}
-    async for row in counts_cursor:
-        if row.get("_id"):
-            counts_map[str(row["_id"])] = row["count"]
+    async def _fetch_counts() -> dict[str, int]:
+        counts_cursor = Product.aggregate([
+            {"$match": {"is_deleted": False}},
+            {"$group": {"_id": "$category_id", "count": {"$sum": 1}}},
+        ])
+        counts_map: dict[str, int] = {}
+        async for row in counts_cursor:
+            if row.get("_id"):
+                counts_map[str(row["_id"])] = row["count"]
+        return counts_map
+
+    cats, counts_map = await asyncio.gather(
+        ProductCategory.find(query).sort("+display_order", "+name").to_list(),
+        _fetch_counts(),
+    )
 
     res = []
     for c in cats:
@@ -149,6 +171,7 @@ async def list_categories(include_inactive: bool = True) -> list[ProductCategory
                 updated_at=c.updated_at,
             )
         )
+    _CATEGORIES_CACHE[include_inactive] = (now, res)
     return res
 
 
@@ -175,6 +198,7 @@ async def create_category(payload: ProductCategoryCreate) -> ProductCategoryOut:
         seo_description=payload.seo_description,
     )
     await cat.insert()
+    invalidate_shop_catalog_cache()
     logger.info("Created product category '{}' (id={})", cat.name, cat.id)
     return ProductCategoryOut(
         id=str(cat.id),
@@ -237,6 +261,7 @@ async def update_category(cat_id: str, payload: ProductCategoryUpdate) -> Produc
         cat.seo_description = payload.seo_description
 
     await cat.save()
+    invalidate_shop_catalog_cache()
     return cat
 
 
@@ -267,6 +292,7 @@ async def delete_category(cat_id: str) -> bool:
     cat.is_active = False
     cat.deleted_at = datetime.now(UTC)
     await cat.save()
+    invalidate_shop_catalog_cache()
     logger.info("Soft-deleted category '{}' (id={})", cat.name, cat.id)
     return True
 
@@ -307,7 +333,7 @@ async def list_products(
         except Exception:
             pass
     if ruling_planet:
-        filters.append(RegEx(Product.ruling_planet, f"^{ruling_planet}$", "i"))
+        filters.append(RegEx(Product.ruling_planet, f"^{re.escape(ruling_planet.strip())}$", "i"))
 
     if stock_status == "out_of_stock":
         filters.append(Product.stock_quantity == 0)
@@ -318,28 +344,52 @@ async def list_products(
         filters.append(Product.stock_quantity > 0)
 
     if search and search.strip():
-        term = search.strip()
+        pat = safe_regex_pattern(search)
         regex_filter = {
             "$or": [
-                {"title": {"$regex": term, "$options": "i"}},
-                {"sku": {"$regex": term, "$options": "i"}},
-                {"short_description": {"$regex": term, "$options": "i"}},
-                {"benefits": {"$regex": term, "$options": "i"}},
+                {"title": pat},
+                {"sku": pat},
+                {"short_description": pat},
+                {"benefits": pat},
             ]
         }
         filters.append(regex_filter)
 
-    query = Product.find(*filters) if filters else Product.find_all()
-    total = await query.count()
-    items = await query.sort(sort_by).skip(skip).limit(limit).to_list()
+    is_public_catalog = is_active is True and not include_deleted and not archived_only
+    cache_key = (
+        search or "",
+        category_id or "",
+        ruling_planet or "",
+        stock_status or "",
+        is_featured,
+        page,
+        limit,
+        sort_by,
+    )
+    now = time.monotonic()
+    if is_public_catalog:
+        cached = _PUBLIC_PRODUCTS_CACHE.get(cache_key)
+        if cached is not None and (now - cached[0]) < _SHOP_CATALOG_CACHE_TTL_SECONDS:
+            return cached[1]
 
-    return ProductListResponse(
+    query = Product.find(*filters) if filters else Product.find_all()
+    total, items = await asyncio.gather(
+        query.count(),
+        query.sort(sort_by).skip(skip).limit(limit).to_list(),
+    )
+
+    result = ProductListResponse(
         items=[_product_out(p) for p in items],
         total=total,
         page=page,
         limit=limit,
         has_more=(skip + len(items)) < total,
     )
+    if is_public_catalog:
+        if len(_PUBLIC_PRODUCTS_CACHE) >= 100:
+            _PUBLIC_PRODUCTS_CACHE.clear()
+        _PUBLIC_PRODUCTS_CACHE[cache_key] = (now, result)
+    return result
 
 
 async def get_product_by_id_or_slug(id_or_slug: str) -> ProductOut:
@@ -422,6 +472,7 @@ async def create_product(payload: ProductCreate) -> ProductOut:
         is_energized=payload.is_energized,
     )
     await product.insert()
+    invalidate_shop_catalog_cache()
     logger.info("Created remedy product '{}' (SKU={}, id={})", product.title, product.sku, product.id)
     return _product_out(product)
 
@@ -528,6 +579,7 @@ async def update_product(prod_id: str, payload: ProductUpdate) -> ProductOut:
         product.is_energized = payload.is_energized
 
     await product.save()
+    invalidate_shop_catalog_cache()
 
     # Determine orphaned images that are no longer part of this product
     new_images = set(product.images or [])
@@ -567,6 +619,7 @@ async def delete_product(prod_id: str, hard_delete: bool = False) -> dict[str, A
         product.is_active = False
         product.deleted_at = datetime.now(UTC)
         await product.save()
+        invalidate_shop_catalog_cache()
         logger.info(
             "Soft-deleted product '{}' (id={}, had {} orders). Preserving Cloudinary images for order history.",
             product.title,
@@ -590,6 +643,7 @@ async def delete_product(prod_id: str, hard_delete: bool = False) -> dict[str, A
         await safe_delete_cloudinary_image(img_url)
 
     await product.delete()
+    invalidate_shop_catalog_cache()
     logger.info("Hard-deleted product '{}' and purged {} Cloudinary images", product.title, len(all_images))
     return {
         "deleted": True,
@@ -613,6 +667,7 @@ async def restore_product(prod_id: str) -> ProductOut:
     product.deleted_at = None
     product.is_active = True
     await product.save()
+    invalidate_shop_catalog_cache()
     logger.info("Restored product '{}' (id={})", product.title, product.id)
     return _product_out(product)
 
@@ -640,6 +695,8 @@ async def atomic_reserve_stock(prod_id: str | PydanticObjectId, quantity: int) -
         },
         {"$inc": {"stock_quantity": -quantity}},
     )
+    if res.modified_count > 0:
+        invalidate_shop_catalog_cache()
     return res.modified_count > 0
 
 
@@ -653,6 +710,8 @@ async def atomic_release_stock(prod_id: str | PydanticObjectId, quantity: int) -
         {"_id": oid},
         {"$inc": {"stock_quantity": quantity}},
     )
+    if res.modified_count > 0:
+        invalidate_shop_catalog_cache()
     return res.modified_count > 0
 
 
@@ -682,6 +741,7 @@ async def update_stock(prod_id: str, payload: StockUpdatePayload) -> ProductOut:
     if not updated_product:
         raise NotFoundError("Product not found.")
 
+    invalidate_shop_catalog_cache()
     logger.info(
         "Stock updated for '{}' (SKU={}): {} -> {} (reason: {})",
         updated_product.title,
@@ -694,24 +754,61 @@ async def update_stock(prod_id: str, payload: StockUpdatePayload) -> ProductOut:
 
 
 async def get_inventory_summary() -> InventorySummaryResponse:
-    """Computes real-time warehouse metrics, stock-out counts, and valuations for active inventory."""
-    all_prods = await Product.find({"is_deleted": False}).to_list()
-    total_products = len(all_prods)
-    out_of_stock = sum(1 for p in all_prods if p.stock_quantity == 0)
-    low_stock = sum(1 for p in all_prods if 0 < p.stock_quantity <= p.low_stock_threshold)
-    healthy_stock = sum(1 for p in all_prods if p.stock_quantity > p.low_stock_threshold)
-    total_units = sum(p.stock_quantity for p in all_prods)
-    valuation_mrp = sum(p.stock_quantity * p.mrp for p in all_prods)
-    valuation_cost = sum(p.stock_quantity * (p.cost_price or (p.sale_price * 0.6)) for p in all_prods)
-
+    """Computes real-time warehouse metrics, stock-out counts, and valuations via DB aggregation."""
+    col = Product.get_pymongo_collection()
+    cursor = await col.aggregate([
+        {"$match": {"is_deleted": False}},
+        {
+            "$group": {
+                "_id": None,
+                "total_products": {"$sum": 1},
+                "out_of_stock": {"$sum": {"$cond": [{"$eq": ["$stock_quantity", 0]}, 1, 0]}},
+                "low_stock": {
+                    "$sum": {
+                        "$cond": [
+                            {
+                                "$and": [
+                                    {"$gt": ["$stock_quantity", 0]},
+                                    {"$lte": ["$stock_quantity", {"$ifNull": ["$low_stock_threshold", 5]}]},
+                                ]
+                            },
+                            1,
+                            0,
+                        ]
+                    }
+                },
+                "healthy_stock": {
+                    "$sum": {
+                        "$cond": [
+                            {"$gt": ["$stock_quantity", {"$ifNull": ["$low_stock_threshold", 5]}]},
+                            1,
+                            0,
+                        ]
+                    }
+                },
+                "total_units": {"$sum": "$stock_quantity"},
+                "valuation_mrp": {"$sum": {"$multiply": ["$stock_quantity", {"$ifNull": ["$mrp", 0]}]}},
+                "valuation_cost": {
+                    "$sum": {
+                        "$multiply": [
+                            "$stock_quantity",
+                            {"$ifNull": ["$cost_price", {"$multiply": [{"$ifNull": ["$sale_price", 0]}, 0.6]}]},
+                        ]
+                    }
+                },
+            }
+        },
+    ])
+    rows = [r async for r in cursor]
+    row = rows[0] if rows else {}
     return InventorySummaryResponse(
-        total_products=total_products,
-        out_of_stock_count=out_of_stock,
-        low_stock_count=low_stock,
-        healthy_stock_count=healthy_stock,
-        total_stock_units=total_units,
-        total_inventory_valuation_mrp=round(valuation_mrp, 2),
-        total_inventory_valuation_cost=round(valuation_cost, 2),
+        total_products=int(row.get("total_products", 0) or 0),
+        out_of_stock_count=int(row.get("out_of_stock", 0) or 0),
+        low_stock_count=int(row.get("low_stock", 0) or 0),
+        healthy_stock_count=int(row.get("healthy_stock", 0) or 0),
+        total_stock_units=int(row.get("total_units", 0) or 0),
+        total_inventory_valuation_mrp=round(float(row.get("valuation_mrp", 0.0) or 0.0), 2),
+        total_inventory_valuation_cost=round(float(row.get("valuation_cost", 0.0) or 0.0), 2),
     )
 
 
@@ -719,20 +816,48 @@ async def get_inventory_summary() -> InventorySummaryResponse:
 # Store Banners & Hero Offers CMS
 # ===========================================================================
 
+import time
 
-async def get_shop_banner_settings() -> ShopBannerSettingsOut:
-    """Returns store announcement bar, marquee, cashback, free gift, and hero carousel configurations."""
-    cms = await ShopCMS.find_one(ShopCMS.key == CMS_KEY_SHOP)
+_cached_shop_banner_settings: ShopBannerSettingsOut | None = None
+_cached_shop_banner_time: float = 0.0
+_SHOP_BANNER_CACHE_TTL: float = 120.0  # Cache in memory for 2 minutes
+
+
+def invalidate_shop_banner_cache() -> None:
+    """Invalidates the in-memory cache for Shop CMS banner settings."""
+    global _cached_shop_banner_settings, _cached_shop_banner_time
+    _cached_shop_banner_settings = None
+    _cached_shop_banner_time = 0.0
+
+
+async def get_shop_banner_settings(force_refresh: bool = False) -> ShopBannerSettingsOut:
+    """Returns store announcement bar, marquee, cashback, free gift, and hero carousel configurations.
+    Uses in-memory caching (120s TTL) for lightning-fast (<1ms) response times.
+    """
+    global _cached_shop_banner_settings, _cached_shop_banner_time
+    now = time.monotonic()
+    if not force_refresh and _cached_shop_banner_settings is not None and (now - _cached_shop_banner_time) < _SHOP_BANNER_CACHE_TTL:
+        return _cached_shop_banner_settings
+
+    cms = None
+    try:
+        cms = await ShopCMS.find_one({"$or": [{"key": CMS_KEY_SHOP}, {"key": "shop_cms"}]})
+    except Exception as exc:
+        logger.warning("Could not read ShopCMS from DB: {}", exc)
+
     if not cms:
         cms = ShopCMS(key=CMS_KEY_SHOP)
-        await cms.insert()
+        try:
+            await cms.insert()
+        except Exception:
+            pass
 
     banners = cms.hero_banners if cms.hero_banners else default_shop_hero_banners()
     reels = getattr(cms, "reels", None)
     if not reels:
         reels = default_shop_reels()
 
-    return ShopBannerSettingsOut(
+    result = ShopBannerSettingsOut(
         announcement_bar_text=cms.announcement_bar_text,
         announcement_bar_link=cms.announcement_bar_link,
         announcement_bar_active=cms.announcement_bar_active,
@@ -745,9 +870,11 @@ async def get_shop_banner_settings() -> ShopBannerSettingsOut:
         allow_user_cancellation=getattr(cms, "allow_user_cancellation", True),
         cancellation_grace_hours=getattr(cms, "cancellation_grace_hours", 24),
         refund_sla_days=getattr(cms, "refund_sla_days", 3),
-        free_gift_default_title=getattr(cms, "free_gift_default_title", "Raw Selenite Charging Plate"),
-        free_gift_default_value=getattr(cms, "free_gift_default_value", 729.0),
-        free_gift_default_badge=getattr(cms, "free_gift_default_badge", "FREE Raw Selenite Plate worth ₹729"),
+        free_gift_enabled=getattr(cms, "free_gift_enabled", False),
+        free_gift_min_cart_value=getattr(cms, "free_gift_min_cart_value", 0.0),
+        free_gift_default_title=getattr(cms, "free_gift_default_title", None),
+        free_gift_default_value=getattr(cms, "free_gift_default_value", 0.0),
+        free_gift_default_badge=getattr(cms, "free_gift_default_badge", None),
         free_gift_default_image_url=getattr(cms, "free_gift_default_image_url", None),
         free_shipping_threshold=getattr(cms, "free_shipping_threshold", 499.0),
         standard_shipping_fee=getattr(cms, "standard_shipping_fee", 70.0),
@@ -770,6 +897,9 @@ async def get_shop_banner_settings() -> ShopBannerSettingsOut:
         invoice_prefix=getattr(cms, "invoice_prefix", "DIVIN-INV"),
         invoice_footer_notes=getattr(cms, "invoice_footer_notes", "Thank you for welcoming divine vibrations into your sacred home! May Lord Shiva and the Navagrahas bestow eternal peace, health, and prosperity."),
     )
+    _cached_shop_banner_settings = result
+    _cached_shop_banner_time = now
+    return result
 
 
 async def update_shop_banner_settings(payload: ShopBannerSettingsUpdate) -> ShopBannerSettingsOut:
@@ -790,6 +920,8 @@ async def update_shop_banner_settings(payload: ShopBannerSettingsUpdate) -> Shop
     cms.allow_user_cancellation = payload.allow_user_cancellation
     cms.cancellation_grace_hours = payload.cancellation_grace_hours
     cms.refund_sla_days = payload.refund_sla_days
+    cms.free_gift_enabled = payload.free_gift_enabled
+    cms.free_gift_min_cart_value = payload.free_gift_min_cart_value
     cms.free_gift_default_title = payload.free_gift_default_title
     cms.free_gift_default_value = payload.free_gift_default_value
     cms.free_gift_default_badge = payload.free_gift_default_badge
@@ -816,8 +948,9 @@ async def update_shop_banner_settings(payload: ShopBannerSettingsUpdate) -> Shop
     cms.invoice_footer_notes = payload.invoice_footer_notes
 
     await cms.save()
+    invalidate_shop_banner_cache()
     logger.info("Updated Shop CMS store settings (cashback_percent={}%, free_shipping_threshold={})", cms.cashback_percent, cms.free_shipping_threshold)
-    return await get_shop_banner_settings()
+    return await get_shop_banner_settings(force_refresh=True)
 
 
 # ===========================================================================
@@ -1023,12 +1156,12 @@ async def list_coupons(
         filters.append(ShopCoupon.is_active == is_active)
 
     if search and search.strip():
-        term = search.strip()
+        pat = safe_regex_pattern(search)
         filters.append({
             "$or": [
-                {"code": {"$regex": term, "$options": "i"}},
-                {"title": {"$regex": term, "$options": "i"}},
-                {"description": {"$regex": term, "$options": "i"}},
+                {"code": pat},
+                {"title": pat},
+                {"description": pat},
             ]
         })
 

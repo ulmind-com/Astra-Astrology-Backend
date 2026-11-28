@@ -25,6 +25,7 @@ from beanie.operators import GTE, LT, And, In, Or
 from loguru import logger
 from pymongo.errors import DuplicateKeyError
 
+from app.core.config import settings
 from app.core.exceptions import BadRequestError, ConflictError, ForbiddenError, NotFoundError
 from app.models.appointment import (
     SLOT_MINUTES,
@@ -37,6 +38,7 @@ from app.models.astrologer import Astrologer
 from app.models.base import utcnow
 from app.models.enums import AppointmentStatus, TransactionReason
 from app.models.user import User
+from app.services import settings as settings_service
 
 # Bookings that still hold their time. A cancelled one has given it back.
 LIVE_STATUSES = [AppointmentStatus.BOOKED, AppointmentStatus.COMPLETED]
@@ -636,6 +638,73 @@ async def booked_between(
         .sort(+Appointment.starts_at)
         .to_list()
     )
+
+
+async def _auto_provision_standard_windows(
+    astrologer: Astrologer, day_start: datetime, day_end: datetime
+) -> list[AvailabilityWindow]:
+    """Self-healing availability engine: ensures listed astrologers with appointment booking enabled
+    always have active morning, evening, and tatkal consultation windows across their calendar."""
+    IST = ZoneInfo("Asia/Kolkata")
+    start_date = day_start.astimezone(IST).date()
+    end_date = day_end.astimezone(IST).date()
+
+    current_date = start_date
+    created_any = False
+
+    while current_date <= end_date:
+        existing = await AvailabilityWindow.find_one({
+            "astrologer_id": astrologer.id,
+            "day": current_date,
+        })
+        if not existing:
+            # 1. Morning Session: 10:00 AM IST to 01:30 PM IST (04:30 to 08:00 UTC)
+            m_start = datetime(current_date.year, current_date.month, current_date.day, 4, 30, tzinfo=UTC)
+            m_end = datetime(current_date.year, current_date.month, current_date.day, 8, 0, tzinfo=UTC)
+            w1 = AvailabilityWindow(
+                astrologer_id=astrologer.id,
+                day=current_date,
+                starts_at=m_start,
+                ends_at=m_end,
+                is_tatkal=False,
+                custom_title="Morning Vedic Consultation",
+            )
+            await w1.insert()
+
+            # 2. Evening Peak Session: 03:30 PM IST to 07:30 PM IST (10:00 to 14:00 UTC)
+            e_start = datetime(current_date.year, current_date.month, current_date.day, 10, 0, tzinfo=UTC)
+            e_end = datetime(current_date.year, current_date.month, current_date.day, 14, 0, tzinfo=UTC)
+            w2 = AvailabilityWindow(
+                astrologer_id=astrologer.id,
+                day=current_date,
+                starts_at=e_start,
+                ends_at=e_end,
+                is_tatkal=False,
+                custom_title="Evening Consultation Chamber",
+            )
+            await w2.insert()
+
+            # 3. VIP Tatkal Session: 08:00 PM IST to 11:30 PM IST (14:30 to 18:00 UTC)
+            t_start = datetime(current_date.year, current_date.month, current_date.day, 14, 30, tzinfo=UTC)
+            t_end = datetime(current_date.year, current_date.month, current_date.day, 18, 0, tzinfo=UTC)
+            tatkal_mult = getattr(astrologer.appointment, "tatkal_default_multiplier", 1.5) or 1.5
+            w3 = AvailabilityWindow(
+                astrologer_id=astrologer.id,
+                day=current_date,
+                starts_at=t_start,
+                ends_at=t_end,
+                is_tatkal=True,
+                tatkal_multiplier=tatkal_mult,
+                custom_title="VIP Tatkal Consultation",
+            )
+            await w3.insert()
+            created_any = True
+
+        current_date += timedelta(days=1)
+
+    if created_any:
+        return await _windows_for(astrologer.id, day_start, day_end, include_private=False)
+    return []
 
 
 async def day_view(
@@ -1785,7 +1854,7 @@ async def reschedule(
     if new_starts_at <= now:
         raise BadRequestError("New appointment time must be in the future.", error_code="in_the_past")
 
-    platform = await settings_service.get_platform_settings()
+    platform = await settings_service.get_settings()
     horizon = now + timedelta(days=platform.appointment_booking_days_ahead)
     if new_starts_at > horizon:
         raise BadRequestError(
@@ -2047,7 +2116,7 @@ async def mark_no_show(
 async def activate_brahma_pause(
     *,
     astrologer: Astrologer,
-    duration_hours: int,
+    duration_hours: float | int,
     reason: str | None = None,
 ) -> dict:
     """Activates Brahma Pause (emergency break), takes astrologer offline,
@@ -2392,7 +2461,7 @@ async def red_flag_appointment(
     if terminate_call and getattr(appointment, "call_session_id", None):
         try:
             call = await CallSession.get(appointment.call_session_id)
-            if call and call.status in (CallStatus.RINGING, CallStatus.ACCEPTED, CallStatus.ACTIVE):
+            if call and call.status in (CallStatus.RINGING, CallStatus.ACTIVE):
                 call.status = CallStatus.ENDED
                 call.ended_at = utcnow()
                 call.ended_by = CallParty.ASTROLOGER
@@ -2527,6 +2596,7 @@ async def request_birth_time_rectification(
     note: str | None = None,
 ) -> Appointment:
     """Astrologer requests exact birth time clarification/rectification from the client."""
+    from app.core.config import settings
     from app.services import email as email_service
     from app.services.email_templates import appointment_btr_requested_client_email_html
 
@@ -2602,6 +2672,7 @@ async def update_birth_time_rectification(
     notes: str | None = None,
 ) -> Appointment:
     """Client submits corrected/verified exact birth time for the consultation."""
+    from app.core.config import settings
     from app.services import email as email_service
     from app.services.email_templates import appointment_btr_updated_astrologer_email_html
 
@@ -2609,21 +2680,42 @@ async def update_birth_time_rectification(
     if appointment is None:
         raise NotFoundError("Appointment not found.", error_code="appointment_not_found")
 
-    if by.id != appointment.user_id and getattr(by, "role", None) != "admin":
+    if (
+        by.id != appointment.user_id
+        and by.id != appointment.astrologer_user_id
+        and getattr(by, "role", None) not in ("admin", "super_admin")
+    ):
         raise ForbiddenError("Not authorized to update birth details for this appointment.")
 
     if appointment.status != AppointmentStatus.BOOKED:
         raise BadRequestError("Birth details can only be updated for active bookings.", error_code="appointment_not_booked")
 
     existing_details = appointment.birth_details or {}
+
+    lat = latitude if latitude is not None else existing_details.get("latitude")
+    lon = longitude if longitude is not None else existing_details.get("longitude")
+    tz_off = timezone_offset if timezone_offset is not None else existing_details.get("timezone_offset")
+
+    if (lat is None or lon is None) and birth_place:
+        try:
+            from app.services.astrology.geocoder import geocode_place
+
+            results = await geocode_place(birth_place)
+            if results and len(results) > 0:
+                lat = float(results[0]["latitude"])
+                lon = float(results[0]["longitude"])
+                tz_off = float(results[0].get("timezone") or 5.5)
+        except Exception as exc:
+            logger.warning("Auto-geocoding for BTR birth place '{}' failed: {}", birth_place, exc)
+
     updated_details = {
         **existing_details,
         "date_of_birth": birth_date,
         "time_of_birth": birth_time,
         "place_of_birth": birth_place,
-        "latitude": latitude if latitude is not None else existing_details.get("latitude"),
-        "longitude": longitude if longitude is not None else existing_details.get("longitude"),
-        "timezone_offset": timezone_offset if timezone_offset is not None else existing_details.get("timezone_offset"),
+        "latitude": lat,
+        "longitude": lon,
+        "timezone_offset": tz_off,
         "rectified_by_client": True,
         "rectified_at": utcnow().isoformat(),
         "client_btr_notes": notes,
@@ -2634,6 +2726,33 @@ async def update_birth_time_rectification(
     appointment.btr_updated_at = utcnow()
     appointment.preflight_dossier = None
     await appointment.save()
+
+    # Synchronize to client's saved profile if available
+    try:
+        client_user = await User.get(appointment.user_id)
+        if client_user:
+            dob_parsed = None
+            for fmt in ("%Y-%m-%d", "%d-%m-%Y"):
+                try:
+                    dob_parsed = datetime.strptime(birth_date.strip(), fmt).date()
+                    break
+                except ValueError:
+                    pass
+            if dob_parsed:
+                from app.models.profile import BirthDetails
+
+                client_user.birth = BirthDetails(
+                    date_of_birth=dob_parsed,
+                    time_of_birth=birth_time,
+                    is_time_known=True,
+                    place=birth_place,
+                    latitude=lat,
+                    longitude=lon,
+                    timezone_offset=tz_off,
+                )
+                await client_user.save()
+    except Exception as exc:
+        logger.warning("Could not sync rectified BTR birth details to user profile: {}", exc)
 
     # Notify astrologer via email
     try:
@@ -2892,7 +3011,7 @@ async def handle_session_extension_action(
     )
     await appointment.save()
 
-    # 5. Update CallSession if connected
+    # 5. Update CallSession / ChatSession if connected
     if getattr(appointment, "call_session_id", None):
         try:
             call_session = await CallSession.get(appointment.call_session_id)
@@ -2901,6 +3020,17 @@ async def handle_session_extension_action(
                 await call_session.save()
         except Exception as exc:
             logger.error("Failed to update call_session duration on extension: {}", exc)
+
+    if getattr(appointment, "chat_session_id", None):
+        try:
+            from app.models.chat import ChatSession
+            from app.models.enums import ChatStatus
+            chat_session = await ChatSession.get(appointment.chat_session_id)
+            if chat_session and chat_session.status == ChatStatus.ACTIVE:
+                chat_session.requested_minutes += extra_minutes
+                await chat_session.save()
+        except Exception as exc:
+            logger.error("Failed to update chat_session duration on extension: {}", exc)
 
     # 6. Publish realtime update
     try:
@@ -2936,11 +3066,12 @@ async def issue_follow_up_pass(
     *,
     appointment: Appointment,
     by: User,
-    window_days: int = 7,
-    max_messages: int = 3,
+    window_days: int = 1,
+    window_hours: int | None = None,
+    max_messages: int = 2,
     notes: str | None = None,
 ) -> Appointment:
-    """Astrologer issues or updates the 7-day (or custom days) remedy clarification pass."""
+    """Astrologer issues or updates the 24h (or custom) remedy clarification pass."""
     if by.id != appointment.astrologer_user_id and getattr(by, "role", None) != "admin":
         raise ForbiddenError("Only the consulting astrologer can issue a follow-up pass.")
 
@@ -2949,10 +3080,15 @@ async def issue_follow_up_pass(
 
     now = utcnow()
     appointment.follow_up_pass_enabled = True
-    appointment.follow_up_window_days = window_days
-    appointment.follow_up_expires_at = now + timedelta(days=window_days)
+    if window_hours:
+        appointment.follow_up_expires_at = now + timedelta(hours=window_hours)
+        appointment.follow_up_window_days = max(1, round(window_hours / 24))
+    else:
+        appointment.follow_up_window_days = window_days
+        appointment.follow_up_expires_at = now + timedelta(days=window_days)
     appointment.follow_up_max_messages = max_messages
     appointment.follow_up_granted_at = now
+    appointment.follow_up_pass_active = True
     if notes:
         appointment.follow_up_notes = notes
 
@@ -2967,7 +3103,8 @@ async def issue_follow_up_pass(
             {
                 "id": str(appointment.id),
                 "follow_up_pass_enabled": True,
-                "follow_up_window_days": window_days,
+                "follow_up_pass_active": True,
+                "follow_up_window_days": appointment.follow_up_window_days,
                 "follow_up_expires_at": appointment.follow_up_expires_at.isoformat(),
                 "follow_up_max_messages": max_messages,
                 "follow_up_messages_used": appointment.follow_up_messages_used,
@@ -2976,7 +3113,7 @@ async def issue_follow_up_pass(
     except Exception as exc:
         logger.debug("Failed to publish follow-up pass event: {}", exc)
 
-    logger.info("Follow-up pass of {} days issued for appointment {} by {}", window_days, appointment.id, by.email)
+    logger.info("Follow-up pass issued for appointment {} by {}", appointment.id, by.email)
     return appointment
 
 

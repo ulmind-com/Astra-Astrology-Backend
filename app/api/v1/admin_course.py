@@ -1,6 +1,6 @@
 """Admin Endpoints for Astra Gurukul Courses, Modules & Video Lessons."""
 
-from typing import Annotated
+from typing import Annotated, Any
 import asyncio
 from datetime import datetime, timezone
 
@@ -24,6 +24,7 @@ from app.services.storage import safe_delete_cloudinary_image, upload_file
 from app.schemas.course import (
     AdminCourseEnrollmentListResponse,
     AdminCourseEnrollmentOut,
+    AdminCourseEnrollmentValidityUpdateRequest,
     AdminCourseLearnerDetailOut,
     AdminCourseLearnersResponse,
     AdminCourseOrderListResponse,
@@ -90,6 +91,7 @@ async def admin_list_courses(
             rating_count=c.rating_count,
             is_featured=c.is_featured,
             certificate_enabled=c.certificate_enabled,
+            access_duration_days=c.access_duration_days,
         )
         for c in courses
     ]
@@ -365,6 +367,23 @@ async def admin_list_course_enrollments(
     return ApiResponse(data=AdminCourseEnrollmentListResponse(**data))
 
 
+@router.patch("/enrollments/{enrollment_id}/validity", response_model=ApiResponse[AdminCourseEnrollmentOut])
+async def admin_update_enrollment_validity_global(
+    enrollment_id: PydanticObjectId,
+    payload: AdminCourseEnrollmentValidityUpdateRequest,
+    _: AdminUser,
+) -> ApiResponse[AdminCourseEnrollmentOut]:
+    """Updates or extends the access validity duration for a student enrollment."""
+    res = await CourseService.admin_update_enrollment_validity(
+        enrollment_id=enrollment_id,
+        mode=payload.mode,
+        days=payload.days,
+        expires_at=payload.expires_at,
+        note=payload.note,
+    )
+    return ApiResponse(message="Student course validity updated successfully.", data=AdminCourseEnrollmentOut(**res))
+
+
 @router.post("/{course_id}/enrollments", response_model=ApiResponse[AdminCourseEnrollmentOut], status_code=status.HTTP_201_CREATED)
 async def admin_grant_course_enrollment(
     course_id: PydanticObjectId,
@@ -402,6 +421,25 @@ async def admin_revoke_course_enrollment(
         enrollment_id=enrollment_id,
     )
     return ApiResponse(data={"message": "Enrollment revoked successfully."})
+
+
+@router.patch("/{course_id}/enrollments/{enrollment_id}/validity", response_model=ApiResponse[AdminCourseEnrollmentOut])
+async def admin_update_course_enrollment_validity(
+    course_id: PydanticObjectId,
+    enrollment_id: PydanticObjectId,
+    payload: AdminCourseEnrollmentValidityUpdateRequest,
+    _: AdminUser,
+) -> ApiResponse[AdminCourseEnrollmentOut]:
+    """Updates or extends the access validity duration for a student enrolled in a specific course."""
+    res = await CourseService.admin_update_enrollment_validity(
+        enrollment_id=enrollment_id,
+        course_id=course_id,
+        mode=payload.mode,
+        days=payload.days,
+        expires_at=payload.expires_at,
+        note=payload.note,
+    )
+    return ApiResponse(message="Student course validity updated successfully.", data=AdminCourseEnrollmentOut(**res))
 
 
 @router.get("/{course_id}/learners", response_model=ApiResponse[AdminCourseLearnersResponse])
@@ -502,6 +540,7 @@ async def admin_get_course_detail(
         rating_count=course.rating_count,
         is_featured=course.is_featured,
         certificate_enabled=course.certificate_enabled,
+        access_duration_days=course.access_duration_days,
         description=course.description,
         promo_video_url=course.promo_video_url,
         promo_video_provider=course.promo_video_provider,
@@ -711,6 +750,7 @@ async def admin_delete_section(
         course.total_lessons = len(remaining)
         course.duration_hours = round(sum(l.duration_minutes for l in remaining) / 60.0, 1)
         await course.save()
+        CourseService.invalidate_courses_cache()
 
     return ApiResponse(data={"message": "Section and lessons deleted successfully"})
 
@@ -744,6 +784,7 @@ async def admin_create_lesson(
         notes_markdown=payload.notes_markdown,
         resources=[r.model_dump() for r in payload.resources] if payload.resources else [],
     )
+    CourseService.invalidate_courses_cache()
     return ApiResponse(data={"id": str(lesson.id), "title": lesson.title, "order": lesson.order})
 
 
@@ -787,6 +828,7 @@ async def admin_update_lesson(
             course.total_lessons = len(all_l)
             course.duration_hours = round(sum(l.duration_minutes for l in all_l) / 60.0, 1)
             await course.save()
+            CourseService.invalidate_courses_cache()
 
     return ApiResponse(data={"id": str(lesson.id), "title": lesson.title, "order": lesson.order})
 
@@ -819,7 +861,21 @@ async def admin_delete_lesson(
         course.total_lessons = len(remaining)
         course.duration_hours = round(sum(l.duration_minutes for l in remaining) / 60.0, 1)
         await course.save()
+        CourseService.invalidate_courses_cache()
 
     return ApiResponse(data={"message": "Lesson deleted successfully"})
+
+
+@router.post("/reconcile-certificates", response_model=ApiResponse[dict[str, Any]])
+async def admin_reconcile_certificates(
+    _: AdminUser,
+) -> ApiResponse[dict[str, Any]]:
+    """Scans and synchronizes all completed course certificates with latest DivinLink cryptographic signatures and URLs."""
+    result = await CourseService.reconcile_all_completed_certificates()
+    return ApiResponse(
+        message=f"Reconciled {result['certificates_reconciled_and_updated']} certificates out of {result['completed_enrollments']} completed enrollments.",
+        data=result,
+    )
+
 
 

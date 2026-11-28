@@ -8,6 +8,7 @@ from fastapi import APIRouter, Query, status
 
 from app.api.dependencies import AdminUser, CurrentUser, OptionalUser
 from app.core.exceptions import NotFoundError
+from app.core.security import safe_regex_pattern
 from app.models.support import SupportTicket
 from app.schemas.common import ApiResponse, MessageResponse, Paginated, build_page
 from app.schemas.support import (
@@ -153,13 +154,13 @@ async def list_admin_tickets(
     if category and category != "all":
         query["category"] = category
 
-    if search:
-        s = search.strip()
+    if search and search.strip():
+        pat = safe_regex_pattern(search)
         query["$or"] = [
-            {"ticket_number": {"$regex": s, "$options": "i"}},
-            {"name": {"$regex": s, "$options": "i"}},
-            {"email": {"$regex": s, "$options": "i"}},
-            {"subject": {"$regex": s, "$options": "i"}},
+            {"ticket_number": pat},
+            {"name": pat},
+            {"email": pat},
+            {"subject": pat},
         ]
 
     total = await SupportTicket.find(query).count()

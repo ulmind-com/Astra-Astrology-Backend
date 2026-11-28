@@ -5,8 +5,10 @@ generated, and the astrologer is emailed it — so the same "both stores or
 neither" rule as registration applies here, with the same rollback.
 """
 
+import asyncio
 import secrets
-from datetime import UTC, datetime
+import time
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from loguru import logger
@@ -15,7 +17,7 @@ from slugify import slugify
 
 from app.core.exceptions import ConflictError, ForbiddenError
 from app.core.security import hash_password
-from app.models.astrologer import Astrologer
+from app.models.astrologer import Astrologer, GalleryImage
 from app.models.enums import AccountStatus, AuthProvider, ConsultationMode, UserRole
 from app.models.pending_registration import PendingRegistration
 from app.models.user import User
@@ -258,6 +260,7 @@ async def create_astrologer(payload: AstrologerCreate) -> tuple[User, Astrologer
         )
 
     # On the directory from this moment, without waiting for a poll.
+    invalidate_directory_cache()
     from app.services import realtime
 
     await realtime.publish_astrologer(profile)
@@ -338,6 +341,7 @@ async def update_profile(
     # Price, name, skills and listing all live on the public card, so anyone
     # looking at the directory right now should see the change without
     # reloading.
+    invalidate_directory_cache()
     from app.services import realtime
 
     await realtime.publish_astrologer(profile)
@@ -380,6 +384,7 @@ async def update_availability(profile: Astrologer, payload: AvailabilityUpdate) 
             }
         },
     )
+    invalidate_directory_cache()
     await realtime.publish_astrologer(profile)
     return profile
 
@@ -389,8 +394,23 @@ async def update_availability(profile: Astrologer, payload: AvailabilityUpdate) 
 # must clear it — see `update_profile` and the admin deactivate route.
 MAX_GALLERY_IMAGES = 12
 
+_DIRECTORY_CACHE: dict[tuple[str, int, int], tuple[float, Paginated[AstrologerPublic]]] = {}
+_DIRECTORY_CACHE_TTL_SECONDS = 10.0
+_DIRECTORY_CACHE_MAX_ENTRIES = 100
+_HYDRATED_STATS_IDS: set[str] = set()
 
-async def to_public(profile: Astrologer, platform: Any = None) -> AstrologerPublic:
+
+def invalidate_directory_cache() -> None:
+    """Clears the short-lived public directory cache upon profile or presence updates."""
+    _DIRECTORY_CACHE.clear()
+
+
+async def to_public(
+    profile: Astrologer,
+    platform: Any = None,
+    *,
+    hydrate_stats: bool = False,
+) -> AstrologerPublic:
     """Fills in the platform defaults, so a card never shows a blank price.
 
     Also reports presence as it is *now*: an astrologer whose panel stopped
@@ -423,22 +443,33 @@ async def to_public(profile: Astrologer, platform: Any = None) -> AstrologerPubl
     )
     public.availability.is_online = presence.is_effectively_online(profile.availability)
 
+    profile_id_str = str(profile.id)
     sd = getattr(profile, "service_duration", None)
-    if not sd or (sd.chat_minutes == 0 and sd.call_minutes == 0 and sd.video_minutes == 0):
+    needs_duration_hydration = (
+        hydrate_stats
+        and profile_id_str not in _HYDRATED_STATS_IDS
+        and (not sd or (sd.chat_minutes == 0 and sd.call_minutes == 0 and sd.video_minutes == 0))
+    )
+    if needs_duration_hydration:
+        if len(_HYDRATED_STATS_IDS) > 1000:
+            _HYDRATED_STATS_IDS.clear()
+        _HYDRATED_STATS_IDS.add(profile_id_str)
         try:
             from app.models.astrologer import ServiceDuration
             from app.models.call import CallSession
             from app.models.chat import ChatSession
             from app.models.enums import CallStatus, ChatStatus
 
-            chats = await ChatSession.find(
-                ChatSession.astrologer_id == profile.id,
-                ChatSession.status == ChatStatus.ENDED,
-            ).to_list()
-            calls = await CallSession.find(
-                CallSession.astrologer_id == profile.id,
-                CallSession.status == CallStatus.ENDED,
-            ).to_list()
+            chats, calls = await asyncio.gather(
+                ChatSession.find(
+                    ChatSession.astrologer_id == profile.id,
+                    ChatSession.status == ChatStatus.ENDED,
+                ).to_list(),
+                CallSession.find(
+                    CallSession.astrologer_id == profile.id,
+                    CallSession.status == CallStatus.ENDED,
+                ).to_list(),
+            )
 
             c_mins = sum(max(1, round(c.duration_seconds / 60)) for c in chats if c.duration_seconds > 0)
             v_mins = sum(
@@ -463,9 +494,8 @@ async def to_public(profile: Astrologer, platform: Any = None) -> AstrologerPubl
 
     public.service_duration = _format_service_duration(profile)
 
-    # Auto-heal: If an astrologer has configured an appointment price > 0 and has active open windows,
-    # auto-enable appointments so clients can book them immediately.
-    if profile.appointment.price_paise > 0 and not profile.appointment.enabled:
+    # Auto-heal only on explicit single-profile fetch (`hydrate_stats=True`), never inside list N+1 loops.
+    if hydrate_stats and profile.appointment.price_paise > 0 and not profile.appointment.enabled:
         try:
             from app.models.appointment import AvailabilityWindow
             has_windows = (
@@ -505,11 +535,18 @@ def _directory_query(filters: AstrologerFilters, default_chat_rate: int | None =
         # Both halves, or "online now" would list everyone who ever forgot to
         # switch off. The TTL is applied in the query so the count and the
         # pages agree with what the cards end up showing.
+        from app.models.base import utcnow
         from app.services import presence
 
+        now = utcnow()
         conditions.append(Astrologer.availability.is_online == True)  # noqa: E712
         conditions.append(
-            {"availability.last_seen_at": {"$gte": presence.stale_before()}}
+            {
+                "availability.last_seen_at": {
+                    "$gte": presence.stale_before(),
+                    "$lte": now + timedelta(seconds=5),
+                }
+            }
         )
     if filters.featured_only:
         conditions.append(Astrologer.is_featured == True)  # noqa: E712
@@ -542,12 +579,17 @@ async def list_public(
     """The directory: whoever is online comes first, then the featured ones."""
     from app.services import settings as settings_service
 
+    now = time.monotonic()
+    cache_key = (filters.model_dump_json(), page, limit)
+    cached = _DIRECTORY_CACHE.get(cache_key)
+    if cached is not None and (now - cached[0]) < _DIRECTORY_CACHE_TTL_SECONDS:
+        return cached[1]
+
     platform = await settings_service.get_settings()
     query = _directory_query(filters, platform.default_chat_coins_per_minute)
-    total = await query.count()
-
-    profiles = (
-        await query.sort(
+    total, profiles = await asyncio.gather(
+        query.count(),
+        query.sort(
             -Astrologer.availability.is_online,
             -Astrologer.availability.last_seen_at,
             -Astrologer.is_featured,
@@ -556,11 +598,18 @@ async def list_public(
         )
         .skip((page - 1) * limit)
         .limit(limit)
-        .to_list()
+        .to_list(),
     )
-    return build_page(
-        [await to_public(p, platform=platform) for p in profiles], total, page, limit
+    result = build_page(
+        [await to_public(p, platform=platform, hydrate_stats=False) for p in profiles],
+        total,
+        page,
+        limit,
     )
+    if len(_DIRECTORY_CACHE) >= _DIRECTORY_CACHE_MAX_ENTRIES:
+        _DIRECTORY_CACHE.clear()
+    _DIRECTORY_CACHE[cache_key] = (now, result)
+    return result
 
 
 async def get_public(identifier: str) -> AstrologerPublic:
@@ -577,7 +626,7 @@ async def get_public(identifier: str) -> AstrologerPublic:
     if profile is None or not profile.is_listed:
         raise NotFoundError("Astrologer not found.", error_code="astrologer_not_found")
 
-    return await to_public(profile)
+    return await to_public(profile, hydrate_stats=True)
 
 
 # --------------------------------------------------------------- images
@@ -606,6 +655,7 @@ async def set_profile_image(user: User, profile: Astrologer, file) -> Astrologer
     profile.profile_image_url = result.url
     profile.profile_image_public_id = result.public_id
     await profile.save()
+    invalidate_directory_cache()
 
     # Only once the replacement is safely stored and recorded.
     if previous and previous != result.public_id:
@@ -625,6 +675,7 @@ async def remove_profile_image(profile: Astrologer) -> Astrologer:
     profile.profile_image_url = None
     profile.profile_image_public_id = None
     await profile.save()
+    invalidate_directory_cache()
 
     if public_id:
         await storage.delete_file(public_id)
@@ -652,6 +703,7 @@ async def set_banner_image(user: User, profile: Astrologer, file) -> Astrologer:
     profile.banner_image_url = result.url
     profile.banner_image_public_id = result.public_id
     await profile.save()
+    invalidate_directory_cache()
 
     if previous and previous != result.public_id:
         await storage.delete_file(previous)
@@ -674,6 +726,7 @@ async def remove_banner_image(profile: Astrologer) -> Astrologer:
     profile.banner_image_url = None
     profile.banner_image_public_id = None
     await profile.save()
+    invalidate_directory_cache()
 
     if public_id:
         await storage.delete_file(public_id)
@@ -735,6 +788,7 @@ async def add_gallery_image(user: User, profile: Astrologer, file):  # noqa: ANN
 
     image = GalleryImage(url=result.url, public_id=result.public_id)
     profile.gallery = [GalleryImage(**item) for item in new_gallery]
+    invalidate_directory_cache()
 
     try:
         from app.services import realtime
@@ -774,6 +828,7 @@ async def remove_gallery_image(profile: Astrologer, public_id: str) -> Astrologe
     logger.info("MongoDB gallery remove: matched={}, modified={}", res.matched_count, res.modified_count)
 
     profile.gallery = [GalleryImage(**item) for item in remaining_items]
+    invalidate_directory_cache()
 
     try:
         from app.services import realtime

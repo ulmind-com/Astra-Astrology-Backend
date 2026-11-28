@@ -38,6 +38,8 @@ class ChatSession(TimestampedDocument):
     # before messages moved into MongoDB still resolve.
     conversation_id: str
 
+    appointment_id: PydanticObjectId | None = None
+
     status: ChatStatus = ChatStatus.REQUESTED
 
     # When the astrologer accepted. Nobody is charged for waiting.
@@ -80,6 +82,10 @@ class ChatSession(TimestampedDocument):
             pymongo.IndexModel(
                 [("user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
                 name="chat_user_recent",
+            ),
+            pymongo.IndexModel(
+                [("user_id", pymongo.ASCENDING), ("status", pymongo.ASCENDING), ("ended_at", pymongo.DESCENDING)],
+                name="chat_user_status_ended",
             ),
             pymongo.IndexModel(
                 [

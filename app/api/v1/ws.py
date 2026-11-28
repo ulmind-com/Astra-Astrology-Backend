@@ -60,6 +60,87 @@ async def _pump(connection: realtime.Connection) -> None:
         pass
 
 
+async def _verify_whiteboard_peer(user_id: str, to_user: str, call_id: str | None) -> bool:
+    """Confirm user_id and to_user share an active consultation or live puja session."""
+    from beanie import PydanticObjectId
+
+    from app.models.appointment import Appointment
+    from app.models.call import CallSession
+    from app.models.chat import ChatSession
+    from app.models.enums import AppointmentStatus, CallStatus, ChatStatus, PujaBookingStatus
+    from app.models.purohit import PujaBooking
+
+    if not (PydanticObjectId.is_valid(user_id) and PydanticObjectId.is_valid(to_user)):
+        return False
+    if user_id == to_user:
+        return False
+
+    u1 = PydanticObjectId(user_id)
+    u2 = PydanticObjectId(to_user)
+    pair_filter = {
+        "$or": [
+            {"user_id": u1, "astrologer_user_id": u2},
+            {"user_id": u2, "astrologer_user_id": u1},
+        ]
+    }
+    puja_pair_filter = {
+        "$or": [
+            {"user_id": u1, "purohit_user_id": u2},
+            {"user_id": u2, "purohit_user_id": u1},
+        ]
+    }
+
+    if call_id and PydanticObjectId.is_valid(call_id):
+        cid = PydanticObjectId(call_id)
+        call = await CallSession.find_one(
+            {
+                "_id": cid,
+                "status": {"$in": [CallStatus.RINGING, CallStatus.ACTIVE]},
+                **pair_filter,
+            }
+        )
+        if call is not None:
+            return True
+        puja = await PujaBooking.find_one(
+            {
+                "_id": cid,
+                "status": {"$in": [PujaBookingStatus.CONFIRMED, PujaBookingStatus.IN_PROGRESS]},
+                **puja_pair_filter,
+            }
+        )
+        if puja is not None:
+            return True
+        appt = await Appointment.find_one(
+            {
+                "_id": cid,
+                "status": AppointmentStatus.BOOKED,
+                **pair_filter,
+            }
+        )
+        return appt is not None
+
+    # Fallback when call_id is omitted: require an active call/puja/chat or booked appointment
+    active_call = await CallSession.find_one(
+        {"status": {"$in": [CallStatus.RINGING, CallStatus.ACTIVE]}, **pair_filter}
+    )
+    if active_call is not None:
+        return True
+    active_puja = await PujaBooking.find_one(
+        {"status": {"$in": [PujaBookingStatus.CONFIRMED, PujaBookingStatus.IN_PROGRESS]}, **puja_pair_filter}
+    )
+    if active_puja is not None:
+        return True
+    active_chat = await ChatSession.find_one(
+        {"status": {"$in": [ChatStatus.REQUESTED, ChatStatus.ACTIVE]}, **pair_filter}
+    )
+    if active_chat is not None:
+        return True
+    booked_appt = await Appointment.find_one(
+        {"status": AppointmentStatus.BOOKED, **pair_filter}
+    )
+    return booked_appt is not None
+
+
 @router.websocket("/live")
 async def live(websocket: WebSocket, token: str | None = Query(default=None)) -> None:
     await websocket.accept()
@@ -67,12 +148,11 @@ async def live(websocket: WebSocket, token: str | None = Query(default=None)) ->
     user_id, role = await _identify(token)
     connection = realtime.Connection(websocket, user_id, role)
     realtime.register(connection)
+    verified_peers: set[tuple[str | None, str]] = set()
 
-    # An astrologer holding this socket is an astrologer at their desk.
-    astrologer_profile: Any = None
-    if role == "astrologer" and user_id:
-        astrologer_profile = await _profile_for(user_id, role)
-    await _set_presence(astrologer_profile, online=True)
+    # An astrologer or purohit holding this socket is live at their desk.
+    panel_profile = await _profile_for(user_id, role)
+    await _set_presence(panel_profile, online=True)
 
     sender = asyncio.create_task(_pump(connection))
     try:
@@ -96,27 +176,52 @@ async def live(websocket: WebSocket, token: str | None = Query(default=None)) ->
             # The client pings; anything arriving proves the socket is alive.
             # Nothing arriving for longer than the timeout means it is not.
             raw_text = await asyncio.wait_for(websocket.receive_text(), timeout=IDLE_TIMEOUT_SECONDS)
-            connection.offer({"type": "pong"})
-            await _touch_presence(astrologer_profile)
+            await _touch_presence(panel_profile)
 
-            # Handle live collaborative whiteboard broadcast frames if sent over websocket
             if raw_text and raw_text.startswith("{"):
                 try:
                     import json
                     msg = json.loads(raw_text)
                     event_type = msg.get("type") or msg.get("action")
-                    if event_type in ("whiteboard_live", "whiteboard_event", "whiteboard_sync"):
+                    if event_type == "ping":
+                        connection.offer({"type": "pong"})
+                        continue
+                    if event_type in (
+                        "whiteboard_live",
+                        "whiteboard_event",
+                        "whiteboard_sync",
+                        "webrtc_signal",
+                    ):
+                        to_user_raw = msg.get("to_user")
+                        if not user_id or not to_user_raw:
+                            continue
+                        to_user_id = str(to_user_raw)
+                        raw_data = msg.get("data")
+                        msg_data = raw_data if isinstance(raw_data, dict) else {}
+                        raw_call_id = msg.get("call_id") or msg_data.get("call_id")
+                        call_id_str = str(raw_call_id) if raw_call_id else None
+                        peer_key = (call_id_str, to_user_id)
+                        if peer_key not in verified_peers:
+                            if not await _verify_whiteboard_peer(user_id, to_user_id, call_id_str):
+                                logger.debug(
+                                    "WS relay denied: type={} from={} to={} call_id={}",
+                                    event_type,
+                                    user_id,
+                                    to_user_id,
+                                    call_id_str,
+                                )
+                                continue
+                            verified_peers.add(peer_key)
                         payload = {
                             "type": event_type,
-                            "data": msg.get("data", {}),
+                            "from_user": user_id,
+                            "data": msg_data,
                         }
-                        to_user = msg.get("to_user")
-                        if to_user:
-                            realtime._broadcast(payload, to_user=str(to_user))
-                        else:
-                            realtime._broadcast(payload)
+                        realtime._broadcast(payload, to_user=to_user_id)
                 except Exception:
                     pass
+            else:
+                connection.offer({"type": "pong"})
 
     except (TimeoutError, WebSocketDisconnect):
         pass
@@ -127,30 +232,50 @@ async def live(websocket: WebSocket, token: str | None = Query(default=None)) ->
         with contextlib.suppress(asyncio.CancelledError, WebSocketDisconnect, Exception):
             await sender
         realtime.unregister(connection)
-        # Only the *last* tab closing takes them offline — an astrologer with
+        # Only the *last* tab closing takes them offline — a panel user with
         # the panel open twice is still at their desk.
         if not (user_id and realtime.is_connected(user_id)):
-            await _set_presence(astrologer_profile, online=False)
+            await _set_presence(panel_profile, online=False)
 
 
 # -------------------------------------------------------------- presence
-async def _profile_for(user_id: str | None, role: str | None) -> Any:
-    if not user_id or role != "astrologer":
+async def _profile_for(user_id: str | None, role: str | None) -> tuple[str, Any] | None:
+    if not user_id or role not in ("astrologer", "purohit"):
         return None
     from beanie import PydanticObjectId
 
-    from app.models.astrologer import Astrologer
-
     if not PydanticObjectId.is_valid(user_id):
         return None
-    return await Astrologer.find_one(Astrologer.user_id == PydanticObjectId(user_id))
+    oid = PydanticObjectId(user_id)
+
+    if role == "astrologer":
+        from app.models.astrologer import Astrologer
+
+        profile = await Astrologer.find_one(Astrologer.user_id == oid)
+        return ("astrologer", profile) if profile is not None else None
+
+    from app.models.purohit import Purohit
+
+    profile = await Purohit.find_one(Purohit.user_id == oid)
+    return ("purohit", profile) if profile is not None else None
 
 
-async def _set_presence(profile: Any, *, online: bool) -> None:
+async def _set_presence(entry: tuple[str, Any] | None, *, online: bool) -> None:
     """Opening the panel is going online; closing it is going offline."""
-    if profile is None:
+    if entry is None:
         return
+    kind, profile = entry
     try:
+        if kind == "purohit":
+            from app.services import purohit_presence, purohit_service
+
+            if online:
+                await purohit_presence.beat(profile, force_online=True)
+            else:
+                await purohit_presence.go_offline(profile, reason="panel closed")
+                await purohit_service.cancel_unpaid_requests_for_offline_purohit(profile.id)
+            return
+
         from app.services import presence
 
         if online:
@@ -158,18 +283,29 @@ async def _set_presence(profile: Any, *, online: bool) -> None:
         else:
             await presence.go_offline(profile, reason="panel closed")
     except Exception as exc:  # noqa: BLE001 - presence must never break the socket
-        logger.warning("Could not update presence: {}", exc)
+        logger.warning("Could not update presence ({}): {}", kind, exc)
 
 
-async def _touch_presence(profile: Any) -> None:
+async def _touch_presence(entry: tuple[str, Any] | None) -> None:
     """Refreshes the stamp, so the read-time TTL keeps agreeing they are here.
 
     Throttled to only write to MongoDB every 25 seconds instead of every ping.
     """
-    if profile is None:
+    if entry is None:
         return
+    kind, profile = entry
     try:
         from app.models.base import utcnow
+
+        if kind == "purohit":
+            from app.services import purohit_presence
+
+            last_seen = getattr(profile, "last_seen_at", None)
+            if last_seen and (utcnow() - purohit_presence._as_utc(last_seen)).total_seconds() < 25:
+                return
+            await purohit_presence.beat(profile, force_online=False)
+            return
+
         from app.services import presence
 
         last_seen = getattr(profile.availability, "last_seen_at", None)

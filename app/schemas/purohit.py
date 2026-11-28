@@ -1,6 +1,8 @@
 """Schemas for Purohit profile, personal puja catalog, and live puja booking."""
 
 from datetime import datetime
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.core.config import settings
@@ -73,9 +75,12 @@ class PurohitUpdate(BaseModel):
 
 
 class PurohitAvailabilityUpdate(BaseModel):
-    """Purohit dashboard toggle to switch online/offline availability for live pujas."""
+    """Purohit dashboard toggle to switch online/offline availability and configure weekly auspicious slots for live pujas."""
 
     is_online: bool
+    available_days: list[str] | None = None
+    available_slots: list[str] | None = None
+    weekly_schedule: dict[str, list[str]] | None = None
 
 
 class PurohitOut(BaseModel):
@@ -96,6 +101,12 @@ class PurohitOut(BaseModel):
     languages: list[str]
     is_online: bool
     is_verified: bool
+    is_busy: bool = False
+    last_seen_at: datetime | None = None
+    busy_booking_id: str | None = None
+    available_days: list[str] = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    available_slots: list[str] = ["brahma_muhurat", "morning", "afternoon", "evening"]
+    weekly_schedule: dict[str, list[str]] = {}
     pujas: list[PurohitPujaItemOut] = []
     rating: float = 0.0
     total_pujas_performed: int = 0
@@ -119,7 +130,23 @@ class PujaBookingCreate(BaseModel):
     puja_item_id: str
     sankalpa_name: str = Field(..., min_length=2, max_length=100, description="Name for Vedic Sankalpa")
     sankalpa_gotra: str = Field(default="Kashyapa", min_length=2, max_length=50)
+    sankalpa_nakshatra: str | None = Field(default=None, max_length=50, description="Birth Nakshatra for Vedic Sankalpa")
     sankalpa_wish: str | None = Field(default=None, max_length=500, description="Special prayer wish or reason for puja")
+    payment_method: Literal["deferred", "razorpay", "wallet"] = "deferred"
+
+
+class PujaPaymentVerifyRequest(BaseModel):
+    """Razorpay callback payload to finalize a pending online puja booking."""
+
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
+
+
+class PujaDeclineRequest(BaseModel):
+    """Optional note when a Purohit declines a live puja request."""
+
+    reason: str | None = Field(default=None, max_length=300)
 
 
 class PujaBookingOut(BaseModel):
@@ -133,19 +160,36 @@ class PujaBookingOut(BaseModel):
     user_name: str
     user_phone: str
     purohit_id: str
+    purohit_user_id: str | None = None
     purohit_name: str
     puja_item_id: str
     puja_name: str
     puja_duration_minutes: int
     amount_inr: float
+    amount_paise: int = 0
     sankalpa_name: str
     sankalpa_gotra: str
+    sankalpa_nakshatra: str | None = None
     sankalpa_wish: str | None = None
     room_id: str
     zego_app_id: int = Field(default_factory=lambda: settings.ZEGO_APP_ID)
     zego_token: str | None = None
+    payment_method: str = "razorpay"
+    razorpay_key_id: str | None = None
+    razorpay_order_id: str | None = None
     status: PujaBookingStatus
     payment_status: PujaPaymentStatus
     started_at: datetime | None = None
+    accepted_at: datetime | None = None
+    accept_expires_at: datetime | None = None
+    payment_expires_at: datetime | None = None
+    purohit_join_deadline_at: datetime | None = None
+    purohit_joined_at: datetime | None = None
+    devotee_joined_at: datetime | None = None
+    expires_at: datetime | None = None
     completed_at: datetime | None = None
+    declined_at: datetime | None = None
+    cancel_reason: str | None = None
+    refund_id: str | None = None
+    refunded_at: datetime | None = None
     created_at: datetime

@@ -154,6 +154,9 @@ class Product(TimestampedDocument):
             pymongo.IndexModel([("category_type", pymongo.ASCENDING)], name="product_category_type_idx"),
             pymongo.IndexModel([("is_active", pymongo.ASCENDING), ("is_featured", pymongo.ASCENDING)], name="product_active_featured"),
             pymongo.IndexModel([("is_deleted", pymongo.ASCENDING)], name="product_deleted_idx"),
+            pymongo.IndexModel([("is_deleted", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)], name="product_deleted_created_idx"),
+            pymongo.IndexModel([("is_deleted", pymongo.ASCENDING), ("is_active", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)], name="product_deleted_active_created_idx"),
+            pymongo.IndexModel([("category_slug", pymongo.ASCENDING), ("is_deleted", pymongo.ASCENDING), ("is_active", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)], name="product_cat_active_created_idx"),
             pymongo.IndexModel([("sale_price", pymongo.ASCENDING)], name="product_price_idx"),
             pymongo.IndexModel([("ruling_planet", pymongo.ASCENDING)], name="product_planet_idx"),
             pymongo.IndexModel([("benefits", pymongo.ASCENDING)], name="product_benefits_idx"),
@@ -460,6 +463,8 @@ class ShopOrder(TimestampedDocument):
 
     # Consecration & Invoice
     invoice_number: str | None = None
+    invoice_sent_at: datetime | None = None
+    invoice_email_sent: bool = Field(default=False)
     consecration_certificate_id: str | None = None
     consecration_certificate_url: str | None = None
 
@@ -468,9 +473,20 @@ class ShopOrder(TimestampedDocument):
         indexes = [
             pymongo.IndexModel([("order_number", pymongo.ASCENDING)], name="order_number_unique", unique=True),
             pymongo.IndexModel([("user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)], name="order_user_recent"),
+            pymongo.IndexModel(
+                [
+                    ("user_id", pymongo.ASCENDING),
+                    ("payment_status", pymongo.ASCENDING),
+                    ("payment_method", pymongo.ASCENDING),
+                    ("created_at", pymongo.DESCENDING),
+                ],
+                name="order_user_filter_idx",
+            ),
             pymongo.IndexModel([("razorpay_order_id", pymongo.ASCENDING)], name="order_rzp_order_idx"),
             pymongo.IndexModel([("razorpay_payment_id", pymongo.ASCENDING)], name="order_rzp_payment_idx"),
             pymongo.IndexModel([("order_status", pymongo.ASCENDING)], name="order_status_idx"),
+            pymongo.IndexModel([("order_status", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)], name="order_status_created_idx"),
+            pymongo.IndexModel([("created_at", pymongo.DESCENDING)], name="order_created_desc_idx"),
             pymongo.IndexModel([("user_phone", pymongo.ASCENDING), ("order_status", pymongo.ASCENDING)], name="order_phone_status_idx"),
             pymongo.IndexModel([("payment_status", pymongo.ASCENDING)], name="order_payment_status_idx"),
             pymongo.IndexModel([("refund_status", pymongo.ASCENDING)], name="order_refund_status_idx"),
@@ -510,7 +526,7 @@ class ProductReview(TimestampedDocument):
     # Rating & Testimonial
     rating: int = Field(ge=1, le=5, description="Devotee rating from 1 to 5 stars")
     title: str | None = Field(default=None, max_length=150, description="Short review headline")
-    comment: str = Field(min_length=5, max_length=3000, description="Devotee experience and feedback")
+    comment: str = Field(default="", max_length=3000, description="Optional devotee experience and feedback")
     images: list[str] = Field(default_factory=list, max_length=5, description="Devotee photos of holy item/consecration")
 
     # Attribution & Badging

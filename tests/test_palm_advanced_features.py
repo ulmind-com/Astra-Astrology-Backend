@@ -11,9 +11,28 @@ from __future__ import annotations
 
 import pytest
 
+from app.api.v1.palm_reading import dual_match
+from app.schemas.palm_reading import DualHandMatchRequest
 from app.services.palm_cv.dual_hand import calculate_dual_hand_synastry
 from app.services.palm_cv.fingers_thumb import analyze_fingers_thumb_and_nails
 from app.services.palm_cv.timeline_1year import get_palm_timeline_for_age
+
+
+@pytest.mark.asyncio
+async def test_dual_match_endpoint_direct():
+    req = DualHandMatchRequest(
+        left_hand_image=None,
+        right_hand_image=None,
+        left_hand_measurements={"head_curvature": 0.20, "fate_strength": 0.42},
+        right_hand_measurements={"head_curvature": 0.12, "fate_strength": 0.75},
+        primary_handedness="Right",
+    )
+    api_res = await dual_match(req)
+    assert api_res.message == "Bilateral dual-hand synastry completed successfully"
+    assert api_res.data.is_harmonious is True
+    assert api_res.data.karma_evolution_score >= 70
+    assert "Prarabdha" in api_res.data.prarabdha_summary_en
+    assert "পুরুষার্থ" in api_res.data.purushartha_summary_bn
 
 
 def test_dual_hand_synastry():

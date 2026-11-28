@@ -719,6 +719,14 @@ NAKSHATRA_NAMES = [
     "Shatabhisha", "Purva Bhadrapada", "Uttara Bhadrapada", "Revati",
 ]
 
+NAKSHATRA_NAMES_BN = [
+    "অশ্বিনী", "ভরণী", "কৃত্তিকা", "রোহিণী", "মৃগশিরা", "আর্দ্রা",
+    "পুনর্বসু", "পুষ্যা", "অশ্লেষা", "মঘা", "পূর্বফল্গুনী", "উত্তরফল্গুনী",
+    "হস্তা", "চিত্রা", "স্বাতী", "বিশাখা", "অনুরাধা", "জ্যেষ্ঠা",
+    "মূলা", "পূর্বাষাঢ়া", "উত্তরাষাঢ়া", "শ্রবণা", "ধনিষ্ঠা",
+    "শতভিষা", "পূর্ব ভাদ্রপদ", "উত্তর ভাদ্রপদ", "রেবতী",
+]
+
 AAYA_DATA = {
     1: {"name": "Dhwaja Aaya", "name_bn": "ধ্বজ আয় (১)", "auspicious": True, "significance": "ধ্বজ আয় — অপার অর্থপ্রাপ্তি, প্রতিষ্ঠা, রাজকীয় সম্মান ও দীর্ঘস্থায়ী ঐশ্বর্য নির্দেশ করে।", "directions": ["পূর্ব (East)", "উত্তর (North)"]},
     2: {"name": "Dhuma Aaya", "name_bn": "ধূম্র আয় (২)", "auspicious": False, "significance": "ধূম্র আয় — অতিরিক্ত মানসিক উদ্বেগ, অগ্নিভয় ও আর্থিক অনিশ্চয়তা সৃষ্টি করে।", "directions": ["প্রতিকার প্রয়োজন"]},
@@ -730,12 +738,85 @@ AAYA_DATA = {
     8: {"name": "Kaka Aaya", "name_bn": "কাক আয় (৮)", "auspicious": False, "significance": "কাক আয় — অর্থনাশ, শোক ও পরিবারের অগ্রগতিতে অনাকাঙ্ক্ষিত বাধা তৈরি করে।", "directions": ["প্রতিকার প্রয়োজন"]},
 }
 
+YONI_DATA = {
+    1: {"name": "Dhwaja", "name_bn": "ধ্বজ যোনি (১)", "direction": "পূর্ব (East)", "significance": "অতুলনীয় খ্যাতি, সামাজিক প্রতিপত্তি ও দীর্ঘস্থায়ী সমৃদ্ধি দেয়।"},
+    2: {"name": "Dhuma", "name_bn": "ধূম্র যোনি (২)", "direction": "দক্ষিণ-পূর্ব (SE / অগ্নি)", "significance": "উত্তেজনা, অগ্নিভয় ও আর্থিক অনিশ্চয়তা সৃষ্টি করতে পারে।"},
+    3: {"name": "Simha", "name_bn": "সিংহ যোনি (৩)", "direction": "দক্ষিণ (South)", "significance": "বিজয়, শত্রু দমন, পরাক্রম ও সর্বকাজে রাজকীয় কর্তৃত্ব দেয়।"},
+    4: {"name": "Shwana", "name_bn": "শ্বান যোনি (৪)", "direction": "দক্ষিণ-পশ্চিম (SW / নৈঋত)", "significance": "অশান্তি, কলহ ও পারিবারিক দূরত্বের সৃষ্টি করে।"},
+    5: {"name": "Vrisha", "name_bn": "বৃষভ যোনি (৫)", "direction": "পশ্চিম (West)", "significance": "স্থাবর সম্পত্তি, বংশবৃদ্ধি, মানসিক স্থিরতা ও অর্থ স্থায়িত্ব আনে।"},
+    6: {"name": "Khara", "name_bn": "খর যোনি (৬)", "direction": "উত্তর-পশ্চিম (NW / বায়ু)", "significance": "অতিরিক্ত শারীরিক শ্রম সত্ত্বেও অপ্রতুল ফল নির্দেশ করে।"},
+    7: {"name": "Gaja", "name_bn": "গজ যোনি (৭)", "direction": "উত্তর (North)", "significance": "রাজকীয় ঐশ্বর্য, কুবেরের আশিস ও ব্যবসা-বাণিজ্যে অটল বৃদ্ধি।"},
+    8: {"name": "Kaka", "name_bn": "কাক যোনি (৮)", "direction": "উত্তর-পূর্ব (NE / ঈশান)", "significance": "অর্থনাশ, মানসিক অবসাদ ও বাধার সৃষ্টি করে।"},
+}
+
+VARNA_DATA = {
+    1: {"name": "Brahmin", "name_bn": "ব্রাহ্মণ বর্ণ (জ্ঞানের প্রতিমূর্তি)", "significance": "আধ্যাত্মিক জ্ঞান, মানসিক শান্তি, পবিত্রতা, অধ্যয়ন ও গবেষণার অনুকূল।"},
+    2: {"name": "Kshatriya", "name_bn": "ক্ষত্রিয় বর্ণ (সুরক্ষা ও শক্তি)", "significance": "নেতৃত্ব, বীরত্ব, রাজনৈতিক ও প্রশাসনিক কর্তৃত্ব এবং পারিবারিক পরাক্রম।"},
+    3: {"name": "Vaishya", "name_bn": "বৈশ্য বর্ণ (বাণিজ্য ও প্রাচুর্য)", "significance": "ব্যবসা-বাণিজ্য, লাভ, অর্থনৈতিক গতিশীলতা, নগদ প্রবাহ ও ধনসম্পদ।"},
+    4: {"name": "Shudra", "name_bn": "শূদ্র বর্ণ (পরিশ্রম ও সেবা)", "significance": "সেবামূলক সাফল্য, শিল্পকর্ম, উৎপাদনশীলতা ও কায়িক শ্রমের বিকাশ।"},
+}
+
+TITHI_NAMES = [
+    ("Shukla Pratipada", "শুক্ল প্রতিপদ"),
+    ("Shukla Dvitiya", "শুক্ল দ্বিতীয়া"),
+    ("Shukla Tritiya", "শুক্ল তৃতীয়া"),
+    ("Shukla Chaturthi", "শুক্ল চতুর্থী"),
+    ("Shukla Panchami", "শুক্ল পঞ্চমী"),
+    ("Shukla Shashthi", "শুক্ল ষষ্ঠী"),
+    ("Shukla Saptami", "শুক্ল সপ্তমী"),
+    ("Shukla Ashtami", "শুক্ল অষ্টমী"),
+    ("Shukla Navami", "শুক্ল নবমী"),
+    ("Shukla Dashami", "শুক্ল দশমী"),
+    ("Shukla Ekadashi", "শুক্ল একাদশী"),
+    ("Shukla Dvadashi", "শুক্ল দ্বাদশী"),
+    ("Shukla Trayodashi", "শুক্ল ত্রয়োদশী"),
+    ("Shukla Chaturdashi", "শুক্ল চতুর্দশী"),
+    ("Purnima", "পূর্ণিমা (পরম শুভ)"),
+    ("Krishna Pratipada", "কৃষ্ণ প্রতিপদ"),
+    ("Krishna Dvitiya", "কৃষ্ণ দ্বিতীয়া"),
+    ("Krishna Tritiya", "কৃষ্ণ তৃতীয়া"),
+    ("Krishna Chaturthi", "কৃষ্ণ চতুর্থী"),
+    ("Krishna Panchami", "কৃষ্ণ পঞ্চমী"),
+    ("Krishna Shashthi", "কৃষ্ণ ষষ্ঠী"),
+    ("Krishna Saptami", "কৃষ্ণ সপ্তমী"),
+    ("Krishna Ashtami", "কৃষ্ণ অষ্টমী"),
+    ("Krishna Navami", "কৃষ্ণ নবমী"),
+    ("Krishna Dashami", "কৃষ্ণ দশমী"),
+    ("Krishna Ekadashi", "কৃষ্ণ একাদশী"),
+    ("Krishna Dvadashi", "কৃষ্ণ দ্বাদশী"),
+    ("Krishna Trayodashi", "কৃষ্ণ ত্রয়োদশী"),
+    ("Krishna Chaturdashi", "কৃষ্ণ চতুর্দশী"),
+    ("Amavasya", "অমাবস্যা"),
+]
+
+VARA_DATA = {
+    1: ("Sunday", "রবিবার (সূর্য - প্রভাব, মর্যাদা ও স্বাস্থ্য)"),
+    2: ("Monday", "সোমবার (চন্দ্র - মানসিক শান্তি ও গৃহস্নেহ)"),
+    3: ("Tuesday", "মঙ্গলবার (মঙ্গল - তেজ, পরাক্রম ও উদ্যোগ)"),
+    4: ("Wednesday", "বুধবার (বুধ - প্রজ্ঞা, হিসাব ও ব্যবসায় সমৃদ্ধি)"),
+    5: ("Thursday", "বৃহস্পতিবার (বৃহস্পতি - পরম সৌভাগ্য, বিদ্যা ও ঐশ্বর্য)"),
+    6: ("Friday", "শুক্রবার (শুক্র - বিলাসিতা, নান্দনিকতা ও বৈষয়িক আনন্দ)"),
+    7: ("Saturday", "শনিবার (শনি - স্থায়িত্ব, শৃঙ্খলা ও ধৈর্য)"),
+}
+
 
 def calculate_ayadi_shadvarga(length: float, width: float, unit: str = "feet") -> AyadiCalculationResponse:
-    """Calculates classical Ayadi Shadvarga parameters from client's Essentials of Vastu."""
-    length_ft = length if unit == "feet" else length * 3.28084
-    width_ft = width if unit == "feet" else width * 3.28084
+    """Calculates classical Ayadi Shadvarga parameters (Aaya, Vyaya, Yoni, Varna, Tara, Tithi, Vara, Aayu)."""
+    unit_clean = (unit or "feet").lower().strip()
+    if unit_clean in ("hasta", "hand", "cubit"):
+        length_ft = length * 1.5
+        width_ft = width * 1.5
+    elif unit_clean == "meter":
+        length_ft = length * 3.28084
+        width_ft = width * 3.28084
+    else:
+        length_ft = length
+        width_ft = width
+
     area_sqft = round(length_ft * width_ft, 2)
+    area_hasta = round(area_sqft / 2.25, 2)
+    perimeter_ft = round(2.0 * (length_ft + width_ft), 2)
+    perimeter_hasta = round(perimeter_ft / 1.5, 2)
     int_area = max(int(round(area_sqft)), 1)
 
     # 1. Aaya (Area * 8) % 8
@@ -743,22 +824,103 @@ def calculate_ayadi_shadvarga(length: float, width: float, unit: str = "feet") -
     aaya_num = 8 if aaya_rem == 0 else aaya_rem
     aaya_info = AAYA_DATA[aaya_num]
 
-    # 2. Dhana (Income) & Rina (Expenditure)
+    # 2. Dhana (Income) & Vyaya / Rina (Expenditure)
     dhana = ((int_area * 8) % 12) or 12
     rina = ((int_area * 3) % 8) or 8
     is_dhana_dominant = dhana >= rina
 
-    # 3. Structure Longevity (Aayu in years)
-    aayu_years = ((int_area * 27) % 100) or 100
+    # 3. Yoni (Directional vital force, corresponding to Aaya)
+    yoni_num = aaya_num
+    yoni_info = YONI_DATA[yoni_num]
 
-    # 4. Building Nakshatra
-    nakshatra_idx = ((int_area * 8) % 27)
+    # 4. Varna (Social-spiritual alignment)
+    varna_num = (int_area % 4) + 1
+    varna_info = VARNA_DATA[varna_num]
+
+    # 5. Building Nakshatra / Tara
+    nakshatra_idx = (int_area * 8) % 27
     nakshatra_name = NAKSHATRA_NAMES[nakshatra_idx]
+    nakshatra_name_bn = NAKSHATRA_NAMES_BN[nakshatra_idx]
+
+    # 6. Tithi
+    tithi_val = ((int_area * 8) % 30) or 30
+    tithi_name_en, tithi_name_bn = TITHI_NAMES[tithi_val - 1]
+
+    # 7. Vara
+    vara_val = ((int_area * 9) % 7) or 7
+    vara_name_en, vara_name_bn = VARA_DATA[vara_val]
+
+    # 8. Structure Longevity (Aayu in years)
+    aayu_years = ((int_area * 27) % 100) or 100
+    if aayu_years >= 60:
+        longevity_verdict = f"{aayu_years} বছর — দীর্ঘ পরমায়ু (পরম শুভ ও দীর্ঘস্থায়ী)"
+    elif aayu_years >= 40:
+        longevity_verdict = f"{aayu_years} বছর — মধ্যম পরমায়ু"
+    else:
+        longevity_verdict = f"{aayu_years} বছর — স্বল্প পরমায়ু (পরিমাপ সংশোধন শ্রেয়)"
+
+    # Composite Shadvarga Score & Grade (0 - 100)
+    score = 0
+    if aaya_info["auspicious"]:
+        score += 30
+    if dhana > rina:
+        score += 25
+    elif dhana == rina:
+        score += 15
+
+    if vara_val in (2, 4, 5, 6):  # Mon, Wed, Thu, Fri are highly auspicious
+        score += 15
+    elif vara_val == 1:
+        score += 10
+    else:
+        score += 5
+
+    if tithi_val in (2, 3, 5, 7, 10, 11, 13, 15):
+        score += 10
+    else:
+        score += 5
+
+    if aayu_years >= 60:
+        score += 20
+    elif aayu_years >= 40:
+        score += 12
+    else:
+        score += 5
+
+    score = min(score, 100)
+    if score >= 85:
+        grade = "A+ (পরম কল্যাণকর)"
+        verdict = f"এই পরিমাপটি শাস্ত্রীয় ষড়বর্গে পরম শুভ। {aaya_info['name_bn']} এবং ধন-ব্যয়ের অনুকূল অনুপাত পরিবারে স্থায়ী শ্রী ও সমৃদ্ধি প্রদান করবে।"
+    elif score >= 70:
+        grade = "A (উত্তম বাস্তু মাত্রা)"
+        verdict = f"পরিমাপটি বাস্তু মতে প্রশংসনীয়। ধন ব্যয় অপেক্ষা শ্রেয় এবং ভবনের দীর্ঘস্থায়িত্ব নিশ্চিত।"
+    elif score >= 50:
+        grade = "B (মধ্যম মাত্রা)"
+        verdict = f"পরিমাপটি মধ্যম শ্রেণীর। সামান্য কয়েক ইঞ্চি বাড়িয়ে বা কমিয়ে এটিকে গজ বা ধ্বজ আয়ে রূপান্তর করা সম্ভব।"
+    else:
+        grade = "C (সংশোধন বাঞ্ছনীয়)"
+        verdict = f"বর্তমান মাত্রায় ব্যয় আয়ের চেয়ে বেশি অথবা অশুভ আয়া নির্দেশিত। নিচের স্থাপত্য সংশোধন পরামর্শ অনুসরণ করুন।"
+
+    # Generate Rectification Suggestions
+    rectifications: list[str] = []
+    if not aaya_info["auspicious"]:
+        rectifications.append(f"বর্তমান {aaya_info['name_bn']} এর পরিবর্তে দৈর্ঘ্য বা প্রস্থ ১ থেকে ২ ফুট পরিবর্তন করে গজ আয় (৭) বা ধ্বজ আয় (১) গ্রহণ করা অতীব শুভ।")
+    if not is_dhana_dominant:
+        rectifications.append(f"ঋণ ({rina}) ধন ({dhana}) অপেক্ষা বেশি হওয়ায় আয়ের অপচয় হতে পারে; প্লটের ক্ষেত্রফল সমন্বয় করে ধন সংখ্যা বৃদ্ধি করুন।")
+    if aayu_years < 50:
+        rectifications.append(f"ভবনের আয়ু {aayu_years} বছর — দৈর্ঘ্য-প্রস্থের অনুপাত ১:১.২ বা ১:১.৫ রাখলে পরমায়ু বৃদ্ধি পায়।")
+    if not rectifications:
+        rectifications.append("বর্তমান পরিমাপ সম্পূর্ণ ভারসাম্যপূর্ণ ও দোষমুক্ত। কোনো পরিমাপ পরিবর্তনের প্রয়োজন নেই।")
+    rectifications.append(f"এই মাত্রার জন্য শ্রেষ্ঠ প্রবেশদ্বার অভিমুখ: {', '.join(aaya_info['directions'])}।")
 
     return AyadiCalculationResponse(
         length=round(length, 2),
         width=round(width, 2),
+        unit=unit_clean,
         area_sqft=area_sqft,
+        area_hasta=area_hasta,
+        perimeter_ft=perimeter_ft,
+        perimeter_hasta=perimeter_hasta,
         aaya_number=aaya_num,
         aaya_name=aaya_info["name"],
         aaya_name_bn=aaya_info["name_bn"],
@@ -766,11 +928,31 @@ def calculate_ayadi_shadvarga(length: float, width: float, unit: str = "feet") -
         aaya_significance_bn=aaya_info["significance"],
         dhana_score=dhana,
         rina_score=rina,
+        vyaya_score=rina,
         is_dhana_dominant=is_dhana_dominant,
-        structure_longevity_years=aayu_years,
+        yoni_number=yoni_num,
+        yoni_name=yoni_info["name"],
+        yoni_name_bn=yoni_info["name_bn"],
+        yoni_direction=yoni_info["direction"],
+        yoni_significance_bn=yoni_info["significance"],
+        varna_name=varna_info["name"],
+        varna_name_bn=varna_info["name_bn"],
+        varna_significance_bn=varna_info["significance"],
         building_nakshatra_number=nakshatra_idx + 1,
         building_nakshatra_name=nakshatra_name,
+        building_nakshatra_name_bn=nakshatra_name_bn,
+        tithi_number=tithi_val,
+        tithi_name=tithi_name_en,
+        tithi_name_bn=tithi_name_bn,
+        vara_name=vara_name_en,
+        vara_name_bn=vara_name_bn,
+        structure_longevity_years=aayu_years,
+        longevity_verdict_bn=longevity_verdict,
+        shadvarga_score=score,
+        shadvarga_grade=grade,
+        shadvarga_verdict_bn=verdict,
         best_facing_directions_bn=aaya_info["directions"],
+        rectification_suggestions_bn=rectifications,
     )
 
 
